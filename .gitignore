@@ -6,3 +6,5 @@
 *.test
 .DS_Store
 /coverage.txt
+# internal planning/spec docs — not part of the public release
+/docs/superpowers/
