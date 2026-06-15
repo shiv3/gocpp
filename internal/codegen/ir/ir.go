@@ -79,10 +79,12 @@ type Enum struct {
 
 // Message binds a request/response struct pair to an action and direction.
 type Message struct {
-	Action    string
-	Direction string // "SentByCP" or "SentByCSMS"
-	Request   string // request struct GoName
-	Response  string // response struct GoName
+	Action         string
+	Direction      string // "SentByCP" or "SentByCSMS"
+	Request        string // request struct GoName
+	Response       string // response struct GoName
+	RequestSchema  string // request schema filename
+	ResponseSchema string // response schema filename
 }
 
 // File is the full IR for one version, ready to render.

@@ -103,10 +103,12 @@ func generate(cfg genConfig) error {
 				Structs: msgStructs,
 			}
 			msg := ir.Message{
-				Action:    m.Name,
-				Direction: m.Dir,
-				Request:   reqStruct,
-				Response:  respStruct,
+				Action:         m.Name,
+				Direction:      m.Dir,
+				Request:        reqStruct,
+				Response:       respStruct,
+				RequestSchema:  m.Request,
+				ResponseSchema: m.Response,
 			}
 			pm.msgs = append(pm.msgs, msg)
 			allMessages = append(allMessages, msg)
@@ -276,6 +278,9 @@ func writeEmbed(outRoot, version string) error {
 func writeFile(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
+	}
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == string(content) {
+		return nil
 	}
 	return os.WriteFile(path, content, 0o644)
 }

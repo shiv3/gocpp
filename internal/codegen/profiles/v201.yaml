@@ -1,0 +1,98 @@
+version: v201
+profiles:
+  Provisioning:
+    messages:
+      - { name: BootNotification,        request: BootNotificationRequest.json,        response: BootNotificationResponse.json,        dir: SentByCP }
+      - { name: Heartbeat,               request: HeartbeatRequest.json,               response: HeartbeatResponse.json,               dir: SentByCP }
+      - { name: GetBaseReport,           request: GetBaseReportRequest.json,           response: GetBaseReportResponse.json,           dir: SentByCSMS }
+      - { name: GetReport,               request: GetReportRequest.json,               response: GetReportResponse.json,               dir: SentByCSMS }
+      - { name: GetVariables,            request: GetVariablesRequest.json,            response: GetVariablesResponse.json,            dir: SentByCSMS }
+      - { name: SetVariables,            request: SetVariablesRequest.json,            response: SetVariablesResponse.json,            dir: SentByCSMS }
+      - { name: NotifyReport,            request: NotifyReportRequest.json,            response: NotifyReportResponse.json,            dir: SentByCP }
+      - { name: Reset,                   request: ResetRequest.json,                   response: ResetResponse.json,                   dir: SentByCSMS }
+      - { name: SetNetworkProfile,       request: SetNetworkProfileRequest.json,       response: SetNetworkProfileResponse.json,       dir: SentByCSMS }
+  Authorization:
+    messages:
+      - { name: Authorize,               request: AuthorizeRequest.json,               response: AuthorizeResponse.json,               dir: SentByCP }
+      - { name: ClearCache,              request: ClearCacheRequest.json,              response: ClearCacheResponse.json,              dir: SentByCSMS }
+  Transactions:
+    messages:
+      - { name: TransactionEvent,        request: TransactionEventRequest.json,        response: TransactionEventResponse.json,        dir: SentByCP }
+      - { name: GetTransactionStatus,    request: GetTransactionStatusRequest.json,    response: GetTransactionStatusResponse.json,    dir: SentByCSMS }
+  AvailabilityManagement:
+    messages:
+      - { name: StatusNotification,      request: StatusNotificationRequest.json,      response: StatusNotificationResponse.json,      dir: SentByCP }
+      - { name: ChangeAvailability,      request: ChangeAvailabilityRequest.json,      response: ChangeAvailabilityResponse.json,      dir: SentByCSMS }
+  RemoteControl:
+    messages:
+      - { name: RequestStartTransaction, request: RequestStartTransactionRequest.json, response: RequestStartTransactionResponse.json, dir: SentByCSMS }
+      - { name: RequestStopTransaction,  request: RequestStopTransactionRequest.json,  response: RequestStopTransactionResponse.json,  dir: SentByCSMS }
+      - { name: UnlockConnector,         request: UnlockConnectorRequest.json,         response: UnlockConnectorResponse.json,         dir: SentByCSMS }
+      - { name: TriggerMessage,          request: TriggerMessageRequest.json,          response: TriggerMessageResponse.json,          dir: SentByCSMS }
+  SmartCharging:
+    messages:
+      - { name: SetChargingProfile,      request: SetChargingProfileRequest.json,      response: SetChargingProfileResponse.json,      dir: SentByCSMS }
+      - { name: GetChargingProfiles,     request: GetChargingProfilesRequest.json,     response: GetChargingProfilesResponse.json,     dir: SentByCSMS }
+      - { name: ClearChargingProfile,    request: ClearChargingProfileRequest.json,    response: ClearChargingProfileResponse.json,    dir: SentByCSMS }
+      - { name: GetCompositeSchedule,    request: GetCompositeScheduleRequest.json,    response: GetCompositeScheduleResponse.json,    dir: SentByCSMS }
+      - { name: NotifyEVChargingNeeds,   request: NotifyEVChargingNeedsRequest.json,   response: NotifyEVChargingNeedsResponse.json,   dir: SentByCP }
+      - { name: NotifyEVChargingSchedule, request: NotifyEVChargingScheduleRequest.json, response: NotifyEVChargingScheduleResponse.json, dir: SentByCP }
+      - { name: NotifyChargingLimit,     request: NotifyChargingLimitRequest.json,     response: NotifyChargingLimitResponse.json,     dir: SentByCP }
+      - { name: ClearedChargingLimit,    request: ClearedChargingLimitRequest.json,    response: ClearedChargingLimitResponse.json,    dir: SentByCP }
+      - { name: ReportChargingProfiles,  request: ReportChargingProfilesRequest.json,  response: ReportChargingProfilesResponse.json,  dir: SentByCP }
+  FirmwareManagement:
+    messages:
+      - { name: UpdateFirmware,                  request: UpdateFirmwareRequest.json,                  response: UpdateFirmwareResponse.json,                  dir: SentByCSMS }
+      - { name: FirmwareStatusNotification,      request: FirmwareStatusNotificationRequest.json,      response: FirmwareStatusNotificationResponse.json,      dir: SentByCP }
+      - { name: PublishFirmware,                 request: PublishFirmwareRequest.json,                 response: PublishFirmwareResponse.json,                 dir: SentByCSMS }
+      - { name: PublishFirmwareStatusNotification, request: PublishFirmwareStatusNotificationRequest.json, response: PublishFirmwareStatusNotificationResponse.json, dir: SentByCP }
+      - { name: UnpublishFirmware,               request: UnpublishFirmwareRequest.json,               response: UnpublishFirmwareResponse.json,               dir: SentByCSMS }
+  ISO15118CertificateManagement:
+    messages:
+      - { name: SignCertificate,            request: SignCertificateRequest.json,            response: SignCertificateResponse.json,            dir: SentByCP }
+      - { name: Get15118EVCertificate,      request: Get15118EVCertificateRequest.json,      response: Get15118EVCertificateResponse.json,      dir: SentByCP }
+      - { name: GetCertificateStatus,       request: GetCertificateStatusRequest.json,       response: GetCertificateStatusResponse.json,       dir: SentByCP }
+      - { name: GetInstalledCertificateIds, request: GetInstalledCertificateIdsRequest.json, response: GetInstalledCertificateIdsResponse.json, dir: SentByCSMS }
+      - { name: InstallCertificate,         request: InstallCertificateRequest.json,         response: InstallCertificateResponse.json,         dir: SentByCSMS }
+      - { name: DeleteCertificate,          request: DeleteCertificateRequest.json,          response: DeleteCertificateResponse.json,          dir: SentByCSMS }
+      - { name: CertificateSigned,          request: CertificateSignedRequest.json,          response: CertificateSignedResponse.json,          dir: SentByCSMS }
+  LocalAuthorizationList:
+    messages:
+      - { name: GetLocalListVersion, request: GetLocalListVersionRequest.json, response: GetLocalListVersionResponse.json, dir: SentByCSMS }
+      - { name: SendLocalList,       request: SendLocalListRequest.json,       response: SendLocalListResponse.json,       dir: SentByCSMS }
+  Reservation:
+    messages:
+      - { name: ReserveNow,               request: ReserveNowRequest.json,               response: ReserveNowResponse.json,               dir: SentByCSMS }
+      - { name: CancelReservation,        request: CancelReservationRequest.json,        response: CancelReservationResponse.json,        dir: SentByCSMS }
+      - { name: ReservationStatusUpdate,  request: ReservationStatusUpdateRequest.json,  response: ReservationStatusUpdateResponse.json,  dir: SentByCP }
+  DisplayMessage:
+    messages:
+      - { name: SetDisplayMessage,      request: SetDisplayMessageRequest.json,      response: SetDisplayMessageResponse.json,      dir: SentByCSMS }
+      - { name: GetDisplayMessages,     request: GetDisplayMessagesRequest.json,     response: GetDisplayMessagesResponse.json,     dir: SentByCSMS }
+      - { name: ClearDisplayMessage,    request: ClearDisplayMessageRequest.json,    response: ClearDisplayMessageResponse.json,    dir: SentByCSMS }
+      - { name: NotifyDisplayMessages,  request: NotifyDisplayMessagesRequest.json,  response: NotifyDisplayMessagesResponse.json,  dir: SentByCP }
+  DiagnosticsAndMonitoring:
+    messages:
+      - { name: NotifyEvent,               request: NotifyEventRequest.json,               response: NotifyEventResponse.json,               dir: SentByCP }
+      - { name: NotifyMonitoringReport,    request: NotifyMonitoringReportRequest.json,    response: NotifyMonitoringReportResponse.json,    dir: SentByCP }
+      - { name: GetMonitoringReport,       request: GetMonitoringReportRequest.json,       response: GetMonitoringReportResponse.json,       dir: SentByCSMS }
+      - { name: SetMonitoringBase,         request: SetMonitoringBaseRequest.json,         response: SetMonitoringBaseResponse.json,         dir: SentByCSMS }
+      - { name: SetVariableMonitoring,     request: SetVariableMonitoringRequest.json,     response: SetVariableMonitoringResponse.json,     dir: SentByCSMS }
+      - { name: ClearVariableMonitoring,   request: ClearVariableMonitoringRequest.json,   response: ClearVariableMonitoringResponse.json,   dir: SentByCSMS }
+      - { name: SetMonitoringLevel,        request: SetMonitoringLevelRequest.json,        response: SetMonitoringLevelResponse.json,        dir: SentByCSMS }
+      - { name: GetLog,                    request: GetLogRequest.json,                    response: GetLogResponse.json,                    dir: SentByCSMS }
+      - { name: LogStatusNotification,     request: LogStatusNotificationRequest.json,     response: LogStatusNotificationResponse.json,     dir: SentByCP }
+      - { name: CustomerInformation,       request: CustomerInformationRequest.json,       response: CustomerInformationResponse.json,       dir: SentByCSMS }
+      - { name: NotifyCustomerInformation, request: NotifyCustomerInformationRequest.json, response: NotifyCustomerInformationResponse.json, dir: SentByCP }
+  TariffAndCost:
+    messages:
+      - { name: CostUpdated, request: CostUpdatedRequest.json, response: CostUpdatedResponse.json, dir: SentByCSMS }
+  MeterValues:
+    messages:
+      - { name: MeterValues, request: MeterValuesRequest.json, response: MeterValuesResponse.json, dir: SentByCP }
+  DataTransfer:
+    messages:
+      - { name: DataTransfer, request: DataTransferRequest.json, response: DataTransferResponse.json, dir: SentByCP }
+  SecurityProfiles:
+    messages:
+      - { name: SecurityEventNotification, request: SecurityEventNotificationRequest.json, response: SecurityEventNotificationResponse.json, dir: SentByCP }

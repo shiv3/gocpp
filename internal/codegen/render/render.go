@@ -77,8 +77,16 @@ func RegisterFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("\ttype reg struct{ action, kind, file string }\n")
 	b.WriteString("\tfor _, e := range []reg{\n")
 	for _, m := range messages {
-		fmt.Fprintf(&b, "\t\t{%q, \"request\", %q},\n", m.Action, m.Action+".json")
-		fmt.Fprintf(&b, "\t\t{%q, \"response\", %q},\n", m.Action, m.Action+"Response.json")
+		requestSchema := m.RequestSchema
+		if requestSchema == "" {
+			requestSchema = m.Action + ".json"
+		}
+		responseSchema := m.ResponseSchema
+		if responseSchema == "" {
+			responseSchema = m.Action + "Response.json"
+		}
+		fmt.Fprintf(&b, "\t\t{%q, \"request\", %q},\n", m.Action, requestSchema)
+		fmt.Fprintf(&b, "\t\t{%q, \"response\", %q},\n", m.Action, responseSchema)
 	}
 	b.WriteString("\t} {\n")
 	fmt.Fprintf(&b, "\t\tif err := r.Register(%q, e.action, e.kind, schemas.FS, e.file); err != nil {\n", versionString(version))
@@ -94,6 +102,8 @@ func versionString(version string) string {
 	switch version {
 	case "v16":
 		return "1.6"
+	case "v201":
+		return "2.0.1"
 	default:
 		return strings.TrimPrefix(version, "v")
 	}

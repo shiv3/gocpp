@@ -5,6 +5,7 @@ schemas-fetch:
 
 codegen:
 	go run ./internal/codegen -version v16
+	go run ./internal/codegen -version v201
 
 test:
 	go test ./...
