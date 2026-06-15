@@ -21,4 +21,5 @@ require (
 	github.com/kr/text v0.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
+	pgregory.net/rapid v1.3.0 // indirect
 )
