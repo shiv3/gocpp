@@ -21,7 +21,7 @@ type Conn struct {
 	in  chan ocppj.Frame
 
 	pending *pendingStore
-	reg     *handlerRegistry
+	reg     *HandlerRegistry
 	sem     *semaphore.Weighted
 
 	ctx     context.Context
@@ -39,7 +39,7 @@ type outbound struct {
 }
 
 // NewConn creates a connection. Call Start to launch its goroutines.
-func NewConn(id string, ws transport.WS, cfg Config, reg *handlerRegistry) *Conn {
+func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry) *Conn {
 	c := &Conn{
 		id:      id,
 		ws:      ws,

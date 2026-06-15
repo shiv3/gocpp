@@ -12,7 +12,7 @@ import (
 func TestConn_ReaderResolvesPending(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")
-	c := NewConn("CP_1", f, DefaultConfig(), newHandlerRegistry())
+	c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 	c.Start(context.Background())
 	defer c.Close(nil)
 

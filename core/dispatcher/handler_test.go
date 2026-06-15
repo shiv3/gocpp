@@ -13,8 +13,8 @@ import (
 func TestConn_HandlerRespondsCallResult(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")
-	reg := newHandlerRegistry()
-	reg.register("Heartbeat", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+	reg := NewHandlerRegistry()
+	reg.Register("Heartbeat", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
 		return []byte(`{"currentTime":"2026-06-15T00:00:00Z"}`), nil
 	})
 	c := NewConn("CP_1", f, DefaultConfig(), reg)
@@ -30,7 +30,7 @@ func TestConn_HandlerRespondsCallResult(t *testing.T) {
 func TestConn_UnknownActionReturnsNotImplemented(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")
-	c := NewConn("CP_1", f, DefaultConfig(), newHandlerRegistry())
+	c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 	c.Start(context.Background())
 	defer c.Close(nil)
 
@@ -44,8 +44,8 @@ func TestConn_UnknownActionReturnsNotImplemented(t *testing.T) {
 func TestConn_HandlerErrorReturnsCallError(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")
-	reg := newHandlerRegistry()
-	reg.register("Authorize", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+	reg := NewHandlerRegistry()
+	reg.Register("Authorize", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
 		return nil, ocppj.NewCallError(ocppj.ErrorCodePropertyConstraintViolation, "bad idTag", nil)
 	})
 	c := NewConn("CP_1", f, DefaultConfig(), reg)

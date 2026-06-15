@@ -18,7 +18,7 @@ func TestDoCall_Timeout(t *testing.T) {
 		f := transport.NewFakeWS("ocpp1.6")
 		cfg := DefaultConfig()
 		cfg.CallTimeout = time.Second
-		c := NewConn("CP_1", f, cfg, newHandlerRegistry())
+		c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
 		c.Start(context.Background())
 		defer c.Close(nil)
 

@@ -14,7 +14,7 @@ func TestConn_CloseDuringCall_NoLeakNoPanic(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	for i := 0; i < 50; i++ {
 		f := transport.NewFakeWS("ocpp1.6")
-		c := NewConn("CP_1", f, DefaultConfig(), newHandlerRegistry())
+		c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 		c.Start(context.Background())
 
 		var wg sync.WaitGroup

@@ -16,7 +16,7 @@ import (
 func TestConn_KeepaliveFires(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := transport.NewFakeWS("ocpp1.6")
-		c := NewConn("CP_1", f, DefaultConfig(), newHandlerRegistry())
+		c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 		c.Start(context.Background())
 		defer c.Close(nil)
 

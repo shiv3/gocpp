@@ -9,25 +9,25 @@ import (
 	"github.com/shiv3/gocpp/core/ocppj"
 )
 
-type handlerFunc func(ctx context.Context, c *Conn, payload []byte) ([]byte, error)
+type HandlerFunc func(ctx context.Context, c *Conn, payload []byte) ([]byte, error)
 
-type handlerRegistry struct {
+type HandlerRegistry struct {
 	mu sync.RWMutex
-	hs map[string]handlerFunc
+	hs map[string]HandlerFunc
 }
 
-func newHandlerRegistry() *handlerRegistry {
-	return &handlerRegistry{hs: make(map[string]handlerFunc)}
+func NewHandlerRegistry() *HandlerRegistry {
+	return &HandlerRegistry{hs: make(map[string]HandlerFunc)}
 }
 
-func (r *handlerRegistry) lookup(action string) (handlerFunc, bool) {
+func (r *HandlerRegistry) Lookup(action string) (HandlerFunc, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	h, ok := r.hs[action]
 	return h, ok
 }
 
-func (r *handlerRegistry) register(action string, h handlerFunc) {
+func (r *HandlerRegistry) Register(action string, h HandlerFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.hs[action] = h
@@ -36,7 +36,7 @@ func (r *handlerRegistry) register(action string, h handlerFunc) {
 func (c *Conn) runHandler(frame ocppj.Frame) {
 	defer c.sem.Release(1)
 
-	h, ok := c.reg.lookup(frame.Action)
+	h, ok := c.reg.Lookup(frame.Action)
 	if !ok {
 		c.sendCallError(frame.MsgID, ocppj.NewCallError(
 			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
