@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 )
 
@@ -17,6 +18,7 @@ type Config struct {
 	MaxConcurrentHandlers int64
 	Logger                *slog.Logger
 	Metrics               MetricsHook
+	Tracer                observability.Tracer
 	// SchemaValidate optionally validates an inbound payload for the given version.
 	// Returning an error rejects the message. nil disables validation.
 	SchemaValidate func(version ocppj.Version, action, kind string, payload []byte) error
@@ -31,5 +33,6 @@ func DefaultConfig() Config {
 		MaxConcurrentHandlers: 16,
 		Logger:                slog.Default(),
 		Metrics:               NoopMetrics,
+		Tracer:                observability.NewTracer(nil),
 	}
 }

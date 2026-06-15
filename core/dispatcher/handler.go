@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type HandlerFunc func(ctx context.Context, c *Conn, payload []byte) ([]byte, error)
@@ -58,7 +59,14 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			return
 		}
 	}
-	resp, err := h(c.ctx, c, frame.Payload)
+	hctx, span := c.cfg.Tracer.Start(c.ctx, "ocpp.handler")
+	span.SetAttributes(
+		attribute.String("ocpp.action", frame.Action),
+		attribute.String("ocpp.cp_id", c.id),
+		attribute.String("ocpp.direction", "inbound"),
+	)
+	resp, err := h(hctx, c, frame.Payload)
+	span.End()
 	if err != nil {
 		c.sendCallError(frame.MsgID, mapHandlerError(err))
 		return

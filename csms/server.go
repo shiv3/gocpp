@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
 )
@@ -61,7 +62,15 @@ func (s *Server) ListenAndServe(addr string) error {
 }
 
 func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
-	cpID := strings.TrimPrefix(r.URL.Path, s.cfg.path)
+	id, err := s.cfg.auth.Authenticate(r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	cpID := id.CPID
+	if cpID == "" {
+		cpID = strings.TrimPrefix(r.URL.Path, s.cfg.path)
+	}
 	if cpID == "" || strings.Contains(cpID, "/") {
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
 		return
@@ -79,7 +88,13 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ws := transport.NewCoderWS(c)
-	dconn := dispatcher.NewConn(cpID, ws, s.cfg.dispatcher, s.reg)
+
+	// Per-connection dispatcher config: version-bound metrics + tracer.
+	dcfg := s.cfg.dispatcher
+	dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
+	dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
+
+	dconn := dispatcher.NewConn(cpID, ws, dcfg, s.reg)
 	conn := &Conn{inner: dconn}
 
 	// Start the connection (initializing its context and goroutines) BEFORE
@@ -87,7 +102,11 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// a half-initialized Conn (data race on c.ctx).
 	dconn.Start(s.ctx)
 	s.addConn(cpID, conn)
-	defer s.removeConn(cpID)
+	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
+	defer func() {
+		s.removeConn(cpID)
+		_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
+	}()
 
 	<-dconn.Context().Done()
 	_ = dconn.Close(nil)
