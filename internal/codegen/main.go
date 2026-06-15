@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode"
@@ -51,8 +52,8 @@ func generate(cfg genConfig) error {
 		msgs []ir.Message
 	}
 
-	structByName := map[string]bool{}
-	enumByName := map[string]bool{}
+	structByName := map[string]ir.Struct{}
+	enumByName := map[string]ir.Enum{}
 	messageFiles := map[string]ir.File{}
 	enumsFile := ir.File{Version: cfg.version, Package: "messages"}
 	var profiles []profMsgs
@@ -69,18 +70,37 @@ func generate(cfg genConfig) error {
 		for _, m := range prof.Messages {
 			reqStruct := m.Name + "Request"
 			respStruct := m.Name + "Response"
-			msgFile := ir.File{Version: cfg.version, Package: "messages"}
-			if err := addStruct(&msgFile, cfg.schemaDir, m.Request, reqStruct, structByName, nil); err != nil {
+			reqStructs, reqEnums, err := loadTree(cfg.schemaDir, m.Request, reqStruct)
+			if err != nil {
 				return err
 			}
-			if err := addStruct(&msgFile, cfg.schemaDir, m.Response, respStruct, structByName, enumByName); err != nil {
+			respStructs, respEnums, err := loadTree(cfg.schemaDir, m.Response, respStruct)
+			if err != nil {
 				return err
 			}
-			for _, e := range msgFile.Enums {
-				enumsFile.Enums = append(enumsFile.Enums, e)
+
+			allStructs := append(reqStructs, respStructs...)
+			msgStructs, err := filterNewStructs(allStructs, structByName)
+			if err != nil {
+				return err
 			}
-			msgFile.Enums = nil
-			messageFiles[snakeName(m.Name)+".go"] = msgFile
+			for _, e := range append(reqEnums, respEnums...) {
+				if err := addEnum(&enumsFile, enumByName, e); err != nil {
+					return err
+				}
+			}
+			if err := copySchema(cfg.schemaDir, m.Request, cfg.outRoot, cfg.version); err != nil {
+				return err
+			}
+			if err := copySchema(cfg.schemaDir, m.Response, cfg.outRoot, cfg.version); err != nil {
+				return err
+			}
+
+			messageFiles[snakeName(m.Name)+".go"] = ir.File{
+				Version: cfg.version,
+				Package: "messages",
+				Structs: msgStructs,
+			}
 			pm.msgs = append(pm.msgs, ir.Message{
 				Action:    m.Name,
 				Direction: m.Dir,
@@ -92,7 +112,8 @@ func generate(cfg genConfig) error {
 	}
 
 	for name, f := range messageFiles {
-		msgSrc, err := render.Structs(f)
+		needTime, needDecimal := scanNeeds(f.Structs)
+		msgSrc, err := render.MessageFile("messages", f.Structs, nil, needTime, needDecimal)
 		if err != nil {
 			return fmt.Errorf("render message %s: %w", name, err)
 		}
@@ -101,7 +122,7 @@ func generate(cfg genConfig) error {
 		}
 	}
 	if len(enumsFile.Enums) > 0 {
-		enumSrc, err := render.Enums(enumsFile)
+		enumSrc, err := render.EnumsFile("messages", enumsFile.Enums)
 		if err != nil {
 			return fmt.Errorf("render enums: %w", err)
 		}
@@ -116,53 +137,130 @@ func generate(cfg genConfig) error {
 		if err != nil {
 			return fmt.Errorf("render profile %s: %w", pm.name, err)
 		}
-		fname := strings.ToLower(pm.name) + ".go"
+		fname := snakeName(pm.name) + ".go"
 		if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "profiles", fname), src); err != nil {
 			return err
 		}
 	}
+	if err := writeEmbed(cfg.outRoot, cfg.version); err != nil {
+		return err
+	}
 	return nil
 }
 
-func addStruct(file *ir.File, schemaDir, schemaFile, goName string, structSeen, enumSeen map[string]bool) error {
-	if structSeen[goName] {
-		return nil
-	}
+func loadTree(schemaDir, schemaFile, goName string) ([]ir.Struct, []ir.Enum, error) {
 	schema, err := loader.LoadSchema(filepath.Join(schemaDir, schemaFile))
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	s, enums, err := ir.BuildStruct(goName, schema)
+	structs, enums, err := ir.BuildStructTree(goName, schema)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	renameGeneratedEnums(&s, enums)
-	file.Structs = append(file.Structs, s)
-	structSeen[goName] = true
-	for _, e := range enums {
-		if enumSeen == nil || !enumSeen[e.GoName] {
-			file.Enums = append(file.Enums, e)
-			if enumSeen != nil {
-				enumSeen[e.GoName] = true
+	renameGeneratedEnums(structs, enums)
+	return structs, enums, nil
+}
+
+func filterNewStructs(structs []ir.Struct, seen map[string]ir.Struct) ([]ir.Struct, error) {
+	out := make([]ir.Struct, 0, len(structs))
+	for _, s := range structs {
+		if existing, ok := seen[s.GoName]; ok {
+			if !reflect.DeepEqual(existing, s) {
+				return nil, fmt.Errorf("struct %s generated with conflicting fields", s.GoName)
+			}
+			continue
+		}
+		seen[s.GoName] = s
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func addEnum(file *ir.File, seen map[string]ir.Enum, enum ir.Enum) error {
+	if existing, ok := seen[enum.GoName]; ok {
+		merged := mergeEnumValues(existing.Values, enum.Values)
+		if !reflect.DeepEqual(existing.Values, merged) {
+			existing.Values = merged
+			seen[enum.GoName] = existing
+			for i := range file.Enums {
+				if file.Enums[i].GoName == enum.GoName {
+					file.Enums[i] = existing
+					break
+				}
+			}
+		}
+		return nil
+	}
+	seen[enum.GoName] = enum
+	file.Enums = append(file.Enums, enum)
+	return nil
+}
+
+func mergeEnumValues(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, v := range append(a, b...) {
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
+}
+
+func renameGeneratedEnums(structs []ir.Struct, enums []ir.Enum) {
+	enumNames := map[string]string{}
+	for si := range structs {
+		if structs[si].GoName != "BootNotificationResponse" {
+			continue
+		}
+		for fi := range structs[si].Fields {
+			field := &structs[si].Fields[fi]
+			if field.JSONName == "status" && field.Type == ir.TypeEnumRef {
+				enumNames[field.EnumName] = "RegistrationStatus"
+				field.EnumName = "RegistrationStatus"
 			}
 		}
 	}
-	return nil
+	for i := range enums {
+		if replacement, ok := enumNames[enums[i].GoName]; ok {
+			enums[i].GoName = "RegistrationStatus"
+			_ = replacement
+		}
+	}
 }
 
-func renameGeneratedEnums(s *ir.Struct, enums []ir.Enum) {
-	enumNames := map[string]string{}
-	for i := range enums {
-		if s.GoName == "BootNotificationResponse" && enums[i].GoName == "Status" {
-			enumNames[enums[i].GoName] = "RegistrationStatus"
-			enums[i].GoName = "RegistrationStatus"
+func scanNeeds(structs []ir.Struct) (bool, bool) {
+	var needTime, needDecimal bool
+	for _, s := range structs {
+		for _, f := range s.Fields {
+			if f.Type == ir.TypeDateTime || f.ElemType == ir.TypeDateTime {
+				needTime = true
+			}
+			if f.Type == ir.TypeNumber || f.ElemType == ir.TypeNumber {
+				needDecimal = true
+			}
 		}
 	}
-	for i := range s.Fields {
-		if replacement, ok := enumNames[s.Fields[i].EnumName]; ok {
-			s.Fields[i].EnumName = replacement
-		}
+	return needTime, needDecimal
+}
+
+func copySchema(schemaDir, schemaFile, outRoot, version string) error {
+	content, err := os.ReadFile(filepath.Join(schemaDir, schemaFile))
+	if err != nil {
+		return fmt.Errorf("copy schema %s: %w", schemaFile, err)
 	}
+	return writeFile(filepath.Join(outRoot, version, "schemas", schemaFile), content)
+}
+
+func writeEmbed(outRoot, version string) error {
+	content := []byte("// Code generated by gocpp codegen. DO NOT EDIT.\n\n" +
+		"package schemas\n\n" +
+		"import \"embed\"\n\n" +
+		"//go:embed *.json\n" +
+		"var FS embed.FS\n")
+	return writeFile(filepath.Join(outRoot, version, "schemas", "embed.go"), content)
 }
 
 func writeFile(path string, content []byte) error {

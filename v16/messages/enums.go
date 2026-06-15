@@ -2,6 +2,26 @@
 
 package messages
 
+type IDTagInfoStatus string
+
+const (
+	IDTagInfoStatusAccepted     IDTagInfoStatus = "Accepted"
+	IDTagInfoStatusBlocked      IDTagInfoStatus = "Blocked"
+	IDTagInfoStatusExpired      IDTagInfoStatus = "Expired"
+	IDTagInfoStatusInvalid      IDTagInfoStatus = "Invalid"
+	IDTagInfoStatusConcurrentTx IDTagInfoStatus = "ConcurrentTx"
+)
+
+// Valid reports whether e is a defined IDTagInfoStatus value.
+func (e IDTagInfoStatus) Valid() bool {
+	switch e {
+	case IDTagInfoStatusAccepted, IDTagInfoStatusBlocked, IDTagInfoStatusExpired, IDTagInfoStatusInvalid, IDTagInfoStatusConcurrentTx:
+		return true
+	default:
+		return false
+	}
+}
+
 type RegistrationStatus string
 
 const (
@@ -9,3 +29,788 @@ const (
 	RegistrationStatusPending  RegistrationStatus = "Pending"
 	RegistrationStatusRejected RegistrationStatus = "Rejected"
 )
+
+// Valid reports whether e is a defined RegistrationStatus value.
+func (e RegistrationStatus) Valid() bool {
+	switch e {
+	case RegistrationStatusAccepted, RegistrationStatusPending, RegistrationStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChangeAvailabilityRequestType string
+
+const (
+	ChangeAvailabilityRequestTypeInoperative ChangeAvailabilityRequestType = "Inoperative"
+	ChangeAvailabilityRequestTypeOperative   ChangeAvailabilityRequestType = "Operative"
+)
+
+// Valid reports whether e is a defined ChangeAvailabilityRequestType value.
+func (e ChangeAvailabilityRequestType) Valid() bool {
+	switch e {
+	case ChangeAvailabilityRequestTypeInoperative, ChangeAvailabilityRequestTypeOperative:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChangeAvailabilityResponseStatus string
+
+const (
+	ChangeAvailabilityResponseStatusAccepted  ChangeAvailabilityResponseStatus = "Accepted"
+	ChangeAvailabilityResponseStatusRejected  ChangeAvailabilityResponseStatus = "Rejected"
+	ChangeAvailabilityResponseStatusScheduled ChangeAvailabilityResponseStatus = "Scheduled"
+)
+
+// Valid reports whether e is a defined ChangeAvailabilityResponseStatus value.
+func (e ChangeAvailabilityResponseStatus) Valid() bool {
+	switch e {
+	case ChangeAvailabilityResponseStatusAccepted, ChangeAvailabilityResponseStatusRejected, ChangeAvailabilityResponseStatusScheduled:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChangeConfigurationResponseStatus string
+
+const (
+	ChangeConfigurationResponseStatusAccepted       ChangeConfigurationResponseStatus = "Accepted"
+	ChangeConfigurationResponseStatusRejected       ChangeConfigurationResponseStatus = "Rejected"
+	ChangeConfigurationResponseStatusRebootRequired ChangeConfigurationResponseStatus = "RebootRequired"
+	ChangeConfigurationResponseStatusNotSupported   ChangeConfigurationResponseStatus = "NotSupported"
+)
+
+// Valid reports whether e is a defined ChangeConfigurationResponseStatus value.
+func (e ChangeConfigurationResponseStatus) Valid() bool {
+	switch e {
+	case ChangeConfigurationResponseStatusAccepted, ChangeConfigurationResponseStatusRejected, ChangeConfigurationResponseStatusRebootRequired, ChangeConfigurationResponseStatusNotSupported:
+		return true
+	default:
+		return false
+	}
+}
+
+type ClearCacheResponseStatus string
+
+const (
+	ClearCacheResponseStatusAccepted ClearCacheResponseStatus = "Accepted"
+	ClearCacheResponseStatusRejected ClearCacheResponseStatus = "Rejected"
+)
+
+// Valid reports whether e is a defined ClearCacheResponseStatus value.
+func (e ClearCacheResponseStatus) Valid() bool {
+	switch e {
+	case ClearCacheResponseStatusAccepted, ClearCacheResponseStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+type DataTransferResponseStatus string
+
+const (
+	DataTransferResponseStatusAccepted         DataTransferResponseStatus = "Accepted"
+	DataTransferResponseStatusRejected         DataTransferResponseStatus = "Rejected"
+	DataTransferResponseStatusUnknownMessageId DataTransferResponseStatus = "UnknownMessageId"
+	DataTransferResponseStatusUnknownVendorId  DataTransferResponseStatus = "UnknownVendorId"
+)
+
+// Valid reports whether e is a defined DataTransferResponseStatus value.
+func (e DataTransferResponseStatus) Valid() bool {
+	switch e {
+	case DataTransferResponseStatusAccepted, DataTransferResponseStatusRejected, DataTransferResponseStatusUnknownMessageId, DataTransferResponseStatusUnknownVendorId:
+		return true
+	default:
+		return false
+	}
+}
+
+type SampledValueContext string
+
+const (
+	SampledValueContextInterruptionBegin SampledValueContext = "Interruption.Begin"
+	SampledValueContextInterruptionEnd   SampledValueContext = "Interruption.End"
+	SampledValueContextSampleClock       SampledValueContext = "Sample.Clock"
+	SampledValueContextSamplePeriodic    SampledValueContext = "Sample.Periodic"
+	SampledValueContextTransactionBegin  SampledValueContext = "Transaction.Begin"
+	SampledValueContextTransactionEnd    SampledValueContext = "Transaction.End"
+	SampledValueContextTrigger           SampledValueContext = "Trigger"
+	SampledValueContextOther             SampledValueContext = "Other"
+)
+
+// Valid reports whether e is a defined SampledValueContext value.
+func (e SampledValueContext) Valid() bool {
+	switch e {
+	case SampledValueContextInterruptionBegin, SampledValueContextInterruptionEnd, SampledValueContextSampleClock, SampledValueContextSamplePeriodic, SampledValueContextTransactionBegin, SampledValueContextTransactionEnd, SampledValueContextTrigger, SampledValueContextOther:
+		return true
+	default:
+		return false
+	}
+}
+
+type SampledValueFormat string
+
+const (
+	SampledValueFormatRaw        SampledValueFormat = "Raw"
+	SampledValueFormatSignedData SampledValueFormat = "SignedData"
+)
+
+// Valid reports whether e is a defined SampledValueFormat value.
+func (e SampledValueFormat) Valid() bool {
+	switch e {
+	case SampledValueFormatRaw, SampledValueFormatSignedData:
+		return true
+	default:
+		return false
+	}
+}
+
+type SampledValueLocation string
+
+const (
+	SampledValueLocationCable  SampledValueLocation = "Cable"
+	SampledValueLocationEV     SampledValueLocation = "EV"
+	SampledValueLocationInlet  SampledValueLocation = "Inlet"
+	SampledValueLocationOutlet SampledValueLocation = "Outlet"
+	SampledValueLocationBody   SampledValueLocation = "Body"
+)
+
+// Valid reports whether e is a defined SampledValueLocation value.
+func (e SampledValueLocation) Valid() bool {
+	switch e {
+	case SampledValueLocationCable, SampledValueLocationEV, SampledValueLocationInlet, SampledValueLocationOutlet, SampledValueLocationBody:
+		return true
+	default:
+		return false
+	}
+}
+
+type SampledValueMeasurand string
+
+const (
+	SampledValueMeasurandEnergyActiveExportRegister   SampledValueMeasurand = "Energy.Active.Export.Register"
+	SampledValueMeasurandEnergyActiveImportRegister   SampledValueMeasurand = "Energy.Active.Import.Register"
+	SampledValueMeasurandEnergyReactiveExportRegister SampledValueMeasurand = "Energy.Reactive.Export.Register"
+	SampledValueMeasurandEnergyReactiveImportRegister SampledValueMeasurand = "Energy.Reactive.Import.Register"
+	SampledValueMeasurandEnergyActiveExportInterval   SampledValueMeasurand = "Energy.Active.Export.Interval"
+	SampledValueMeasurandEnergyActiveImportInterval   SampledValueMeasurand = "Energy.Active.Import.Interval"
+	SampledValueMeasurandEnergyReactiveExportInterval SampledValueMeasurand = "Energy.Reactive.Export.Interval"
+	SampledValueMeasurandEnergyReactiveImportInterval SampledValueMeasurand = "Energy.Reactive.Import.Interval"
+	SampledValueMeasurandPowerActiveExport            SampledValueMeasurand = "Power.Active.Export"
+	SampledValueMeasurandPowerActiveImport            SampledValueMeasurand = "Power.Active.Import"
+	SampledValueMeasurandPowerOffered                 SampledValueMeasurand = "Power.Offered"
+	SampledValueMeasurandPowerReactiveExport          SampledValueMeasurand = "Power.Reactive.Export"
+	SampledValueMeasurandPowerReactiveImport          SampledValueMeasurand = "Power.Reactive.Import"
+	SampledValueMeasurandPowerFactor                  SampledValueMeasurand = "Power.Factor"
+	SampledValueMeasurandCurrentImport                SampledValueMeasurand = "Current.Import"
+	SampledValueMeasurandCurrentExport                SampledValueMeasurand = "Current.Export"
+	SampledValueMeasurandCurrentOffered               SampledValueMeasurand = "Current.Offered"
+	SampledValueMeasurandVoltage                      SampledValueMeasurand = "Voltage"
+	SampledValueMeasurandFrequency                    SampledValueMeasurand = "Frequency"
+	SampledValueMeasurandTemperature                  SampledValueMeasurand = "Temperature"
+	SampledValueMeasurandSoC                          SampledValueMeasurand = "SoC"
+	SampledValueMeasurandRPM                          SampledValueMeasurand = "RPM"
+)
+
+// Valid reports whether e is a defined SampledValueMeasurand value.
+func (e SampledValueMeasurand) Valid() bool {
+	switch e {
+	case SampledValueMeasurandEnergyActiveExportRegister, SampledValueMeasurandEnergyActiveImportRegister, SampledValueMeasurandEnergyReactiveExportRegister, SampledValueMeasurandEnergyReactiveImportRegister, SampledValueMeasurandEnergyActiveExportInterval, SampledValueMeasurandEnergyActiveImportInterval, SampledValueMeasurandEnergyReactiveExportInterval, SampledValueMeasurandEnergyReactiveImportInterval, SampledValueMeasurandPowerActiveExport, SampledValueMeasurandPowerActiveImport, SampledValueMeasurandPowerOffered, SampledValueMeasurandPowerReactiveExport, SampledValueMeasurandPowerReactiveImport, SampledValueMeasurandPowerFactor, SampledValueMeasurandCurrentImport, SampledValueMeasurandCurrentExport, SampledValueMeasurandCurrentOffered, SampledValueMeasurandVoltage, SampledValueMeasurandFrequency, SampledValueMeasurandTemperature, SampledValueMeasurandSoC, SampledValueMeasurandRPM:
+		return true
+	default:
+		return false
+	}
+}
+
+type SampledValuePhase string
+
+const (
+	SampledValuePhaseL1   SampledValuePhase = "L1"
+	SampledValuePhaseL2   SampledValuePhase = "L2"
+	SampledValuePhaseL3   SampledValuePhase = "L3"
+	SampledValuePhaseN    SampledValuePhase = "N"
+	SampledValuePhaseL1N  SampledValuePhase = "L1-N"
+	SampledValuePhaseL2N  SampledValuePhase = "L2-N"
+	SampledValuePhaseL3N  SampledValuePhase = "L3-N"
+	SampledValuePhaseL1L2 SampledValuePhase = "L1-L2"
+	SampledValuePhaseL2L3 SampledValuePhase = "L2-L3"
+	SampledValuePhaseL3L1 SampledValuePhase = "L3-L1"
+)
+
+// Valid reports whether e is a defined SampledValuePhase value.
+func (e SampledValuePhase) Valid() bool {
+	switch e {
+	case SampledValuePhaseL1, SampledValuePhaseL2, SampledValuePhaseL3, SampledValuePhaseN, SampledValuePhaseL1N, SampledValuePhaseL2N, SampledValuePhaseL3N, SampledValuePhaseL1L2, SampledValuePhaseL2L3, SampledValuePhaseL3L1:
+		return true
+	default:
+		return false
+	}
+}
+
+type SampledValueUnit string
+
+const (
+	SampledValueUnitWh         SampledValueUnit = "Wh"
+	SampledValueUnitKWh        SampledValueUnit = "kWh"
+	SampledValueUnitVarh       SampledValueUnit = "varh"
+	SampledValueUnitKvarh      SampledValueUnit = "kvarh"
+	SampledValueUnitW          SampledValueUnit = "W"
+	SampledValueUnitKW         SampledValueUnit = "kW"
+	SampledValueUnitVA         SampledValueUnit = "VA"
+	SampledValueUnitKVA        SampledValueUnit = "kVA"
+	SampledValueUnitVar        SampledValueUnit = "var"
+	SampledValueUnitKvar       SampledValueUnit = "kvar"
+	SampledValueUnitA          SampledValueUnit = "A"
+	SampledValueUnitV          SampledValueUnit = "V"
+	SampledValueUnitK          SampledValueUnit = "K"
+	SampledValueUnitCelcius    SampledValueUnit = "Celcius"
+	SampledValueUnitCelsius    SampledValueUnit = "Celsius"
+	SampledValueUnitFahrenheit SampledValueUnit = "Fahrenheit"
+	SampledValueUnitPercent    SampledValueUnit = "Percent"
+	SampledValueUnitHertz      SampledValueUnit = "Hertz"
+)
+
+// Valid reports whether e is a defined SampledValueUnit value.
+func (e SampledValueUnit) Valid() bool {
+	switch e {
+	case SampledValueUnitWh, SampledValueUnitKWh, SampledValueUnitVarh, SampledValueUnitKvarh, SampledValueUnitW, SampledValueUnitKW, SampledValueUnitVA, SampledValueUnitKVA, SampledValueUnitVar, SampledValueUnitKvar, SampledValueUnitA, SampledValueUnitV, SampledValueUnitK, SampledValueUnitCelcius, SampledValueUnitCelsius, SampledValueUnitFahrenheit, SampledValueUnitPercent, SampledValueUnitHertz:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChargingProfileChargingProfileKind string
+
+const (
+	ChargingProfileChargingProfileKindAbsolute  ChargingProfileChargingProfileKind = "Absolute"
+	ChargingProfileChargingProfileKindRecurring ChargingProfileChargingProfileKind = "Recurring"
+	ChargingProfileChargingProfileKindRelative  ChargingProfileChargingProfileKind = "Relative"
+)
+
+// Valid reports whether e is a defined ChargingProfileChargingProfileKind value.
+func (e ChargingProfileChargingProfileKind) Valid() bool {
+	switch e {
+	case ChargingProfileChargingProfileKindAbsolute, ChargingProfileChargingProfileKindRecurring, ChargingProfileChargingProfileKindRelative:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChargingProfileChargingProfilePurpose string
+
+const (
+	ChargingProfileChargingProfilePurposeChargePointMaxProfile ChargingProfileChargingProfilePurpose = "ChargePointMaxProfile"
+	ChargingProfileChargingProfilePurposeTxDefaultProfile      ChargingProfileChargingProfilePurpose = "TxDefaultProfile"
+	ChargingProfileChargingProfilePurposeTxProfile             ChargingProfileChargingProfilePurpose = "TxProfile"
+)
+
+// Valid reports whether e is a defined ChargingProfileChargingProfilePurpose value.
+func (e ChargingProfileChargingProfilePurpose) Valid() bool {
+	switch e {
+	case ChargingProfileChargingProfilePurposeChargePointMaxProfile, ChargingProfileChargingProfilePurposeTxDefaultProfile, ChargingProfileChargingProfilePurposeTxProfile:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChargingProfileRecurrencyKind string
+
+const (
+	ChargingProfileRecurrencyKindDaily  ChargingProfileRecurrencyKind = "Daily"
+	ChargingProfileRecurrencyKindWeekly ChargingProfileRecurrencyKind = "Weekly"
+)
+
+// Valid reports whether e is a defined ChargingProfileRecurrencyKind value.
+func (e ChargingProfileRecurrencyKind) Valid() bool {
+	switch e {
+	case ChargingProfileRecurrencyKindDaily, ChargingProfileRecurrencyKindWeekly:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChargingScheduleChargingRateUnit string
+
+const (
+	ChargingScheduleChargingRateUnitA ChargingScheduleChargingRateUnit = "A"
+	ChargingScheduleChargingRateUnitW ChargingScheduleChargingRateUnit = "W"
+)
+
+// Valid reports whether e is a defined ChargingScheduleChargingRateUnit value.
+func (e ChargingScheduleChargingRateUnit) Valid() bool {
+	switch e {
+	case ChargingScheduleChargingRateUnitA, ChargingScheduleChargingRateUnitW:
+		return true
+	default:
+		return false
+	}
+}
+
+type RemoteStartTransactionResponseStatus string
+
+const (
+	RemoteStartTransactionResponseStatusAccepted RemoteStartTransactionResponseStatus = "Accepted"
+	RemoteStartTransactionResponseStatusRejected RemoteStartTransactionResponseStatus = "Rejected"
+)
+
+// Valid reports whether e is a defined RemoteStartTransactionResponseStatus value.
+func (e RemoteStartTransactionResponseStatus) Valid() bool {
+	switch e {
+	case RemoteStartTransactionResponseStatusAccepted, RemoteStartTransactionResponseStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+type RemoteStopTransactionResponseStatus string
+
+const (
+	RemoteStopTransactionResponseStatusAccepted RemoteStopTransactionResponseStatus = "Accepted"
+	RemoteStopTransactionResponseStatusRejected RemoteStopTransactionResponseStatus = "Rejected"
+)
+
+// Valid reports whether e is a defined RemoteStopTransactionResponseStatus value.
+func (e RemoteStopTransactionResponseStatus) Valid() bool {
+	switch e {
+	case RemoteStopTransactionResponseStatusAccepted, RemoteStopTransactionResponseStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+type ResetRequestType string
+
+const (
+	ResetRequestTypeHard ResetRequestType = "Hard"
+	ResetRequestTypeSoft ResetRequestType = "Soft"
+)
+
+// Valid reports whether e is a defined ResetRequestType value.
+func (e ResetRequestType) Valid() bool {
+	switch e {
+	case ResetRequestTypeHard, ResetRequestTypeSoft:
+		return true
+	default:
+		return false
+	}
+}
+
+type ResetResponseStatus string
+
+const (
+	ResetResponseStatusAccepted ResetResponseStatus = "Accepted"
+	ResetResponseStatusRejected ResetResponseStatus = "Rejected"
+)
+
+// Valid reports whether e is a defined ResetResponseStatus value.
+func (e ResetResponseStatus) Valid() bool {
+	switch e {
+	case ResetResponseStatusAccepted, ResetResponseStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+type StatusNotificationRequestErrorCode string
+
+const (
+	StatusNotificationRequestErrorCodeConnectorLockFailure StatusNotificationRequestErrorCode = "ConnectorLockFailure"
+	StatusNotificationRequestErrorCodeEVCommunicationError StatusNotificationRequestErrorCode = "EVCommunicationError"
+	StatusNotificationRequestErrorCodeGroundFailure        StatusNotificationRequestErrorCode = "GroundFailure"
+	StatusNotificationRequestErrorCodeHighTemperature      StatusNotificationRequestErrorCode = "HighTemperature"
+	StatusNotificationRequestErrorCodeInternalError        StatusNotificationRequestErrorCode = "InternalError"
+	StatusNotificationRequestErrorCodeLocalListConflict    StatusNotificationRequestErrorCode = "LocalListConflict"
+	StatusNotificationRequestErrorCodeNoError              StatusNotificationRequestErrorCode = "NoError"
+	StatusNotificationRequestErrorCodeOtherError           StatusNotificationRequestErrorCode = "OtherError"
+	StatusNotificationRequestErrorCodeOverCurrentFailure   StatusNotificationRequestErrorCode = "OverCurrentFailure"
+	StatusNotificationRequestErrorCodePowerMeterFailure    StatusNotificationRequestErrorCode = "PowerMeterFailure"
+	StatusNotificationRequestErrorCodePowerSwitchFailure   StatusNotificationRequestErrorCode = "PowerSwitchFailure"
+	StatusNotificationRequestErrorCodeReaderFailure        StatusNotificationRequestErrorCode = "ReaderFailure"
+	StatusNotificationRequestErrorCodeResetFailure         StatusNotificationRequestErrorCode = "ResetFailure"
+	StatusNotificationRequestErrorCodeUnderVoltage         StatusNotificationRequestErrorCode = "UnderVoltage"
+	StatusNotificationRequestErrorCodeOverVoltage          StatusNotificationRequestErrorCode = "OverVoltage"
+	StatusNotificationRequestErrorCodeWeakSignal           StatusNotificationRequestErrorCode = "WeakSignal"
+)
+
+// Valid reports whether e is a defined StatusNotificationRequestErrorCode value.
+func (e StatusNotificationRequestErrorCode) Valid() bool {
+	switch e {
+	case StatusNotificationRequestErrorCodeConnectorLockFailure, StatusNotificationRequestErrorCodeEVCommunicationError, StatusNotificationRequestErrorCodeGroundFailure, StatusNotificationRequestErrorCodeHighTemperature, StatusNotificationRequestErrorCodeInternalError, StatusNotificationRequestErrorCodeLocalListConflict, StatusNotificationRequestErrorCodeNoError, StatusNotificationRequestErrorCodeOtherError, StatusNotificationRequestErrorCodeOverCurrentFailure, StatusNotificationRequestErrorCodePowerMeterFailure, StatusNotificationRequestErrorCodePowerSwitchFailure, StatusNotificationRequestErrorCodeReaderFailure, StatusNotificationRequestErrorCodeResetFailure, StatusNotificationRequestErrorCodeUnderVoltage, StatusNotificationRequestErrorCodeOverVoltage, StatusNotificationRequestErrorCodeWeakSignal:
+		return true
+	default:
+		return false
+	}
+}
+
+type StatusNotificationRequestStatus string
+
+const (
+	StatusNotificationRequestStatusAvailable     StatusNotificationRequestStatus = "Available"
+	StatusNotificationRequestStatusPreparing     StatusNotificationRequestStatus = "Preparing"
+	StatusNotificationRequestStatusCharging      StatusNotificationRequestStatus = "Charging"
+	StatusNotificationRequestStatusSuspendedEVSE StatusNotificationRequestStatus = "SuspendedEVSE"
+	StatusNotificationRequestStatusSuspendedEV   StatusNotificationRequestStatus = "SuspendedEV"
+	StatusNotificationRequestStatusFinishing     StatusNotificationRequestStatus = "Finishing"
+	StatusNotificationRequestStatusReserved      StatusNotificationRequestStatus = "Reserved"
+	StatusNotificationRequestStatusUnavailable   StatusNotificationRequestStatus = "Unavailable"
+	StatusNotificationRequestStatusFaulted       StatusNotificationRequestStatus = "Faulted"
+)
+
+// Valid reports whether e is a defined StatusNotificationRequestStatus value.
+func (e StatusNotificationRequestStatus) Valid() bool {
+	switch e {
+	case StatusNotificationRequestStatusAvailable, StatusNotificationRequestStatusPreparing, StatusNotificationRequestStatusCharging, StatusNotificationRequestStatusSuspendedEVSE, StatusNotificationRequestStatusSuspendedEV, StatusNotificationRequestStatusFinishing, StatusNotificationRequestStatusReserved, StatusNotificationRequestStatusUnavailable, StatusNotificationRequestStatusFaulted:
+		return true
+	default:
+		return false
+	}
+}
+
+type StopTransactionRequestReason string
+
+const (
+	StopTransactionRequestReasonEmergencyStop  StopTransactionRequestReason = "EmergencyStop"
+	StopTransactionRequestReasonEVDisconnected StopTransactionRequestReason = "EVDisconnected"
+	StopTransactionRequestReasonHardReset      StopTransactionRequestReason = "HardReset"
+	StopTransactionRequestReasonLocal          StopTransactionRequestReason = "Local"
+	StopTransactionRequestReasonOther          StopTransactionRequestReason = "Other"
+	StopTransactionRequestReasonPowerLoss      StopTransactionRequestReason = "PowerLoss"
+	StopTransactionRequestReasonReboot         StopTransactionRequestReason = "Reboot"
+	StopTransactionRequestReasonRemote         StopTransactionRequestReason = "Remote"
+	StopTransactionRequestReasonSoftReset      StopTransactionRequestReason = "SoftReset"
+	StopTransactionRequestReasonUnlockCommand  StopTransactionRequestReason = "UnlockCommand"
+	StopTransactionRequestReasonDeAuthorized   StopTransactionRequestReason = "DeAuthorized"
+)
+
+// Valid reports whether e is a defined StopTransactionRequestReason value.
+func (e StopTransactionRequestReason) Valid() bool {
+	switch e {
+	case StopTransactionRequestReasonEmergencyStop, StopTransactionRequestReasonEVDisconnected, StopTransactionRequestReasonHardReset, StopTransactionRequestReasonLocal, StopTransactionRequestReasonOther, StopTransactionRequestReasonPowerLoss, StopTransactionRequestReasonReboot, StopTransactionRequestReasonRemote, StopTransactionRequestReasonSoftReset, StopTransactionRequestReasonUnlockCommand, StopTransactionRequestReasonDeAuthorized:
+		return true
+	default:
+		return false
+	}
+}
+
+type UnlockConnectorResponseStatus string
+
+const (
+	UnlockConnectorResponseStatusUnlocked     UnlockConnectorResponseStatus = "Unlocked"
+	UnlockConnectorResponseStatusUnlockFailed UnlockConnectorResponseStatus = "UnlockFailed"
+	UnlockConnectorResponseStatusNotSupported UnlockConnectorResponseStatus = "NotSupported"
+)
+
+// Valid reports whether e is a defined UnlockConnectorResponseStatus value.
+func (e UnlockConnectorResponseStatus) Valid() bool {
+	switch e {
+	case UnlockConnectorResponseStatusUnlocked, UnlockConnectorResponseStatusUnlockFailed, UnlockConnectorResponseStatusNotSupported:
+		return true
+	default:
+		return false
+	}
+}
+
+type DiagnosticsStatusNotificationRequestStatus string
+
+const (
+	DiagnosticsStatusNotificationRequestStatusIdle         DiagnosticsStatusNotificationRequestStatus = "Idle"
+	DiagnosticsStatusNotificationRequestStatusUploaded     DiagnosticsStatusNotificationRequestStatus = "Uploaded"
+	DiagnosticsStatusNotificationRequestStatusUploadFailed DiagnosticsStatusNotificationRequestStatus = "UploadFailed"
+	DiagnosticsStatusNotificationRequestStatusUploading    DiagnosticsStatusNotificationRequestStatus = "Uploading"
+)
+
+// Valid reports whether e is a defined DiagnosticsStatusNotificationRequestStatus value.
+func (e DiagnosticsStatusNotificationRequestStatus) Valid() bool {
+	switch e {
+	case DiagnosticsStatusNotificationRequestStatusIdle, DiagnosticsStatusNotificationRequestStatusUploaded, DiagnosticsStatusNotificationRequestStatusUploadFailed, DiagnosticsStatusNotificationRequestStatusUploading:
+		return true
+	default:
+		return false
+	}
+}
+
+type FirmwareStatusNotificationRequestStatus string
+
+const (
+	FirmwareStatusNotificationRequestStatusDownloaded         FirmwareStatusNotificationRequestStatus = "Downloaded"
+	FirmwareStatusNotificationRequestStatusDownloadFailed     FirmwareStatusNotificationRequestStatus = "DownloadFailed"
+	FirmwareStatusNotificationRequestStatusDownloading        FirmwareStatusNotificationRequestStatus = "Downloading"
+	FirmwareStatusNotificationRequestStatusIdle               FirmwareStatusNotificationRequestStatus = "Idle"
+	FirmwareStatusNotificationRequestStatusInstallationFailed FirmwareStatusNotificationRequestStatus = "InstallationFailed"
+	FirmwareStatusNotificationRequestStatusInstalling         FirmwareStatusNotificationRequestStatus = "Installing"
+	FirmwareStatusNotificationRequestStatusInstalled          FirmwareStatusNotificationRequestStatus = "Installed"
+)
+
+// Valid reports whether e is a defined FirmwareStatusNotificationRequestStatus value.
+func (e FirmwareStatusNotificationRequestStatus) Valid() bool {
+	switch e {
+	case FirmwareStatusNotificationRequestStatusDownloaded, FirmwareStatusNotificationRequestStatusDownloadFailed, FirmwareStatusNotificationRequestStatusDownloading, FirmwareStatusNotificationRequestStatusIdle, FirmwareStatusNotificationRequestStatusInstallationFailed, FirmwareStatusNotificationRequestStatusInstalling, FirmwareStatusNotificationRequestStatusInstalled:
+		return true
+	default:
+		return false
+	}
+}
+
+type SendLocalListRequestUpdateType string
+
+const (
+	SendLocalListRequestUpdateTypeDifferential SendLocalListRequestUpdateType = "Differential"
+	SendLocalListRequestUpdateTypeFull         SendLocalListRequestUpdateType = "Full"
+)
+
+// Valid reports whether e is a defined SendLocalListRequestUpdateType value.
+func (e SendLocalListRequestUpdateType) Valid() bool {
+	switch e {
+	case SendLocalListRequestUpdateTypeDifferential, SendLocalListRequestUpdateTypeFull:
+		return true
+	default:
+		return false
+	}
+}
+
+type SendLocalListResponseStatus string
+
+const (
+	SendLocalListResponseStatusAccepted        SendLocalListResponseStatus = "Accepted"
+	SendLocalListResponseStatusFailed          SendLocalListResponseStatus = "Failed"
+	SendLocalListResponseStatusNotSupported    SendLocalListResponseStatus = "NotSupported"
+	SendLocalListResponseStatusVersionMismatch SendLocalListResponseStatus = "VersionMismatch"
+)
+
+// Valid reports whether e is a defined SendLocalListResponseStatus value.
+func (e SendLocalListResponseStatus) Valid() bool {
+	switch e {
+	case SendLocalListResponseStatusAccepted, SendLocalListResponseStatusFailed, SendLocalListResponseStatusNotSupported, SendLocalListResponseStatusVersionMismatch:
+		return true
+	default:
+		return false
+	}
+}
+
+type TriggerMessageRequestRequestedMessage string
+
+const (
+	TriggerMessageRequestRequestedMessageBootNotification              TriggerMessageRequestRequestedMessage = "BootNotification"
+	TriggerMessageRequestRequestedMessageDiagnosticsStatusNotification TriggerMessageRequestRequestedMessage = "DiagnosticsStatusNotification"
+	TriggerMessageRequestRequestedMessageFirmwareStatusNotification    TriggerMessageRequestRequestedMessage = "FirmwareStatusNotification"
+	TriggerMessageRequestRequestedMessageHeartbeat                     TriggerMessageRequestRequestedMessage = "Heartbeat"
+	TriggerMessageRequestRequestedMessageMeterValues                   TriggerMessageRequestRequestedMessage = "MeterValues"
+	TriggerMessageRequestRequestedMessageStatusNotification            TriggerMessageRequestRequestedMessage = "StatusNotification"
+)
+
+// Valid reports whether e is a defined TriggerMessageRequestRequestedMessage value.
+func (e TriggerMessageRequestRequestedMessage) Valid() bool {
+	switch e {
+	case TriggerMessageRequestRequestedMessageBootNotification, TriggerMessageRequestRequestedMessageDiagnosticsStatusNotification, TriggerMessageRequestRequestedMessageFirmwareStatusNotification, TriggerMessageRequestRequestedMessageHeartbeat, TriggerMessageRequestRequestedMessageMeterValues, TriggerMessageRequestRequestedMessageStatusNotification:
+		return true
+	default:
+		return false
+	}
+}
+
+type TriggerMessageResponseStatus string
+
+const (
+	TriggerMessageResponseStatusAccepted       TriggerMessageResponseStatus = "Accepted"
+	TriggerMessageResponseStatusRejected       TriggerMessageResponseStatus = "Rejected"
+	TriggerMessageResponseStatusNotImplemented TriggerMessageResponseStatus = "NotImplemented"
+)
+
+// Valid reports whether e is a defined TriggerMessageResponseStatus value.
+func (e TriggerMessageResponseStatus) Valid() bool {
+	switch e {
+	case TriggerMessageResponseStatusAccepted, TriggerMessageResponseStatusRejected, TriggerMessageResponseStatusNotImplemented:
+		return true
+	default:
+		return false
+	}
+}
+
+type CancelReservationResponseStatus string
+
+const (
+	CancelReservationResponseStatusAccepted CancelReservationResponseStatus = "Accepted"
+	CancelReservationResponseStatusRejected CancelReservationResponseStatus = "Rejected"
+)
+
+// Valid reports whether e is a defined CancelReservationResponseStatus value.
+func (e CancelReservationResponseStatus) Valid() bool {
+	switch e {
+	case CancelReservationResponseStatusAccepted, CancelReservationResponseStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+type ReserveNowResponseStatus string
+
+const (
+	ReserveNowResponseStatusAccepted    ReserveNowResponseStatus = "Accepted"
+	ReserveNowResponseStatusFaulted     ReserveNowResponseStatus = "Faulted"
+	ReserveNowResponseStatusOccupied    ReserveNowResponseStatus = "Occupied"
+	ReserveNowResponseStatusRejected    ReserveNowResponseStatus = "Rejected"
+	ReserveNowResponseStatusUnavailable ReserveNowResponseStatus = "Unavailable"
+)
+
+// Valid reports whether e is a defined ReserveNowResponseStatus value.
+func (e ReserveNowResponseStatus) Valid() bool {
+	switch e {
+	case ReserveNowResponseStatusAccepted, ReserveNowResponseStatusFaulted, ReserveNowResponseStatusOccupied, ReserveNowResponseStatusRejected, ReserveNowResponseStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+type ClearChargingProfileRequestChargingProfilePurpose string
+
+const (
+	ClearChargingProfileRequestChargingProfilePurposeChargePointMaxProfile ClearChargingProfileRequestChargingProfilePurpose = "ChargePointMaxProfile"
+	ClearChargingProfileRequestChargingProfilePurposeTxDefaultProfile      ClearChargingProfileRequestChargingProfilePurpose = "TxDefaultProfile"
+	ClearChargingProfileRequestChargingProfilePurposeTxProfile             ClearChargingProfileRequestChargingProfilePurpose = "TxProfile"
+)
+
+// Valid reports whether e is a defined ClearChargingProfileRequestChargingProfilePurpose value.
+func (e ClearChargingProfileRequestChargingProfilePurpose) Valid() bool {
+	switch e {
+	case ClearChargingProfileRequestChargingProfilePurposeChargePointMaxProfile, ClearChargingProfileRequestChargingProfilePurposeTxDefaultProfile, ClearChargingProfileRequestChargingProfilePurposeTxProfile:
+		return true
+	default:
+		return false
+	}
+}
+
+type ClearChargingProfileResponseStatus string
+
+const (
+	ClearChargingProfileResponseStatusAccepted ClearChargingProfileResponseStatus = "Accepted"
+	ClearChargingProfileResponseStatusUnknown  ClearChargingProfileResponseStatus = "Unknown"
+)
+
+// Valid reports whether e is a defined ClearChargingProfileResponseStatus value.
+func (e ClearChargingProfileResponseStatus) Valid() bool {
+	switch e {
+	case ClearChargingProfileResponseStatusAccepted, ClearChargingProfileResponseStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+type GetCompositeScheduleRequestChargingRateUnit string
+
+const (
+	GetCompositeScheduleRequestChargingRateUnitA GetCompositeScheduleRequestChargingRateUnit = "A"
+	GetCompositeScheduleRequestChargingRateUnitW GetCompositeScheduleRequestChargingRateUnit = "W"
+)
+
+// Valid reports whether e is a defined GetCompositeScheduleRequestChargingRateUnit value.
+func (e GetCompositeScheduleRequestChargingRateUnit) Valid() bool {
+	switch e {
+	case GetCompositeScheduleRequestChargingRateUnitA, GetCompositeScheduleRequestChargingRateUnitW:
+		return true
+	default:
+		return false
+	}
+}
+
+type GetCompositeScheduleResponseStatus string
+
+const (
+	GetCompositeScheduleResponseStatusAccepted GetCompositeScheduleResponseStatus = "Accepted"
+	GetCompositeScheduleResponseStatusRejected GetCompositeScheduleResponseStatus = "Rejected"
+)
+
+// Valid reports whether e is a defined GetCompositeScheduleResponseStatus value.
+func (e GetCompositeScheduleResponseStatus) Valid() bool {
+	switch e {
+	case GetCompositeScheduleResponseStatusAccepted, GetCompositeScheduleResponseStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+type CsChargingProfilesChargingProfileKind string
+
+const (
+	CsChargingProfilesChargingProfileKindAbsolute  CsChargingProfilesChargingProfileKind = "Absolute"
+	CsChargingProfilesChargingProfileKindRecurring CsChargingProfilesChargingProfileKind = "Recurring"
+	CsChargingProfilesChargingProfileKindRelative  CsChargingProfilesChargingProfileKind = "Relative"
+)
+
+// Valid reports whether e is a defined CsChargingProfilesChargingProfileKind value.
+func (e CsChargingProfilesChargingProfileKind) Valid() bool {
+	switch e {
+	case CsChargingProfilesChargingProfileKindAbsolute, CsChargingProfilesChargingProfileKindRecurring, CsChargingProfilesChargingProfileKindRelative:
+		return true
+	default:
+		return false
+	}
+}
+
+type CsChargingProfilesChargingProfilePurpose string
+
+const (
+	CsChargingProfilesChargingProfilePurposeChargePointMaxProfile CsChargingProfilesChargingProfilePurpose = "ChargePointMaxProfile"
+	CsChargingProfilesChargingProfilePurposeTxDefaultProfile      CsChargingProfilesChargingProfilePurpose = "TxDefaultProfile"
+	CsChargingProfilesChargingProfilePurposeTxProfile             CsChargingProfilesChargingProfilePurpose = "TxProfile"
+)
+
+// Valid reports whether e is a defined CsChargingProfilesChargingProfilePurpose value.
+func (e CsChargingProfilesChargingProfilePurpose) Valid() bool {
+	switch e {
+	case CsChargingProfilesChargingProfilePurposeChargePointMaxProfile, CsChargingProfilesChargingProfilePurposeTxDefaultProfile, CsChargingProfilesChargingProfilePurposeTxProfile:
+		return true
+	default:
+		return false
+	}
+}
+
+type CsChargingProfilesRecurrencyKind string
+
+const (
+	CsChargingProfilesRecurrencyKindDaily  CsChargingProfilesRecurrencyKind = "Daily"
+	CsChargingProfilesRecurrencyKindWeekly CsChargingProfilesRecurrencyKind = "Weekly"
+)
+
+// Valid reports whether e is a defined CsChargingProfilesRecurrencyKind value.
+func (e CsChargingProfilesRecurrencyKind) Valid() bool {
+	switch e {
+	case CsChargingProfilesRecurrencyKindDaily, CsChargingProfilesRecurrencyKindWeekly:
+		return true
+	default:
+		return false
+	}
+}
+
+type SetChargingProfileResponseStatus string
+
+const (
+	SetChargingProfileResponseStatusAccepted     SetChargingProfileResponseStatus = "Accepted"
+	SetChargingProfileResponseStatusRejected     SetChargingProfileResponseStatus = "Rejected"
+	SetChargingProfileResponseStatusNotSupported SetChargingProfileResponseStatus = "NotSupported"
+)
+
+// Valid reports whether e is a defined SetChargingProfileResponseStatus value.
+func (e SetChargingProfileResponseStatus) Valid() bool {
+	switch e {
+	case SetChargingProfileResponseStatusAccepted, SetChargingProfileResponseStatusRejected, SetChargingProfileResponseStatusNotSupported:
+		return true
+	default:
+		return false
+	}
+}

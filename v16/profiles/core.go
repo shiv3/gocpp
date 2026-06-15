@@ -7,8 +7,98 @@ import (
 	"github.com/shiv3/gocpp/v16/messages"
 )
 
+// Authorize is the OCPP Authorize message (SentByCP).
+var Authorize = ocppj.Message[
+	messages.AuthorizeRequest,
+	messages.AuthorizeResponse,
+]{Action: "Authorize", Direction: ocppj.SentByCP}
+
 // BootNotification is the OCPP BootNotification message (SentByCP).
 var BootNotification = ocppj.Message[
 	messages.BootNotificationRequest,
 	messages.BootNotificationResponse,
 ]{Action: "BootNotification", Direction: ocppj.SentByCP}
+
+// ChangeAvailability is the OCPP ChangeAvailability message (SentByCSMS).
+var ChangeAvailability = ocppj.Message[
+	messages.ChangeAvailabilityRequest,
+	messages.ChangeAvailabilityResponse,
+]{Action: "ChangeAvailability", Direction: ocppj.SentByCSMS}
+
+// ChangeConfiguration is the OCPP ChangeConfiguration message (SentByCSMS).
+var ChangeConfiguration = ocppj.Message[
+	messages.ChangeConfigurationRequest,
+	messages.ChangeConfigurationResponse,
+]{Action: "ChangeConfiguration", Direction: ocppj.SentByCSMS}
+
+// ClearCache is the OCPP ClearCache message (SentByCSMS).
+var ClearCache = ocppj.Message[
+	messages.ClearCacheRequest,
+	messages.ClearCacheResponse,
+]{Action: "ClearCache", Direction: ocppj.SentByCSMS}
+
+// DataTransfer is the OCPP DataTransfer message (SentByCP).
+var DataTransfer = ocppj.Message[
+	messages.DataTransferRequest,
+	messages.DataTransferResponse,
+]{Action: "DataTransfer", Direction: ocppj.SentByCP}
+
+// GetConfiguration is the OCPP GetConfiguration message (SentByCSMS).
+var GetConfiguration = ocppj.Message[
+	messages.GetConfigurationRequest,
+	messages.GetConfigurationResponse,
+]{Action: "GetConfiguration", Direction: ocppj.SentByCSMS}
+
+// Heartbeat is the OCPP Heartbeat message (SentByCP).
+var Heartbeat = ocppj.Message[
+	messages.HeartbeatRequest,
+	messages.HeartbeatResponse,
+]{Action: "Heartbeat", Direction: ocppj.SentByCP}
+
+// MeterValues is the OCPP MeterValues message (SentByCP).
+var MeterValues = ocppj.Message[
+	messages.MeterValuesRequest,
+	messages.MeterValuesResponse,
+]{Action: "MeterValues", Direction: ocppj.SentByCP}
+
+// RemoteStartTransaction is the OCPP RemoteStartTransaction message (SentByCSMS).
+var RemoteStartTransaction = ocppj.Message[
+	messages.RemoteStartTransactionRequest,
+	messages.RemoteStartTransactionResponse,
+]{Action: "RemoteStartTransaction", Direction: ocppj.SentByCSMS}
+
+// RemoteStopTransaction is the OCPP RemoteStopTransaction message (SentByCSMS).
+var RemoteStopTransaction = ocppj.Message[
+	messages.RemoteStopTransactionRequest,
+	messages.RemoteStopTransactionResponse,
+]{Action: "RemoteStopTransaction", Direction: ocppj.SentByCSMS}
+
+// Reset is the OCPP Reset message (SentByCSMS).
+var Reset = ocppj.Message[
+	messages.ResetRequest,
+	messages.ResetResponse,
+]{Action: "Reset", Direction: ocppj.SentByCSMS}
+
+// StartTransaction is the OCPP StartTransaction message (SentByCP).
+var StartTransaction = ocppj.Message[
+	messages.StartTransactionRequest,
+	messages.StartTransactionResponse,
+]{Action: "StartTransaction", Direction: ocppj.SentByCP}
+
+// StatusNotification is the OCPP StatusNotification message (SentByCP).
+var StatusNotification = ocppj.Message[
+	messages.StatusNotificationRequest,
+	messages.StatusNotificationResponse,
+]{Action: "StatusNotification", Direction: ocppj.SentByCP}
+
+// StopTransaction is the OCPP StopTransaction message (SentByCP).
+var StopTransaction = ocppj.Message[
+	messages.StopTransactionRequest,
+	messages.StopTransactionResponse,
+]{Action: "StopTransaction", Direction: ocppj.SentByCP}
+
+// UnlockConnector is the OCPP UnlockConnector message (SentByCSMS).
+var UnlockConnector = ocppj.Message[
+	messages.UnlockConnectorRequest,
+	messages.UnlockConnectorResponse,
+]{Action: "UnlockConnector", Direction: ocppj.SentByCSMS}

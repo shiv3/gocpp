@@ -2,7 +2,41 @@ version: v16
 profiles:
   Core:
     messages:
-      - name: BootNotification
-        request: BootNotification.json
-        response: BootNotificationResponse.json
-        dir: SentByCP
+      - { name: Authorize,              request: Authorize.json,              response: AuthorizeResponse.json,              dir: SentByCP }
+      - { name: BootNotification,       request: BootNotification.json,       response: BootNotificationResponse.json,       dir: SentByCP }
+      - { name: ChangeAvailability,     request: ChangeAvailability.json,     response: ChangeAvailabilityResponse.json,     dir: SentByCSMS }
+      - { name: ChangeConfiguration,    request: ChangeConfiguration.json,    response: ChangeConfigurationResponse.json,    dir: SentByCSMS }
+      - { name: ClearCache,             request: ClearCache.json,             response: ClearCacheResponse.json,             dir: SentByCSMS }
+      - { name: DataTransfer,           request: DataTransfer.json,           response: DataTransferResponse.json,           dir: SentByCP }
+      - { name: GetConfiguration,       request: GetConfiguration.json,       response: GetConfigurationResponse.json,       dir: SentByCSMS }
+      - { name: Heartbeat,              request: Heartbeat.json,              response: HeartbeatResponse.json,              dir: SentByCP }
+      - { name: MeterValues,            request: MeterValues.json,            response: MeterValuesResponse.json,            dir: SentByCP }
+      - { name: RemoteStartTransaction, request: RemoteStartTransaction.json, response: RemoteStartTransactionResponse.json, dir: SentByCSMS }
+      - { name: RemoteStopTransaction,  request: RemoteStopTransaction.json,  response: RemoteStopTransactionResponse.json,  dir: SentByCSMS }
+      - { name: Reset,                  request: Reset.json,                  response: ResetResponse.json,                  dir: SentByCSMS }
+      - { name: StartTransaction,       request: StartTransaction.json,       response: StartTransactionResponse.json,       dir: SentByCP }
+      - { name: StatusNotification,     request: StatusNotification.json,     response: StatusNotificationResponse.json,     dir: SentByCP }
+      - { name: StopTransaction,        request: StopTransaction.json,        response: StopTransactionResponse.json,        dir: SentByCP }
+      - { name: UnlockConnector,        request: UnlockConnector.json,        response: UnlockConnectorResponse.json,        dir: SentByCSMS }
+  FirmwareManagement:
+    messages:
+      - { name: GetDiagnostics,                 request: GetDiagnostics.json,                 response: GetDiagnosticsResponse.json,                 dir: SentByCSMS }
+      - { name: DiagnosticsStatusNotification,  request: DiagnosticsStatusNotification.json,  response: DiagnosticsStatusNotificationResponse.json,  dir: SentByCP }
+      - { name: FirmwareStatusNotification,     request: FirmwareStatusNotification.json,     response: FirmwareStatusNotificationResponse.json,     dir: SentByCP }
+      - { name: UpdateFirmware,                 request: UpdateFirmware.json,                 response: UpdateFirmwareResponse.json,                 dir: SentByCSMS }
+  LocalAuthListManagement:
+    messages:
+      - { name: GetLocalListVersion, request: GetLocalListVersion.json, response: GetLocalListVersionResponse.json, dir: SentByCSMS }
+      - { name: SendLocalList,       request: SendLocalList.json,       response: SendLocalListResponse.json,       dir: SentByCSMS }
+  Reservation:
+    messages:
+      - { name: CancelReservation, request: CancelReservation.json, response: CancelReservationResponse.json, dir: SentByCSMS }
+      - { name: ReserveNow,        request: ReserveNow.json,        response: ReserveNowResponse.json,        dir: SentByCSMS }
+  RemoteTrigger:
+    messages:
+      - { name: TriggerMessage, request: TriggerMessage.json, response: TriggerMessageResponse.json, dir: SentByCSMS }
+  SmartCharging:
+    messages:
+      - { name: ClearChargingProfile,  request: ClearChargingProfile.json,  response: ClearChargingProfileResponse.json,  dir: SentByCSMS }
+      - { name: GetCompositeSchedule,  request: GetCompositeSchedule.json,  response: GetCompositeScheduleResponse.json,  dir: SentByCSMS }
+      - { name: SetChargingProfile,    request: SetChargingProfile.json,    response: SetChargingProfileResponse.json,    dir: SentByCSMS }
