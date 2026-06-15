@@ -40,3 +40,16 @@ profiles:
       - { name: ClearChargingProfile,  request: ClearChargingProfile.json,  response: ClearChargingProfileResponse.json,  dir: SentByCSMS }
       - { name: GetCompositeSchedule,  request: GetCompositeSchedule.json,  response: GetCompositeScheduleResponse.json,  dir: SentByCSMS }
       - { name: SetChargingProfile,    request: SetChargingProfile.json,    response: SetChargingProfileResponse.json,    dir: SentByCSMS }
+  SecurityExtensions:
+    messages:
+      - { name: CertificateSigned,                 request: CertificateSigned.json,                 response: CertificateSignedResponse.json,                 dir: SentByCSMS }
+      - { name: DeleteCertificate,                 request: DeleteCertificate.json,                 response: DeleteCertificateResponse.json,                 dir: SentByCSMS }
+      - { name: ExtendedTriggerMessage,            request: ExtendedTriggerMessage.json,            response: ExtendedTriggerMessageResponse.json,            dir: SentByCSMS }
+      - { name: GetInstalledCertificateIds,        request: GetInstalledCertificateIds.json,        response: GetInstalledCertificateIdsResponse.json,        dir: SentByCSMS }
+      - { name: GetLog,                            request: GetLog.json,                            response: GetLogResponse.json,                            dir: SentByCSMS }
+      - { name: InstallCertificate,                request: InstallCertificate.json,                response: InstallCertificateResponse.json,                dir: SentByCSMS }
+      - { name: LogStatusNotification,             request: LogStatusNotification.json,             response: LogStatusNotificationResponse.json,             dir: SentByCP }
+      - { name: SecurityEventNotification,         request: SecurityEventNotification.json,         response: SecurityEventNotificationResponse.json,         dir: SentByCP }
+      - { name: SignCertificate,                   request: SignCertificate.json,                   response: SignCertificateResponse.json,                   dir: SentByCP }
+      - { name: SignedFirmwareStatusNotification,  request: SignedFirmwareStatusNotification.json,  response: SignedFirmwareStatusNotificationResponse.json,  dir: SentByCP }
+      - { name: SignedUpdateFirmware,              request: SignedUpdateFirmware.json,              response: SignedUpdateFirmwareResponse.json,              dir: SentByCSMS }

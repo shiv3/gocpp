@@ -10,8 +10,8 @@ func TestLoadProfile(t *testing.T) {
 	if p.Version != "v16" {
 		t.Fatalf("Version = %q, want %q", p.Version, "v16")
 	}
-	if len(p.Profiles) != 6 {
-		t.Fatalf("profiles len = %d, want 6", len(p.Profiles))
+	if len(p.Profiles) != 7 {
+		t.Fatalf("profiles len = %d, want 7", len(p.Profiles))
 	}
 	core := p.Profiles["Core"]
 	if len(core.Messages) != 16 {
@@ -37,5 +37,12 @@ func TestLoadProfile(t *testing.T) {
 	last := smartCharging.Messages[2]
 	if last.Name != "SetChargingProfile" {
 		t.Fatalf("last SmartCharging message = %q, want SetChargingProfile", last.Name)
+	}
+	securityExtensions := p.Profiles["SecurityExtensions"]
+	if len(securityExtensions.Messages) != 11 {
+		t.Fatalf("SecurityExtensions messages len = %d, want 11", len(securityExtensions.Messages))
+	}
+	if securityExtensions.Messages[0].Name != "CertificateSigned" {
+		t.Fatalf("first SecurityExtensions message = %q, want CertificateSigned", securityExtensions.Messages[0].Name)
 	}
 }
