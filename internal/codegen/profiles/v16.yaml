@@ -1,0 +1,8 @@
+version: v16
+profiles:
+  Core:
+    messages:
+      - name: BootNotification
+        request: BootNotification.json
+        response: BootNotificationResponse.json
+        dir: SentByCP
