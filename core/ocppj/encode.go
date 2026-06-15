@@ -44,5 +44,5 @@ func EncodeCallError(msgID, code, desc string, details []byte) ([]byte, error) {
 	if len(details) == 0 {
 		details = []byte("{}")
 	}
-	return encodeArray(int(CallError), msgID, code, desc, json.RawMessage(details))
+	return encodeArray(int(MessageTypeCallError), msgID, code, desc, json.RawMessage(details))
 }

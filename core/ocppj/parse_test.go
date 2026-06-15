@@ -25,7 +25,7 @@ func TestParse(t *testing.T) {
 		{
 			name: "call error",
 			raw:  `[4,"abc","NotImplemented","not impl",{}]`,
-			want: Frame{Type: CallError, MsgID: "abc", ErrCode: "NotImplemented", ErrDesc: "not impl", ErrData: []byte(`{}`)},
+			want: Frame{Type: MessageTypeCallError, MsgID: "abc", ErrCode: "NotImplemented", ErrDesc: "not impl", ErrData: []byte(`{}`)},
 		},
 	}
 	for _, tc := range cases {

@@ -7,9 +7,9 @@ import "fmt"
 type MessageType int
 
 const (
-	Call       MessageType = 2
-	CallResult MessageType = 3
-	CallError  MessageType = 4
+	Call                 MessageType = 2
+	CallResult           MessageType = 3
+	MessageTypeCallError MessageType = 4
 )
 
 func (m MessageType) String() string {
@@ -18,7 +18,7 @@ func (m MessageType) String() string {
 		return "Call"
 	case CallResult:
 		return "CallResult"
-	case CallError:
+	case MessageTypeCallError:
 		return "CallError"
 	default:
 		return fmt.Sprintf("Unknown(%d)", int(m))

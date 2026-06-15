@@ -26,3 +26,12 @@ type Message[Req, Resp any] struct {
 	Action    string
 	Direction Direction
 }
+
+// Version identifies an OCPP protocol version.
+type Version string
+
+const (
+	V16  Version = "1.6"
+	V201 Version = "2.0.1"
+	V21  Version = "2.1"
+)

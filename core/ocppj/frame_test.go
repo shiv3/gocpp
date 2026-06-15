@@ -9,7 +9,7 @@ func TestMessageType_String(t *testing.T) {
 	}{
 		{Call, "Call"},
 		{CallResult, "CallResult"},
-		{CallError, "CallError"},
+		{MessageTypeCallError, "CallError"},
 		{MessageType(99), "Unknown(99)"},
 	}
 	for _, tc := range cases {
