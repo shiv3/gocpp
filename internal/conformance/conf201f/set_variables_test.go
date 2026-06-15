@@ -1,6 +1,7 @@
 package conf201f
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shiv3/gocpp/core/schema"
@@ -11,22 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setVariableData201() messages.SetVariableDataType {
+func testSetVariableData201f() messages.SetVariableDataType {
 	return messages.SetVariableDataType{
-		AttributeType:  ptr("Target"),
+		AttributeType:  strPtr201f("Target"),
 		AttributeValue: "dummyValue",
-		Component:      component201(),
-		Variable:       variable201(),
+		Component:      testComponent201f(),
+		Variable:       testVariable201f(),
 	}
 }
 
-func setVariableResult201(status string) messages.SetVariableResultType {
+func testSetVariableResult201f(status string) messages.SetVariableResultType {
 	return messages.SetVariableResultType{
-		AttributeType:       ptr("Target"),
+		AttributeType:       strPtr201f("Target"),
 		AttributeStatus:     status,
-		Component:           component201(),
-		Variable:            variable201(),
-		AttributeStatusInfo: statusInfo201("200"),
+		Component:           testComponent201f(),
+		Variable:            testVariable201f(),
+		AttributeStatusInfo: testStatusInfo201f(),
 	}
 }
 
@@ -39,7 +40,7 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid full request",
 			Message: messages.SetVariablesRequest{
-				SetVariableData: []messages.SetVariableDataType{setVariableData201()},
+				SetVariableData: []messages.SetVariableDataType{testSetVariableData201f()},
 			},
 			Valid: true,
 		},
@@ -48,7 +49,7 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 			Message: messages.SetVariablesRequest{
 				SetVariableData: []messages.SetVariableDataType{
 					func() messages.SetVariableDataType {
-						data := setVariableData201()
+						data := testSetVariableData201f()
 						data.AttributeType = nil
 						return data
 					}(),
@@ -61,7 +62,7 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 			Message: messages.SetVariablesRequest{
 				SetVariableData: []messages.SetVariableDataType{
 					func() messages.SetVariableDataType {
-						data := setVariableData201()
+						data := testSetVariableData201f()
 						data.Component = messages.ComponentType{Name: "component1"}
 						return data
 					}(),
@@ -74,7 +75,7 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 			Message: messages.SetVariablesRequest{
 				SetVariableData: []messages.SetVariableDataType{
 					func() messages.SetVariableDataType {
-						data := setVariableData201()
+						data := testSetVariableData201f()
 						data.Variable = messages.VariableType{Name: "variable1"}
 						return data
 					}(),
@@ -126,7 +127,7 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 			Valid: false,
 		},
 		{
-			Name:    "invalid empty request",
+			Name:    "invalid missing setVariableData",
 			Message: map[string]any{},
 			Valid:   false,
 		},
@@ -135,8 +136,8 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 			Message: messages.SetVariablesRequest{
 				SetVariableData: []messages.SetVariableDataType{
 					func() messages.SetVariableDataType {
-						data := setVariableData201()
-						data.AttributeType = ptr("invalidAttribute")
+						data := testSetVariableData201f()
+						data.AttributeType = strPtr201f("invalidAttribute")
 						return data
 					}(),
 				},
@@ -148,18 +149,44 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 			Message: messages.SetVariablesRequest{
 				SetVariableData: []messages.SetVariableDataType{
 					func() messages.SetVariableDataType {
-						data := setVariableData201()
-						data.AttributeValue = longString(1001)
+						data := testSetVariableData201f()
+						data.AttributeValue = strings.Repeat("x", 1001)
 						return data
 					}(),
 				},
 			},
 			Valid: false,
 		},
+		{
+			Name: "invalid missing component with attributeType",
+			Message: map[string]any{
+				"setVariableData": []any{
+					map[string]any{
+						"attributeType":  "Target",
+						"attributeValue": "dummyValue",
+						"variable":       map[string]any{"name": "variable1"},
+					},
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid missing variable with attributeType",
+			Message: map[string]any{
+				"setVariableData": []any{
+					map[string]any{
+						"attributeType":  "Target",
+						"attributeValue": "dummyValue",
+						"component":      map[string]any{"name": "component1"},
+					},
+				},
+			},
+			Valid: false,
+		},
+		// TODO(parity): needs schema override for component.evse.id minimum.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
-	skipSchemaOverride201(t, "invalid component.evse.id below minimum")
 }
 
 func TestSetVariables201_ResponseValidation(t *testing.T) {
@@ -171,7 +198,7 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid full response",
 			Message: messages.SetVariablesResponse{
-				SetVariableResult: []messages.SetVariableResultType{setVariableResult201("Accepted")},
+				SetVariableResult: []messages.SetVariableResultType{testSetVariableResult201f("Accepted")},
 			},
 			Valid: true,
 		},
@@ -180,7 +207,7 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 			Message: messages.SetVariablesResponse{
 				SetVariableResult: []messages.SetVariableResultType{
 					func() messages.SetVariableResultType {
-						result := setVariableResult201("Accepted")
+						result := testSetVariableResult201f("Accepted")
 						result.AttributeStatusInfo = nil
 						return result
 					}(),
@@ -193,9 +220,8 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 			Message: messages.SetVariablesResponse{
 				SetVariableResult: []messages.SetVariableResultType{
 					func() messages.SetVariableResultType {
-						result := setVariableResult201("Accepted")
+						result := testSetVariableResult201f("Accepted")
 						result.AttributeType = nil
-						result.AttributeStatusInfo = nil
 						return result
 					}(),
 				},
@@ -246,7 +272,7 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 			Valid: false,
 		},
 		{
-			Name:    "invalid empty response",
+			Name:    "invalid missing setVariableResult",
 			Message: map[string]any{},
 			Valid:   false,
 		},
@@ -255,8 +281,8 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 			Message: messages.SetVariablesResponse{
 				SetVariableResult: []messages.SetVariableResultType{
 					func() messages.SetVariableResultType {
-						result := setVariableResult201("Accepted")
-						result.AttributeType = ptr("invalidAttribute")
+						result := testSetVariableResult201f("Accepted")
+						result.AttributeType = strPtr201f("invalidAttribute")
 						return result
 					}(),
 				},
@@ -266,7 +292,7 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 		{
 			Name: "invalid attributeStatus enum",
 			Message: messages.SetVariablesResponse{
-				SetVariableResult: []messages.SetVariableResultType{setVariableResult201("invalidStatus")},
+				SetVariableResult: []messages.SetVariableResultType{testSetVariableResult201f("invalidStatus")},
 			},
 			Valid: false,
 		},
@@ -313,11 +339,12 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for empty attributeStatusInfo.reasonCode minLength.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
 }
 
 func TestSetVariables201_Direction(t *testing.T) {
-	requireCPHandlerInvalidDirection201(t, v201profiles.SetVariables)
+	requireCPHandlerInvalidDirection201f(t, v201profiles.SetVariables)
 }
