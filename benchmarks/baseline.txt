@@ -1,0 +1,15 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/shiv3/gocpp/benchmarks
+cpu: Apple M4 Pro
+BenchmarkBootNotification_Marshal-14      	10245277	       117.4 ns/op	      64 B/op	       1 allocs/op
+BenchmarkBootNotification_Marshal-14      	10462530	       115.1 ns/op	      64 B/op	       1 allocs/op
+BenchmarkBootNotification_Marshal-14      	10216924	       116.2 ns/op	      64 B/op	       1 allocs/op
+BenchmarkBootNotification_Unmarshal-14    	 2844988	       425.7 ns/op	     328 B/op	       7 allocs/op
+BenchmarkBootNotification_Unmarshal-14    	 2780565	       428.0 ns/op	     328 B/op	       7 allocs/op
+BenchmarkBootNotification_Unmarshal-14    	 2786006	       431.2 ns/op	     328 B/op	       7 allocs/op
+BenchmarkCallRTT-14                       	   25917	     44343 ns/op	    7321 B/op	     122 allocs/op
+BenchmarkCallRTT-14                       	   23985	     48400 ns/op	    7320 B/op	     122 allocs/op
+BenchmarkCallRTT-14                       	   25137	     46238 ns/op	    7320 B/op	     122 allocs/op
+PASS
+ok  	github.com/shiv3/gocpp/benchmarks	13.995s
