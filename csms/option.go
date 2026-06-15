@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/schema"
 )
 
 type serverConfig struct {
@@ -15,6 +16,8 @@ type serverConfig struct {
 	addr              string
 	path              string
 	instanceID        string
+	registry          *schema.Registry
+	strictSchema      bool
 }
 
 func defaultServerConfig() serverConfig {
@@ -70,4 +73,15 @@ func WithInstanceID(id string) Option {
 // WithPath sets the HTTP path prefix charge points connect to.
 func WithPath(p string) Option {
 	return optionFunc(func(c *serverConfig) { c.path = p })
+}
+
+// WithSchemaRegistry sets the schema registry used for first-layer validation.
+func WithSchemaRegistry(r *schema.Registry) Option {
+	return optionFunc(func(c *serverConfig) { c.registry = r })
+}
+
+// WithStrictSchema controls whether schema validation failures reject the message
+// (true) or only log a warning (false). Default false (spec OQ-19).
+func WithStrictSchema(strict bool) Option {
+	return optionFunc(func(c *serverConfig) { c.strictSchema = strict })
 }

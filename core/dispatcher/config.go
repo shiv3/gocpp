@@ -15,6 +15,9 @@ type Config struct {
 	MaxConcurrentHandlers int64
 	Logger                *slog.Logger
 	Metrics               MetricsHook
+	// SchemaValidate optionally validates an inbound payload. kind is "request".
+	// Returning an error rejects the message. nil disables validation.
+	SchemaValidate func(action, kind string, payload []byte) error
 }
 
 // DefaultConfig returns production-sane defaults.

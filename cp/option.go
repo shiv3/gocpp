@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/schema"
 )
 
 type clientConfig struct {
@@ -12,6 +13,8 @@ type clientConfig struct {
 	subProtocols      []string
 	heartbeatInterval time.Duration
 	pingInterval      time.Duration
+	registry          *schema.Registry
+	strictSchema      bool
 }
 
 func defaultClientConfig() clientConfig {
@@ -46,4 +49,15 @@ func WithCallTimeout(d time.Duration) Option {
 // WithHeartbeatInterval sets the OCPP Heartbeat interval.
 func WithHeartbeatInterval(d time.Duration) Option {
 	return optionFunc(func(c *clientConfig) { c.heartbeatInterval = d })
+}
+
+// WithSchemaRegistry sets the schema registry used for first-layer validation.
+func WithSchemaRegistry(r *schema.Registry) Option {
+	return optionFunc(func(c *clientConfig) { c.registry = r })
+}
+
+// WithStrictSchema controls whether schema validation failures reject the message
+// (true) or only log a warning (false). Default false (spec OQ-19).
+func WithStrictSchema(strict bool) Option {
+	return optionFunc(func(c *clientConfig) { c.strictSchema = strict })
 }

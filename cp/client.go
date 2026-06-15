@@ -31,6 +31,15 @@ func NewClient(cpID, csmsURL string, opts ...Option) *Client {
 	for _, o := range opts {
 		o.apply(&cfg)
 	}
+	if cfg.registry != nil && cfg.strictSchema {
+		cfg.dispatcher.SchemaValidate = func(action, kind string, payload []byte) error {
+			v, ok := cfg.registry.Lookup("1.6", action, kind)
+			if !ok {
+				return nil
+			}
+			return v.Validate(payload)
+		}
+	}
 	return &Client{
 		id:  cpID,
 		url: csmsURL,

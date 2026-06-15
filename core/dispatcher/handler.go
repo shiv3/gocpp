@@ -42,6 +42,12 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
 		return
 	}
+	if c.cfg.SchemaValidate != nil {
+		if err := c.cfg.SchemaValidate(frame.Action, "request", frame.Payload); err != nil {
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
+			return
+		}
+	}
 	resp, err := h(c.ctx, c, frame.Payload)
 	if err != nil {
 		c.sendCallError(frame.MsgID, mapHandlerError(err))
