@@ -76,7 +76,26 @@ Runnable examples: [`examples/csms-minimal`](examples/csms-minimal),
 | `core/schema` | JSON-Schema validator + registry |
 | `core/auth` | `Authenticator`: `None`, `BasicAuth`, `MTLSFromClientCert` |
 | `core/storage` (+ `/memory`) | `ConnectionRegistry`, `MessageRouter`, `TransactionStore`, `ConfigStore` |
-| `core/observability` (+ `/metrics/prom`) | `Metrics` (NoOp/Prometheus), OTel tracer |
+| `core/observability` (+ `/metrics/{prom,otel}`) | `Metrics` (NoOp/Prometheus/OpenTelemetry), OTel tracer |
+
+## Addons
+
+Optional extensions live under [`addons/`](addons/), each a **separate nested module** so
+their heavy dependencies stay out of the core dependency tree:
+
+| Addon | Purpose |
+|---|---|
+| [`addons/router-redis`](addons/router-redis/) | `storage.MessageRouter` over Redis Pub/Sub (multi-instance CSMS) |
+| [`addons/router-nats`](addons/router-nats/) | `storage.MessageRouter` over NATS request/reply |
+| [`addons/router-temporal`](addons/router-temporal/) | Durable Temporal-backed `MessageRouter` (experimental) |
+| [`addons/statefsm`](addons/statefsm/) | OCPP 1.6 connector state-machine helper |
+| [`addons/tenant`](addons/tenant/) | Multi-tenant partitioning of the pluggable stores |
+
+```sh
+go get github.com/shiv3/gocpp/addons/router-redis
+```
+
+See [addons/README.md](addons/README.md) for details.
 
 ## Validation
 
