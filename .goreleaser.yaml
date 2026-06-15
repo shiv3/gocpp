@@ -1,0 +1,41 @@
+version: 2
+project_name: gocpp
+
+builds:
+  - id: gocpp-validate
+    main: ./cmd/gocpp-validate
+    binary: gocpp-validate
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+  - id: gocpp-sim
+    main: ./cmd/gocpp-sim
+    binary: gocpp-sim
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    ids: [gocpp-validate, gocpp-sim]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+dockers:
+  - id: gocpp-sim
+    ids: [gocpp-sim]
+    image_templates:
+      - "ghcr.io/shiv3/gocpp-sim:{{ .Version }}"
+      - "ghcr.io/shiv3/gocpp-sim:latest"
+    dockerfile: Dockerfile.sim
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: shiv3
+    name: gocpp
