@@ -204,6 +204,7 @@ type app struct {
 
 func (a *app) registerHandlers() {
 	accepted := v16msg.IDTagInfo{Status: v16msg.IDTagInfoStatusAccepted}
+	invalid := v16msg.IDTagInfo{Status: v16msg.IDTagInfoStatusInvalid}
 
 	must(csms.On(a.srv, v16p.BootNotification, func(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
 		a.logger.Info("BootNotification", "cp", c.ID(), "vendor", req.ChargePointVendor, "model", req.ChargePointModel)
@@ -214,6 +215,7 @@ func (a *app) registerHandlers() {
 	}))
 
 	must(csms.On(a.srv, v16p.Heartbeat, func(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
+		a.logger.Info("Heartbeat", "cp", c.ID())
 		return v16msg.HeartbeatResponse{CurrentTime: time.Now().UTC()}, nil
 	}))
 
@@ -224,6 +226,9 @@ func (a *app) registerHandlers() {
 
 	must(csms.On(a.srv, v16p.Authorize, func(ctx context.Context, c *csms.Conn, req v16msg.AuthorizeRequest) (v16msg.AuthorizeResponse, error) {
 		a.logger.Info("Authorize", "cp", c.ID(), "idTag", req.IDTag)
+		if !knownIDTag(req.IDTag) {
+			return v16msg.AuthorizeResponse{IDTagInfo: invalid}, nil
+		}
 		return v16msg.AuthorizeResponse{IDTagInfo: accepted}, nil
 	}))
 
@@ -262,8 +267,27 @@ func (a *app) registerHandlers() {
 	must(csms.On(a.srv, v16p.DataTransfer, func(ctx context.Context, c *csms.Conn, req v16msg.DataTransferRequest) (v16msg.DataTransferResponse, error) {
 		return v16msg.DataTransferResponse{Status: "Accepted"}, nil
 	}))
+
+	must(csms.On(a.srv, v16p.DiagnosticsStatusNotification, func(ctx context.Context, c *csms.Conn, req v16msg.DiagnosticsStatusNotificationRequest) (v16msg.DiagnosticsStatusNotificationResponse, error) {
+		a.logger.Info("DiagnosticsStatusNotification", "cp", c.ID(), "status", req.Status)
+		return v16msg.DiagnosticsStatusNotificationResponse{}, nil
+	}))
+
+	must(csms.On(a.srv, v16p.FirmwareStatusNotification, func(ctx context.Context, c *csms.Conn, req v16msg.FirmwareStatusNotificationRequest) (v16msg.FirmwareStatusNotificationResponse, error) {
+		a.logger.Info("FirmwareStatusNotification", "cp", c.ID(), "status", req.Status)
+		return v16msg.FirmwareStatusNotificationResponse{}, nil
+	}))
 	// Note: ChangeConfiguration/GetConfiguration are SentByCSMS (CSMS -> CP); the CSMS
 	// *sends* them via csms.Call, so they are not registered as inbound handlers here.
+}
+
+func knownIDTag(idTag string) bool {
+	switch idTag {
+	case "CORE_VALID", "CORE_REMOTE", "TAG001", "TAG-A":
+		return true
+	default:
+		return false
+	}
 }
 
 // driveRemoteStart waits for the connection to settle, then sends a
