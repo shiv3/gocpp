@@ -35,6 +35,16 @@ func (r *HandlerRegistry) Register(action string, h HandlerFunc) {
 
 func (c *Conn) runHandler(frame ocppj.Frame) {
 	defer c.sem.Release(1)
+	// A panic in a user handler must not crash the whole peer/process: recover,
+	// log, and reply with an InternalError CallError so the connection survives.
+	defer func() {
+		if r := recover(); r != nil {
+			c.cfg.Logger.ErrorContext(c.ctx, "handler panic recovered",
+				"cp_id", c.id, "action", frame.Action, "panic", r)
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(
+				ocppj.ErrorCodeInternalError, "internal error", nil))
+		}
+	}()
 
 	h, ok := c.reg.Lookup(frame.Action)
 	if !ok {
