@@ -12,8 +12,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/redis/go-redis/v9 v9.20.1 h1:sfCU6A8P3dXbKyWes02uxA2baehGux9dZHfEKtsTB1w=
 github.com/redis/go-redis/v9 v9.20.1/go.mod h1:v/M13XI1PVCDcm01VtPFOADfZtHf8YW3baQf57KlIkA=
-github.com/shiv3/gocpp v0.1.0 h1:ZTHtErCTqwKbPmbVqL8br/pqWdhSC0KOhRLPVRzx2js=
-github.com/shiv3/gocpp v0.1.0/go.mod h1:khEKHkCjjpqqvco1BpSCfUC+SYy7/VjENQQCOCb6AHQ=
+github.com/shiv3/gocpp v0.1.1 h1:duAWxx5UuO6Cy+XbfiVFZb3z7QPluJZ4AgBiK03Us4Y=
+github.com/shiv3/gocpp v0.1.1/go.mod h1:dOHr+9WU8DtGgcqd/xT5+NziEWMGXXGOZrBbiVZZIqg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/zeebo/xxh3 v1.1.0 h1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=

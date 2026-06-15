@@ -1,4 +1,4 @@
 github.com/looplab/fsm v1.0.3 h1:qtxBsa2onOs0qFOtkqwf5zE0uP0+Te+wlIvXctPKpcw=
 github.com/looplab/fsm v1.0.3/go.mod h1:PmD3fFvQEIsjMEfvZdrCDZ6y8VwKTwWNjlpEr6IKPO4=
-github.com/shiv3/gocpp v0.1.0 h1:ZTHtErCTqwKbPmbVqL8br/pqWdhSC0KOhRLPVRzx2js=
-github.com/shiv3/gocpp v0.1.0/go.mod h1:khEKHkCjjpqqvco1BpSCfUC+SYy7/VjENQQCOCb6AHQ=
+github.com/shiv3/gocpp v0.1.1 h1:duAWxx5UuO6Cy+XbfiVFZb3z7QPluJZ4AgBiK03Us4Y=
+github.com/shiv3/gocpp v0.1.1/go.mod h1:dOHr+9WU8DtGgcqd/xT5+NziEWMGXXGOZrBbiVZZIqg=

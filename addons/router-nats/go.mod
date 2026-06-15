@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/nats-io/nats.go v1.52.0
-	github.com/shiv3/gocpp v0.1.0
+	github.com/shiv3/gocpp v0.1.1
 )
 
 require (
