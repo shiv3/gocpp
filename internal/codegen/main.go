@@ -57,6 +57,7 @@ func generate(cfg genConfig) error {
 	messageFiles := map[string]ir.File{}
 	enumsFile := ir.File{Version: cfg.version, Package: "messages"}
 	var profiles []profMsgs
+	var allMessages []ir.Message
 
 	profileNames := make([]string, 0, len(ps.Profiles))
 	for name := range ps.Profiles {
@@ -101,12 +102,14 @@ func generate(cfg genConfig) error {
 				Package: "messages",
 				Structs: msgStructs,
 			}
-			pm.msgs = append(pm.msgs, ir.Message{
+			msg := ir.Message{
 				Action:    m.Name,
 				Direction: m.Dir,
 				Request:   reqStruct,
 				Response:  respStruct,
-			})
+			}
+			pm.msgs = append(pm.msgs, msg)
+			allMessages = append(allMessages, msg)
 		}
 		profiles = append(profiles, pm)
 	}
@@ -141,6 +144,13 @@ func generate(cfg genConfig) error {
 		if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "profiles", fname), src); err != nil {
 			return err
 		}
+	}
+	registerSrc, err := render.RegisterFile(cfg.version, allMessages)
+	if err != nil {
+		return fmt.Errorf("render schema registration: %w", err)
+	}
+	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "profiles", "register.go"), registerSrc); err != nil {
+		return err
 	}
 	if err := writeEmbed(cfg.outRoot, cfg.version); err != nil {
 		return err

@@ -63,6 +63,42 @@ func Profile(f ir.File, profileName string) ([]byte, error) {
 	return format.Source([]byte(b.String()))
 }
 
+// RegisterFile renders a helper that registers all generated schemas.
+func RegisterFile(version string, messages []ir.Message) ([]byte, error) {
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("package profiles\n\n")
+	b.WriteString("import (\n")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/core/schema")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/schemas")
+	b.WriteString(")\n\n")
+	b.WriteString("// RegisterSchemas registers all " + version + " request/response schemas.\n")
+	b.WriteString("func RegisterSchemas(r *schema.Registry) error {\n")
+	b.WriteString("\ttype reg struct{ action, kind, file string }\n")
+	b.WriteString("\tfor _, e := range []reg{\n")
+	for _, m := range messages {
+		fmt.Fprintf(&b, "\t\t{%q, \"request\", %q},\n", m.Action, m.Action+".json")
+		fmt.Fprintf(&b, "\t\t{%q, \"response\", %q},\n", m.Action, m.Action+"Response.json")
+	}
+	b.WriteString("\t} {\n")
+	fmt.Fprintf(&b, "\t\tif err := r.Register(%q, e.action, e.kind, schemas.FS, e.file); err != nil {\n", versionString(version))
+	b.WriteString("\t\t\treturn err\n")
+	b.WriteString("\t\t}\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn nil\n")
+	b.WriteString("}\n")
+	return format.Source([]byte(b.String()))
+}
+
+func versionString(version string) string {
+	switch version {
+	case "v16":
+		return "1.6"
+	default:
+		return strings.TrimPrefix(version, "v")
+	}
+}
+
 func writeHeader(b *strings.Builder, pkg string) {
 	b.WriteString(header)
 	fmt.Fprintf(b, "package %s\n\n", pkg)
