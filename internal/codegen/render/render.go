@@ -104,6 +104,8 @@ func versionString(version string) string {
 		return "1.6"
 	case "v201":
 		return "2.0.1"
+	case "v21":
+		return "2.1"
 	default:
 		return strings.TrimPrefix(version, "v")
 	}
