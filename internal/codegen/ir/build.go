@@ -3,6 +3,7 @@ package ir
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/shiv3/gocpp/internal/codegen/naming"
 )
@@ -48,7 +49,7 @@ func BuildStruct(goName string, schema map[string]any) (Struct, []Enum, error) {
 // BuildStructTree converts a schema and all nested object types into a flat
 // list of Structs, with the root struct first, plus all inline enums.
 func BuildStructTree(rootName string, schema map[string]any) ([]Struct, []Enum, error) {
-	b := treeBuilder{seen: map[string]bool{}}
+	b := treeBuilder{defs: rootDefs(schema), seen: map[string]bool{}}
 	if err := b.build(rootName, schema); err != nil {
 		return nil, nil, err
 	}
@@ -58,6 +59,7 @@ func BuildStructTree(rootName string, schema map[string]any) ([]Struct, []Enum, 
 type treeBuilder struct {
 	structs []Struct
 	enums   []Enum
+	defs    map[string]any
 	seen    map[string]bool
 }
 
@@ -104,6 +106,20 @@ func (b *treeBuilder) build(goName string, schema map[string]any) error {
 }
 
 func (b *treeBuilder) assignTreeType(parentName, fieldName string, f *Field, prop map[string]any) (childSchema, error) {
+	if ref, ok := schemaRef(prop); ok {
+		name, def, found := resolveRef(ref, b.defs)
+		if !found {
+			return childSchema{}, fmt.Errorf("unresolved $ref %q", ref)
+		}
+		if isObjectSchema(def) {
+			f.Type = TypeStructRef
+			f.StructRef = name
+			return childSchema{goName: name, schema: def}, nil
+		}
+		assignScalar(f, def)
+		return childSchema{}, nil
+	}
+
 	if ml, ok := prop["maxLength"].(float64); ok {
 		f.MaxLength = int(ml)
 	}
@@ -126,6 +142,19 @@ func (b *treeBuilder) assignTreeType(parentName, fieldName string, f *Field, pro
 	case "array":
 		f.Type = TypeSlice
 		items, _ := prop["items"].(map[string]any)
+		if ref, ok := schemaRef(items); ok {
+			name, def, found := resolveRef(ref, b.defs)
+			if !found {
+				return childSchema{}, fmt.Errorf("unresolved $ref %q", ref)
+			}
+			if isObjectSchema(def) {
+				f.ElemType = TypeStructRef
+				f.StructRef = name
+				return childSchema{goName: name, schema: def}, nil
+			}
+			f.ElemType = scalarKind(schemaType(def), def)
+			return childSchema{}, nil
+		}
 		if enumVals, ok := items["enum"].([]any); ok {
 			vals := make([]string, 0, len(enumVals))
 			for _, v := range enumVals {
@@ -138,7 +167,7 @@ func (b *treeBuilder) assignTreeType(parentName, fieldName string, f *Field, pro
 			return childSchema{}, nil
 		}
 		itemType, _ := items["type"].(string)
-		if itemType == "object" && items["properties"] != nil {
+		if isObjectSchema(items) && items["properties"] != nil {
 			childName := singular(naming.Export(fieldName))
 			f.ElemType = TypeStructRef
 			f.StructRef = childName
@@ -155,7 +184,13 @@ func (b *treeBuilder) assignTreeType(parentName, fieldName string, f *Field, pro
 		f.StructRef = childName
 		return childSchema{goName: childName, schema: prop}, nil
 	default:
-		f.Type = TypeMap
+		if prop["properties"] != nil {
+			childName := naming.Export(fieldName)
+			f.Type = TypeStructRef
+			f.StructRef = childName
+			return childSchema{goName: childName, schema: prop}, nil
+		}
+		f.Type = TypeString
 	}
 	return childSchema{}, nil
 }
@@ -199,7 +234,7 @@ func assignType(f *Field, prop map[string]any, enums *[]Enum) error {
 }
 
 func assignScalar(f *Field, prop map[string]any) {
-	typ, _ := prop["type"].(string)
+	typ := schemaType(prop)
 	switch typ {
 	case "string":
 		if format, _ := prop["format"].(string); format == "date-time" {
@@ -218,7 +253,7 @@ func assignScalar(f *Field, prop map[string]any) {
 	case "boolean":
 		f.Type = TypeBool
 	default:
-		f.Type = TypeMap
+		f.Type = TypeString
 	}
 }
 
@@ -257,4 +292,42 @@ func singular(name string) string {
 		return name[:len(name)-1]
 	}
 	return name
+}
+
+func rootDefs(schema map[string]any) map[string]any {
+	defs, _ := schema["definitions"].(map[string]any)
+	return defs
+}
+
+func schemaRef(schema map[string]any) (string, bool) {
+	if schema == nil {
+		return "", false
+	}
+	if ref, ok := schema["$ref"].(string); ok {
+		return ref, true
+	}
+	return "", false
+}
+
+func resolveRef(ref string, defs map[string]any) (string, map[string]any, bool) {
+	const prefix = "#/definitions/"
+	if !strings.HasPrefix(ref, prefix) {
+		return "", nil, false
+	}
+	name := strings.TrimPrefix(ref, prefix)
+	def, ok := defs[name].(map[string]any)
+	return name, def, ok
+}
+
+func isObjectSchema(schema map[string]any) bool {
+	if schema == nil {
+		return false
+	}
+	typ, _ := schema["type"].(string)
+	return typ == "object" || (typ == "" && schema["properties"] != nil)
+}
+
+func schemaType(schema map[string]any) string {
+	typ, _ := schema["type"].(string)
+	return typ
 }
