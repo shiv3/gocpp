@@ -1,5 +1,7 @@
 /bin/
 /dist/
+# stray binary from `go build ./internal/codegen/cmd/diff`
+/diff
 *.out
 *.test
 .DS_Store
