@@ -1,6 +1,6 @@
 module github.com/shiv3/gocpp/addons/router-temporal
 
-go 1.25.0
+go 1.26.0
 
 replace github.com/shiv3/gocpp => ../..
 

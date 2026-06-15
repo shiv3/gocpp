@@ -22,16 +22,6 @@ archives:
       - goos: windows
         formats: [zip]
 
-dockers:
-  - id: gocpp-sim
-    ids: [gocpp-sim]
-    image_templates:
-      - "ghcr.io/shiv3/gocpp-sim:{{ .Version }}"
-      - "ghcr.io/shiv3/gocpp-sim:latest"
-    dockerfile: Dockerfile.sim
-    build_flag_templates:
-      - "--platform=linux/amd64"
-
 checksum:
   name_template: "checksums.txt"
 

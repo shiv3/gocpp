@@ -11,7 +11,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
       - name: Check API compatibility against latest tag
         run: |
           if git describe --tags --abbrev=0 | grep -q '^v1'; then
