@@ -43,7 +43,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		return
 	}
 	if c.cfg.SchemaValidate != nil {
-		if err := c.cfg.SchemaValidate(frame.Action, "request", frame.Payload); err != nil {
+		if err := c.cfg.SchemaValidate(c.version, frame.Action, "request", frame.Payload); err != nil {
 			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
 			return
 		}

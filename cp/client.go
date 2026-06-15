@@ -32,8 +32,8 @@ func NewClient(cpID, csmsURL string, opts ...Option) *Client {
 		o.apply(&cfg)
 	}
 	if cfg.registry != nil && cfg.strictSchema {
-		cfg.dispatcher.SchemaValidate = func(action, kind string, payload []byte) error {
-			v, ok := cfg.registry.Lookup("1.6", action, kind)
+		cfg.dispatcher.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
+			v, ok := cfg.registry.Lookup(string(version), action, kind)
 			if !ok {
 				return nil
 			}
@@ -75,6 +75,15 @@ func (c *Client) IsConnected() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conn != nil && c.conn.Context().Err() == nil
+}
+
+// NegotiatedProtocol returns the subprotocol chosen during the handshake.
+func (c *Client) NegotiatedProtocol() string {
+	conn := c.current()
+	if conn == nil {
+		return ""
+	}
+	return conn.Subprotocol()
 }
 
 // Close tears down the current connection.

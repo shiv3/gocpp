@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
 )
 
@@ -31,8 +32,8 @@ func NewServer(opts ...Option) *Server {
 		o.apply(&cfg)
 	}
 	if cfg.registry != nil && cfg.strictSchema {
-		cfg.dispatcher.SchemaValidate = func(action, kind string, payload []byte) error {
-			v, ok := cfg.registry.Lookup("1.6", action, kind)
+		cfg.dispatcher.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
+			v, ok := cfg.registry.Lookup(string(version), action, kind)
 			if !ok {
 				return nil
 			}

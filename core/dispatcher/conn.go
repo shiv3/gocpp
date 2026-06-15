@@ -62,6 +62,9 @@ func (c *Conn) ID() string { return c.id }
 // Version returns the negotiated OCPP version.
 func (c *Conn) Version() ocppj.Version { return c.version }
 
+// Subprotocol returns the negotiated WebSocket subprotocol.
+func (c *Conn) Subprotocol() string { return c.ws.Subprotocol() }
+
 // Context returns the connection lifecycle context.
 func (c *Conn) Context() context.Context { return c.ctx }
 
