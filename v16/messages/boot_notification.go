@@ -3,7 +3,6 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
 	"time"
 )
 
@@ -21,6 +20,6 @@ type BootNotificationRequest struct {
 
 type BootNotificationResponse struct {
 	CurrentTime time.Time          `json:"currentTime" validate:"required"`
-	Interval    decimal.Decimal    `json:"interval" validate:"required"`
+	Interval    int32              `json:"interval" validate:"required"`
 	Status      RegistrationStatus `json:"status" validate:"required"`
 }

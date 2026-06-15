@@ -1,6 +1,6 @@
 {
     "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "BootNotificationResponse",
+    "title": "DataTransferResponse",
     "type": "object",
     "properties": {
         "status": {
@@ -8,22 +8,17 @@
             "additionalProperties": false,
             "enum": [
                 "Accepted",
-                "Pending",
-                "Rejected"
+                "Rejected",
+                "UnknownMessageId",
+                "UnknownVendorId"
             ]
         },
-        "currentTime": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "interval": {
-            "type": "integer"
+        "data": {
+            "type": "string"
         }
     },
     "additionalProperties": false,
     "required": [
-        "status",
-        "currentTime",
-        "interval"
+        "status"
     ]
 }

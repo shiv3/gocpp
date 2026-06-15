@@ -1,6 +1,6 @@
 {
     "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "BootNotificationResponse",
+    "title": "ReserveNowResponse",
     "type": "object",
     "properties": {
         "status": {
@@ -8,22 +8,15 @@
             "additionalProperties": false,
             "enum": [
                 "Accepted",
-                "Pending",
-                "Rejected"
+                "Faulted",
+                "Occupied",
+                "Rejected",
+                "Unavailable"
             ]
-        },
-        "currentTime": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "interval": {
-            "type": "integer"
         }
     },
     "additionalProperties": false,
     "required": [
-        "status",
-        "currentTime",
-        "interval"
+        "status"
     ]
 }
