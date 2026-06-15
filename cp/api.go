@@ -28,6 +28,16 @@ func On[Req, Resp any](c *Client, m ocppj.Message[Req, Resp], h func(ctx context
 	return nil
 }
 
+// CallRaw sends an action with a raw JSON payload and returns the raw response.
+// Used by tools like the simulator that operate on untyped messages.
+func CallRaw(ctx context.Context, c *Client, action string, payload []byte) ([]byte, error) {
+	conn := c.current()
+	if conn == nil {
+		return nil, ocppj.ErrNotConnected
+	}
+	return dispatcher.DoCall(ctx, conn, action, payload)
+}
+
 // Call sends a typed message from this charge point to the CSMS.
 func Call[Req, Resp any](ctx context.Context, c *Client, m ocppj.Message[Req, Resp], req Req) (Resp, error) {
 	var zero Resp
