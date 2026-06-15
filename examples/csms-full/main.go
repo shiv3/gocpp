@@ -24,6 +24,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -93,10 +94,43 @@ func main() {
 	app.srv = srv
 	app.registerHandlers()
 
-	// Ops endpoints: health/readiness only — telemetry leaves via OTLP, not a scrape.
+	// Ops endpoints: health/readiness + an admin hook to originate CSMS->CP calls
+	// (telemetry leaves via OTLP, not a scrape).
 	ops := http.NewServeMux()
 	ops.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	ops.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	// POST /admin/call?cp=<cpId>&action=<Action> with a JSON request body sends a
+	// CSMS-initiated operation (Reset, ChangeConfiguration, ...) to a connected CP
+	// and returns the raw response — used to drive interop tests of CSMS->CP ops.
+	ops.HandleFunc("/admin/call", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		cpID, action := r.URL.Query().Get("cp"), r.URL.Query().Get("action")
+		conn, ok := srv.Get(cpID)
+		if !ok {
+			http.Error(w, "unknown cp: "+cpID, http.StatusNotFound)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(body) == 0 {
+			body = []byte("{}")
+		}
+		cctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		resp, err := csms.CallRaw(cctx, conn, action, body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(resp)
+	})
 	go func() { _ = http.ListenAndServe(envOr("OPS_ADDR", ":9090"), ops) }()
 
 	httpSrv := &http.Server{Addr: envOr("ADDR", ":8080"), Handler: srv.Handler()}
