@@ -93,16 +93,32 @@ srv := csms.NewServer(
 )
 ```
 
+Schema handling is three-state. With a registry set:
+
+- `WithStrictSchema(true)` — reject invalid messages with `FormationViolation`.
+- `WithTolerantSchema()` — log a warning and process anyway (for real chargers that send
+  undefined enums or extra fields).
+- `WithStrictSchema(false)` (default) — validation off.
+
+`cp.WithTolerantSchema()` / `cp.WithStrictSchema()` do the same on the charge-point side.
+
 ## Production features
 
 ```go
 srv := csms.NewServer(
-    csms.WithAuthenticator(auth.BasicAuth(verify)),     // Security Profile 1/2
-    csms.WithMetrics(prom.New(promRegistry)),           // Prometheus
+    csms.WithAuthenticator(auth.BasicAuth(verify)),     // Security Profile 1/2 (verify(cpID, password))
+    csms.WithMetrics(otelmetrics.New(meterProvider)),   // OpenTelemetry metrics (or prom.New for Prometheus)
     csms.WithTracerProvider(tp),                        // OpenTelemetry spans
     csms.WithConnectionRegistry(myRegistry),            // pluggable
+    csms.WithCPIDExtractor(extractCPID),                // dynamic path routing, e.g. /{org}/{cpId}
+    csms.WithDuplicatePolicy(csms.DuplicatePolicyRejectNew), // or CloseExisting (default)
 )
 ```
+
+Handlers can read connection metadata from the `*csms.Conn`:
+`c.RemoteAddr()`, `c.RequestHeader()`, `c.TLS()`, `c.Subprotocol()`. The authenticator
+receives the parsed charge point id: `Authenticate(r *http.Request, cpID string)`. To send
+an untyped CSMS→CP operation, use `csms.CallRaw(ctx, conn, action, payloadJSON)`.
 
 ## Tooling
 

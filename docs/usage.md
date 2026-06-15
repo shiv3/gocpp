@@ -49,20 +49,37 @@ resp, err := cp.Call(ctx, client, v201p.BootNotification, req)
 
 ## Options
 
-CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCallTimeout`,
-`WithSchemaRegistry` + `WithStrictSchema`, `WithAuthenticator`, `WithMetrics`,
-`WithTracerProvider`, `WithConnectionRegistry`, `WithTransactionStore`, `WithConfigStore`,
-`WithMessageRouter`.
+CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,
+`WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithAuthenticator`,
+`WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`, `WithDuplicatePolicy`,
+`WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`.
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
-`WithSchemaRegistry` + `WithStrictSchema`.
+`WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`.
+
+### Routing, duplicates, metadata, auth
+
+- `WithCPIDExtractor(func(*http.Request) (cpID string, ok bool))` — map arbitrary paths
+  (e.g. `/ocpp/{org}/{cpId}`) to a charge point id. Default is the `WithPath` prefix +
+  trailing segment.
+- `WithDuplicatePolicy(csms.DuplicatePolicyCloseExisting | csms.DuplicatePolicyRejectNew)`
+  — on a second connection for the same cpID, close the old one (default) or reject the new
+  one with HTTP 409.
+- Handlers read connection metadata from `*csms.Conn`: `RemoteAddr()`, `RequestHeader()`,
+  `TLS()`, `Subprotocol()`.
+- Authenticators receive the parsed cpID: `Authenticate(r *http.Request, cpID string)`.
+  For `auth.BasicAuth(verify)`, `verify(cpID, password)` is called with the path-parsed cpID.
+- `csms.CallRaw(ctx, conn, action, payloadJSON)` sends an untyped CSMS→CP operation
+  (symmetric with `cp.CallRaw`); prefer the typed `csms.Call` for application code.
 
 ## Validation
 
 Two layers (spec §4.4):
 
 1. **JSON Schema** (source of truth) — embedded official schemas, validated on the wire
-   when `WithSchemaRegistry` + `WithStrictSchema(true)` are set.
+   when a registry is set. Mode is three-state: `WithStrictSchema(true)` rejects invalid
+   messages, `WithTolerantSchema()` logs a warning and passes (vendor quirks), and
+   `WithStrictSchema(false)` (default) turns validation off.
 2. **Struct tags** — generated `validate:"required,max=…,oneof=…"` tags for app-side
    checks of structs you build yourself.
 
