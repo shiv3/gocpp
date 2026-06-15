@@ -37,11 +37,25 @@ func TestUnlockConnector201_RequestValidation(t *testing.T) {
 			Message: messages.UnlockConnectorRequest{},
 			Valid:   true,
 		},
+		{
+			Name: "invalid missing evseId",
+			Message: map[string]any{
+				"connectorId": 1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid missing connectorId",
+			Message: map[string]any{
+				"evseId": 2,
+			},
+			Valid: false,
+		},
+		// TODO(parity): needs schema override for evseId minimum.
+		// TODO(parity): needs schema override for connectorId minimum.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
-	skipSchemaOverride201(t, "invalid evseId below minimum")
-	skipSchemaOverride201(t, "invalid connectorId below minimum")
 }
 
 func TestUnlockConnector201_ResponseValidation(t *testing.T) {
@@ -54,7 +68,7 @@ func TestUnlockConnector201_ResponseValidation(t *testing.T) {
 			Name: "valid unlocked response with statusInfo",
 			Message: messages.UnlockConnectorResponse{
 				Status:     "Unlocked",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: true,
 		},
@@ -74,7 +88,7 @@ func TestUnlockConnector201_ResponseValidation(t *testing.T) {
 			Name: "invalid status enum",
 			Message: messages.UnlockConnectorResponse{
 				Status:     "invalidUnlockStatus",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: false,
 		},
@@ -86,11 +100,12 @@ func TestUnlockConnector201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
 }
 
 func TestUnlockConnector201_Direction(t *testing.T) {
-	requireCPHandlerInvalidDirection201(t, v201profiles.UnlockConnector)
+	requireCPHandlerInvalidDirection201f(t, v201profiles.UnlockConnector)
 }

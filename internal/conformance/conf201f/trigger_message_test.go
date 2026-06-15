@@ -33,7 +33,7 @@ func TestTriggerMessage201_RequestValidation(t *testing.T) {
 			Valid: true,
 		},
 		{
-			Name:    "invalid empty request",
+			Name:    "invalid missing requestedMessage",
 			Message: map[string]any{},
 			Valid:   false,
 		},
@@ -45,10 +45,18 @@ func TestTriggerMessage201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
+		{
+			Name: "invalid missing evse.id",
+			Message: map[string]any{
+				"requestedMessage": "StatusNotification",
+				"evse":             map[string]any{},
+			},
+			Valid: false,
+		},
+		// TODO(parity): needs schema override for evse.id minimum.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
-	skipSchemaOverride201(t, "invalid evse.id below minimum")
 }
 
 func TestTriggerMessage201_ResponseValidation(t *testing.T) {
@@ -61,7 +69,7 @@ func TestTriggerMessage201_ResponseValidation(t *testing.T) {
 			Name: "valid accepted response with statusInfo",
 			Message: messages.TriggerMessageResponse{
 				Status:     "Accepted",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: true,
 		},
@@ -81,7 +89,7 @@ func TestTriggerMessage201_ResponseValidation(t *testing.T) {
 			Name: "invalid status enum",
 			Message: messages.TriggerMessageResponse{
 				Status:     "invalidTriggerMessageStatus",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: false,
 		},
@@ -93,11 +101,12 @@ func TestTriggerMessage201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
 }
 
 func TestTriggerMessage201_Direction(t *testing.T) {
-	requireCPHandlerInvalidDirection201(t, v201profiles.TriggerMessage)
+	requireCPHandlerInvalidDirection201f(t, v201profiles.TriggerMessage)
 }

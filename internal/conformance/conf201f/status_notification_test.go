@@ -20,7 +20,7 @@ func TestStatusNotification201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid full request",
 			Message: messages.StatusNotificationRequest{
-				Timestamp:       fixedTime201(),
+				Timestamp:       fixedTime201f(),
 				ConnectorStatus: "Available",
 				EVSEID:          1,
 				ConnectorID:     1,
@@ -30,7 +30,7 @@ func TestStatusNotification201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid zero connectorId",
 			Message: messages.StatusNotificationRequest{
-				Timestamp:       fixedTime201(),
+				Timestamp:       fixedTime201f(),
 				ConnectorStatus: "Available",
 				EVSEID:          1,
 			},
@@ -39,7 +39,7 @@ func TestStatusNotification201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid zero evseId and connectorId",
 			Message: messages.StatusNotificationRequest{
-				Timestamp:       fixedTime201(),
+				Timestamp:       fixedTime201f(),
 				ConnectorStatus: "Available",
 			},
 			Valid: true,
@@ -47,7 +47,9 @@ func TestStatusNotification201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing connectorStatus",
 			Message: map[string]any{
-				"timestamp": fixedTime201(),
+				"timestamp":   fixedTime201f(),
+				"evseId":      1,
+				"connectorId": 1,
 			},
 			Valid: false,
 		},
@@ -55,29 +57,49 @@ func TestStatusNotification201_RequestValidation(t *testing.T) {
 			Name: "invalid missing timestamp",
 			Message: map[string]any{
 				"connectorStatus": "Available",
+				"evseId":          1,
+				"connectorId":     1,
 			},
 			Valid: false,
 		},
 		{
-			Name:    "invalid empty request",
+			Name: "invalid missing evseId",
+			Message: map[string]any{
+				"timestamp":       fixedTime201f(),
+				"connectorStatus": "Available",
+				"connectorId":     1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid missing connectorId",
+			Message: map[string]any{
+				"timestamp":       fixedTime201f(),
+				"connectorStatus": "Available",
+				"evseId":          1,
+			},
+			Valid: false,
+		},
+		{
+			Name:    "invalid missing required fields",
 			Message: map[string]any{},
 			Valid:   false,
 		},
 		{
 			Name: "invalid connectorStatus enum",
 			Message: messages.StatusNotificationRequest{
-				Timestamp:       fixedTime201(),
+				Timestamp:       fixedTime201f(),
 				ConnectorStatus: "invalidConnectorStatus",
 				EVSEID:          1,
 				ConnectorID:     1,
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for evseId minimum.
+		// TODO(parity): needs schema override for connectorId minimum.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
-	skipSchemaOverride201(t, "invalid evseId below minimum")
-	skipSchemaOverride201(t, "invalid connectorId below minimum")
 }
 
 func TestStatusNotification201_ResponseValidation(t *testing.T) {
@@ -91,11 +113,18 @@ func TestStatusNotification201_ResponseValidation(t *testing.T) {
 			Message: messages.StatusNotificationResponse{},
 			Valid:   true,
 		},
+		{
+			Name: "valid full response",
+			Message: messages.StatusNotificationResponse{
+				CustomData: testCustomData201f(),
+			},
+			Valid: true,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
 }
 
 func TestStatusNotification201_Direction(t *testing.T) {
-	requireCSMSHandlerInvalidDirection201(t, v201profiles.StatusNotification)
+	requireCSMSHandlerInvalidDirection201f(t, v201profiles.StatusNotification)
 }
