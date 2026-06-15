@@ -92,3 +92,57 @@ func RoundTripCSMS[Req, Resp any](
 
 	return cp.Call(ctx, client, msg, req)
 }
+
+// RoundTripCP starts a CSMS, connects a CP (which registers handlers via
+// register), waits for the connection to appear, then sends one CSMS-originated
+// request to the charge point and returns the typed response. Use this for
+// SentByCSMS messages (the mirror of RoundTripCSMS).
+func RoundTripCP[Req, Resp any](
+	t *testing.T,
+	subprotocol string,
+	reg *schema.Registry,
+	register func(*cp.Client),
+	msg ocppj.Message[Req, Resp],
+	req Req,
+) (Resp, error) {
+	t.Helper()
+
+	serverOpts := []csms.Option{csms.WithSubProtocols(subprotocol)}
+	clientOpts := []cp.Option{cp.WithSubProtocols(subprotocol)}
+	if reg != nil {
+		serverOpts = append(serverOpts, csms.WithSchemaRegistry(reg), csms.WithStrictSchema(true))
+		clientOpts = append(clientOpts, cp.WithSchemaRegistry(reg), cp.WithStrictSchema(true))
+	}
+
+	srv := csms.NewServer(serverOpts...)
+	defer srv.Close()
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	url := "ws" + ts.URL[len("http"):] + "/ocpp/CP_1"
+	client := cp.NewClient("CP_1", url, clientOpts...)
+	if register != nil {
+		register(client)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var zero Resp
+	if err := client.Connect(ctx); err != nil {
+		return zero, err
+	}
+	defer client.Close()
+
+	for {
+		if conn, ok := srv.Get("CP_1"); ok {
+			return csms.Call(ctx, conn, msg, req)
+		}
+		select {
+		case <-ctx.Done():
+			return zero, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
