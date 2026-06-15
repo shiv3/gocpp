@@ -2,9 +2,9 @@ package cp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
+	"github.com/shiv3/gocpp/core/codec"
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
 )
@@ -16,14 +16,14 @@ func On[Req, Resp any](c *Client, m ocppj.Message[Req, Resp], h func(ctx context
 	}
 	c.reg.Register(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) ([]byte, error) {
 		var req Req
-		if err := json.Unmarshal(payload, &req); err != nil {
+		if err := codec.Unmarshal(payload, &req); err != nil {
 			return nil, ocppj.WrapCallError(ocppj.ErrorCodeFormationViolation, err, nil)
 		}
 		resp, err := h(ctx, req)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(resp)
+		return codec.Marshal(resp)
 	})
 	return nil
 }
@@ -48,7 +48,7 @@ func Call[Req, Resp any](ctx context.Context, c *Client, m ocppj.Message[Req, Re
 	if conn == nil {
 		return zero, ocppj.ErrNotConnected
 	}
-	reqPayload, err := json.Marshal(req)
+	reqPayload, err := codec.Marshal(req)
 	if err != nil {
 		return zero, fmt.Errorf("marshal request: %w", err)
 	}
@@ -57,7 +57,7 @@ func Call[Req, Resp any](ctx context.Context, c *Client, m ocppj.Message[Req, Re
 		return zero, err
 	}
 	var resp Resp
-	if err := json.Unmarshal(respPayload, &resp); err != nil {
+	if err := codec.Unmarshal(respPayload, &resp); err != nil {
 		return zero, fmt.Errorf("unmarshal response: %w", err)
 	}
 	return resp, nil
