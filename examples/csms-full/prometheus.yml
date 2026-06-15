@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  # csms-full no longer speaks Prometheus directly; it exports OTLP to the
+  # opentelemetry-collector, which re-exposes the metrics here for scraping.
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["host.docker.internal:8889"]

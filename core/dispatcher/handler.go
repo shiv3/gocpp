@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"go.opentelemetry.io/otel/attribute"
@@ -36,10 +37,18 @@ func (r *HandlerRegistry) Register(action string, h HandlerFunc) {
 
 func (c *Conn) runHandler(frame ocppj.Frame) {
 	defer c.sem.Release(1)
+
+	start := time.Now()
+	c.cfg.Metrics.CallStarted(frame.Action, "inbound")
+	status := "ok"
+	defer func() {
+		c.cfg.Metrics.CallCompleted(frame.Action, "inbound", time.Since(start), status)
+	}()
 	// A panic in a user handler must not crash the whole peer/process: recover,
 	// log, and reply with an InternalError CallError so the connection survives.
 	defer func() {
 		if r := recover(); r != nil {
+			status = "panic"
 			c.cfg.Logger.ErrorContext(c.ctx, "handler panic recovered",
 				"cp_id", c.id, "action", frame.Action, "panic", r)
 			c.sendCallError(frame.MsgID, ocppj.NewCallError(
@@ -49,12 +58,14 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 
 	h, ok := c.reg.Lookup(frame.Action)
 	if !ok {
+		status = "not_implemented"
 		c.sendCallError(frame.MsgID, ocppj.NewCallError(
 			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
 		return
 	}
 	if c.cfg.SchemaValidate != nil {
 		if err := c.cfg.SchemaValidate(c.version, frame.Action, "request", frame.Payload); err != nil {
+			status = "schema_invalid"
 			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
 			return
 		}
@@ -68,6 +79,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	resp, err := h(hctx, c, frame.Payload)
 	span.End()
 	if err != nil {
+		status = "error"
 		c.sendCallError(frame.MsgID, mapHandlerError(err))
 		return
 	}

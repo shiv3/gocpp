@@ -1,0 +1,29 @@
+# Telemetry stack for the csms-full example, unified on OpenTelemetry.
+#
+#   docker compose -f examples/csms-full/docker-compose.yaml up -d
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 go run ./examples/csms-full
+#
+# csms-full pushes OTLP traces + metrics to the collector (4317/4318). The
+# collector logs them (debug exporter) and re-exposes metrics in Prometheus
+# format on :8889, which the bundled Prometheus scrapes. UIs:
+#   - Prometheus:        http://localhost:9090
+#   - Collector metrics: http://localhost:8889/metrics
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.1
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8889:8889" # Prometheus exporter
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector

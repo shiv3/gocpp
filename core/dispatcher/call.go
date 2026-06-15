@@ -3,6 +3,7 @@ package dispatcher
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
 )
@@ -10,7 +11,17 @@ import (
 // DoCall sends an OCPP Call and waits for the matching CallResult or CallError.
 // It returns the raw response payload; typed encoding/decoding happens in the
 // csms/cp generic wrappers.
-func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) ([]byte, error) {
+func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ []byte, err error) {
+	start := time.Now()
+	c.cfg.Metrics.CallStarted(action, "outbound")
+	defer func() {
+		status := "ok"
+		if err != nil {
+			status = "error"
+		}
+		c.cfg.Metrics.CallCompleted(action, "outbound", time.Since(start), status)
+	}()
+
 	msgID := ocppj.NewMsgID()
 	raw, err := ocppj.EncodeCall(msgID, action, reqPayload)
 	if err != nil {
