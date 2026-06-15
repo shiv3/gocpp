@@ -1,0 +1,45 @@
+package conf21f
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/internal/conformance"
+	"github.com/shiv3/gocpp/v21"
+	messages "github.com/shiv3/gocpp/v21/messages"
+	v21profiles "github.com/shiv3/gocpp/v21/profiles"
+	"github.com/stretchr/testify/require"
+)
+
+func TestSetMonitoringBase21_RequestValidation(t *testing.T) {
+	reg := schema.NewRegistry()
+	require.NoError(t, v21.RegisterSchemas(reg))
+	validator := conformance.MustValidator(t, reg, "2.1", "SetMonitoringBase", "request")
+
+	cases := []conformance.ValidationCase{
+		{Name: "valid", Message: messages.SetMonitoringBaseRequest{MonitoringBase: "All"}, Valid: true},
+		{Name: "valid factoryDefault", Message: messages.SetMonitoringBaseRequest{MonitoringBase: "FactoryDefault"}, Valid: true},
+		{Name: "missing monitoringBase", Message: map[string]any{}, Valid: false},
+		{Name: "invalid enum monitoringBase", Message: messages.SetMonitoringBaseRequest{MonitoringBase: "Nope"}, Valid: false},
+		{Name: "exceeds maxLength customData.vendorId", Message: messages.SetMonitoringBaseRequest{MonitoringBase: "All", CustomData: &messages.CustomDataType{VendorID: strings.Repeat("x", 256)}}, Valid: false},
+	}
+	conformance.RunValidationTable(t, validator, cases)
+}
+
+func TestSetMonitoringBase21_ResponseValidation(t *testing.T) {
+	reg := schema.NewRegistry()
+	require.NoError(t, v21.RegisterSchemas(reg))
+	validator := conformance.MustValidator(t, reg, "2.1", "SetMonitoringBase", "response")
+
+	cases := []conformance.ValidationCase{
+		{Name: "valid", Message: messages.SetMonitoringBaseResponse{Status: "Accepted"}, Valid: true},
+		{Name: "missing status", Message: map[string]any{}, Valid: false},
+		{Name: "invalid enum status", Message: messages.SetMonitoringBaseResponse{Status: "Nope"}, Valid: false},
+	}
+	conformance.RunValidationTable(t, validator, cases)
+}
+
+func TestSetMonitoringBase21_Direction(t *testing.T) {
+	requireCPRejectsWrongDirection21(t, v21profiles.SetMonitoringBase)
+}
