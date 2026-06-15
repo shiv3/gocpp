@@ -37,6 +37,10 @@ All notable changes to this project are documented here. The format is based on
 - OpenTelemetry metrics implementation (`core/observability/metrics/otel`).
 - End-to-end OCPP 1.6 interop suite driving the gocpp CSMS against ocpp-cp-simulator
   (`examples/csms-full/interop/`).
+- Addon modules under `addons/` (each a nested module so heavy deps stay out of the core
+  tree): `router-redis` and `router-nats` (`storage.MessageRouter` for multi-instance CSMS),
+  `router-temporal` (durable Temporal-backed routing, experimental), `statefsm` (OCPP 1.6
+  connector state machine), and `tenant` (multi-tenant partitioning).
 
 ### Changed
 - **BREAKING:** `auth.Authenticator.Authenticate` now takes the parsed charge point id —
