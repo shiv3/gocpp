@@ -10,6 +10,15 @@ import (
 	"github.com/shiv3/gocpp/core/ocppj"
 )
 
+// SchemaMode controls how inbound JSON Schema validation failures are handled.
+type SchemaMode int
+
+const (
+	SchemaModeOff SchemaMode = iota
+	SchemaModeTolerant
+	SchemaModeStrict
+)
+
 // Config controls a single connection's behavior.
 type Config struct {
 	CallTimeout           time.Duration
@@ -20,8 +29,9 @@ type Config struct {
 	Metrics               MetricsHook
 	Tracer                observability.Tracer
 	// SchemaValidate optionally validates an inbound payload for the given version.
-	// Returning an error rejects the message. nil disables validation.
+	// nil disables validation. SchemaMode controls how returned errors are handled.
 	SchemaValidate func(version ocppj.Version, action, kind string, payload []byte) error
+	SchemaMode     SchemaMode
 }
 
 // DefaultConfig returns production-sane defaults.

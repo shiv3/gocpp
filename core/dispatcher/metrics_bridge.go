@@ -26,3 +26,6 @@ func (b *metricsBridge) CallCompleted(action, direction string, dur time.Duratio
 	b.m.CallCompleted(b.version, action, direction, dur, status)
 }
 func (b *metricsBridge) PendingDelta(delta int) { b.m.PendingCallCount(b.version, delta) }
+func (b *metricsBridge) SchemaValidationFailure(version, action, direction string) {
+	b.m.SchemaValidationFailure(version, action, direction)
+}

@@ -63,11 +63,17 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
 		return
 	}
-	if c.cfg.SchemaValidate != nil {
+	if c.cfg.SchemaValidate != nil && c.cfg.SchemaMode != SchemaModeOff {
 		if err := c.cfg.SchemaValidate(c.version, frame.Action, "request", frame.Payload); err != nil {
-			status = "schema_invalid"
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
-			return
+			c.recordSchemaValidationFailure(frame.Action, "request")
+			if c.cfg.SchemaMode == SchemaModeTolerant {
+				c.cfg.Logger.WarnContext(c.ctx, "schema validation failed",
+					"version", string(c.version), "action", frame.Action, "kind", "request", "err", err)
+			} else {
+				status = "schema_invalid"
+				c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
+				return
+			}
 		}
 	}
 	hctx, span := c.cfg.Tracer.Start(c.ctx, "ocpp.handler")
@@ -110,4 +116,10 @@ func mustJSON(v any) []byte {
 		return []byte("{}")
 	}
 	return b
+}
+
+func (c *Conn) recordSchemaValidationFailure(action, kind string) {
+	if m, ok := c.cfg.Metrics.(schemaValidationMetricsHook); ok {
+		m.SchemaValidationFailure(string(c.version), action, kind)
+	}
 }

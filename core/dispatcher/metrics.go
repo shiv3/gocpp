@@ -19,6 +19,11 @@ func (noopMetrics) ConnectionClosed()                                   {}
 func (noopMetrics) CallStarted(string, string)                          {}
 func (noopMetrics) CallCompleted(string, string, time.Duration, string) {}
 func (noopMetrics) PendingDelta(int)                                    {}
+func (noopMetrics) SchemaValidationFailure(string, string, string)      {}
 
 // NoopMetrics is the default metrics hook.
 var NoopMetrics MetricsHook = noopMetrics{}
+
+type schemaValidationMetricsHook interface {
+	SchemaValidationFailure(version, action, direction string)
+}

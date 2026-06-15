@@ -22,7 +22,6 @@ type serverConfig struct {
 	path              string
 	instanceID        string
 	registry          *schema.Registry
-	strictSchema      bool
 
 	auth           auth.Authenticator
 	connReg        storage.ConnectionRegistry
@@ -99,10 +98,26 @@ func WithSchemaRegistry(r *schema.Registry) Option {
 	return optionFunc(func(c *serverConfig) { c.registry = r })
 }
 
-// WithStrictSchema controls whether schema validation failures reject the message
-// (true) or only log a warning (false). Default false (spec OQ-19).
+// WithStrictSchema controls whether schema validation failures reject the message.
+// Passing false turns schema validation off. If WithStrictSchema and
+// WithTolerantSchema are both used, the last option in the list wins.
 func WithStrictSchema(strict bool) Option {
-	return optionFunc(func(c *serverConfig) { c.strictSchema = strict })
+	return optionFunc(func(c *serverConfig) {
+		if strict {
+			c.dispatcher.SchemaMode = dispatcher.SchemaModeStrict
+		} else {
+			c.dispatcher.SchemaMode = dispatcher.SchemaModeOff
+		}
+	})
+}
+
+// WithTolerantSchema enables schema validation that logs validation failures
+// but continues processing messages. If WithStrictSchema and WithTolerantSchema
+// are both used, the last option in the list wins.
+func WithTolerantSchema() Option {
+	return optionFunc(func(c *serverConfig) {
+		c.dispatcher.SchemaMode = dispatcher.SchemaModeTolerant
+	})
 }
 
 // WithAuthenticator sets the connection authenticator (default auth.None).
