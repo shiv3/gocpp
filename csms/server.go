@@ -96,7 +96,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Subprotocol() == "" {
-		c.Close(websocket.StatusProtocolError, "no common subprotocol")
+		_ = c.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return
 	}
 
@@ -170,7 +170,7 @@ func (s *Server) addConn(id string, c *Conn) bool {
 	s.conns[id] = c
 	s.mu.Unlock()
 	if ok {
-		go old.inner.Close(nil)
+		go func() { _ = old.inner.Close(nil) }()
 	}
 	return true
 }

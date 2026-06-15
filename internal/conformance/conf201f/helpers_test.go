@@ -56,20 +56,6 @@ func testVariable201f() messages.VariableType {
 	}
 }
 
-func testIDToken201f(idToken, tokenType string) messages.IdTokenType {
-	return messages.IdTokenType{
-		IDToken: idToken,
-		Type:    tokenType,
-	}
-}
-
-func testMessageContent201f() messages.MessageContentType {
-	return messages.MessageContentType{
-		Format:  "UTF8",
-		Content: "dummyContent",
-	}
-}
-
 func decimal201f(v string) decimal.Decimal {
 	d, err := decimal.NewFromString(v)
 	if err != nil {
@@ -78,8 +64,8 @@ func decimal201f(v string) decimal.Decimal {
 	return d
 }
 
-func decimalPtr201f(v string) *decimal.Decimal {
-	d := decimal201f(v)
+func decimalPtr201f() *decimal.Decimal {
+	d := decimal201f("8.42")
 	return &d
 }
 

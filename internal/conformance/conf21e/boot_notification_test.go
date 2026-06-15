@@ -37,15 +37,6 @@ func testIDToken() messages.IdTokenType {
 	}
 }
 
-func testCertificateHashData() messages.CertificateHashDataType {
-	return messages.CertificateHashDataType{
-		HashAlgorithm:  "SHA256",
-		IssuerKeyHash:  "issuer-key-hash",
-		IssuerNameHash: "issuer-name-hash",
-		SerialNumber:   "serial",
-	}
-}
-
 func testOCSPRequestData() messages.OCSPRequestDataType {
 	return messages.OCSPRequestDataType{
 		HashAlgorithm:  "SHA256",

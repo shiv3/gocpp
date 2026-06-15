@@ -20,7 +20,7 @@ func TestDoCall_Timeout(t *testing.T) {
 		cfg.CallTimeout = time.Second
 		c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
 		c.Start(context.Background())
-		defer c.Close(nil)
+		defer func() { _ = c.Close(nil) }()
 
 		// drain the outbound frame so the writer doesn't block
 		go func() { <-f.Sent() }()

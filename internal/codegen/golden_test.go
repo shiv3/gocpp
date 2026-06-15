@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var update = false // set true locally to regenerate goldens: go test -run Golden -args -update via flag below
-
 func TestCodegen_GoldenV16(t *testing.T) {
 	root, err := findRepoRoot()
 	require.NoError(t, err)

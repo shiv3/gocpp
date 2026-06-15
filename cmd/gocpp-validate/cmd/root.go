@@ -40,7 +40,7 @@ func RunValidate(out io.Writer, version, action, kind, file string) error {
 	if err := v.Validate(data); err != nil {
 		return fmt.Errorf("invalid: %w", err)
 	}
-	fmt.Fprintf(out, "%s: valid against %s %s (%s)\n", file, version, action, kind)
+	_, _ = fmt.Fprintf(out, "%s: valid against %s %s (%s)\n", file, version, action, kind)
 	return nil
 }
 

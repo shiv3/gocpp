@@ -356,7 +356,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid full response",
 			Message: messages.TransactionEventResponse{
-				TotalCost:              decimalPtr201f("8.42"),
+				TotalCost:              decimalPtr201f(),
 				ChargingPriority:       int32Ptr201f(2),
 				IDTokenInfo:            &messages.IdTokenInfoType{Status: "Accepted"},
 				UpdatedPersonalMessage: &messages.MessageContentType{Format: "UTF8", Content: "dummyContent"},
@@ -366,7 +366,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid without updatedPersonalMessage",
 			Message: messages.TransactionEventResponse{
-				TotalCost:        decimalPtr201f("8.42"),
+				TotalCost:        decimalPtr201f(),
 				ChargingPriority: int32Ptr201f(2),
 				IDTokenInfo:      &messages.IdTokenInfoType{Status: "Accepted"},
 			},
@@ -375,7 +375,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid without idTokenInfo",
 			Message: messages.TransactionEventResponse{
-				TotalCost:        decimalPtr201f("8.42"),
+				TotalCost:        decimalPtr201f(),
 				ChargingPriority: int32Ptr201f(2),
 			},
 			Valid: true,
@@ -383,7 +383,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid without chargingPriority",
 			Message: messages.TransactionEventResponse{
-				TotalCost: decimalPtr201f("8.42"),
+				TotalCost: decimalPtr201f(),
 			},
 			Valid: true,
 		},
@@ -395,7 +395,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 		{
 			Name: "invalid idTokenInfo status enum",
 			Message: messages.TransactionEventResponse{
-				TotalCost:              decimalPtr201f("8.42"),
+				TotalCost:              decimalPtr201f(),
 				ChargingPriority:       int32Ptr201f(2),
 				IDTokenInfo:            &messages.IdTokenInfoType{Status: "invalidAuthorizationStatus"},
 				UpdatedPersonalMessage: &messages.MessageContentType{Format: "UTF8", Content: "dummyContent"},

@@ -28,7 +28,6 @@ func RunValidationTable(t *testing.T, v *schema.Validator, cases []ValidationCas
 	t.Helper()
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.Name, func(t *testing.T) {
 			t.Helper()
 			require.NotEmpty(t, c.Name, "validation case must have a descriptive Name")

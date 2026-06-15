@@ -67,10 +67,12 @@ func TestInProcessRouter_ForwardsBetweenInstances(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go instB.ServeRemote(ctx, func(ctx context.Context, cpID, action string, req []byte) ([]byte, error) {
-		require.Equal(t, "CP_1", cpID)
-		return []byte(`{"status":"Accepted"}`), nil
-	})
+	go func() {
+		_ = instB.ServeRemote(ctx, func(ctx context.Context, cpID, action string, req []byte) ([]byte, error) {
+			require.Equal(t, "CP_1", cpID)
+			return []byte(`{"status":"Accepted"}`), nil
+		})
+	}()
 	hub.Bind("CP_1", "B")
 
 	require.Eventually(t, func() bool {

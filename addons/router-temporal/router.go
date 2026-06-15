@@ -195,7 +195,7 @@ func cloneRetryPolicy(in *temporal.RetryPolicy) *temporal.RetryPolicy {
 	return &out
 }
 
-func sanitizeWorkflowIDPart(in string, max int) string {
+func sanitizeWorkflowIDPart(in string, maxLen int) string {
 	var b strings.Builder
 	b.Grow(len(in))
 	lastDash := false
@@ -220,7 +220,7 @@ func sanitizeWorkflowIDPart(in string, max int) string {
 			lastDash = false
 		}
 		b.WriteByte(ch)
-		if max > 0 && b.Len() >= max {
+		if maxLen > 0 && b.Len() >= maxLen {
 			break
 		}
 	}

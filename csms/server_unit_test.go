@@ -55,8 +55,8 @@ func TestServeWSPassesExtractedCPIDToAuthenticator(t *testing.T) {
 
 func TestServerDuplicatePolicy_CloseExisting(t *testing.T) {
 	srv := NewServer()
-	old := newStartedTestConn(t, "CP_1")
-	next := newStartedTestConn(t, "CP_1")
+	old := newStartedTestConn(t)
+	next := newStartedTestConn(t)
 
 	require.True(t, srv.addConn("CP_1", old))
 	require.True(t, srv.addConn("CP_1", next))
@@ -77,8 +77,8 @@ func TestServerDuplicatePolicy_CloseExisting(t *testing.T) {
 
 func TestServerDuplicatePolicy_RejectNew(t *testing.T) {
 	srv := NewServer(WithDuplicatePolicy(DuplicatePolicyRejectNew))
-	old := newStartedTestConn(t, "CP_1")
-	next := newStartedTestConn(t, "CP_1")
+	old := newStartedTestConn(t)
+	next := newStartedTestConn(t)
 
 	require.True(t, srv.addConn("CP_1", old))
 	require.False(t, srv.addConn("CP_1", next))
@@ -90,7 +90,7 @@ func TestServerDuplicatePolicy_RejectNew(t *testing.T) {
 
 func TestServeWSRejectsDuplicateBeforeUpgrade(t *testing.T) {
 	srv := NewServer(WithDuplicatePolicy(DuplicatePolicyRejectNew))
-	existing := newStartedTestConn(t, "CP_1")
+	existing := newStartedTestConn(t)
 	require.True(t, srv.addConn("CP_1", existing))
 
 	rec := httptest.NewRecorder()
@@ -128,9 +128,9 @@ func (a *recordingAuthenticator) Authenticate(r *http.Request, cpID string) (aut
 	return auth.Identity{}, a.err
 }
 
-func newStartedTestConn(t *testing.T, id string) *Conn {
+func newStartedTestConn(t *testing.T) *Conn {
 	t.Helper()
-	dconn := dispatcher.NewConn(id, transport.NewFakeWS("ocpp1.6"), dispatcher.DefaultConfig(), dispatcher.NewHandlerRegistry())
+	dconn := dispatcher.NewConn("CP_1", transport.NewFakeWS("ocpp1.6"), dispatcher.DefaultConfig(), dispatcher.NewHandlerRegistry())
 	dconn.Start(context.Background())
 	t.Cleanup(func() {
 		_ = dconn.Close(nil)

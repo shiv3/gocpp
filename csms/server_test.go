@@ -22,7 +22,7 @@ func TestServer_AcceptsConnection(t *testing.T) {
 	url := "ws" + ts.URL[len("http"):] + "/ocpp/CP_1"
 	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 	require.NoError(t, err)
-	defer c.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = c.Close(websocket.StatusNormalClosure, "") }()
 
 	require.Eventually(t, func() bool {
 		_, ok := srv.Get("CP_1")

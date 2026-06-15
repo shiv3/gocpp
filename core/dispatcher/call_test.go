@@ -15,7 +15,7 @@ func TestDoCall_Success(t *testing.T) {
 	f := transport.NewFakeWS("ocpp1.6")
 	c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	// Reply to whatever Call the test sends with a fixed CallResult.
 	go func() {

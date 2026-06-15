@@ -12,7 +12,6 @@ type clientConfig struct {
 	dispatcher        dispatcher.Config
 	subProtocols      []string
 	heartbeatInterval time.Duration
-	pingInterval      time.Duration
 	registry          *schema.Registry
 }
 

@@ -40,10 +40,6 @@ func useDecimalJSONWithoutQuotes21(t *testing.T) {
 	})
 }
 
-func testStatusInfo21() *messages.StatusInfoType {
-	return &messages.StatusInfoType{ReasonCode: "OK"}
-}
-
 func testComponent21() messages.ComponentType {
 	return messages.ComponentType{Name: "EVSE"}
 }

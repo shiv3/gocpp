@@ -18,7 +18,7 @@ func TestConn_KeepaliveFires(t *testing.T) {
 		f := transport.NewFakeWS("ocpp1.6")
 		c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 		c.Start(context.Background())
-		defer c.Close(nil)
+		defer func() { _ = c.Close(nil) }()
 
 		var ticks atomic.Int32
 		c.StartKeepalive(time.Minute, func(context.Context) { ticks.Add(1) })

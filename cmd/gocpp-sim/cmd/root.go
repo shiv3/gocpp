@@ -37,10 +37,10 @@ func runCmd() *cobra.Command {
 			}
 			for _, r := range results {
 				if r.Err != nil {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s: ERROR %v\n", r.Action, r.Err)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: ERROR %v\n", r.Action, r.Err)
 					continue
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", r.Action, string(r.Response))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", r.Action, string(r.Response))
 			}
 			return nil
 		},

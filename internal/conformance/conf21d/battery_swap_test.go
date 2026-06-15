@@ -31,10 +31,6 @@ func must21Validator(t *testing.T, action, kind string) *schema.Validator {
 	return conformance.MustValidator(t, reg, "2.1", action, kind)
 }
 
-func stringPtr(s string) *string {
-	return &s
-}
-
 func int32Ptr(i int32) *int32 {
 	return &i
 }

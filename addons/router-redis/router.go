@@ -99,7 +99,7 @@ func (r *router) CallRemote(ctx context.Context, cpID, action string, req []byte
 	if err != nil {
 		return nil, fmt.Errorf("routerredis: subscribe reply channel: %w", err)
 	}
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 
 	envelope := requestEnvelope{
 		Version:      envelopeVersion,
@@ -149,7 +149,7 @@ func (r *router) ServeRemote(ctx context.Context, handler storage.RemoteHandler)
 	if err != nil {
 		return fmt.Errorf("routerredis: subscribe request channel: %w", err)
 	}
-	defer sub.Close()
+	defer func() { _ = sub.Close() }()
 
 	for {
 		select {

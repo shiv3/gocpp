@@ -23,7 +23,7 @@ func TestConn_HandlerRespondsCallResult(t *testing.T) {
 	})
 	c := NewConn("CP_1", f, DefaultConfig(), reg)
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	f.Inject([]byte(`[2,"h1","Heartbeat",{}]`))
 
@@ -36,7 +36,7 @@ func TestConn_UnknownActionReturnsNotImplemented(t *testing.T) {
 	f := transport.NewFakeWS("ocpp1.6")
 	c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	f.Inject([]byte(`[2,"x1","Nonexistent",{}]`))
 
@@ -57,7 +57,7 @@ func TestConn_HandlerPanicReturnsInternalErrorAndSurvives(t *testing.T) {
 	})
 	c := NewConn("CP_1", f, DefaultConfig(), reg)
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	// A panicking handler must not crash the process; it replies InternalError.
 	f.Inject([]byte(`[2,"b1","Boom",{}]`))
@@ -80,7 +80,7 @@ func TestConn_HandlerErrorReturnsCallError(t *testing.T) {
 	})
 	c := NewConn("CP_1", f, DefaultConfig(), reg)
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	f.Inject([]byte(`[2,"a1","Authorize",{}]`))
 	sent := <-f.Sent()
@@ -103,7 +103,7 @@ func TestConn_SchemaModeOffSkipsValidation(t *testing.T) {
 	}
 	c := NewConn("CP_1", f, cfg, reg)
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	f.Inject([]byte(`[2,"off1","Heartbeat",{}]`))
 
@@ -132,7 +132,7 @@ func TestConn_SchemaModeTolerantLogsAndContinues(t *testing.T) {
 	}
 	c := NewConn("CP_1", f, cfg, reg)
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	f.Inject([]byte(`[2,"tol1","Heartbeat",{}]`))
 
@@ -169,7 +169,7 @@ func TestConn_SchemaModeStrictRejectsFormationViolation(t *testing.T) {
 	}
 	c := NewConn("CP_1", f, cfg, reg)
 	c.Start(context.Background())
-	defer c.Close(nil)
+	defer func() { _ = c.Close(nil) }()
 
 	f.Inject([]byte(`[2,"strict1","Heartbeat",{}]`))
 

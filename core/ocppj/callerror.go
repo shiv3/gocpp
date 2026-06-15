@@ -14,12 +14,12 @@ const (
 	ErrorCodeFormatViolation               ErrorCode = "FormatViolation"    // 2.x
 	ErrorCodeFormationViolation            ErrorCode = "FormationViolation" // 1.6
 	ErrorCodePropertyConstraintViolation   ErrorCode = "PropertyConstraintViolation"
-	ErrorCodeOccurenceConstraintViolation  ErrorCode = "OccurenceConstraintViolation"  // 1.6 typo
+	ErrorCodeOccurenceConstraintViolation  ErrorCode = "OccurenceConstraintViolation"  //nolint:misspell // OCPP 1.6 spec wire spelling
 	ErrorCodeOccurrenceConstraintViolation ErrorCode = "OccurrenceConstraintViolation" // 2.x
 	ErrorCodeTypeConstraintViolation       ErrorCode = "TypeConstraintViolation"
 	ErrorCodeGenericError                  ErrorCode = "GenericError"
 	ErrorCodeMessageTypeNotSupported       ErrorCode = "MessageTypeNotSupported" // 2.x
-	ErrorCodeRpcFrameworkError             ErrorCode = "RpcFrameworkError"       // 2.x
+	ErrorCodeRPCFrameworkError             ErrorCode = "RpcFrameworkError"       // 2.x
 )
 
 // CallError is an OCPP-J error response (MessageType 4).
@@ -40,7 +40,7 @@ func (e *CallError) Error() string {
 func (e *CallError) Unwrap() error { return e.cause }
 
 // WireCode returns the on-the-wire error code string, applying the OCPP 1.6
-// "Occurence" misspelling when the connection is 1.6.
+// spec's misspelled OccurenceConstraintViolation code for 1.6 connections. //nolint:misspell // OCPP 1.6 spec wire spelling
 func (e *CallError) WireCode(v Version) string {
 	if e.Code == ErrorCodeOccurrenceConstraintViolation && v == V16 {
 		return string(ErrorCodeOccurenceConstraintViolation)

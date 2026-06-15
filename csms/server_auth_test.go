@@ -45,7 +45,7 @@ func TestServer_RejectsUnauthenticated(t *testing.T) {
 		HTTPHeader:   basicAuthHeader("CP_1", "secret"),
 	})
 	require.NoError(t, err)
-	defer good.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = good.Close(websocket.StatusNormalClosure, "") }()
 	require.Eventually(t, func() bool {
 		_, ok := srv.Get("CP_1")
 		return ok

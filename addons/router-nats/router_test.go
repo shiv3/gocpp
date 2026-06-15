@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewReturnsMessageRouter(t *testing.T) {
-	var _ storage.MessageRouter = New(nil, "A", nil)
+	var _ = New(nil, "A", nil)
 }
 
 func TestCallLocalReturnsErrNotLocal(t *testing.T) {

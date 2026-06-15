@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -82,7 +83,7 @@ func generate(cfg genConfig) error {
 				return err
 			}
 
-			allStructs := append(reqStructs, respStructs...)
+			allStructs := slices.Concat(reqStructs, respStructs)
 			msgStructs, err := filterNewStructs(allStructs, structByName)
 			if err != nil {
 				return err

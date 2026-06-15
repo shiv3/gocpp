@@ -141,7 +141,7 @@ func TestMapTemporalErrorPreservesStorageSentinels(t *testing.T) {
 		temporalErrorTypeRouterNotImplemented,
 		nil,
 	)
-	if got := mapTemporalError(err); got != storage.ErrRouterNotImplemented {
+	if got := mapTemporalError(err); !errors.Is(got, storage.ErrRouterNotImplemented) {
 		t.Fatalf("mapped error = %v", got)
 	}
 }

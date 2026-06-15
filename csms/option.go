@@ -19,7 +19,6 @@ type serverConfig struct {
 	subProtocols      []string
 	heartbeatInterval time.Duration
 	pingInterval      time.Duration
-	addr              string
 	path              string
 	cpIDExtractor     CPIDExtractor
 	instanceID        string

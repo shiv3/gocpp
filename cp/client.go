@@ -57,7 +57,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 	if wsConn.Subprotocol() == "" {
-		wsConn.Close(websocket.StatusProtocolError, "no common subprotocol")
+		_ = wsConn.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return ocppj.ErrVersionMismatch
 	}
 	ws := transport.NewCoderWS(wsConn)

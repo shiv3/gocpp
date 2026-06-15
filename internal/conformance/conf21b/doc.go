@@ -370,15 +370,15 @@ func validSchemaNumber21(t *testing.T, node map[string]any) float64 {
 
 	value := 1.0
 	if rawMax, ok := node["maximum"]; ok {
-		max := floatSchemaNumber21(t, rawMax)
-		if value > max {
-			value = max
+		maxVal := floatSchemaNumber21(t, rawMax)
+		if value > maxVal {
+			value = maxVal
 		}
 	}
 	if rawMin, ok := node["minimum"]; ok {
-		min := floatSchemaNumber21(t, rawMin)
-		if value < min {
-			value = min
+		minVal := floatSchemaNumber21(t, rawMin)
+		if value < minVal {
+			value = minVal
 		}
 	}
 	return value
