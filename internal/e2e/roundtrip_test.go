@@ -14,7 +14,7 @@ import (
 
 type bootReq struct {
 	ChargePointVendor string `json:"chargePointVendor"`
-	ChargePointModel  string `json:"chargePointModel"`
+	ChargePointModel  string `json:"chargePointModel,omitempty"`
 }
 type bootResp struct {
 	Status      string `json:"status"`
