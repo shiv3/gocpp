@@ -1,15 +1,136 @@
-# gocpp
+# Gocpp
 
-A generics-first OCPP (Open Charge Point Protocol) implementation in Go.
-Supports OCPP 1.6, 2.0.1, and 2.1 from a single module.
+A generics-first **OCPP** (Open Charge Point Protocol) implementation in Go,
+supporting **OCPP 1.6, 2.0.1, and 2.1** from a single module — the only Go/Generics OCPP
+library with 2.1 support.
 
-> Status: pre-v0, under active development. See `docs/superpowers/specs/` for design.
+> Status: pre-v1, under active development. Public API may still change before v1.0.
 
-## Why
+## Why gocpp
 
-Replaces the unmaintained `lorenzodonini/ocpp-go` with a context-native
-concurrency model, JSON-Schema-driven code generation, and a pluggable
-storage/observability layer.
+A from-scratch alternative to `lorenzodonini/ocpp-go` with:
+
+- **All three versions** (1.6 / 2.0.1 / 2.1) generated from the official OCA JSON
+  schemas — no hand-written, drift-prone message structs.
+- **Generics-first API** — typed `On[Req,Resp]` handlers and `Call[Req,Resp]`, so
+  request/response types are inferred from a single message value.
+- **Context-native concurrency** — every connection owns reader/writer/dispatch
+  goroutines bound to a `context`; teardown flows from one `cancel(cause)`. Race- and
+  goroutine-leak-tested (`-race` + `goleak`).
+- **Two-layer validation** — JSON-Schema validation against the embedded official
+  schemas (source of truth), plus generated `validate` struct tags.
+- **Pluggable** Storage / Auth / Observability with in-memory / NoOp defaults and
+  Prometheus + OpenTelemetry adapters.
+
+## Install
+
+```sh
+go get github.com/shiv3/gocpp
+```
+
+Requires Go 1.25+.
+
+## Quick start
+
+### CSMS (central system)
+
+```go
+srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1", "ocpp2.0.1", "ocpp1.6"))
+
+csms.On(srv, v16p.BootNotification, func(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
+    return v16msg.BootNotificationResponse{
+        Status:      v16msg.RegistrationStatusAccepted,
+        CurrentTime: time.Now(),
+        Interval:    300,
+    }, nil
+})
+
+log.Fatal(srv.ListenAndServe(":8080")) // ws://host:8080/ocpp/{cpId}
+```
+
+### Charge point (client)
+
+```go
+client := cp.NewClient("CP_1", "ws://localhost:8080/ocpp/CP_1", cp.WithSubProtocols("ocpp1.6"))
+if err := client.Connect(ctx); err != nil { log.Fatal(err) }
+defer client.Close()
+
+resp, err := cp.Call(ctx, client, v16p.BootNotification, v16msg.BootNotificationRequest{
+    ChargePointVendor: "Acme", ChargePointModel: "Model-X",
+})
+```
+
+Runnable examples: [`examples/csms-minimal`](examples/csms-minimal),
+[`examples/cp-minimal`](examples/cp-minimal).
+
+## Packages
+
+| Import | Purpose |
+|---|---|
+| `csms` | CSMS server: `NewServer`, `On`, `Call`, `Get` |
+| `cp` | Charge point client: `NewClient`, `Connect`, `On`, `Call`, `Run` |
+| `v16`, `v201`, `v21` | Per-version metadata + `RegisterSchemas` |
+| `v16/messages`, `…/profiles` | Generated message structs + `ocppj.Message` profile vars |
+| `core/ocppj` | OCPP-J framing (Call/CallResult/CallError), errors |
+| `core/dispatcher` | Version-agnostic connection lifecycle + pending-call tracking |
+| `core/schema` | JSON-Schema validator + registry |
+| `core/auth` | `Authenticator`: `None`, `BasicAuth`, `MTLSFromClientCert` |
+| `core/storage` (+ `/memory`) | `ConnectionRegistry`, `MessageRouter`, `TransactionStore`, `ConfigStore` |
+| `core/observability` (+ `/metrics/prom`) | `Metrics` (NoOp/Prometheus), OTel tracer |
+
+## Validation
+
+Layer 1 (wire): enable strict schema validation on the connection so malformed
+inbound messages are rejected with a `CallError` before reaching your handler:
+
+```go
+reg := schema.NewRegistry()
+v201.RegisterSchemas(reg)
+srv := csms.NewServer(
+    csms.WithSubProtocols("ocpp2.0.1"),
+    csms.WithSchemaRegistry(reg),
+    csms.WithStrictSchema(true),
+)
+```
+
+## Production features
+
+```go
+srv := csms.NewServer(
+    csms.WithAuthenticator(auth.BasicAuth(verify)),     // Security Profile 1/2
+    csms.WithMetrics(prom.New(promRegistry)),           // Prometheus
+    csms.WithTracerProvider(tp),                        // OpenTelemetry spans
+    csms.WithConnectionRegistry(myRegistry),            // pluggable
+)
+```
+
+## Tooling
+
+```sh
+go install github.com/shiv3/gocpp/cmd/gocpp-validate@latest
+go install github.com/shiv3/gocpp/cmd/gocpp-sim@latest
+```
+
+- `gocpp-validate --version 2.0.1 --action BootNotification msg.json` — validate a
+  message against the official schema.
+- `gocpp-sim run -s scenario.yaml` — drive a simulated charge point through a YAML
+  scenario against a CSMS.
+
+## Testing
+
+```sh
+make test          # go test ./...
+make test-race     # go test -race ./...
+make codegen       # regenerate v16/v201/v21 from schemas/
+```
+
+The `internal/conformance` suite ports lorenzodonini/ocpp-go's per-message test cases
+(validation tables + direction enforcement) across all 188 messages of 1.6/2.0.1/2.1.
+
+## Documentation
+
+- [docs/usage.md](docs/usage.md) — usage guide
+- [docs/architecture.md](docs/architecture.md) — design & concurrency model
 
 ## License
 
