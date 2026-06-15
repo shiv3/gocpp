@@ -1,0 +1,17 @@
+version: "2"
+linters:
+  enable:
+    - errorlint
+    - copyloopvar
+    - gocritic
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+linters-settings:
+  errorlint:
+    errorf: true
+    asserts: true
+    comparison: true
+run:
+  timeout: 5m
