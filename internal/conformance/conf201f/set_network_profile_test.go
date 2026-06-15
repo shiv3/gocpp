@@ -1,152 +1,41 @@
 package conf201f
 
 import (
-	"context"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
-	"github.com/shiv3/gocpp/cp"
-	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	"github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
-const subprotocol201 = "ocpp2.0.1"
-
-func init() {
-	decimal.MarshalJSONWithoutQuotes = true
-}
-
-func ptr[T any](v T) *T {
-	return &v
-}
-
-func fixedTime201() time.Time {
-	return time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
-}
-
-func longString(n int) string {
-	return strings.Repeat("x", n)
-}
-
-func dec(v string) decimal.Decimal {
-	d, err := decimal.NewFromString(v)
-	if err != nil {
-		panic(err)
-	}
-	return d
-}
-
-func statusInfo201(reasonCode string) *messages.StatusInfoType {
-	return &messages.StatusInfoType{ReasonCode: reasonCode, AdditionalInfo: ptr("someInfo")}
-}
-
-func component201() messages.ComponentType {
-	return messages.ComponentType{
-		Name:     "component1",
-		Instance: ptr("instance1"),
-		EVSE: &messages.EVSEType{
-			ID:          2,
-			ConnectorID: ptr(int32(2)),
-		},
-	}
-}
-
-func variable201() messages.VariableType {
-	return messages.VariableType{
-		Name:     "variable1",
-		Instance: ptr("instance1"),
-	}
-}
-
-func messageContent201() messages.MessageContentType {
-	return messages.MessageContentType{
-		Format:  "UTF8",
-		Content: "dummyContent",
-	}
-}
-
-func idToken201(tokenType string) messages.IdTokenType {
-	return messages.IdTokenType{
-		IDToken: "1234",
-		Type:    tokenType,
-	}
-}
-
-func requireCSMSHandlerInvalidDirection201[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
-	t.Helper()
-
-	srv := csms.NewServer(csms.WithSubProtocols(subprotocol201))
-	defer srv.Close()
-	wrongDirection := ocppj.Message[Req, Resp]{
-		Action:    msg.Action,
-		Direction: ocppj.SentByCSMS,
-	}
-
-	err := csms.On(srv, wrongDirection, func(ctx context.Context, c *csms.Conn, req Req) (Resp, error) {
-		var resp Resp
-		return resp, nil
-	})
-
-	require.ErrorIs(t, err, ocppj.ErrInvalidDirection)
-}
-
-func requireCPHandlerInvalidDirection201[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
-	t.Helper()
-
-	client := cp.NewClient("CP_1", "ws://example.invalid", cp.WithSubProtocols(subprotocol201))
-	wrongDirection := ocppj.Message[Req, Resp]{
-		Action:    msg.Action,
-		Direction: ocppj.SentByCP,
-	}
-
-	err := cp.On(client, wrongDirection, func(ctx context.Context, req Req) (Resp, error) {
-		var resp Resp
-		return resp, nil
-	})
-
-	require.ErrorIs(t, err, ocppj.ErrInvalidDirection)
-}
-
-func skipSchemaOverride201(t *testing.T, name string) {
-	t.Helper()
-	t.Run(name, func(t *testing.T) {
-		// TODO(parity): needs schema override
-		t.Skip("constraint is not present in the bundled OCA schema")
-	})
-}
-
-func vpn201() *messages.VPNType {
+func testVPN201f() *messages.VPNType {
 	return &messages.VPNType{
 		Server:   "someServer",
 		User:     "user1",
-		Group:    ptr("group1"),
+		Group:    strPtr201f("group1"),
 		Password: "deadc0de",
 		Key:      "deadbeef",
 		Type:     "IPSec",
 	}
 }
 
-func apn201() *messages.APNType {
+func testAPN201f() *messages.APNType {
 	return &messages.APNType{
 		Apn:                     "internet.t-mobile",
-		ApnUserName:             ptr("user1"),
-		ApnPassword:             ptr("deadc0de"),
-		SimPin:                  ptr(int32(1234)),
-		PreferredNetwork:        ptr("26201"),
-		UseOnlyPreferredNetwork: ptr(true),
+		ApnUserName:             strPtr201f("user1"),
+		ApnPassword:             strPtr201f("deadc0de"),
+		SimPin:                  int32Ptr201f(1234),
+		PreferredNetwork:        strPtr201f("26201"),
+		UseOnlyPreferredNetwork: boolPtr201f(true),
 		ApnAuthentication:       "AUTO",
 	}
 }
 
-func networkConnectionProfile201() messages.NetworkConnectionProfileType {
+func testNetworkConnectionProfile201f() messages.NetworkConnectionProfileType {
 	return messages.NetworkConnectionProfileType{
 		OCPPVersion:     "OCPP20",
 		OCPPTransport:   "JSON",
@@ -154,8 +43,15 @@ func networkConnectionProfile201() messages.NetworkConnectionProfileType {
 		MessageTimeout:  30,
 		SecurityProfile: 1,
 		OCPPInterface:   "Wired0",
-		Vpn:             vpn201(),
-		Apn:             apn201(),
+		Vpn:             testVPN201f(),
+		Apn:             testAPN201f(),
+	}
+}
+
+func testSetNetworkProfileRequest201f(data messages.NetworkConnectionProfileType) messages.SetNetworkProfileRequest {
+	return messages.SetNetworkProfileRequest{
+		ConfigurationSlot: 2,
+		ConnectionData:    data,
 	}
 }
 
@@ -166,29 +62,56 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 
 	cases := []conformance.ValidationCase{
 		{
-			Name: "valid full request",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData:    networkConnectionProfile201(),
-			},
-			Valid: true,
+			Name:    "valid full request",
+			Message: testSetNetworkProfileRequest201f(testNetworkConnectionProfile201f()),
+			Valid:   true,
 		},
 		{
 			Name: "valid without apn",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: func() messages.NetworkConnectionProfileType {
-					data := networkConnectionProfile201()
-					data.Apn = nil
-					return data
-				}(),
-			},
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn = nil
+				return data
+			}()),
 			Valid: true,
 		},
 		{
 			Name: "valid without vpn and apn",
+			Message: testSetNetworkProfileRequest201f(messages.NetworkConnectionProfileType{
+				OCPPVersion:     "OCPP20",
+				OCPPTransport:   "JSON",
+				OCPPCsmsURL:     "http://someUrl:8767",
+				MessageTimeout:  30,
+				SecurityProfile: 1,
+				OCPPInterface:   "Wired0",
+			}),
+			Valid: true,
+		},
+		{
+			Name: "valid zero securityProfile",
+			Message: testSetNetworkProfileRequest201f(messages.NetworkConnectionProfileType{
+				OCPPVersion:    "OCPP20",
+				OCPPTransport:  "JSON",
+				OCPPCsmsURL:    "http://someUrl:8767",
+				MessageTimeout: 30,
+				OCPPInterface:  "Wired0",
+			}),
+			Valid: true,
+		},
+		{
+			Name: "valid zero messageTimeout",
+			Message: testSetNetworkProfileRequest201f(messages.NetworkConnectionProfileType{
+				OCPPVersion:     "OCPP20",
+				OCPPTransport:   "JSON",
+				OCPPCsmsURL:     "http://someUrl:8767",
+				SecurityProfile: 1,
+				OCPPInterface:   "Wired0",
+			}),
+			Valid: true,
+		},
+		{
+			Name: "valid zero configurationSlot",
 			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
 				ConnectionData: messages.NetworkConnectionProfileType{
 					OCPPVersion:     "OCPP20",
 					OCPPTransport:   "JSON",
@@ -201,51 +124,36 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 			Valid: true,
 		},
 		{
-			Name: "valid zero securityProfile",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: messages.NetworkConnectionProfileType{
-					OCPPVersion:    "OCPP20",
-					OCPPTransport:  "JSON",
-					OCPPCsmsURL:    "http://someUrl:8767",
-					MessageTimeout: 30,
-					OCPPInterface:  "Wired0",
+			Name: "invalid missing configurationSlot",
+			Message: map[string]any{
+				"connectionData": map[string]any{
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
 				},
 			},
-			Valid: true,
+			Valid: false,
 		},
 		{
-			Name: "valid zero messageTimeout",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: messages.NetworkConnectionProfileType{
-					OCPPVersion:   "OCPP20",
-					OCPPTransport: "JSON",
-					OCPPCsmsURL:   "http://someUrl:8767",
-					OCPPInterface: "Wired0",
-				},
+			Name: "invalid missing connectionData",
+			Message: map[string]any{
+				"configurationSlot": 2,
 			},
-			Valid: true,
-		},
-		{
-			Name: "valid zero configurationSlot",
-			Message: messages.SetNetworkProfileRequest{
-				ConnectionData: messages.NetworkConnectionProfileType{
-					OCPPVersion:   "OCPP20",
-					OCPPTransport: "JSON",
-					OCPPCsmsURL:   "http://someUrl:8767",
-					OCPPInterface: "Wired0",
-				},
-			},
-			Valid: true,
+			Valid: false,
 		},
 		{
 			Name: "invalid missing ocppInterface",
 			Message: map[string]any{
+				"configurationSlot": 2,
 				"connectionData": map[string]any{
-					"ocppVersion":   "OCPP20",
-					"ocppTransport": "JSON",
-					"ocppCsmsUrl":   "http://someUrl:8767",
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
 				},
 			},
 			Valid: false,
@@ -253,10 +161,13 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing ocppCsmsUrl",
 			Message: map[string]any{
+				"configurationSlot": 2,
 				"connectionData": map[string]any{
-					"ocppVersion":   "OCPP20",
-					"ocppTransport": "JSON",
-					"ocppInterface": "Wired0",
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
 				},
 			},
 			Valid: false,
@@ -264,10 +175,13 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing ocppTransport",
 			Message: map[string]any{
+				"configurationSlot": 2,
 				"connectionData": map[string]any{
-					"ocppVersion":   "OCPP20",
-					"ocppCsmsUrl":   "http://someUrl:8767",
-					"ocppInterface": "Wired0",
+					"ocppVersion":     "OCPP20",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
 				},
 			},
 			Valid: false,
@@ -275,96 +189,377 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing ocppVersion",
 			Message: map[string]any{
+				"configurationSlot": 2,
 				"connectionData": map[string]any{
-					"ocppTransport": "JSON",
-					"ocppCsmsUrl":   "http://someUrl:8767",
-					"ocppInterface": "Wired0",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
 				},
 			},
 			Valid: false,
 		},
 		{
-			Name:    "invalid empty request",
+			Name: "invalid missing messageTimeout",
+			Message: map[string]any{
+				"configurationSlot": 2,
+				"connectionData": map[string]any{
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid missing securityProfile",
+			Message: map[string]any{
+				"configurationSlot": 2,
+				"connectionData": map[string]any{
+					"ocppVersion":    "OCPP20",
+					"ocppTransport":  "JSON",
+					"ocppCsmsUrl":    "http://someUrl:8767",
+					"messageTimeout": 30,
+					"ocppInterface":  "Wired0",
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name:    "invalid missing required fields",
 			Message: map[string]any{},
 			Valid:   false,
 		},
 		{
 			Name: "invalid ocppVersion enum",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: func() messages.NetworkConnectionProfileType {
-					data := networkConnectionProfile201()
-					data.OCPPVersion = "OCPP01"
-					return data
-				}(),
-			},
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.OCPPVersion = "OCPP01"
+				return data
+			}()),
 			Valid: false,
 		},
 		{
 			Name: "invalid ocppTransport enum",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: func() messages.NetworkConnectionProfileType {
-					data := networkConnectionProfile201()
-					data.OCPPTransport = "ProtoBuf"
-					return data
-				}(),
-			},
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.OCPPTransport = "ProtoBuf"
+				return data
+			}()),
 			Valid: false,
 		},
 		{
 			Name: "invalid ocppCsmsUrl exceeds maxLength 512",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: func() messages.NetworkConnectionProfileType {
-					data := networkConnectionProfile201()
-					data.OCPPCsmsURL = longString(513)
-					return data
-				}(),
-			},
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.OCPPCsmsURL = strings.Repeat("x", 513)
+				return data
+			}()),
 			Valid: false,
 		},
 		{
 			Name: "invalid ocppInterface enum",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: func() messages.NetworkConnectionProfileType {
-					data := networkConnectionProfile201()
-					data.OCPPInterface = "invalidInterface"
-					return data
-				}(),
-			},
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.OCPPInterface = "invalidInterface"
+				return data
+			}()),
 			Valid: false,
 		},
 		{
 			Name: "invalid empty vpn",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: func() messages.NetworkConnectionProfileType {
-					data := networkConnectionProfile201()
-					data.Vpn = &messages.VPNType{}
-					return data
-				}(),
-			},
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn = &messages.VPNType{}
+				return data
+			}()),
 			Valid: false,
 		},
 		{
 			Name: "invalid empty apn",
-			Message: messages.SetNetworkProfileRequest{
-				ConfigurationSlot: 2,
-				ConnectionData: func() messages.NetworkConnectionProfileType {
-					data := networkConnectionProfile201()
-					data.Apn = &messages.APNType{}
-					return data
-				}(),
-			},
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn = &messages.APNType{}
+				return data
+			}()),
 			Valid: false,
 		},
+		{
+			Name: "valid vpn without group",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn.Group = nil
+				return data
+			}()),
+			Valid: true,
+		},
+		{
+			Name: "invalid vpn missing type",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn = &messages.VPNType{
+					Server:   "someServer",
+					User:     "user1",
+					Password: "deadc0de",
+					Key:      "deadbeef",
+				}
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn missing key",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn = &messages.VPNType{
+					Server:   "someServer",
+					User:     "user1",
+					Password: "deadc0de",
+					Type:     "IPSec",
+				}
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn missing password",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn = &messages.VPNType{
+					Server: "someServer",
+					User:   "user1",
+					Key:    "deadbeef",
+					Type:   "IPSec",
+				}
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn missing user",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn = &messages.VPNType{
+					Server:   "someServer",
+					Password: "deadc0de",
+					Key:      "deadbeef",
+					Type:     "IPSec",
+				}
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn missing server",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn = &messages.VPNType{
+					User:     "user1",
+					Password: "deadc0de",
+					Key:      "deadbeef",
+					Type:     "IPSec",
+				}
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn.server exceeds maxLength 512",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn.Server = strings.Repeat("x", 513)
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn.user exceeds maxLength 20",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn.User = strings.Repeat("x", 21)
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn.group exceeds maxLength 20",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn.Group = strPtr201f(strings.Repeat("x", 21))
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn.password exceeds maxLength 20",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn.Password = strings.Repeat("x", 21)
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn.key exceeds maxLength 255",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn.Key = strings.Repeat("x", 256)
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid vpn.type enum",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Vpn.Type = "invalidType"
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "valid apn without useOnlyPreferredNetwork",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.UseOnlyPreferredNetwork = nil
+				return data
+			}()),
+			Valid: true,
+		},
+		{
+			Name: "valid apn without preferredNetwork",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.PreferredNetwork = nil
+				data.Apn.UseOnlyPreferredNetwork = nil
+				return data
+			}()),
+			Valid: true,
+		},
+		{
+			Name: "valid apn without simPin",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.SimPin = nil
+				data.Apn.PreferredNetwork = nil
+				data.Apn.UseOnlyPreferredNetwork = nil
+				return data
+			}()),
+			Valid: true,
+		},
+		{
+			Name: "valid apn without password",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.ApnPassword = nil
+				data.Apn.SimPin = nil
+				data.Apn.PreferredNetwork = nil
+				data.Apn.UseOnlyPreferredNetwork = nil
+				return data
+			}()),
+			Valid: true,
+		},
+		{
+			Name: "valid apn without username",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.ApnUserName = nil
+				data.Apn.ApnPassword = nil
+				data.Apn.SimPin = nil
+				data.Apn.PreferredNetwork = nil
+				data.Apn.UseOnlyPreferredNetwork = nil
+				return data
+			}()),
+			Valid: true,
+		},
+		{
+			Name: "valid minimal apn",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn = &messages.APNType{
+					Apn:               "internet.t-mobile",
+					ApnAuthentication: "AUTO",
+				}
+				return data
+			}()),
+			Valid: true,
+		},
+		{
+			Name: "invalid apn missing authentication",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn = &messages.APNType{
+					Apn: "internet.t-mobile",
+				}
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid apn missing apn",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn = &messages.APNType{
+					ApnAuthentication: "AUTO",
+				}
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid apn.apn exceeds maxLength 512",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.Apn = strings.Repeat("x", 513)
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid apn.apnUserName exceeds maxLength 20",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.ApnUserName = strPtr201f(strings.Repeat("x", 21))
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid apn.apnPassword exceeds maxLength 20",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.ApnPassword = strPtr201f(strings.Repeat("x", 21))
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid apn.preferredNetwork exceeds maxLength 6",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.PreferredNetwork = strPtr201f(strings.Repeat("x", 7))
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid apnAuthentication enum",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.ApnAuthentication = "invalidApnAuthentication"
+				return data
+			}()),
+			Valid: false,
+		},
+		// TODO(parity): needs schema override for configurationSlot minimum.
+		// TODO(parity): needs schema override for messageTimeout minimum.
+		// TODO(parity): needs schema override for simPin minimum.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
-	skipSchemaOverride201(t, "invalid configurationSlot below minimum")
-	skipSchemaOverride201(t, "invalid messageTimeout below minimum")
 }
 
 func TestSetNetworkProfile201_ResponseValidation(t *testing.T) {
@@ -377,7 +572,7 @@ func TestSetNetworkProfile201_ResponseValidation(t *testing.T) {
 			Name: "valid accepted response with statusInfo",
 			Message: messages.SetNetworkProfileResponse{
 				Status:     "Accepted",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: true,
 		},
@@ -385,7 +580,7 @@ func TestSetNetworkProfile201_ResponseValidation(t *testing.T) {
 			Name: "valid rejected response with statusInfo",
 			Message: messages.SetNetworkProfileResponse{
 				Status:     "Rejected",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: true,
 		},
@@ -393,7 +588,7 @@ func TestSetNetworkProfile201_ResponseValidation(t *testing.T) {
 			Name: "valid failed response with statusInfo",
 			Message: messages.SetNetworkProfileResponse{
 				Status:     "Failed",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: true,
 		},
@@ -421,15 +616,16 @@ func TestSetNetworkProfile201_ResponseValidation(t *testing.T) {
 			Name: "invalid status enum",
 			Message: messages.SetNetworkProfileResponse{
 				Status:     "invalidSetNetworkProfileStatus",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
 }
 
 func TestSetNetworkProfile201_Direction(t *testing.T) {
-	requireCPHandlerInvalidDirection201(t, v201profiles.SetNetworkProfile)
+	requireCPHandlerInvalidDirection201f(t, v201profiles.SetNetworkProfile)
 }
