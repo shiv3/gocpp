@@ -2,20 +2,26 @@ package auth
 
 import "net/http"
 
-// VerifyBasic checks a charge point id and password, returning the identity.
+// VerifyBasic checks the parsed charge point id and password, returning the identity.
 type VerifyBasic func(cpID, password string) (Identity, error)
 
 type basicAuth struct{ verify VerifyBasic }
 
 // BasicAuth authenticates using HTTP Basic credentials (OCPP Security Profile 1/2).
+// The verifier receives the charge point id parsed from the request path. If
+// the returned identity leaves Credential empty, it is set to the HTTP Basic
+// username.
 func BasicAuth(verify VerifyBasic) Authenticator { return basicAuth{verify: verify} }
 
-func (b basicAuth) Authenticate(r *http.Request) (Identity, error) {
+func (b basicAuth) Authenticate(r *http.Request, cpID string) (Identity, error) {
 	user, pass, ok := r.BasicAuth()
 	if !ok {
 		return Identity{}, ErrUnauthorized
 	}
-	id, err := b.verify(user, pass)
+	if cpID == "" {
+		cpID = user
+	}
+	id, err := b.verify(cpID, pass)
 	if err != nil {
 		return Identity{}, err
 	}
@@ -23,7 +29,10 @@ func (b basicAuth) Authenticate(r *http.Request) (Identity, error) {
 		id.Method = AuthMethodBasic
 	}
 	if id.CPID == "" {
-		id.CPID = user
+		id.CPID = cpID
+	}
+	if id.Credential == "" {
+		id.Credential = user
 	}
 	return id, nil
 }

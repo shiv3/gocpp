@@ -28,16 +28,21 @@ type Identity struct {
 }
 
 // Authenticator authenticates a charge point at WebSocket upgrade time.
+// cpID is the charge point identifier parsed from the HTTP request path by the
+// CSMS server.
 type Authenticator interface {
-	Authenticate(r *http.Request) (Identity, error)
+	Authenticate(r *http.Request, cpID string) (Identity, error)
 }
 
 // None accepts every connection (development only).
 type None struct{}
 
 // Authenticate always succeeds.
-func (None) Authenticate(r *http.Request) (Identity, error) {
-	return Identity{CPID: cpIDFromPath(r.URL.Path), Method: AuthMethodNone}, nil
+func (None) Authenticate(r *http.Request, cpID string) (Identity, error) {
+	if cpID == "" {
+		cpID = cpIDFromPath(r.URL.Path)
+	}
+	return Identity{CPID: cpID, Method: AuthMethodNone}, nil
 }
 
 func cpIDFromPath(path string) string {

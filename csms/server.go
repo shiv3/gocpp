@@ -62,17 +62,25 @@ func (s *Server) ListenAndServe(addr string) error {
 }
 
 func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
-	id, err := s.cfg.auth.Authenticate(r)
+	cpID, ok := s.extractCPID(r)
+	if !ok {
+		http.Error(w, "invalid charge point id", http.StatusBadRequest)
+		return
+	}
+	id, err := s.cfg.auth.Authenticate(r, cpID)
 	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	cpID := id.CPID
-	if cpID == "" {
-		cpID = strings.TrimPrefix(r.URL.Path, s.cfg.path)
+	if id.CPID != "" {
+		cpID = id.CPID
 	}
-	if cpID == "" || strings.Contains(cpID, "/") {
+	if !validCPID(cpID) {
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
+		return
+	}
+	if s.cfg.duplicatePolicy == DuplicatePolicyRejectNew && s.hasConn(cpID) {
+		http.Error(w, "duplicate charge point id", http.StatusConflict)
 		return
 	}
 
@@ -94,38 +102,82 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
 	dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
 
-	dconn := dispatcher.NewConn(cpID, ws, dcfg, s.reg)
+	dconn := dispatcher.NewConn(cpID, ws, dcfg, s.reg, dispatcher.ConnMetadata{
+		RemoteAddr:    r.RemoteAddr,
+		RequestHeader: r.Header,
+		TLS:           r.TLS,
+	})
 	conn := &Conn{inner: dconn}
 
 	// Start the connection (initializing its context and goroutines) BEFORE
 	// publishing it in the registry, so a concurrent Get + Call cannot observe
 	// a half-initialized Conn (data race on c.ctx).
 	dconn.Start(s.ctx)
-	s.addConn(cpID, conn)
+	if !s.addConn(cpID, conn) {
+		_ = dconn.Close(nil)
+		return
+	}
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
 	defer func() {
-		s.removeConn(cpID)
-		_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
+		if s.removeConn(cpID, conn) {
+			_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
+		}
 	}()
 
 	<-dconn.Context().Done()
 	_ = dconn.Close(nil)
 }
 
-func (s *Server) addConn(id string, c *Conn) {
+func (s *Server) extractCPID(r *http.Request) (string, bool) {
+	if s.cfg.cpIDExtractor != nil {
+		cpID, ok := s.cfg.cpIDExtractor(r)
+		return cpID, ok && validCPID(cpID)
+	}
+	cpID := strings.TrimPrefix(r.URL.Path, s.cfg.path)
+	if cpID == r.URL.Path {
+		return "", false
+	}
+	return cpID, validCPID(cpID)
+}
+
+func validCPID(cpID string) bool {
+	return cpID != "" && !strings.Contains(cpID, "/")
+}
+
+func (s *Server) hasConn(id string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.conns[id]
+	return ok
+}
+
+func (s *Server) addConn(id string, c *Conn) bool {
+	policy := s.cfg.duplicatePolicy
+	if policy != DuplicatePolicyRejectNew && policy != DuplicatePolicyCloseExisting {
+		policy = DuplicatePolicyCloseExisting
+	}
 	s.mu.Lock()
-	// Duplicate connection policy: close the old one (spec OQ-22 default).
-	if old, ok := s.conns[id]; ok {
-		go old.inner.Close(nil)
+	old, ok := s.conns[id]
+	if ok && policy == DuplicatePolicyRejectNew {
+		s.mu.Unlock()
+		return false
 	}
 	s.conns[id] = c
 	s.mu.Unlock()
+	if ok {
+		go old.inner.Close(nil)
+	}
+	return true
 }
 
-func (s *Server) removeConn(id string) {
+func (s *Server) removeConn(id string, c *Conn) bool {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conns[id] != c {
+		return false
+	}
 	delete(s.conns, id)
-	s.mu.Unlock()
+	return true
 }
 
 // Get returns the live connection for a charge point, if connected.

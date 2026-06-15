@@ -2,6 +2,7 @@ package csms
 
 import (
 	"log/slog"
+	"net/http"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -16,10 +17,14 @@ func TestOptions_Apply(t *testing.T) {
 	WithCallTimeout(5 * time.Second).apply(&cfg)
 	WithSubProtocols("ocpp1.6", "ocpp2.0.1").apply(&cfg)
 	WithLogger(slog.Default()).apply(&cfg)
+	WithDuplicatePolicy(DuplicatePolicyRejectNew).apply(&cfg)
+	WithCPIDExtractor(func(r *http.Request) (string, bool) { return "CP_1", true }).apply(&cfg)
 
 	require.Equal(t, 5*time.Second, cfg.dispatcher.CallTimeout)
 	require.Equal(t, []string{"ocpp1.6", "ocpp2.0.1"}, cfg.subProtocols)
 	require.NotNil(t, cfg.dispatcher.Logger)
+	require.Equal(t, DuplicatePolicyRejectNew, cfg.duplicatePolicy)
+	require.NotNil(t, cfg.cpIDExtractor)
 }
 
 func TestSchemaOptions_LastWinsAndWireDispatcher(t *testing.T) {

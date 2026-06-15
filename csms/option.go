@@ -2,6 +2,7 @@ package csms
 
 import (
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/shiv3/gocpp/core/auth"
@@ -20,8 +21,10 @@ type serverConfig struct {
 	pingInterval      time.Duration
 	addr              string
 	path              string
+	cpIDExtractor     CPIDExtractor
 	instanceID        string
 	registry          *schema.Registry
+	duplicatePolicy   DuplicatePolicy
 
 	auth           auth.Authenticator
 	connReg        storage.ConnectionRegistry
@@ -34,15 +37,16 @@ type serverConfig struct {
 
 func defaultServerConfig() serverConfig {
 	return serverConfig{
-		dispatcher:   dispatcher.DefaultConfig(),
-		subProtocols: []string{"ocpp1.6"},
-		path:         "/ocpp/",
-		auth:         auth.None{},
-		connReg:      memory.NewConnectionRegistry(),
-		router:       memory.NewRouter(),
-		txStore:      memory.NewTransactionStore(),
-		cfgStore:     memory.NewConfigStore(),
-		metrics:      observability.NoOp{},
+		dispatcher:      dispatcher.DefaultConfig(),
+		subProtocols:    []string{"ocpp1.6"},
+		path:            "/ocpp/",
+		duplicatePolicy: DuplicatePolicyCloseExisting,
+		auth:            auth.None{},
+		connReg:         memory.NewConnectionRegistry(),
+		router:          memory.NewRouter(),
+		txStore:         memory.NewTransactionStore(),
+		cfgStore:        memory.NewConfigStore(),
+		metrics:         observability.NoOp{},
 	}
 }
 
@@ -52,6 +56,22 @@ type Option interface{ apply(*serverConfig) }
 type optionFunc func(*serverConfig)
 
 func (f optionFunc) apply(c *serverConfig) { f(c) }
+
+// CPIDExtractor extracts the charge point id from an HTTP upgrade request.
+type CPIDExtractor func(r *http.Request) (cpID string, ok bool)
+
+// DuplicatePolicy controls how the CSMS handles a second connection for the
+// same charge point id.
+type DuplicatePolicy int
+
+const (
+	// DuplicatePolicyCloseExisting closes the existing connection and accepts
+	// the new one. This is the default behavior.
+	DuplicatePolicyCloseExisting DuplicatePolicy = iota
+	// DuplicatePolicyRejectNew rejects the incoming duplicate and keeps the
+	// existing connection.
+	DuplicatePolicyRejectNew
+)
 
 // WithCallTimeout sets the per-call timeout.
 func WithCallTimeout(d time.Duration) Option {
@@ -91,6 +111,18 @@ func WithInstanceID(id string) Option {
 // WithPath sets the HTTP path prefix charge points connect to.
 func WithPath(p string) Option {
 	return optionFunc(func(c *serverConfig) { c.path = p })
+}
+
+// WithCPIDExtractor sets a custom charge point id extractor. When set, it
+// replaces the default WithPath prefix + trailing path segment behavior.
+// The returned id must be non-empty and must not contain a slash.
+func WithCPIDExtractor(extract CPIDExtractor) Option {
+	return optionFunc(func(c *serverConfig) { c.cpIDExtractor = extract })
+}
+
+// WithDuplicatePolicy sets how duplicate charge point connections are handled.
+func WithDuplicatePolicy(p DuplicatePolicy) Option {
+	return optionFunc(func(c *serverConfig) { c.duplicatePolicy = p })
 }
 
 // WithSchemaRegistry sets the schema registry used for first-layer validation.

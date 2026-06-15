@@ -15,11 +15,13 @@ type mtlsAuth struct{ verify VerifyMTLS }
 // tls.RequireAndVerifyClientCert.
 func MTLSFromClientCert(verify VerifyMTLS) Authenticator { return mtlsAuth{verify: verify} }
 
-func (m mtlsAuth) Authenticate(r *http.Request) (Identity, error) {
+func (m mtlsAuth) Authenticate(r *http.Request, cpID string) (Identity, error) {
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
 		return Identity{}, ErrUnauthorized
 	}
-	cpID := cpIDFromPath(r.URL.Path)
+	if cpID == "" {
+		cpID = cpIDFromPath(r.URL.Path)
+	}
 	id, err := m.verify(cpID, r.TLS.PeerCertificates[0])
 	if err != nil {
 		return Identity{}, err

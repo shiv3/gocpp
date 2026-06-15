@@ -2,7 +2,9 @@ package dispatcher
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/shiv3/gocpp/core/ocppj"
@@ -16,6 +18,7 @@ type Conn struct {
 	id      string
 	ws      transport.WS
 	version ocppj.Version
+	meta    ConnMetadata
 
 	out chan outbound
 	in  chan ocppj.Frame
@@ -38,12 +41,26 @@ type outbound struct {
 	sentCh  chan error // 1-buffered
 }
 
+// ConnMetadata contains HTTP upgrade metadata associated with a connection.
+// Fields are empty for connections that were not created from an inbound HTTP
+// upgrade request.
+type ConnMetadata struct {
+	RemoteAddr    string
+	RequestHeader http.Header
+	TLS           *tls.ConnectionState
+}
+
 // NewConn creates a connection. Call Start to launch its goroutines.
-func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry) *Conn {
+func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta ...ConnMetadata) *Conn {
+	m := ConnMetadata{}
+	if len(meta) > 0 {
+		m = cloneConnMetadata(meta[0])
+	}
 	c := &Conn{
 		id:      id,
 		ws:      ws,
 		version: subprotocolToVersion(ws.Subprotocol()),
+		meta:    m,
 		out:     make(chan outbound, cfg.OutboundQueueSize),
 		in:      make(chan ocppj.Frame, cfg.OutboundQueueSize),
 		pending: newPendingStore(),
@@ -65,8 +82,36 @@ func (c *Conn) Version() ocppj.Version { return c.version }
 // Subprotocol returns the negotiated WebSocket subprotocol.
 func (c *Conn) Subprotocol() string { return c.ws.Subprotocol() }
 
+// RemoteAddr returns the peer network address from the HTTP upgrade request, if
+// available.
+func (c *Conn) RemoteAddr() string { return c.meta.RemoteAddr }
+
+// RequestHeader returns a copy of the HTTP upgrade request headers.
+func (c *Conn) RequestHeader() http.Header { return c.meta.RequestHeader.Clone() }
+
+// TLS returns a copy of the HTTP upgrade TLS connection state, if available.
+func (c *Conn) TLS() *tls.ConnectionState {
+	if c.meta.TLS == nil {
+		return nil
+	}
+	state := *c.meta.TLS
+	return &state
+}
+
 // Context returns the connection lifecycle context.
 func (c *Conn) Context() context.Context { return c.ctx }
+
+func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
+	cloned := ConnMetadata{
+		RemoteAddr:    meta.RemoteAddr,
+		RequestHeader: meta.RequestHeader.Clone(),
+	}
+	if meta.TLS != nil {
+		state := *meta.TLS
+		cloned.TLS = &state
+	}
+	return cloned
+}
 
 // Start launches the connection goroutines bound to parent.
 func (c *Conn) Start(parent context.Context) {
