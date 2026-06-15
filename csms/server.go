@@ -82,10 +82,13 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	dconn := dispatcher.NewConn(cpID, ws, s.cfg.dispatcher, s.reg)
 	conn := &Conn{inner: dconn}
 
+	// Start the connection (initializing its context and goroutines) BEFORE
+	// publishing it in the registry, so a concurrent Get + Call cannot observe
+	// a half-initialized Conn (data race on c.ctx).
+	dconn.Start(s.ctx)
 	s.addConn(cpID, conn)
 	defer s.removeConn(cpID)
 
-	dconn.Start(s.ctx)
 	<-dconn.Context().Done()
 	_ = dconn.Close(nil)
 }
