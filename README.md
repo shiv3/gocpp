@@ -1,7 +1,7 @@
-# Gocpp
+# gocpp
 
 A generics-first **OCPP** (Open Charge Point Protocol) implementation in Go,
-supporting **OCPP 1.6, 2.0.1, and 2.1** from a single module — the only Go/Generics OCPP
+supporting **OCPP 1.6, 2.0.1, and 2.1** from a single module — the only Go OCPP
 library with 2.1 support.
 
 > Status: pre-v1, under active development. Public API may still change before v1.0.
