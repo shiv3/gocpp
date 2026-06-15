@@ -4,7 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.1] - 2026-06-16
+
+### Changed
+- **BREAKING:** rename the OCPP error-code constant `ErrorCodeRpcFrameworkError` to
+  `ErrorCodeRPCFrameworkError` (Go naming; the on-the-wire value `"RpcFrameworkError"`
+  is unchanged).
+- Adopt golangci-lint v2 (built with the current Go toolchain so it lints a `go 1.26`
+  module) and resolve all findings.
+
+## [0.1.0] - 2026-06-16
 
 ### Added
 - OCPP 1.6 (incl. Security Extensions), 2.0.1, and 2.1 message support from a single
@@ -63,4 +72,5 @@ All notable changes to this project are documented here. The format is based on
 ### OCPP spec compatibility
 - OCPP 1.6 (edition 2 + Security Whitepaper), 2.0.1, 2.1.
 
-[Unreleased]: https://github.com/shiv3/gocpp/commits/master
+[0.1.1]: https://github.com/shiv3/gocpp/releases/tag/v0.1.1
+[0.1.0]: https://github.com/shiv3/gocpp/releases/tag/v0.1.0
