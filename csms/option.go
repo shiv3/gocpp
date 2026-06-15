@@ -26,6 +26,8 @@ type serverConfig struct {
 	registry          *schema.Registry
 	duplicatePolicy   DuplicatePolicy
 
+	globalConcurrencyLimit int
+
 	auth           auth.Authenticator
 	connReg        storage.ConnectionRegistry
 	router         storage.MessageRouter
@@ -123,6 +125,15 @@ func WithCPIDExtractor(extract CPIDExtractor) Option {
 // WithDuplicatePolicy sets how duplicate charge point connections are handled.
 func WithDuplicatePolicy(p DuplicatePolicy) Option {
 	return optionFunc(func(c *serverConfig) { c.duplicatePolicy = p })
+}
+
+// WithGlobalConcurrencyLimit caps the total number of inbound handlers running
+// concurrently across all connections. This is a server-wide bound applied in
+// addition to the per-connection handler budget; when the cap is reached,
+// further inbound calls wait (backpressure) until a slot frees. A value <= 0
+// disables the global cap (the default), leaving only per-connection limits.
+func WithGlobalConcurrencyLimit(n int) Option {
+	return optionFunc(func(c *serverConfig) { c.globalConcurrencyLimit = n })
 }
 
 // WithSchemaRegistry sets the schema registry used for first-layer validation.

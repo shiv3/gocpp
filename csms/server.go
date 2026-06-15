@@ -12,6 +12,7 @@ import (
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
+	"golang.org/x/sync/semaphore"
 )
 
 // Server is an OCPP CSMS (central system).
@@ -40,6 +41,10 @@ func NewServer(opts ...Option) *Server {
 			}
 			return v.Validate(payload)
 		}
+	}
+	if cfg.globalConcurrencyLimit > 0 {
+		// One limiter shared by every connection makes the cap server-wide.
+		cfg.dispatcher.GlobalHandlerLimiter = semaphore.NewWeighted(int64(cfg.globalConcurrencyLimit))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{

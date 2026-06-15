@@ -52,7 +52,7 @@ resp, err := cp.Call(ctx, client, v201p.BootNotification, req)
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithAuthenticator`,
 `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`, `WithDuplicatePolicy`,
-`WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`.
+`WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`, `WithGlobalConcurrencyLimit`.
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`.

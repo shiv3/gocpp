@@ -203,6 +203,12 @@ func (c *Conn) dispatch() {
 			if err := c.sem.Acquire(c.ctx, 1); err != nil {
 				return
 			}
+			if c.cfg.GlobalHandlerLimiter != nil {
+				if err := c.cfg.GlobalHandlerLimiter.Acquire(c.ctx, 1); err != nil {
+					c.sem.Release(1)
+					return
+				}
+			}
 			go c.runHandler(frame)
 		}
 	}

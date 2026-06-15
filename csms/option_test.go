@@ -56,6 +56,20 @@ func TestSchemaOptions_LastWinsAndWireDispatcher(t *testing.T) {
 	require.Nil(t, srv.cfg.dispatcher.SchemaValidate)
 }
 
+func TestWithGlobalConcurrencyLimit(t *testing.T) {
+	// Disabled by default: server-wide cap is opt-in.
+	srv := NewServer()
+	require.Nil(t, srv.cfg.dispatcher.GlobalHandlerLimiter)
+
+	// A positive limit installs a shared limiter on the dispatcher config.
+	srv = NewServer(WithGlobalConcurrencyLimit(8))
+	require.NotNil(t, srv.cfg.dispatcher.GlobalHandlerLimiter)
+
+	// Non-positive values are treated as "disabled".
+	srv = NewServer(WithGlobalConcurrencyLimit(0))
+	require.Nil(t, srv.cfg.dispatcher.GlobalHandlerLimiter)
+}
+
 func testSchemaRegistry(t *testing.T, action string) *schema.Registry {
 	t.Helper()
 	reg := schema.NewRegistry()

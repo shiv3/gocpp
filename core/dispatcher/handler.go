@@ -37,6 +37,9 @@ func (r *HandlerRegistry) Register(action string, h HandlerFunc) {
 
 func (c *Conn) runHandler(frame ocppj.Frame) {
 	defer c.sem.Release(1)
+	if c.cfg.GlobalHandlerLimiter != nil {
+		defer c.cfg.GlobalHandlerLimiter.Release(1)
+	}
 
 	start := time.Now()
 	c.cfg.Metrics.CallStarted(frame.Action, "inbound")
