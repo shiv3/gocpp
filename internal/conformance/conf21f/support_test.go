@@ -2,13 +2,13 @@ package conf21f
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
+	"github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
@@ -114,7 +114,7 @@ func testAddress21() *messages.AddressType {
 func requireCPRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
-	client := cp.NewClient("CP_1", "ws://example.invalid", cp.WithSubProtocols("ocpp2.1"))
+	client := cp.NewClient("CP_1", "ws://example.invalid", cp.WithSubProtocols(v21.SubProtocol))
 	wrongDirection := ocppj.Message[Req, Resp]{
 		Action:    msg.Action,
 		Direction: ocppj.SentByCP,
@@ -125,13 +125,13 @@ func requireCPRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.Mes
 		return zero, nil
 	})
 
-	require.True(t, errors.Is(err, ocppj.ErrInvalidDirection))
+	require.ErrorIs(t, err, ocppj.ErrInvalidDirection)
 }
 
 func requireCSMSRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1"))
+	srv := csms.NewServer(csms.WithSubProtocols(v21.SubProtocol))
 	defer srv.Close()
 	wrongDirection := ocppj.Message[Req, Resp]{
 		Action:    msg.Action,
@@ -143,5 +143,5 @@ func requireCSMSRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.M
 		return zero, nil
 	})
 
-	require.True(t, errors.Is(err, ocppj.ErrInvalidDirection))
+	require.ErrorIs(t, err, ocppj.ErrInvalidDirection)
 }
