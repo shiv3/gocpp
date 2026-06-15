@@ -3,6 +3,8 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -263,7 +265,50 @@ func copySchema(schemaDir, schemaFile, outRoot, version string) error {
 	if err != nil {
 		return fmt.Errorf("copy schema %s: %w", schemaFile, err)
 	}
-	return writeFile(filepath.Join(outRoot, version, "schemas", schemaFile), content)
+
+	overridePath := filepath.Join("schemas", "overrides", version, schemaFile)
+	overrideContent, err := os.ReadFile(overridePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return writeFile(filepath.Join(outRoot, version, "schemas", schemaFile), content)
+		}
+		return fmt.Errorf("read schema override %s: %w", overridePath, err)
+	}
+
+	var base any
+	if err := json.Unmarshal(content, &base); err != nil {
+		return fmt.Errorf("parse schema %s: %w", schemaFile, err)
+	}
+	var override any
+	if err := json.Unmarshal(overrideContent, &override); err != nil {
+		return fmt.Errorf("parse schema override %s: %w", overridePath, err)
+	}
+	merged, err := json.MarshalIndent(mergeJSON(base, override), "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal merged schema %s: %w", schemaFile, err)
+	}
+	return writeFile(filepath.Join(outRoot, version, "schemas", schemaFile), merged)
+}
+
+func mergeJSON(base, override any) any {
+	overrideObj, ok := override.(map[string]any)
+	if !ok {
+		return override
+	}
+
+	baseObj, _ := base.(map[string]any)
+	merged := make(map[string]any, len(baseObj)+len(overrideObj))
+	for k, v := range baseObj {
+		merged[k] = v
+	}
+	for k, v := range overrideObj {
+		if v == nil {
+			delete(merged, k)
+			continue
+		}
+		merged[k] = mergeJSON(merged[k], v)
+	}
+	return merged
 }
 
 func writeEmbed(outRoot, version string) error {
