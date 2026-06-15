@@ -10,8 +10,8 @@ jobs:
   bench:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
       - run: go install golang.org/x/perf/cmd/benchstat@latest
@@ -22,8 +22,8 @@ jobs:
   soak:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
       - run: SOAK_DURATION=5m go test -tags soak -timeout 10m ./internal/soak/
