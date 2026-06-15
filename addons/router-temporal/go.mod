@@ -2,9 +2,7 @@ module github.com/shiv3/gocpp/addons/router-temporal
 
 go 1.26.0
 
-replace github.com/shiv3/gocpp => ../..
-
-require github.com/shiv3/gocpp v0.0.0
+require github.com/shiv3/gocpp v0.1.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

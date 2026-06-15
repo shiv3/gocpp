@@ -2,11 +2,9 @@ module github.com/shiv3/gocpp/addons/router-nats
 
 go 1.26.0
 
-replace github.com/shiv3/gocpp => ../..
-
 require (
 	github.com/nats-io/nats.go v1.52.0
-	github.com/shiv3/gocpp v0.0.0
+	github.com/shiv3/gocpp v0.1.0
 )
 
 require (
