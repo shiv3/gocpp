@@ -312,58 +312,86 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 		},
 		{
 			Name: "invalid vpn missing key",
-			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
-				data := testNetworkConnectionProfile201f()
-				data.Vpn = &messages.VPNType{
-					Server:   "someServer",
-					User:     "user1",
-					Password: "deadc0de",
-					Type:     "IPSec",
-				}
-				return data
-			}()),
+			Message: map[string]any{
+				"configurationSlot": 2,
+				"connectionData": map[string]any{
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
+					"vpn": map[string]any{
+						"server":   "someServer",
+						"user":     "user1",
+						"password": "deadc0de",
+						"type":     "IPSec",
+					},
+				},
+			},
 			Valid: false,
 		},
 		{
 			Name: "invalid vpn missing password",
-			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
-				data := testNetworkConnectionProfile201f()
-				data.Vpn = &messages.VPNType{
-					Server: "someServer",
-					User:   "user1",
-					Key:    "deadbeef",
-					Type:   "IPSec",
-				}
-				return data
-			}()),
+			Message: map[string]any{
+				"configurationSlot": 2,
+				"connectionData": map[string]any{
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
+					"vpn": map[string]any{
+						"server": "someServer",
+						"user":   "user1",
+						"key":    "deadbeef",
+						"type":   "IPSec",
+					},
+				},
+			},
 			Valid: false,
 		},
 		{
 			Name: "invalid vpn missing user",
-			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
-				data := testNetworkConnectionProfile201f()
-				data.Vpn = &messages.VPNType{
-					Server:   "someServer",
-					Password: "deadc0de",
-					Key:      "deadbeef",
-					Type:     "IPSec",
-				}
-				return data
-			}()),
+			Message: map[string]any{
+				"configurationSlot": 2,
+				"connectionData": map[string]any{
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
+					"vpn": map[string]any{
+						"server":   "someServer",
+						"password": "deadc0de",
+						"key":      "deadbeef",
+						"type":     "IPSec",
+					},
+				},
+			},
 			Valid: false,
 		},
 		{
 			Name: "invalid vpn missing server",
-			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
-				data := testNetworkConnectionProfile201f()
-				data.Vpn = &messages.VPNType{
-					User:     "user1",
-					Password: "deadc0de",
-					Key:      "deadbeef",
-					Type:     "IPSec",
-				}
-				return data
-			}()),
+			Message: map[string]any{
+				"configurationSlot": 2,
+				"connectionData": map[string]any{
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
+					"vpn": map[string]any{
+						"user":     "user1",
+						"password": "deadc0de",
+						"key":      "deadbeef",
+						"type":     "IPSec",
+					},
+				},
+			},
 			Valid: false,
 		},
 		{
@@ -500,13 +528,20 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 		},
 		{
 			Name: "invalid apn missing apn",
-			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
-				data := testNetworkConnectionProfile201f()
-				data.Apn = &messages.APNType{
-					ApnAuthentication: "AUTO",
-				}
-				return data
-			}()),
+			Message: map[string]any{
+				"configurationSlot": 2,
+				"connectionData": map[string]any{
+					"ocppVersion":     "OCPP20",
+					"ocppTransport":   "JSON",
+					"ocppCsmsUrl":     "http://someUrl:8767",
+					"messageTimeout":  30,
+					"securityProfile": 1,
+					"ocppInterface":   "Wired0",
+					"apn": map[string]any{
+						"apnAuthentication": "AUTO",
+					},
+				},
+			},
 			Valid: false,
 		},
 		{

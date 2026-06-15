@@ -1,6 +1,7 @@
 package conf201f
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shiv3/gocpp/core/schema"
@@ -21,7 +22,7 @@ func TestSignCertificate201_RequestValidation(t *testing.T) {
 			Name: "valid charging station certificate",
 			Message: messages.SignCertificateRequest{
 				Csr:             "deadc0de",
-				CertificateType: ptr("ChargingStationCertificate"),
+				CertificateType: strPtr201f("ChargingStationCertificate"),
 			},
 			Valid: true,
 		},
@@ -29,7 +30,7 @@ func TestSignCertificate201_RequestValidation(t *testing.T) {
 			Name: "valid v2g certificate",
 			Message: messages.SignCertificateRequest{
 				Csr:             "deadc0de",
-				CertificateType: ptr("V2GCertificate"),
+				CertificateType: strPtr201f("V2GCertificate"),
 			},
 			Valid: true,
 		},
@@ -41,7 +42,7 @@ func TestSignCertificate201_RequestValidation(t *testing.T) {
 			Valid: true,
 		},
 		{
-			Name:    "invalid empty request",
+			Name:    "invalid missing csr",
 			Message: map[string]any{},
 			Valid:   false,
 		},
@@ -49,14 +50,14 @@ func TestSignCertificate201_RequestValidation(t *testing.T) {
 			Name: "invalid certificateType enum",
 			Message: messages.SignCertificateRequest{
 				Csr:             "deadc0de",
-				CertificateType: ptr("invalidType"),
+				CertificateType: strPtr201f("invalidType"),
 			},
 			Valid: false,
 		},
 		{
 			Name: "invalid csr exceeds maxLength 5500",
 			Message: messages.SignCertificateRequest{
-				Csr: longString(5501),
+				Csr: strings.Repeat("x", 5501),
 			},
 			Valid: false,
 		},
@@ -75,7 +76,7 @@ func TestSignCertificate201_ResponseValidation(t *testing.T) {
 			Name: "valid accepted response with statusInfo",
 			Message: messages.SignCertificateResponse{
 				Status:     "Accepted",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: true,
 		},
@@ -103,15 +104,16 @@ func TestSignCertificate201_ResponseValidation(t *testing.T) {
 			Name: "invalid status enum",
 			Message: messages.SignCertificateResponse{
 				Status:     "invalidStatus",
-				StatusInfo: statusInfo201("200"),
+				StatusInfo: testStatusInfo201f(),
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
 }
 
 func TestSignCertificate201_Direction(t *testing.T) {
-	requireCSMSHandlerInvalidDirection201(t, v201profiles.SignCertificate)
+	requireCSMSHandlerInvalidDirection201f(t, v201profiles.SignCertificate)
 }
