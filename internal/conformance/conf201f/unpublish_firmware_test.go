@@ -1,6 +1,7 @@
 package conf201f
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shiv3/gocpp/core/schema"
@@ -32,7 +33,7 @@ func TestUnpublishFirmware201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid checksum exceeds maxLength 32",
 			Message: messages.UnpublishFirmwareRequest{
-				Checksum: longString(33),
+				Checksum: strings.Repeat("x", 33),
 			},
 			Valid: false,
 		},
@@ -86,5 +87,5 @@ func TestUnpublishFirmware201_ResponseValidation(t *testing.T) {
 }
 
 func TestUnpublishFirmware201_Direction(t *testing.T) {
-	requireCPHandlerInvalidDirection201(t, v201profiles.UnpublishFirmware)
+	requireCPHandlerInvalidDirection201f(t, v201profiles.UnpublishFirmware)
 }

@@ -1,6 +1,7 @@
 package conf201f
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/shiv3/gocpp/core/schema"
@@ -11,13 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func firmware201() messages.FirmwareType {
+func testFirmware201f() messages.FirmwareType {
+	installDateTime := fixedTime201f()
 	return messages.FirmwareType{
 		Location:           "https://someurl",
-		RetrieveDateTime:   fixedTime201(),
-		InstallDateTime:    ptr(fixedTime201()),
-		SigningCertificate: ptr("1337c0de"),
-		Signature:          ptr("deadc0de"),
+		RetrieveDateTime:   fixedTime201f(),
+		InstallDateTime:    &installDateTime,
+		SigningCertificate: strPtr201f("1337c0de"),
+		Signature:          strPtr201f("deadc0de"),
 	}
 }
 
@@ -30,19 +32,19 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid full request",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:       ptr(int32(5)),
-				RetryInterval: ptr(int32(300)),
+				Retries:       int32Ptr201f(5),
+				RetryInterval: int32Ptr201f(300),
 				RequestID:     42,
-				Firmware:      firmware201(),
+				Firmware:      testFirmware201f(),
 			},
 			Valid: true,
 		},
 		{
 			Name: "valid without retryInterval",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:   ptr(int32(5)),
+				Retries:   int32Ptr201f(5),
 				RequestID: 42,
-				Firmware:  firmware201(),
+				Firmware:  testFirmware201f(),
 			},
 			Valid: true,
 		},
@@ -50,32 +52,49 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 			Name: "valid without retries",
 			Message: messages.UpdateFirmwareRequest{
 				RequestID: 42,
-				Firmware:  firmware201(),
+				Firmware:  testFirmware201f(),
 			},
 			Valid: true,
 		},
 		{
 			Name: "valid zero requestId",
 			Message: messages.UpdateFirmwareRequest{
-				Firmware: firmware201(),
+				Firmware: testFirmware201f(),
 			},
 			Valid: true,
 		},
 		{
 			Name: "valid required firmware fields",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:       ptr(int32(5)),
-				RetryInterval: ptr(int32(300)),
+				Retries:       int32Ptr201f(5),
+				RetryInterval: int32Ptr201f(300),
 				RequestID:     42,
 				Firmware: messages.FirmwareType{
 					Location:         "https://someurl",
-					RetrieveDateTime: fixedTime201(),
+					RetrieveDateTime: fixedTime201f(),
 				},
 			},
 			Valid: true,
 		},
 		{
-			Name:    "invalid empty request",
+			Name: "invalid missing requestId",
+			Message: map[string]any{
+				"firmware": map[string]any{
+					"location":         "https://someurl",
+					"retrieveDateTime": fixedTime201f(),
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid missing firmware",
+			Message: map[string]any{
+				"requestId": 42,
+			},
+			Valid: false,
+		},
+		{
+			Name:    "invalid missing required fields",
 			Message: map[string]any{},
 			Valid:   false,
 		},
@@ -86,8 +105,8 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 				"retryInterval": 300,
 				"requestId":     42,
 				"firmware": map[string]any{
-					"retrieveDateTime":   fixedTime201(),
-					"installDateTime":    fixedTime201(),
+					"retrieveDateTime":   fixedTime201f(),
+					"installDateTime":    fixedTime201f(),
 					"signingCertificate": "1337c0de",
 					"signature":          "deadc0de",
 				},
@@ -102,7 +121,7 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 				"requestId":     42,
 				"firmware": map[string]any{
 					"location":           "https://someurl",
-					"installDateTime":    fixedTime201(),
+					"installDateTime":    fixedTime201f(),
 					"signingCertificate": "1337c0de",
 					"signature":          "deadc0de",
 				},
@@ -112,23 +131,23 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid firmware.location exceeds maxLength 512",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:       ptr(int32(5)),
-				RetryInterval: ptr(int32(300)),
+				Retries:       int32Ptr201f(5),
+				RetryInterval: int32Ptr201f(300),
 				RequestID:     42,
 				Firmware: func() messages.FirmwareType {
-					fw := firmware201()
-					fw.Location = longString(513)
+					fw := testFirmware201f()
+					fw.Location = strings.Repeat("x", 513)
 					return fw
 				}(),
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for retries minimum.
+		// TODO(parity): needs schema override for retryInterval minimum.
+		// TODO(parity): needs schema override for requestId minimum.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
-	skipSchemaOverride201(t, "invalid retries below minimum")
-	skipSchemaOverride201(t, "invalid retryInterval below minimum")
-	skipSchemaOverride201(t, "invalid requestId below minimum")
 }
 
 func TestUpdateFirmware201_ResponseValidation(t *testing.T) {
@@ -140,8 +159,11 @@ func TestUpdateFirmware201_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid accepted response with statusInfo",
 			Message: messages.UpdateFirmwareResponse{
-				Status:     "Accepted",
-				StatusInfo: statusInfo201("ok"),
+				Status: "Accepted",
+				StatusInfo: &messages.StatusInfoType{
+					ReasonCode:     "ok",
+					AdditionalInfo: strPtr201f("someInfo"),
+				},
 			},
 			Valid: true,
 		},
@@ -180,11 +202,12 @@ func TestUpdateFirmware201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
+		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
 }
 
 func TestUpdateFirmware201_Direction(t *testing.T) {
-	requireCPHandlerInvalidDirection201(t, v201profiles.UpdateFirmware)
+	requireCPHandlerInvalidDirection201f(t, v201profiles.UpdateFirmware)
 }

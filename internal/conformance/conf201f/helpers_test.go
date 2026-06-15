@@ -2,7 +2,6 @@ package conf201f
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,10 +18,6 @@ func strPtr201f(v string) *string {
 	return &v
 }
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func int32Ptr201f(v int32) *int32 {
 	return &v
 }
@@ -35,24 +30,12 @@ func fixedTime201f() time.Time {
 	return time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 }
 
-func fixedTime201() time.Time {
-	return fixedTime201f()
-}
-
-func longString(n int) string {
-	return strings.Repeat("x", n)
-}
-
 func testCustomData201f() *messages.CustomDataType {
 	return &messages.CustomDataType{VendorID: "vendor"}
 }
 
 func testStatusInfo201f() *messages.StatusInfoType {
 	return &messages.StatusInfoType{ReasonCode: "200"}
-}
-
-func statusInfo201(reasonCode string) *messages.StatusInfoType {
-	return &messages.StatusInfoType{ReasonCode: reasonCode, AdditionalInfo: strPtr201f("someInfo")}
 }
 
 func testComponent201f() messages.ComponentType {
@@ -80,19 +63,11 @@ func testIDToken201f(idToken, tokenType string) messages.IdTokenType {
 	}
 }
 
-func idToken201(tokenType string) messages.IdTokenType {
-	return testIDToken201f("1234", tokenType)
-}
-
 func testMessageContent201f() messages.MessageContentType {
 	return messages.MessageContentType{
 		Format:  "UTF8",
 		Content: "dummyContent",
 	}
-}
-
-func messageContent201() messages.MessageContentType {
-	return testMessageContent201f()
 }
 
 func decimal201f(v string) decimal.Decimal {
@@ -101,10 +76,6 @@ func decimal201f(v string) decimal.Decimal {
 		panic(err)
 	}
 	return d
-}
-
-func dec(v string) decimal.Decimal {
-	return decimal201f(v)
 }
 
 func decimalPtr201f(v string) *decimal.Decimal {
@@ -139,12 +110,6 @@ func requireCSMSHandlerInvalidDirection201f[Req, Resp any](t *testing.T, msg ocp
 	require.ErrorIs(t, err, ocppj.ErrInvalidDirection)
 }
 
-func requireCSMSHandlerInvalidDirection201[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
-	t.Helper()
-
-	requireCSMSHandlerInvalidDirection201f(t, msg)
-}
-
 func requireCPHandlerInvalidDirection201f[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
@@ -160,18 +125,4 @@ func requireCPHandlerInvalidDirection201f[Req, Resp any](t *testing.T, msg ocppj
 	})
 
 	require.ErrorIs(t, err, ocppj.ErrInvalidDirection)
-}
-
-func requireCPHandlerInvalidDirection201[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
-	t.Helper()
-
-	requireCPHandlerInvalidDirection201f(t, msg)
-}
-
-func skipSchemaOverride201(t *testing.T, name string) {
-	t.Helper()
-	t.Run(name, func(t *testing.T) {
-		// TODO(parity): needs schema override
-		t.Skip("constraint is not present in the bundled OCA schema")
-	})
 }
