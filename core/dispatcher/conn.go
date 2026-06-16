@@ -34,6 +34,14 @@ type Conn struct {
 	done    chan struct{}
 	wg      sync.WaitGroup
 
+	// Async outbound call machinery (DoCallAsync). asyncWG tracks the worker and
+	// any concurrent async goroutines; asyncClosed (under asyncMu) gates new ones
+	// so Add can never race Close's Wait.
+	asyncMu     sync.Mutex
+	asyncClosed bool
+	asyncQ      chan asyncJob
+	asyncWG     sync.WaitGroup
+
 	cfg Config
 }
 
@@ -143,6 +151,12 @@ func (c *Conn) Close(reason error) error {
 	<-c.done
 	c.closeWS()
 	c.pending.failAll(context.Cause(c.ctx))
+	// Stop accepting new async calls, then wait for the worker + any in-flight
+	// async goroutines to drain (their DoCalls have already failed via ctx/pending).
+	c.asyncMu.Lock()
+	c.asyncClosed = true
+	c.asyncMu.Unlock()
+	c.asyncWG.Wait()
 	c.cfg.Metrics.ConnectionClosed()
 	return nil
 }

@@ -55,3 +55,35 @@ func Call[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req, Resp
 	}
 	return resp, nil
 }
+
+// CallAsync sends a typed message to a connected charge point without blocking and
+// delivers the typed response (or error) to cb. With WithSerializedCalls the calls
+// are queued FIFO and sent one outstanding at a time; otherwise they run
+// concurrently. It returns synchronously only if the call could not be accepted
+// (e.g. ocppj.ErrQueueFull, ocppj.ErrConnClosed). See dispatcher.DoCallAsync.
+func CallAsync[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req, Resp], req Req, cb func(Resp, error)) error {
+	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpCall, m.Direction); err != nil {
+		return err
+	}
+	reqPayload, err := codec.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+	return dispatcher.DoCallAsync(ctx, c.inner, m.Action, reqPayload, func(payload []byte, callErr error) {
+		var resp Resp
+		if callErr != nil {
+			cb(resp, callErr)
+			return
+		}
+		if err := codec.Unmarshal(payload, &resp); err != nil {
+			cb(resp, fmt.Errorf("unmarshal response: %w", err))
+			return
+		}
+		cb(resp, nil)
+	})
+}
+
+// CallRawAsync is the untyped form of CallAsync.
+func CallRawAsync(ctx context.Context, c *Conn, action string, payload []byte, cb func([]byte, error)) error {
+	return dispatcher.DoCallAsync(ctx, c.inner, action, payload, cb)
+}

@@ -81,6 +81,25 @@ CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 - `csms.CallRaw(ctx, conn, action, payloadJSON)` sends an untyped CSMS→CP operation
   (symmetric with `cp.CallRaw`); prefer the typed `csms.Call` for application code.
 
+### Async (callback) calls
+
+`csms.Call` / `cp.Call` are synchronous (block for the response); spawn a goroutine if you
+need concurrency. For an ocpp-go `SendRequestAsync`-style callback API, use `CallAsync`:
+
+```go
+csms.CallAsync(ctx, conn, v16p.GetConfiguration, req, func(resp v16msg.GetConfigurationResponse, err error) {
+    // delivered when the response (or error) arrives; do not block here
+})
+```
+
+- Without `WithSerializedCalls`, each `CallAsync` runs concurrently and the callback fires
+  as responses arrive.
+- With `WithSerializedCalls`, calls are queued on a per-connection FIFO and sent one
+  outstanding at a time; callbacks fire in submission order. Bound the queue with
+  `WithAsyncQueueSize(n)` (default 64) — enqueuing beyond it returns `ocppj.ErrQueueFull`.
+- `CallAsync` returns an error synchronously only if the call can't be accepted (not
+  connected, nil callback, or queue full); per-call failures go to the callback.
+
 ### Client auth & TLS
 
 - `cp.WithBasicAuth(user, pass)` sends HTTP Basic credentials on the WebSocket upgrade

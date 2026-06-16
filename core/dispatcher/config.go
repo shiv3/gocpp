@@ -28,7 +28,10 @@ type Config struct {
 	PongWait               time.Duration
 	SerializeOutboundCalls bool
 	OutboundQueueSize      int
-	MaxConcurrentHandlers  int64
+	// AsyncQueueSize bounds the per-connection FIFO queue used by DoCallAsync when
+	// SerializeOutboundCalls is set; enqueuing beyond it returns ocppj.ErrQueueFull.
+	AsyncQueueSize        int
+	MaxConcurrentHandlers int64
 	// GlobalHandlerLimiter, when non-nil, bounds the total number of inbound
 	// handlers running concurrently across all connections that share it. It is
 	// acquired in addition to the per-connection MaxConcurrentHandlers budget.
@@ -50,6 +53,7 @@ func DefaultConfig() Config {
 		CallTimeout:           30 * time.Second,
 		WriteTimeout:          10 * time.Second,
 		OutboundQueueSize:     64,
+		AsyncQueueSize:        64,
 		MaxConcurrentHandlers: 16,
 		Logger:                slog.Default(),
 		Metrics:               NoopMetrics,

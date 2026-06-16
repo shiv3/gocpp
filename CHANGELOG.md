@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Callback-style async calls: `csms.CallAsync` / `cp.CallAsync` (plus untyped
+  `CallRawAsync`) send a request without blocking and deliver the typed response (or
+  error) to a callback. With `WithSerializedCalls` they're queued on a per-connection
+  FIFO and sent one outstanding at a time (callback in submission order); otherwise
+  they run concurrently. Queue bound via `WithAsyncQueueSize` (default 64;
+  `ocppj.ErrQueueFull` when full). Eases migration from ocpp-go's `SendRequestAsync`.
+
 ## [0.1.2] - 2026-06-16
 
 All additions are opt-in and preserve prior default behavior.
