@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-06-16
+
+All additions are opt-in and preserve prior default behavior.
+
+### Added
+- WebSocket ping/pong keepalive on both endpoints (`WithWebSocketPingInterval` +
+  `WithWebSocketPongWait`); a missed pong tears down dead peers.
+- Charge-point auto-Heartbeat via `cp.WithHeartbeatInterval`.
+- Charge-point client authentication and transport options: `cp.WithBasicAuth`,
+  `cp.WithHTTPHeader`, `cp.WithTLSConfig` (OCPP Security Profiles 1/2/3).
+- `WithSerializedCalls()` (CSMS and CP): cap outbound CALLs to one outstanding per
+  connection.
+- `cp.WithOfflineQueue(capacity)`: bounded FIFO queue for CP-originated calls while
+  disconnected, flushed FIFO on reconnect (`ocppj.ErrQueueFull` at capacity). In-flight
+  CALLs fail with `ocppj.ErrConnClosed` on disconnect by default; `cp.WithRetryInFlightCalls()`
+  opts into resend after reconnect.
+- Connection lifecycle callbacks: `cp.WithOnConnect`/`WithOnDisconnect`/`WithOnReconnect`
+  and `csms.WithOnConnect`/`WithOnDisconnect`.
+- Schema validation extended to outbound requests, inbound responses, and handler
+  responses (previously inbound requests only).
+
+### Changed
+- **BREAKING:** remove `csms.WithHeartbeatInterval` — in OCPP the Charge Point emits
+  Heartbeat, never the CSMS. Use `cp.WithHeartbeatInterval`.
+
 ## [0.1.1] - 2026-06-16
 
 ### Changed
