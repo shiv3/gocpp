@@ -21,18 +21,6 @@ version-resolver:
     labels: [patch, fix, bug, chore]
   default: patch
 
-# Auto-apply category labels from conventional-commit PR titles so the rolling
-# draft is categorized without manual labeling.
-autolabeler:
-  - label: breaking
-    title: ['/^\w+(\(.+\))?!:/']
-  - label: feature
-    title: ['/^feat(\(.+\))?!?:/']
-  - label: fix
-    title: ['/^fix(\(.+\))?!?:/']
-  - label: chore
-    title: ['/^(chore|docs|ci|refactor|test|build|perf|style)(\(.+\))?!?:/']
-
 template: |
   ## What's Changed
 
