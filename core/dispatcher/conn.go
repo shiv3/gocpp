@@ -26,6 +26,7 @@ type Conn struct {
 	pending *pendingStore
 	reg     *HandlerRegistry
 	sem     *semaphore.Weighted
+	outSem  *semaphore.Weighted
 
 	ctx     context.Context
 	cancel  context.CancelCauseFunc
@@ -66,6 +67,7 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		pending: newPendingStore(),
 		reg:     reg,
 		sem:     semaphore.NewWeighted(cfg.MaxConcurrentHandlers),
+		outSem:  semaphore.NewWeighted(1),
 		done:    make(chan struct{}),
 		cfg:     cfg,
 	}
@@ -122,6 +124,7 @@ func (c *Conn) Start(parent context.Context) {
 	go c.reader()
 	go c.writer()
 	go c.dispatch()
+	c.startWebSocketPing()
 
 	go func() {
 		c.wg.Wait()

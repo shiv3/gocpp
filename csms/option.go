@@ -15,15 +15,13 @@ import (
 )
 
 type serverConfig struct {
-	dispatcher        dispatcher.Config
-	subProtocols      []string
-	heartbeatInterval time.Duration
-	pingInterval      time.Duration
-	path              string
-	cpIDExtractor     CPIDExtractor
-	instanceID        string
-	registry          *schema.Registry
-	duplicatePolicy   DuplicatePolicy
+	dispatcher      dispatcher.Config
+	subProtocols    []string
+	path            string
+	cpIDExtractor   CPIDExtractor
+	instanceID      string
+	registry        *schema.Registry
+	duplicatePolicy DuplicatePolicy
 
 	globalConcurrencyLimit int
 
@@ -34,6 +32,8 @@ type serverConfig struct {
 	cfgStore       storage.ConfigStore
 	metrics        observability.Metrics
 	tracerProvider trace.TracerProvider
+	onConnect      func(*Conn)
+	onDisconnect   func(*Conn, error)
 }
 
 func defaultServerConfig() serverConfig {
@@ -94,14 +94,29 @@ func WithLogger(l *slog.Logger) Option {
 	return optionFunc(func(c *serverConfig) { c.dispatcher.Logger = l })
 }
 
-// WithHeartbeatInterval sets the application-layer OCPP Heartbeat interval.
-func WithHeartbeatInterval(d time.Duration) Option {
-	return optionFunc(func(c *serverConfig) { c.heartbeatInterval = d })
-}
-
 // WithWebSocketPingInterval sets the transport ping interval.
 func WithWebSocketPingInterval(d time.Duration) Option {
-	return optionFunc(func(c *serverConfig) { c.pingInterval = d })
+	return optionFunc(func(c *serverConfig) { c.dispatcher.PingInterval = d })
+}
+
+// WithWebSocketPongWait sets the transport pong timeout.
+func WithWebSocketPongWait(d time.Duration) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.PongWait = d })
+}
+
+// WithSerializedCalls limits outbound OCPP Calls to one outstanding request.
+func WithSerializedCalls() Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.SerializeOutboundCalls = true })
+}
+
+// WithOnConnect registers a callback fired after a charge point connection is accepted.
+func WithOnConnect(fn func(*Conn)) Option {
+	return optionFunc(func(c *serverConfig) { c.onConnect = fn })
+}
+
+// WithOnDisconnect registers a callback fired after a charge point connection drops.
+func WithOnDisconnect(fn func(*Conn, error)) Option {
+	return optionFunc(func(c *serverConfig) { c.onDisconnect = fn })
 }
 
 // WithInstanceID sets the CSMS instance identifier (multi-instance deployments).

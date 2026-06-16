@@ -11,6 +11,8 @@ type WS interface {
 	Read(ctx context.Context) ([]byte, error)
 	// Write sends one text message, respecting ctx for cancellation.
 	Write(ctx context.Context, data []byte) error
+	// Ping sends a WebSocket ping and waits for the matching pong.
+	Ping(ctx context.Context) error
 	// Close sends a close frame with the given status code and reason.
 	Close(code StatusCode, reason string) error
 	// Subprotocol returns the negotiated subprotocol (e.g. "ocpp1.6").

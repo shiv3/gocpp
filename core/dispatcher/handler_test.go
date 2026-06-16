@@ -128,6 +128,9 @@ func TestConn_SchemaModeTolerantLogsAndContinues(t *testing.T) {
 	validatorCalls := 0
 	cfg.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
 		validatorCalls++
+		if kind != "request" {
+			return nil
+		}
 		return errors.New("schema nope")
 	}
 	c := NewConn("CP_1", f, cfg, reg)
@@ -138,7 +141,7 @@ func TestConn_SchemaModeTolerantLogsAndContinues(t *testing.T) {
 
 	sent := <-f.Sent()
 	require.JSONEq(t, `[3,"tol1",{"ok":true}]`, string(sent))
-	require.Equal(t, 1, validatorCalls)
+	require.Equal(t, 2, validatorCalls)
 	require.Equal(t, 1, metrics.schemaFailures)
 	require.Equal(t, "1.6", metrics.version)
 	require.Equal(t, "Heartbeat", metrics.action)
@@ -181,6 +184,67 @@ func TestConn_SchemaModeStrictRejectsFormationViolation(t *testing.T) {
 		t.Fatal("handler was called after strict schema failure")
 	default:
 	}
+}
+
+func TestConn_StrictSchemaRejectsInvalidHandlerResponse(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	reg := NewHandlerRegistry()
+	reg.Register("Heartbeat", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+		return []byte(`{"bad":true}`), nil
+	})
+	metrics := &schemaFailureMetrics{}
+	cfg := DefaultConfig()
+	cfg.Metrics = metrics
+	cfg.SchemaMode = SchemaModeStrict
+	cfg.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
+		if kind == "response" {
+			return errors.New("schema nope")
+		}
+		return nil
+	}
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	f.Inject([]byte(`[2,"resp1","Heartbeat",{}]`))
+
+	sent := <-f.Sent()
+	require.JSONEq(t, `[4,"resp1","InternalError","schema nope",{}]`, string(sent))
+	require.Equal(t, 1, metrics.schemaFailures)
+	require.Equal(t, "response", metrics.kind)
+}
+
+func TestConn_TolerantSchemaLogsInvalidHandlerResponseAndContinues(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	reg := NewHandlerRegistry()
+	reg.Register("Heartbeat", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+		return []byte(`{"ok":true}`), nil
+	})
+	var logs bytes.Buffer
+	metrics := &schemaFailureMetrics{}
+	cfg := DefaultConfig()
+	cfg.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	cfg.Metrics = metrics
+	cfg.SchemaMode = SchemaModeTolerant
+	cfg.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
+		if kind == "response" {
+			return errors.New("schema nope")
+		}
+		return nil
+	}
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	f.Inject([]byte(`[2,"resp2","Heartbeat",{}]`))
+
+	sent := <-f.Sent()
+	require.JSONEq(t, `[3,"resp2",{"ok":true}]`, string(sent))
+	require.Equal(t, 1, metrics.schemaFailures)
+	require.Equal(t, "response", metrics.kind)
+	require.Contains(t, logs.String(), "kind=response")
 }
 
 type schemaFailureMetrics struct {

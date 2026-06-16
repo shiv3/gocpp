@@ -2,6 +2,7 @@ package transport_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/shiv3/gocpp/core/transport"
@@ -32,6 +33,13 @@ func TestFakeWS_ReadWrite(t *testing.T) {
 	if got := f.Subprotocol(); got != "ocpp1.6" {
 		t.Fatalf("FakeWS.Subprotocol() = %q, want %q", got, "ocpp1.6")
 	}
+
+	if err := f.Ping(ctx); err != nil {
+		t.Fatalf("FakeWS.Ping() error = %v", err)
+	}
+	if got := f.PingCount(); got != 1 {
+		t.Fatalf("FakeWS.PingCount() = %d, want 1", got)
+	}
 }
 
 func TestFakeWS_CloseUnblocksRead(t *testing.T) {
@@ -40,5 +48,21 @@ func TestFakeWS_CloseUnblocksRead(t *testing.T) {
 	_, err := f.Read(context.Background())
 	if err == nil {
 		t.Fatal("FakeWS.Read() error = nil, want non-nil")
+	}
+}
+
+func TestFakeWS_PingFunc(t *testing.T) {
+	want := errors.New("no pong")
+	f := transport.NewFakeWS("ocpp1.6")
+	f.SetPingFunc(func(context.Context) error {
+		return want
+	})
+
+	err := f.Ping(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("FakeWS.Ping() error = %v, want %v", err, want)
+	}
+	if got := f.PingCount(); got != 1 {
+		t.Fatalf("FakeWS.PingCount() = %d, want 1", got)
 	}
 }

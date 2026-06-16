@@ -23,10 +23,20 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 	}()
 
 	msgID := ocppj.NewMsgID()
+	if err := c.schemaValidationError(action, "request", reqPayload); err != nil {
+		if c.cfg.SchemaMode == SchemaModeStrict {
+			return nil, err
+		}
+	}
 	raw, err := ocppj.EncodeCall(msgID, action, reqPayload)
 	if err != nil {
 		return nil, fmt.Errorf("encode call: %w", err)
 	}
+	release, err := c.acquireOutboundSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 
 	pc := &pendingCall{
 		msgID:  msgID,
@@ -56,10 +66,36 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 		if res.err != nil {
 			return nil, res.err
 		}
+		if err := c.schemaValidationError(action, "response", res.payload); err != nil {
+			if c.cfg.SchemaMode == SchemaModeStrict {
+				return nil, err
+			}
+		}
 		return res.payload, nil
 	case <-c.ctx.Done():
 		return nil, context.Cause(c.ctx)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (c *Conn) acquireOutboundSlot(ctx context.Context) (func(), error) {
+	if !c.cfg.SerializeOutboundCalls {
+		return func() {}, nil
+	}
+	waitCtx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(c.ctx, cancel)
+	err := c.outSem.Acquire(waitCtx, 1)
+	stop()
+	cancel()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if c.ctx.Err() != nil {
+			return nil, context.Cause(c.ctx)
+		}
+		return nil, err
+	}
+	return func() { c.outSem.Release(1) }, nil
 }

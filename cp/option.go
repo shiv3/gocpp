@@ -1,7 +1,9 @@
 package cp
 
 import (
+	"crypto/tls"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
@@ -9,10 +11,19 @@ import (
 )
 
 type clientConfig struct {
-	dispatcher        dispatcher.Config
-	subProtocols      []string
-	heartbeatInterval time.Duration
-	registry          *schema.Registry
+	dispatcher           dispatcher.Config
+	subProtocols         []string
+	heartbeatInterval    time.Duration
+	basicAuthUser        string
+	basicAuthPass        string
+	httpHeader           http.Header
+	tlsConfig            *tls.Config
+	offlineQueueCapacity int
+	retryInFlight        bool
+	onConnect            func()
+	onDisconnect         func(error)
+	onReconnect          func()
+	registry             *schema.Registry
 }
 
 func defaultClientConfig() clientConfig {
@@ -47,6 +58,80 @@ func WithCallTimeout(d time.Duration) Option {
 // WithHeartbeatInterval sets the OCPP Heartbeat interval.
 func WithHeartbeatInterval(d time.Duration) Option {
 	return optionFunc(func(c *clientConfig) { c.heartbeatInterval = d })
+}
+
+// WithWebSocketPingInterval sets the transport ping interval.
+func WithWebSocketPingInterval(d time.Duration) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.PingInterval = d })
+}
+
+// WithWebSocketPongWait sets the transport pong timeout.
+func WithWebSocketPongWait(d time.Duration) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.PongWait = d })
+}
+
+// WithSerializedCalls limits outbound OCPP Calls to one outstanding request.
+func WithSerializedCalls() Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.SerializeOutboundCalls = true })
+}
+
+// WithOfflineQueue enables a bounded FIFO queue for CP-originated calls while disconnected.
+func WithOfflineQueue(capacity int) Option {
+	return optionFunc(func(c *clientConfig) {
+		if capacity <= 0 {
+			c.offlineQueueCapacity = 0
+			return
+		}
+		c.offlineQueueCapacity = capacity
+		c.dispatcher.SerializeOutboundCalls = true
+	})
+}
+
+// WithRetryInFlightCalls makes the offline queue re-send a CALL that was already
+// in-flight when the connection dropped, instead of failing it. Off by default:
+// OCPP gives no idempotency guarantee, so an in-flight CALL the peer may already
+// have received fails with ocppj.ErrConnClosed rather than risk double execution.
+// Only affects connections using WithOfflineQueue.
+func WithRetryInFlightCalls() Option {
+	return optionFunc(func(c *clientConfig) { c.retryInFlight = true })
+}
+
+// WithOnConnect registers a callback fired after a successful connection.
+func WithOnConnect(fn func()) Option {
+	return optionFunc(func(c *clientConfig) { c.onConnect = fn })
+}
+
+// WithOnDisconnect registers a callback fired after the active connection drops.
+func WithOnDisconnect(fn func(error)) Option {
+	return optionFunc(func(c *clientConfig) { c.onDisconnect = fn })
+}
+
+// WithOnReconnect registers a callback fired after Run re-establishes a dropped connection.
+func WithOnReconnect(fn func()) Option {
+	return optionFunc(func(c *clientConfig) { c.onReconnect = fn })
+}
+
+// WithBasicAuth sets HTTP Basic authentication for the WebSocket dial.
+func WithBasicAuth(username, password string) Option {
+	return optionFunc(func(c *clientConfig) {
+		c.basicAuthUser = username
+		c.basicAuthPass = password
+	})
+}
+
+// WithHTTPHeader appends an HTTP header to the WebSocket dial request.
+func WithHTTPHeader(key, value string) Option {
+	return optionFunc(func(c *clientConfig) {
+		if c.httpHeader == nil {
+			c.httpHeader = make(http.Header)
+		}
+		c.httpHeader.Add(key, value)
+	})
+}
+
+// WithTLSConfig sets the TLS configuration used by the WebSocket dial.
+func WithTLSConfig(cfg *tls.Config) Option {
+	return optionFunc(func(c *clientConfig) { c.tlsConfig = cfg })
 }
 
 // WithSchemaRegistry sets the schema registry used for first-layer validation.

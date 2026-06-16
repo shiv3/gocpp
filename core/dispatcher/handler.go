@@ -66,17 +66,11 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
 		return
 	}
-	if c.cfg.SchemaValidate != nil && c.cfg.SchemaMode != SchemaModeOff {
-		if err := c.cfg.SchemaValidate(c.version, frame.Action, "request", frame.Payload); err != nil {
-			c.recordSchemaValidationFailure(frame.Action, "request")
-			if c.cfg.SchemaMode == SchemaModeTolerant {
-				c.cfg.Logger.WarnContext(c.ctx, "schema validation failed",
-					"version", string(c.version), "action", frame.Action, "kind", "request", "err", err)
-			} else {
-				status = "schema_invalid"
-				c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
-				return
-			}
+	if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
+		if c.cfg.SchemaMode == SchemaModeStrict {
+			status = "schema_invalid"
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
+			return
 		}
 	}
 	hctx, span := c.cfg.Tracer.Start(c.ctx, "ocpp.handler")
@@ -91,6 +85,15 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		status = "error"
 		c.sendCallError(frame.MsgID, mapHandlerError(err))
 		return
+	}
+	if err := c.schemaValidationError(frame.Action, "response", resp); err != nil {
+		if c.cfg.SchemaMode == SchemaModeStrict {
+			status = "schema_invalid"
+			// The local handler produced an invalid response, so no valid
+			// CallResult can be sent. Return InternalError to the peer.
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, err.Error(), nil))
+			return
+		}
 	}
 	c.sendCallResult(frame.MsgID, resp)
 }
@@ -125,4 +128,20 @@ func (c *Conn) recordSchemaValidationFailure(action, kind string) {
 	if m, ok := c.cfg.Metrics.(schemaValidationMetricsHook); ok {
 		m.SchemaValidationFailure(string(c.version), action, kind)
 	}
+}
+
+func (c *Conn) schemaValidationError(action, kind string, payload []byte) error {
+	if c.cfg.SchemaValidate == nil || c.cfg.SchemaMode == SchemaModeOff {
+		return nil
+	}
+	err := c.cfg.SchemaValidate(c.version, action, kind, payload)
+	if err == nil {
+		return nil
+	}
+	c.recordSchemaValidationFailure(action, kind)
+	if c.cfg.SchemaMode == SchemaModeTolerant {
+		c.cfg.Logger.WarnContext(c.ctx, "schema validation failed",
+			"version", string(c.version), "action", action, "kind", kind, "err", err)
+	}
+	return err
 }

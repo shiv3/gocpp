@@ -26,6 +26,10 @@ func (w *coderWS) Write(ctx context.Context, data []byte) error {
 	return w.c.Write(ctx, websocket.MessageText, data)
 }
 
+func (w *coderWS) Ping(ctx context.Context) error {
+	return w.c.Ping(ctx)
+}
+
 func (w *coderWS) Close(code StatusCode, reason string) error {
 	return w.c.Close(websocket.StatusCode(code), reason)
 }
