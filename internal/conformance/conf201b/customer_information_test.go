@@ -58,6 +58,14 @@ func TestCustomerInformation201_RequestValidation(t *testing.T) {
 			Valid: true,
 		},
 		{
+			Name: "valid zero requestId",
+			Message: messages.CustomerInformationRequest{
+				Report: true,
+				Clear:  true,
+			},
+			Valid: true,
+		},
+		{
 			Name: "invalid missing requestId",
 			Message: map[string]any{
 				"report": true,
@@ -81,7 +89,15 @@ func TestCustomerInformation201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minimum for requestId.
+		{
+			Name: "invalid requestId below minimum",
+			Message: map[string]any{
+				"requestId": -1,
+				"report":    true,
+				"clear":     true,
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid customerIdentifier exceeds maxLength 64",
 			Message: messages.CustomerInformationRequest{

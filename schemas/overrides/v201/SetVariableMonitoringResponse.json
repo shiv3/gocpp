@@ -1,0 +1,19 @@
+{
+  "definitions": {
+    "SetMonitoringResultType": {
+      "properties": {
+        "severity": {
+          "maximum": 9,
+          "minimum": 0
+        }
+      }
+    },
+    "StatusInfoType": {
+      "properties": {
+        "reasonCode": {
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

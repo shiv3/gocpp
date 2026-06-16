@@ -56,7 +56,14 @@ func TestClearedChargingLimit201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minimum for evseId.
+		{
+			Name: "invalid evseId below minimum",
+			Message: map[string]any{
+				"chargingLimitSource": "EMS",
+				"evseId":              -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

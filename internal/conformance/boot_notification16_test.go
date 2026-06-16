@@ -188,7 +188,24 @@ func TestBootNotification16_ResponseValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): needs schemas/overrides/v16/BootNotificationResponse.json minimum:0
+		{
+			Name: "valid interval zero",
+			Message: messages.BootNotificationResponse{
+				CurrentTime: now,
+				Interval:    0,
+				Status:      messages.RegistrationStatusAccepted,
+			},
+			Valid: true,
+		},
+		{
+			Name: "invalid interval below minimum",
+			Message: map[string]any{
+				"currentTime": now,
+				"interval":    -1,
+				"status":      messages.RegistrationStatusAccepted,
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid unknown status enum",
 			Message: messages.BootNotificationResponse{

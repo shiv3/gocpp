@@ -70,7 +70,14 @@ func TestRemoteStartTransaction16_RequestValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): needs schema override for connectorId minimum.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"idTag":       "12345",
+				"connectorId": 0,
+			},
+			Valid: false,
+		},
 		{
 			Name:    "invalid missing idTag",
 			Message: map[string]any{},

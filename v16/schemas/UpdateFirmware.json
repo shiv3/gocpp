@@ -1,26 +1,28 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "UpdateFirmwareRequest",
-    "type": "object",
-    "properties": {
-        "location": {
-            "type": "string",
-            "format": "uri"
-        },
-        "retries": {
-            "type": "integer"
-        },
-        "retrieveDate": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "retryInterval": {
-            "type": "integer"
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "location": {
+      "format": "uri",
+      "type": "string"
     },
-    "additionalProperties": false,
-    "required": [
-        "location",
-        "retrieveDate"
-    ]
+    "retries": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "retrieveDate": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "retryInterval": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "location",
+    "retrieveDate"
+  ],
+  "title": "UpdateFirmwareRequest",
+  "type": "object"
 }

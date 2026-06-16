@@ -54,7 +54,16 @@ func TestStartTransaction16_RequestValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): needs schema override for connectorId minimum.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": 0,
+				"idTag":       "12345",
+				"meterStart":  int32(100),
+				"timestamp":   now,
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid idTag exceeds maxLength 20",
 			Message: messages.StartTransactionRequest{

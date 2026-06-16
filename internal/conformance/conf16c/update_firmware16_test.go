@@ -24,6 +24,8 @@ func TestUpdateFirmware16_RequestValidation(t *testing.T) {
 	retrieveDate := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	retries := int32(10)
 	retryInterval := int32(10)
+	zeroRetries := int32(0)
+	zeroRetryInterval := int32(0)
 	cases := []conformance.ValidationCase{
 		{
 			Name: "valid full request",
@@ -32,6 +34,16 @@ func TestUpdateFirmware16_RequestValidation(t *testing.T) {
 				Retries:       &retries,
 				RetrieveDate:  retrieveDate,
 				RetryInterval: &retryInterval,
+			},
+			Valid: true,
+		},
+		{
+			Name: "valid zero retries and retryInterval",
+			Message: messages.UpdateFirmwareRequest{
+				Location:      "ftp:some/path",
+				Retries:       &zeroRetries,
+				RetrieveDate:  retrieveDate,
+				RetryInterval: &zeroRetryInterval,
 			},
 			Valid: true,
 		},
@@ -72,8 +84,24 @@ func TestUpdateFirmware16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for minimum:0 on retries.
-		// TODO(parity): needs schema override for minimum:0 on retryInterval.
+		{
+			Name: "invalid retries below minimum",
+			Message: map[string]any{
+				"location":     "ftp:some/path",
+				"retries":      -1,
+				"retrieveDate": retrieveDate,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid retryInterval below minimum",
+			Message: map[string]any{
+				"location":      "ftp:some/path",
+				"retrieveDate":  retrieveDate,
+				"retryInterval": -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

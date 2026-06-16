@@ -71,7 +71,13 @@ func TestGetMonitoringReport201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for requestId minimum and empty array minItems parity.
+		{
+			Name: "invalid requestId below minimum",
+			Message: map[string]any{
+				"requestId": -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

@@ -95,8 +95,26 @@ func TestStatusNotification201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for evseId minimum.
-		// TODO(parity): needs schema override for connectorId minimum.
+		{
+			Name: "invalid evseId below minimum",
+			Message: map[string]any{
+				"timestamp":       fixedTime201f(),
+				"connectorStatus": "Available",
+				"evseId":          -1,
+				"connectorId":     1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"timestamp":       fixedTime201f(),
+				"connectorStatus": "Available",
+				"evseId":          1,
+				"connectorId":     -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

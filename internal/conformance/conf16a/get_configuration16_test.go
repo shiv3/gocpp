@@ -36,7 +36,13 @@ func TestGetConfiguration16_RequestValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): needs schema override (numeric/array bound): duplicate key values are not encoded in the OCA JSON schema.
+		{
+			Name: "invalid duplicate key values",
+			Message: map[string]any{
+				"key": []string{"key1", "key1"},
+			},
+			Valid: false,
+		},
 		{
 			Name:    "valid empty request",
 			Message: messages.GetConfigurationRequest{},

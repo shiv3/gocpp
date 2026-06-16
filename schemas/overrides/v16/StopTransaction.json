@@ -1,0 +1,13 @@
+{
+  "properties": {
+    "transactionData": {
+      "items": {
+        "properties": {
+          "sampledValue": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  }
+}

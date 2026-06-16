@@ -142,9 +142,41 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for retries minimum.
-		// TODO(parity): needs schema override for retryInterval minimum.
-		// TODO(parity): needs schema override for requestId minimum.
+		{
+			Name: "invalid retries below minimum",
+			Message: map[string]any{
+				"requestId": 42,
+				"retries":   -1,
+				"firmware": map[string]any{
+					"location":         "https://someurl",
+					"retrieveDateTime": fixedTime201f(),
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid retryInterval below minimum",
+			Message: map[string]any{
+				"requestId":     42,
+				"retryInterval": -1,
+				"firmware": map[string]any{
+					"location":         "https://someurl",
+					"retrieveDateTime": fixedTime201f(),
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid requestId below minimum",
+			Message: map[string]any{
+				"requestId": -1,
+				"firmware": map[string]any{
+					"location":         "https://someurl",
+					"retrieveDateTime": fixedTime201f(),
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -202,7 +234,14 @@ func TestUpdateFirmware201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

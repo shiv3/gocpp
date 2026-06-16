@@ -1,0 +1,11 @@
+{
+  "definitions": {
+    "StatusInfoType": {
+      "properties": {
+        "reasonCode": {
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

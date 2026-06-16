@@ -97,7 +97,20 @@ func TestSetMonitoringLevel201_RequestValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override for severity minimum and maximum.
+		{
+			Name: "invalid severity below minimum",
+			Message: map[string]any{
+				"severity": -1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid severity above maximum",
+			Message: map[string]any{
+				"severity": 10,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

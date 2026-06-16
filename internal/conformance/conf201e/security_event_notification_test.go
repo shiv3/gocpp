@@ -49,7 +49,14 @@ func TestSecurityEventNotification201_RequestValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override for type minLength.
+		{
+			Name: "invalid empty type",
+			Message: map[string]any{
+				"timestamp": timestamp,
+				"type":      "",
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid type exceeds maxLength 50",
 			Message: messages.SecurityEventNotificationRequest{

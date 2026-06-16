@@ -133,8 +133,6 @@ func TestAuthorize201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): empty optional array — OCA schema has no minItems, so it is
-		// valid; ocpp-go enforced min=1 via struct tag. Needs a schema override to assert.
 		{
 			Name: "invalid iso15118CertificateHashData exceeds maxItems 4",
 			Message: messages.AuthorizeRequest{
@@ -244,8 +242,6 @@ func TestAuthorize201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): empty optional array — OCA schema has no minItems, so it is
-		// valid; ocpp-go enforced min=1 via struct tag. Needs a schema override to assert.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

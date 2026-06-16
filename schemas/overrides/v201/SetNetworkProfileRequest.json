@@ -1,0 +1,23 @@
+{
+  "definitions": {
+    "APNType": {
+      "properties": {
+        "simPin": {
+          "minimum": 0
+        }
+      }
+    },
+    "NetworkConnectionProfileType": {
+      "properties": {
+        "messageTimeout": {
+          "minimum": -1
+        }
+      }
+    }
+  },
+  "properties": {
+    "configurationSlot": {
+      "minimum": 0
+    }
+  }
+}

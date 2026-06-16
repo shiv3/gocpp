@@ -1,69 +1,70 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "StatusNotificationRequest",
-    "type": "object",
-    "properties": {
-        "connectorId": {
-            "type": "integer"
-        },
-        "errorCode": {
-            "type": "string",
-            "additionalProperties": false,
-            "enum": [
-                "ConnectorLockFailure",
-                "EVCommunicationError",
-                "GroundFailure",
-                "HighTemperature",
-                "InternalError",
-                "LocalListConflict",
-                "NoError",
-                "OtherError",
-                "OverCurrentFailure",
-                "PowerMeterFailure",
-                "PowerSwitchFailure",
-                "ReaderFailure",
-                "ResetFailure",
-                "UnderVoltage",
-                "OverVoltage",
-                "WeakSignal"
-            ]
-        },
-        "info": {
-            "type": "string",
-            "maxLength": 50
-        },
-        "status": {
-            "type": "string",
-            "additionalProperties": false,
-            "enum": [
-                "Available",
-                "Preparing",
-                "Charging",
-                "SuspendedEVSE",
-                "SuspendedEV",
-                "Finishing",
-                "Reserved",
-                "Unavailable",
-                "Faulted"
-            ]
-        },
-        "timestamp": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "vendorId": {
-            "type": "string",
-            "maxLength": 255
-        },
-        "vendorErrorCode": {
-            "type": "string",
-            "maxLength": 50
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "connectorId": {
+      "minimum": 0,
+      "type": "integer"
     },
-    "additionalProperties": false,
-    "required": [
-        "connectorId",
-        "errorCode",
-        "status"
-    ]
+    "errorCode": {
+      "additionalProperties": false,
+      "enum": [
+        "ConnectorLockFailure",
+        "EVCommunicationError",
+        "GroundFailure",
+        "HighTemperature",
+        "InternalError",
+        "LocalListConflict",
+        "NoError",
+        "OtherError",
+        "OverCurrentFailure",
+        "PowerMeterFailure",
+        "PowerSwitchFailure",
+        "ReaderFailure",
+        "ResetFailure",
+        "UnderVoltage",
+        "OverVoltage",
+        "WeakSignal"
+      ],
+      "type": "string"
+    },
+    "info": {
+      "maxLength": 50,
+      "type": "string"
+    },
+    "status": {
+      "additionalProperties": false,
+      "enum": [
+        "Available",
+        "Preparing",
+        "Charging",
+        "SuspendedEVSE",
+        "SuspendedEV",
+        "Finishing",
+        "Reserved",
+        "Unavailable",
+        "Faulted"
+      ],
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "vendorErrorCode": {
+      "maxLength": 50,
+      "type": "string"
+    },
+    "vendorId": {
+      "maxLength": 255,
+      "type": "string"
+    }
+  },
+  "required": [
+    "connectorId",
+    "errorCode",
+    "status"
+  ],
+  "title": "StatusNotificationRequest",
+  "type": "object"
 }

@@ -1,29 +1,31 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "GetDiagnosticsRequest",
-    "type": "object",
-    "properties": {
-        "location": {
-            "type": "string",
-            "format": "uri"
-        },
-        "retries": {
-            "type": "integer"
-        },
-        "retryInterval": {
-            "type": "integer"
-        },
-        "startTime": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "stopTime": {
-            "type": "string",
-            "format": "date-time"
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "location": {
+      "format": "uri",
+      "type": "string"
     },
-    "additionalProperties": false,
-    "required": [
-        "location"
-    ]
+    "retries": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "retryInterval": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "startTime": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "stopTime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "location"
+  ],
+  "title": "GetDiagnosticsRequest",
+  "type": "object"
 }

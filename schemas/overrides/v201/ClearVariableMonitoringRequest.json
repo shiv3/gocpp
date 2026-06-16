@@ -1,0 +1,9 @@
+{
+  "properties": {
+    "id": {
+      "items": {
+        "minimum": 0
+      }
+    }
+  }
+}

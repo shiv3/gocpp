@@ -36,7 +36,14 @@ func TestFirmwareStatusNotification201_RequestValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minimum for requestId.
+		{
+			Name: "invalid requestId below minimum",
+			Message: map[string]any{
+				"status":    "Downloaded",
+				"requestId": -1,
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid status enum",
 			Message: messages.FirmwareStatusNotificationRequest{

@@ -99,7 +99,15 @@ func TestReserveNow201_RequestValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override for id minimum.
+		{
+			Name: "invalid id below minimum",
+			Message: map[string]any{
+				"id":             -1,
+				"expiryDateTime": expiry,
+				"idToken":        testIDToken201e("1234", "KeyCode"),
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid connectorType enum",
 			Message: messages.ReserveNowRequest{
@@ -112,7 +120,16 @@ func TestReserveNow201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for evseId minimum.
+		{
+			Name: "invalid evseId below minimum",
+			Message: map[string]any{
+				"id":             42,
+				"evseId":         -1,
+				"expiryDateTime": expiry,
+				"idToken":        testIDToken201e("1234", "KeyCode"),
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid idToken type enum",
 			Message: messages.ReserveNowRequest{
@@ -183,7 +200,14 @@ func TestReserveNow201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

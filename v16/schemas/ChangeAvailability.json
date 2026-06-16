@@ -1,23 +1,24 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "ChangeAvailabilityRequest",
-    "type": "object",
-    "properties": {
-        "connectorId": {
-            "type": "integer"
-        },
-        "type": {
-            "type": "string",
-            "additionalProperties": false,
-            "enum": [
-                "Inoperative",
-                "Operative"
-            ]
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "connectorId": {
+      "minimum": 0,
+      "type": "integer"
     },
-    "additionalProperties": false,
-    "required": [
-        "connectorId",
-        "type"
-    ]
+    "type": {
+      "additionalProperties": false,
+      "enum": [
+        "Inoperative",
+        "Operative"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "connectorId",
+    "type"
+  ],
+  "title": "ChangeAvailabilityRequest",
+  "type": "object"
 }

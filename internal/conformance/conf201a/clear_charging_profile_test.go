@@ -83,8 +83,20 @@ func TestClearChargingProfile201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minimum for evseId.
-		// TODO(parity): needs schema override; OCA schema has no minimum for stackLevel.
+		{
+			Name: "invalid criteria evseId below minimum",
+			Message: map[string]any{
+				"chargingProfileCriteria": map[string]any{"evseId": -1},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid criteria stackLevel below minimum",
+			Message: map[string]any{
+				"chargingProfileCriteria": map[string]any{"stackLevel": 0},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -138,7 +150,14 @@ func TestClearChargingProfile201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): upstream rejects empty statusInfo.reasonCode, but this schema has no minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

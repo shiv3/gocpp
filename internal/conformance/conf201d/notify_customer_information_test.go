@@ -157,7 +157,6 @@ func requireCPHandlerInvalidDirection201[Req, Resp any](t *testing.T, msg ocppj.
 func skipSchemaOverride201(t *testing.T, name string) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
-		// TODO(parity): needs schema override
 		t.Skip("numeric or array-min bound is not present in the bundled OCA schema")
 	})
 }
@@ -244,11 +243,29 @@ func TestNotifyCustomerInformation201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
+		{
+			Name: "invalid seqNo below minimum",
+			Message: map[string]any{
+				"data":        "dummyData",
+				"seqNo":       -1,
+				"generatedAt": fixedTime201(),
+				"requestId":   42,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid requestId below minimum",
+			Message: map[string]any{
+				"data":        "dummyData",
+				"seqNo":       0,
+				"generatedAt": fixedTime201(),
+				"requestId":   -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
-	skipSchemaOverride201(t, "invalid seqNo below minimum")
-	skipSchemaOverride201(t, "invalid requestId below minimum")
 }
 
 func TestNotifyCustomerInformation201_ResponseValidation(t *testing.T) {

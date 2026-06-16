@@ -1,29 +1,30 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "BootNotificationResponse",
-    "type": "object",
-    "properties": {
-        "status": {
-            "type": "string",
-            "additionalProperties": false,
-            "enum": [
-                "Accepted",
-                "Pending",
-                "Rejected"
-            ]
-        },
-        "currentTime": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "interval": {
-            "type": "integer"
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "currentTime": {
+      "format": "date-time",
+      "type": "string"
     },
-    "additionalProperties": false,
-    "required": [
-        "status",
-        "currentTime",
-        "interval"
-    ]
+    "interval": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "status": {
+      "additionalProperties": false,
+      "enum": [
+        "Accepted",
+        "Pending",
+        "Rejected"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "currentTime",
+    "interval"
+  ],
+  "title": "BootNotificationResponse",
+  "type": "object"
 }

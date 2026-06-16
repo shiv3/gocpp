@@ -215,8 +215,36 @@ func TestSetVariableMonitoring201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for severity minimum.
-		// TODO(parity): needs schema override for severity maximum.
+		{
+			Name: "invalid severity below minimum",
+			Message: map[string]any{
+				"setMonitoringData": []any{
+					map[string]any{
+						"value":     42.0,
+						"type":      "UpperThreshold",
+						"severity":  -1,
+						"component": map[string]any{"name": "component1"},
+						"variable":  map[string]any{"name": "variable1"},
+					},
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid severity above maximum",
+			Message: map[string]any{
+				"setMonitoringData": []any{
+					map[string]any{
+						"value":     42.0,
+						"type":      "UpperThreshold",
+						"severity":  10,
+						"component": map[string]any{"name": "component1"},
+						"variable":  map[string]any{"name": "variable1"},
+					},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -422,9 +450,52 @@ func TestSetVariableMonitoring201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for severity minimum.
-		// TODO(parity): needs schema override for severity maximum.
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid severity below minimum",
+			Message: map[string]any{
+				"setMonitoringResult": []any{
+					map[string]any{
+						"status":    "Accepted",
+						"type":      "UpperThreshold",
+						"severity":  -1,
+						"component": map[string]any{"name": "component1"},
+						"variable":  map[string]any{"name": "variable1"},
+					},
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid severity above maximum",
+			Message: map[string]any{
+				"setMonitoringResult": []any{
+					map[string]any{
+						"status":    "Accepted",
+						"type":      "UpperThreshold",
+						"severity":  10,
+						"component": map[string]any{"name": "component1"},
+						"variable":  map[string]any{"name": "variable1"},
+					},
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"setMonitoringResult": []any{
+					map[string]any{
+						"status":     "Accepted",
+						"type":       "UpperThreshold",
+						"severity":   5,
+						"component":  map[string]any{"name": "component1"},
+						"variable":   map[string]any{"name": "variable1"},
+						"statusInfo": map[string]any{"reasonCode": ""},
+					},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

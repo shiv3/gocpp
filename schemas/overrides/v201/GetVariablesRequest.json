@@ -1,0 +1,11 @@
+{
+  "definitions": {
+    "EVSEType": {
+      "properties": {
+        "id": {
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

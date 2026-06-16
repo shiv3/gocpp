@@ -1,26 +1,28 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "ClearChargingProfileRequest",
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "integer"
-        },
-        "connectorId": {
-            "type": "integer"
-        },
-        "chargingProfilePurpose": {
-            "type": "string",
-            "additionalProperties": false,
-            "enum": [
-                "ChargePointMaxProfile",
-                "TxDefaultProfile",
-                "TxProfile"
-            ]
-        },
-        "stackLevel": {
-            "type": "integer"
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "chargingProfilePurpose": {
+      "additionalProperties": false,
+      "enum": [
+        "ChargePointMaxProfile",
+        "TxDefaultProfile",
+        "TxProfile"
+      ],
+      "type": "string"
     },
-    "additionalProperties": false
+    "connectorId": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "id": {
+      "type": "integer"
+    },
+    "stackLevel": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "title": "ClearChargingProfileRequest",
+  "type": "object"
 }

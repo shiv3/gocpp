@@ -26,6 +26,8 @@ func TestGetDiagnostics16_RequestValidation(t *testing.T) {
 	startTime := stopTime.Add(-24 * time.Hour)
 	retries := int32(10)
 	retryInterval := int32(10)
+	zeroRetries := int32(0)
+	zeroRetryInterval := int32(0)
 	cases := []conformance.ValidationCase{
 		{
 			Name: "valid full request",
@@ -35,6 +37,15 @@ func TestGetDiagnostics16_RequestValidation(t *testing.T) {
 				RetryInterval: &retryInterval,
 				StartTime:     &startTime,
 				StopTime:      &stopTime,
+			},
+			Valid: true,
+		},
+		{
+			Name: "valid zero retries and retryInterval",
+			Message: messages.GetDiagnosticsRequest{
+				Location:      "ftp:some/path",
+				Retries:       &zeroRetries,
+				RetryInterval: &zeroRetryInterval,
 			},
 			Valid: true,
 		},
@@ -84,8 +95,22 @@ func TestGetDiagnostics16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for minimum:0 on retries.
-		// TODO(parity): needs schema override for minimum:0 on retryInterval.
+		{
+			Name: "invalid retries below minimum",
+			Message: map[string]any{
+				"location": "ftp:some/path",
+				"retries":  -1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid retryInterval below minimum",
+			Message: map[string]any{
+				"location":      "ftp:some/path",
+				"retryInterval": -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

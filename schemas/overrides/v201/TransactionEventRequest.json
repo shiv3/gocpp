@@ -1,0 +1,19 @@
+{
+  "definitions": {
+    "EVSEType": {
+      "properties": {
+        "id": {
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "properties": {
+    "numberOfPhasesUsed": {
+      "minimum": 0
+    },
+    "seqNo": {
+      "minimum": 0
+    }
+  }
+}

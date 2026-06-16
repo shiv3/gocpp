@@ -1,67 +1,68 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "SendLocalListRequest",
-    "type": "object",
-    "properties": {
-        "listVersion": {
-            "type": "integer"
-        },
-        "localAuthorizationList": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "idTag": {
-                        "type": "string",
-                        "maxLength": 20
-                    },
-                    "idTagInfo": {
-                        "type": "object",
-                        "properties": {
-                            "expiryDate": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            "parentIdTag": {
-                                "type": "string",
-                                "maxLength": 20
-                            },
-                            "status": {
-                                "type": "string",
-                                "additionalProperties": false,
-                                "enum": [
-                                    "Accepted",
-                                    "Blocked",
-                                    "Expired",
-                                    "Invalid",
-                                    "ConcurrentTx"
-                                ]
-                            }
-                        },
-                        "additionalProperties": false,
-                        "required": [
-                            "status"
-                        ]
-                    }
-                },
-                "additionalProperties": false,
-                "required": [
-                    "idTag"
-                ]
-            }
-        },
-        "updateType": {
-            "type": "string",
-            "additionalProperties": false,
-            "enum": [
-                "Differential",
-                "Full"
-            ]
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "listVersion": {
+      "minimum": 0,
+      "type": "integer"
     },
-    "additionalProperties": false,
-    "required": [
-        "listVersion",
-        "updateType"
-    ]
+    "localAuthorizationList": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "idTag": {
+            "maxLength": 20,
+            "type": "string"
+          },
+          "idTagInfo": {
+            "additionalProperties": false,
+            "properties": {
+              "expiryDate": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "parentIdTag": {
+                "maxLength": 20,
+                "type": "string"
+              },
+              "status": {
+                "additionalProperties": false,
+                "enum": [
+                  "Accepted",
+                  "Blocked",
+                  "Expired",
+                  "Invalid",
+                  "ConcurrentTx"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "idTag"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "updateType": {
+      "additionalProperties": false,
+      "enum": [
+        "Differential",
+        "Full"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "listVersion",
+    "updateType"
+  ],
+  "title": "SendLocalListRequest",
+  "type": "object"
 }

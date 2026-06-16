@@ -59,7 +59,14 @@ func TestChangeAvailability16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override (numeric/array bound): connectorId < 0 is not encoded in the OCA JSON schema.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": -1,
+				"type":        messages.ChangeAvailabilityRequestTypeOperative,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

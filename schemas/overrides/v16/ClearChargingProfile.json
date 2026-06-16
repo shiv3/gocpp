@@ -1,0 +1,10 @@
+{
+  "properties": {
+    "connectorId": {
+      "minimum": 0
+    },
+    "stackLevel": {
+      "minimum": 0
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "properties": {
+    "connectorId": {
+      "minimum": 0
+    },
+    "evseId": {
+      "minimum": 0
+    }
+  }
+}

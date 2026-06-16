@@ -51,8 +51,22 @@ func TestUnlockConnector201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for evseId minimum.
-		// TODO(parity): needs schema override for connectorId minimum.
+		{
+			Name: "invalid evseId below minimum",
+			Message: map[string]any{
+				"evseId":      -1,
+				"connectorId": 1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"evseId":      2,
+				"connectorId": -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -100,7 +114,14 @@ func TestUnlockConnector201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Unlocked",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

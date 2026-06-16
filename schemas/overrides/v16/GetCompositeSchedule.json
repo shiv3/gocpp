@@ -1,0 +1,10 @@
+{
+  "properties": {
+    "connectorId": {
+      "minimum": 0
+    },
+    "duration": {
+      "minimum": 0
+    }
+  }
+}

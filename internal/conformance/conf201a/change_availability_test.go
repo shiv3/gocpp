@@ -73,7 +73,14 @@ func TestChangeAvailability201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minimum for evse.id.
+		{
+			Name: "invalid evse id below minimum",
+			Message: map[string]any{
+				"operationalStatus": "Operative",
+				"evse":              map[string]any{"id": -1},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

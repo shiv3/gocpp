@@ -1,0 +1,12 @@
+{
+  "definitions": {
+    "SetMonitoringDataType": {
+      "properties": {
+        "severity": {
+          "maximum": 9,
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

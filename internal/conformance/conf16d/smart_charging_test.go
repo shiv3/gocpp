@@ -37,14 +37,34 @@ func TestClearChargingProfile16_RequestValidation(t *testing.T) {
 			Valid:   true,
 		},
 		{
+			Name: "valid zero connectorId and stackLevel",
+			Message: map[string]any{
+				"connectorId": 0,
+				"stackLevel":  0,
+			},
+			Valid: true,
+		},
+		{
 			Name: "invalid unknown chargingProfilePurpose enum",
 			Message: messages.ClearChargingProfileRequest{
 				ChargingProfilePurpose: (*messages.ClearChargingProfileRequestChargingProfilePurpose)(stringPtr("invalidChargingProfilePurposeType")),
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override minimum:0 for connectorId.
-		// TODO(parity): needs schema override minimum:0 for stackLevel.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": -1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid stackLevel below minimum",
+			Message: map[string]any{
+				"stackLevel": -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -120,6 +140,14 @@ func TestGetCompositeSchedule16_RequestValidation(t *testing.T) {
 			Valid: true,
 		},
 		{
+			Name: "valid duration zero",
+			Message: messages.GetCompositeScheduleRequest{
+				ConnectorID: 1,
+				Duration:    0,
+			},
+			Valid: true,
+		},
+		{
 			Name: "invalid missing connectorId",
 			Message: map[string]any{
 				"duration": 600,
@@ -147,8 +175,22 @@ func TestGetCompositeSchedule16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override minimum:0 for connectorId.
-		// TODO(parity): needs schema override minimum:0 for duration.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": -1,
+				"duration":    600,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid duration below minimum",
+			Message: map[string]any{
+				"connectorId": 1,
+				"duration":    -1,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -255,8 +297,25 @@ func TestGetCompositeSchedule16_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override minimum:0 for connectorId.
-		// TODO(parity): needs schema override minItems:1 for chargingSchedulePeriod.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"status":      messages.GetCompositeScheduleResponseStatusAccepted,
+				"connectorId": -1,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid chargingSchedulePeriod empty",
+			Message: map[string]any{
+				"status": messages.GetCompositeScheduleResponseStatusAccepted,
+				"chargingSchedule": map[string]any{
+					"chargingRateUnit":       "W",
+					"chargingSchedulePeriod": []map[string]any{},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -529,8 +588,40 @@ func TestSetChargingProfile16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override minimum:0 for connectorId.
-		// TODO(parity): needs schema override minItems:1 for chargingSchedulePeriod.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": -1,
+				"csChargingProfiles": map[string]any{
+					"chargingProfileId":      1,
+					"stackLevel":             1,
+					"chargingProfilePurpose": "ChargePointMaxProfile",
+					"chargingProfileKind":    "Absolute",
+					"chargingSchedule": map[string]any{
+						"chargingRateUnit":       "W",
+						"chargingSchedulePeriod": []map[string]any{{"startPeriod": 0, "limit": 10.0}},
+					},
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid chargingSchedulePeriod empty",
+			Message: map[string]any{
+				"connectorId": 1,
+				"csChargingProfiles": map[string]any{
+					"chargingProfileId":      1,
+					"stackLevel":             1,
+					"chargingProfilePurpose": "ChargePointMaxProfile",
+					"chargingProfileKind":    "Absolute",
+					"chargingSchedule": map[string]any{
+						"chargingRateUnit":       "W",
+						"chargingSchedulePeriod": []map[string]any{},
+					},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
