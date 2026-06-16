@@ -63,13 +63,28 @@ func TestMeterValues16_RequestValidation(t *testing.T) {
 			Valid: true,
 		},
 		{
+			Name: "valid zero connectorId",
+			Message: messages.MeterValuesRequest{
+				ConnectorID: 0,
+				MeterValue:  []messages.MeterValue{meterValue16(now)},
+			},
+			Valid: true,
+		},
+		{
 			Name: "invalid missing connectorId",
 			Message: map[string]any{
 				"meterValue": []messages.MeterValue{meterValue16(now)},
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for connectorId minimum.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": -1,
+				"meterValue":  []messages.MeterValue{meterValue16(now)},
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid empty meterValue",
 			Message: messages.MeterValuesRequest{

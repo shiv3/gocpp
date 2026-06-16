@@ -1,0 +1,10 @@
+{
+  "properties": {
+    "retries": {
+      "minimum": 0
+    },
+    "retryInterval": {
+      "minimum": 0
+    }
+  }
+}

@@ -167,3 +167,13 @@ func WithTolerantSchema() Option {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeTolerant
 	})
 }
+
+// WithLenientSchema enables lenient JSON-Schema validation: structurally broken
+// messages are rejected, while benign violations are logged and passed, and
+// enum case mismatches are normalized to canonical values. Last-wins with
+// WithStrictSchema / WithTolerantSchema.
+func WithLenientSchema() Option {
+	return optionFunc(func(c *clientConfig) {
+		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+	})
+}

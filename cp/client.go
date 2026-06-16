@@ -35,12 +35,22 @@ func NewClient(cpID, csmsURL string, opts ...Option) *Client {
 		o.apply(&cfg)
 	}
 	if cfg.registry != nil && cfg.dispatcher.SchemaMode != dispatcher.SchemaModeOff {
-		cfg.dispatcher.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
-			v, ok := cfg.registry.Lookup(string(version), action, kind)
-			if !ok {
-				return nil
+		if cfg.dispatcher.SchemaMode == dispatcher.SchemaModeLenient {
+			cfg.dispatcher.SchemaValidateLenient = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, []string, error) {
+				v, ok := cfg.registry.Lookup(string(version), action, kind)
+				if !ok {
+					return payload, nil, nil
+				}
+				return v.ValidateLenient(payload)
 			}
-			return v.Validate(payload)
+		} else {
+			cfg.dispatcher.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
+				v, ok := cfg.registry.Lookup(string(version), action, kind)
+				if !ok {
+					return nil
+				}
+				return v.Validate(payload)
+			}
 		}
 	}
 	client := &Client{

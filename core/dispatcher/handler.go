@@ -66,7 +66,16 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
 		return
 	}
-	if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
+	reqPayload := frame.Payload
+	if c.cfg.SchemaMode == SchemaModeLenient {
+		out, herr := c.lenientValidate(frame.Action, "request", frame.Payload)
+		if herr != nil {
+			status = "schema_invalid"
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, herr.Error(), nil))
+			return
+		}
+		reqPayload = out
+	} else if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
 		if c.cfg.SchemaMode == SchemaModeStrict {
 			status = "schema_invalid"
 			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
@@ -79,14 +88,25 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		attribute.String("ocpp.cp_id", c.id),
 		attribute.String("ocpp.direction", "inbound"),
 	)
-	resp, err := h(hctx, c, frame.Payload)
+	resp, err := h(hctx, c, reqPayload)
 	span.End()
 	if err != nil {
 		status = "error"
 		c.sendCallError(frame.MsgID, mapHandlerError(err))
 		return
 	}
-	if err := c.schemaValidationError(frame.Action, "response", resp); err != nil {
+	respPayload := resp
+	if c.cfg.SchemaMode == SchemaModeLenient {
+		out, herr := c.lenientValidate(frame.Action, "response", resp)
+		if herr != nil {
+			status = "schema_invalid"
+			// The local handler produced an invalid response, so no valid
+			// CallResult can be sent. Return InternalError to the peer.
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, herr.Error(), nil))
+			return
+		}
+		respPayload = out
+	} else if err := c.schemaValidationError(frame.Action, "response", resp); err != nil {
 		if c.cfg.SchemaMode == SchemaModeStrict {
 			status = "schema_invalid"
 			// The local handler produced an invalid response, so no valid
@@ -95,7 +115,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			return
 		}
 	}
-	c.sendCallResult(frame.MsgID, resp)
+	c.sendCallResult(frame.MsgID, respPayload)
 }
 
 // mapHandlerError converts a handler error into a CallError per spec §6.5.
@@ -128,6 +148,30 @@ func (c *Conn) recordSchemaValidationFailure(action, kind string) {
 	if m, ok := c.cfg.Metrics.(schemaValidationMetricsHook); ok {
 		m.SchemaValidationFailure(string(c.version), action, kind)
 	}
+}
+
+// lenientValidate applies lenient validation. A non-nil hardErr means the
+// caller must reject the message. Otherwise out is the payload to continue with,
+// possibly enum-normalized.
+func (c *Conn) lenientValidate(action, kind string, payload []byte) (out []byte, hardErr error) {
+	if c.cfg.SchemaValidateLenient == nil {
+		return payload, nil
+	}
+	out, soft, err := c.cfg.SchemaValidateLenient(c.version, action, kind, payload)
+	if err != nil {
+		c.recordSchemaValidationFailure(action, kind)
+		return nil, err
+	}
+	for _, kw := range soft {
+		if m, ok := c.cfg.Metrics.(schemaSoftViolationMetricsHook); ok {
+			m.SchemaSoftViolation(string(c.version), action, kind, kw)
+		}
+	}
+	if len(soft) > 0 {
+		c.cfg.Logger.WarnContext(c.ctx, "schema soft violations passed (lenient)",
+			"version", string(c.version), "action", action, "kind", kind, "keywords", soft)
+	}
+	return out, nil
 }
 
 func (c *Conn) schemaValidationError(action, kind string, payload []byte) error {

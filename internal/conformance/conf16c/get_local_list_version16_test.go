@@ -63,7 +63,13 @@ func TestGetLocalListVersion16_ResponseValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override for minimum:-1 on listVersion.
+		{
+			Name: "invalid listVersion below minimum",
+			Message: map[string]any{
+				"listVersion": -2,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

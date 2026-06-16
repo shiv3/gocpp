@@ -1,0 +1,14 @@
+{
+  "definitions": {
+    "ClearChargingProfileType": {
+      "properties": {
+        "evseId": {
+          "minimum": 0
+        },
+        "stackLevel": {
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

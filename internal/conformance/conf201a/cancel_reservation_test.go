@@ -36,7 +36,13 @@ func TestCancelReservation201_RequestValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): upstream rejects negative reservationId, but this schema has no minimum.
+		{
+			Name: "invalid reservationId below minimum",
+			Message: map[string]any{
+				"reservationId": -1,
+			},
+			Valid: false,
+		},
 		{
 			Name:    "invalid missing reservationId",
 			Message: map[string]any{},
@@ -77,7 +83,14 @@ func TestCancelReservation201_ResponseValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): upstream rejects empty statusInfo.reasonCode, but this schema has no minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 		{
 			Name:    "invalid missing status",
 			Message: map[string]any{},

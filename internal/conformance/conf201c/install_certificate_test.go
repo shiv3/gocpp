@@ -80,7 +80,10 @@ func TestInstallCertificate201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): ocpp-go includes CSOSubCA1/CSOSubCA2 as valid, but the bundled 2.0.1 schema enum excludes them.
+		// NOTE(parity): intentionally NOT overridden. ocpp-go accepts CSOSubCA1/CSOSubCA2 here
+		// because it reuses one broad CertificateUse enum across messages; the authoritative OCA
+		// 2.0.1 schema restricts InstallCertificate.certificateType to 4 values, so gocpp follows
+		// the spec and rejects them. This divergence is by design.
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

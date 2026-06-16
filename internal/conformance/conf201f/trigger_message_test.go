@@ -53,7 +53,14 @@ func TestTriggerMessage201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for evse.id minimum.
+		{
+			Name: "invalid evse id below minimum",
+			Message: map[string]any{
+				"requestedMessage": "StatusNotification",
+				"evse":             map[string]any{"id": -1},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -101,7 +108,14 @@ func TestTriggerMessage201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

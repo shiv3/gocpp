@@ -54,7 +54,14 @@ func TestReset201_RequestValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override for evseId minimum.
+		{
+			Name: "invalid evseId below minimum",
+			Message: map[string]any{
+				"type":   "Immediate",
+				"evseId": -1,
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid type enum",
 			Message: messages.ResetRequest{
@@ -110,7 +117,14 @@ func TestReset201_ResponseValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid status enum",
 			Message: messages.ResetResponse{

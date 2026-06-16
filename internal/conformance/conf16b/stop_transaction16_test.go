@@ -122,7 +122,21 @@ func TestStopTransaction16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for transactionData.sampledValue minItems.
+		{
+			Name: "invalid transactionData empty sampledValue",
+			Message: map[string]any{
+				"meterStop":     int32(100),
+				"timestamp":     now,
+				"transactionId": int32(1),
+				"transactionData": []map[string]any{
+					{
+						"timestamp":    now,
+						"sampledValue": []map[string]any{},
+					},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

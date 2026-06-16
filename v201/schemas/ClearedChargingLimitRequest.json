@@ -1,49 +1,50 @@
 {
   "$schema": "http://json-schema.org/draft-06/schema#",
+  "additionalProperties": false,
   "comment": "OCPP 2.0.1 FINAL",
   "definitions": {
-	"CustomDataType": {
-	  "description": "This class does not get 'AdditionalProperties = false' in the schema generation, so it can be extended with arbitrary JSON properties to allow adding custom data.",
-	  "javaType": "CustomData",
-	  "type": "object",
-	  "properties": {
-		"vendorId": {
-		  "type": "string",
-		  "maxLength": 255
-		}
-	  },
-	  "required": [
-		"vendorId"
-	  ]
-	},
-	"ChargingLimitSourceEnumType": {
-	  "description": "Source of the charging limit.\r\n",
-	  "javaType": "ChargingLimitSourceEnum",
-	  "type": "string",
-	  "additionalProperties": false,
-	  "enum": [
-		"EMS",
-		"Other",
-		"SO",
-		"CSO"
-	  ]
-	}
+    "ChargingLimitSourceEnumType": {
+      "additionalProperties": false,
+      "description": "Source of the charging limit.\r\n",
+      "enum": [
+        "EMS",
+        "Other",
+        "SO",
+        "CSO"
+      ],
+      "javaType": "ChargingLimitSourceEnum",
+      "type": "string"
+    },
+    "CustomDataType": {
+      "description": "This class does not get 'AdditionalProperties = false' in the schema generation, so it can be extended with arbitrary JSON properties to allow adding custom data.",
+      "javaType": "CustomData",
+      "properties": {
+        "vendorId": {
+          "maxLength": 255,
+          "type": "string"
+        }
+      },
+      "required": [
+        "vendorId"
+      ],
+      "type": "object"
+    }
   },
-  "type": "object",
-  "additionalProperties": false,
   "properties": {
-	"customData": {
-	  "$ref": "#/definitions/CustomDataType"
-	},
-	"chargingLimitSource": {
-	  "$ref": "#/definitions/ChargingLimitSourceEnumType"
-	},
-	"evseId": {
-	  "description": "EVSE Identifier.\r\n",
-	  "type": "integer"
-	}
+    "chargingLimitSource": {
+      "$ref": "#/definitions/ChargingLimitSourceEnumType"
+    },
+    "customData": {
+      "$ref": "#/definitions/CustomDataType"
+    },
+    "evseId": {
+      "description": "EVSE Identifier.\r\n",
+      "minimum": 0,
+      "type": "integer"
+    }
   },
   "required": [
-	"chargingLimitSource"
-  ]
+    "chargingLimitSource"
+  ],
+  "type": "object"
 }

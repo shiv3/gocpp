@@ -1,30 +1,30 @@
 {
-  "$schema": "http://json-schema.org/draft-06/schema#",
   "$id": "urn:OCPP:Cp:1.6:2020:3:SignedUpdateFirmware.req",
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "additionalProperties": false,
   "definitions": {
     "FirmwareType": {
-      "type": "object",
       "additionalProperties": false,
       "properties": {
+        "installDateTime": {
+          "format": "date-time",
+          "type": "string"
+        },
         "location": {
-          "type": "string",
-          "maxLength": 512
+          "maxLength": 512,
+          "type": "string"
         },
         "retrieveDateTime": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "installDateTime": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "signingCertificate": {
-          "type": "string",
-          "maxLength": 5500
+          "format": "date-time",
+          "type": "string"
         },
         "signature": {
-          "type": "string",
-          "maxLength": 800
+          "maxLength": 800,
+          "type": "string"
+        },
+        "signingCertificate": {
+          "maxLength": 5500,
+          "type": "string"
         }
       },
       "required": [
@@ -32,27 +32,30 @@
         "retrieveDateTime",
         "signingCertificate",
         "signature"
-      ]
+      ],
+      "type": "object"
     }
   },
-  "type": "object",
-  "additionalProperties": false,
   "properties": {
+    "firmware": {
+      "$ref": "#/definitions/FirmwareType"
+    },
+    "requestId": {
+      "minimum": 0,
+      "type": "integer"
+    },
     "retries": {
+      "minimum": 0,
       "type": "integer"
     },
     "retryInterval": {
+      "minimum": 0,
       "type": "integer"
-    },
-    "requestId": {
-      "type": "integer"
-    },
-    "firmware": {
-      "$ref": "#/definitions/FirmwareType"
     }
   },
   "required": [
     "requestId",
     "firmware"
-  ]
+  ],
+  "type": "object"
 }

@@ -1,31 +1,32 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "StartTransactionRequest",
-    "type": "object",
-    "properties": {
-        "connectorId": {
-            "type": "integer"
-        },
-        "idTag": {
-            "type": "string",
-            "maxLength": 20
-        },
-        "meterStart": {
-            "type": "integer"
-        },
-        "reservationId": {
-            "type": "integer"
-        },
-        "timestamp": {
-            "type": "string",
-            "format": "date-time"
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "connectorId": {
+      "minimum": 1,
+      "type": "integer"
     },
-    "additionalProperties": false,
-    "required": [
-        "connectorId",
-        "idTag",
-        "meterStart",
-        "timestamp"
-    ]
+    "idTag": {
+      "maxLength": 20,
+      "type": "string"
+    },
+    "meterStart": {
+      "type": "integer"
+    },
+    "reservationId": {
+      "type": "integer"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "connectorId",
+    "idTag",
+    "meterStart",
+    "timestamp"
+  ],
+  "title": "StartTransactionRequest",
+  "type": "object"
 }

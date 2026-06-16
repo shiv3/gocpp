@@ -69,7 +69,14 @@ func TestReservationStatusUpdate201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for reservationId minimum.
+		{
+			Name: "invalid reservationId below minimum",
+			Message: map[string]any{
+				"reservationId":           -1,
+				"reservationUpdateStatus": "Expired",
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid reservationUpdateStatus enum",
 			Message: messages.ReservationStatusUpdateRequest{

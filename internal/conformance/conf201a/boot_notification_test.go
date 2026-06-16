@@ -189,7 +189,15 @@ func TestBootNotification201_ResponseValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): upstream rejects negative interval, but this schema has no minimum.
+		{
+			Name: "invalid interval below minimum",
+			Message: map[string]any{
+				"currentTime": testTime(),
+				"interval":    -1,
+				"status":      "Accepted",
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid missing currentTime",
 			Message: map[string]any{

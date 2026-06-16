@@ -28,7 +28,13 @@ func TestUnlockConnector16_RequestValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): needs schema override for connectorId minimum.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": 0,
+			},
+			Valid: false,
+		},
 		{
 			Name:    "invalid missing connectorId",
 			Message: map[string]any{},

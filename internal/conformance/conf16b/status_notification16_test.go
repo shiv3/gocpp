@@ -53,7 +53,15 @@ func TestStatusNotification16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for connectorId minimum.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId": -1,
+				"errorCode":   messages.StatusNotificationRequestErrorCodeNoError,
+				"status":      messages.StatusNotificationRequestStatusAvailable,
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid missing errorCode",
 			Message: map[string]any{

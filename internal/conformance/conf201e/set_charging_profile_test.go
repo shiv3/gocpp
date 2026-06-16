@@ -54,7 +54,14 @@ func TestSetChargingProfile201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for chargingProfile.stackLevel minimum.
+		{
+			Name: "invalid chargingProfile stackLevel below minimum",
+			Message: messages.SetChargingProfileRequest{
+				EVSEID:          1,
+				ChargingProfile: testChargingProfile201e(-1),
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -101,7 +108,14 @@ func TestSetChargingProfile201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

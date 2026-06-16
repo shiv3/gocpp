@@ -1,0 +1,10 @@
+{
+  "properties": {
+    "requestId": {
+      "minimum": 0
+    },
+    "seqNo": {
+      "minimum": 0
+    }
+  }
+}

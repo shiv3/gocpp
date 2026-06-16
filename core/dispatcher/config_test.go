@@ -16,3 +16,9 @@ func TestDefaultConfig(t *testing.T) {
 	require.NotNil(t, c.Metrics)
 	require.Equal(t, SchemaModeOff, c.SchemaMode)
 }
+
+func TestSchemaModeLenientDistinct(t *testing.T) {
+	require.NotEqual(t, SchemaModeStrict, SchemaModeLenient)
+	require.NotEqual(t, SchemaModeOff, SchemaModeLenient)
+	require.NotEqual(t, SchemaModeTolerant, SchemaModeLenient)
+}

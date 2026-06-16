@@ -54,7 +54,13 @@ func TestClearVariableMonitoring201_RequestValidation(t *testing.T) {
 			Message: map[string]any{},
 			Valid:   false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minimum for id entries.
+		{
+			Name: "invalid id entry below minimum",
+			Message: map[string]any{
+				"id": []any{-1},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -126,7 +132,18 @@ func TestClearVariableMonitoring201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minimum for clearMonitoringResult.id.
+		{
+			Name: "invalid result id below minimum",
+			Message: map[string]any{
+				"clearMonitoringResult": []any{
+					map[string]any{
+						"id":     -1,
+						"status": "Accepted",
+					},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

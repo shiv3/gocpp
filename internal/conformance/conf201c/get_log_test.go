@@ -108,7 +108,35 @@ func TestGetLog201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for requestId/retries/retryInterval minimums.
+		{
+			Name: "invalid requestId below minimum",
+			Message: map[string]any{
+				"logType":   "DiagnosticsLog",
+				"requestId": -1,
+				"log":       logParameters,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid retries below minimum",
+			Message: map[string]any{
+				"logType":   "DiagnosticsLog",
+				"requestId": 1,
+				"retries":   -1,
+				"log":       logParameters,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid retryInterval below minimum",
+			Message: map[string]any{
+				"logType":       "DiagnosticsLog",
+				"requestId":     1,
+				"retryInterval": -1,
+				"log":           logParameters,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

@@ -144,7 +144,15 @@ func TestGet15118EVCertificate201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override; OCA schema has no minLength for statusInfo.reasonCode.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":      "Accepted",
+				"exiResponse": "deadbeef",
+				"statusInfo":  map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	runValidation201(t, "Get15118EVCertificate", "response", cases)

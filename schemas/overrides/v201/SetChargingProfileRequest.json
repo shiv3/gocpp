@@ -1,0 +1,11 @@
+{
+  "definitions": {
+    "ChargingProfileType": {
+      "properties": {
+        "stackLevel": {
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -1,26 +1,27 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "TriggerMessageRequest",
-    "type": "object",
-    "properties": {
-        "requestedMessage": {
-            "type": "string",
-            "additionalProperties": false,
-            "enum": [
-                "BootNotification",
-                "DiagnosticsStatusNotification",
-                "FirmwareStatusNotification",
-                "Heartbeat",
-                "MeterValues",
-                "StatusNotification"
-            ]
-        },
-        "connectorId": {
-            "type": "integer"
-        }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "connectorId": {
+      "minimum": 0,
+      "type": "integer"
     },
-    "additionalProperties": false,
-    "required": [
-        "requestedMessage"
-    ]
+    "requestedMessage": {
+      "additionalProperties": false,
+      "enum": [
+        "BootNotification",
+        "DiagnosticsStatusNotification",
+        "FirmwareStatusNotification",
+        "Heartbeat",
+        "MeterValues",
+        "StatusNotification"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "requestedMessage"
+  ],
+  "title": "TriggerMessageRequest",
+  "type": "object"
 }

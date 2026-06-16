@@ -184,6 +184,16 @@ func WithTolerantSchema() Option {
 	})
 }
 
+// WithLenientSchema enables lenient JSON-Schema validation: structurally broken
+// messages are rejected, while benign violations are logged and passed, and
+// enum case mismatches are normalized to canonical values. Last-wins with
+// WithStrictSchema / WithTolerantSchema.
+func WithLenientSchema() Option {
+	return optionFunc(func(c *serverConfig) {
+		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+	})
+}
+
 // WithAuthenticator sets the connection authenticator (default auth.None).
 func WithAuthenticator(a auth.Authenticator) Option {
 	return optionFunc(func(c *serverConfig) { c.auth = a })

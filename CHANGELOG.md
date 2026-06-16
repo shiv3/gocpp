@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/) and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `WithLenientSchema()` (CSMS and CP): a fourth schema-validation mode between
+  strict and tolerant. Structurally broken messages (wrong type, missing required)
+  are still rejected, but benign non-compliance is logged and passed: unknown/extra
+  fields, out-of-bound values (numeric/length/array), and enum case mismatches — the
+  last normalized to the canonical value so typed handlers keep matching. Per-keyword
+  soft-violation metrics (`SchemaSoftViolation`) surface what real fleets send, for
+  data-driven tuning. Avoids dropping transactions when stations send slightly
+  non-compliant messages that ocpp-go's looser unmarshal would have accepted.
+
 ## [0.1.3] - 2026-06-16
 
 ### Added

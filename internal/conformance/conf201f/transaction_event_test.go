@@ -336,10 +336,41 @@ func TestTransactionEvent201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty optional meterValue array.
-		// TODO(parity): needs schema override for seqNo minimum.
-		// TODO(parity): needs schema override for numberOfPhasesUsed minimum.
-		// TODO(parity): needs schema override for evse.id minimum.
+		{
+			Name: "invalid seqNo below minimum",
+			Message: map[string]any{
+				"eventType":       "Started",
+				"timestamp":       fixedTime201f(),
+				"triggerReason":   "Authorized",
+				"seqNo":           -1,
+				"transactionInfo": map[string]any{"transactionId": "42"},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid numberOfPhasesUsed below minimum",
+			Message: map[string]any{
+				"eventType":          "Started",
+				"timestamp":          fixedTime201f(),
+				"triggerReason":      "Authorized",
+				"seqNo":              1,
+				"numberOfPhasesUsed": -1,
+				"transactionInfo":    map[string]any{"transactionId": "42"},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid evse id below minimum",
+			Message: map[string]any{
+				"eventType":       "Started",
+				"timestamp":       fixedTime201f(),
+				"triggerReason":   "Authorized",
+				"seqNo":           1,
+				"transactionInfo": map[string]any{"transactionId": "42"},
+				"evse":            map[string]any{"id": -1},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -412,9 +443,27 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for totalCost minimum.
-		// TODO(parity): needs schema override for chargingPriority minimum.
-		// TODO(parity): needs schema override for chargingPriority maximum.
+		{
+			Name: "invalid totalCost below minimum",
+			Message: map[string]any{
+				"totalCost": -0.01,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid chargingPriority below minimum",
+			Message: map[string]any{
+				"chargingPriority": -10,
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid chargingPriority above maximum",
+			Message: map[string]any{
+				"chargingPriority": 10,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

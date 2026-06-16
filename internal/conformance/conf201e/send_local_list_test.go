@@ -79,7 +79,14 @@ func TestSendLocalList201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for versionNumber minimum.
+		{
+			Name: "invalid versionNumber below minimum",
+			Message: map[string]any{
+				"versionNumber": -1,
+				"updateType":    "Differential",
+			},
+			Valid: false,
+		},
 		{
 			Name: "invalid updateType enum",
 			Message: messages.SendLocalListRequest{
@@ -149,7 +156,14 @@ func TestSendLocalList201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

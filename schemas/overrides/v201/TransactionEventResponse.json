@@ -1,0 +1,11 @@
+{
+  "properties": {
+    "chargingPriority": {
+      "maximum": 9,
+      "minimum": -9
+    },
+    "totalCost": {
+      "minimum": 0
+    }
+  }
+}

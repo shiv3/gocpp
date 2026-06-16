@@ -37,7 +37,13 @@ func TestCertificateSigned201_RequestValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): upstream rejects empty certificateChain, but this schema has no minLength.
+		{
+			Name: "invalid empty certificateChain",
+			Message: map[string]any{
+				"certificateChain": "",
+			},
+			Valid: false,
+		},
 		{
 			Name:    "invalid missing certificateChain",
 			Message: map[string]any{},
@@ -85,7 +91,14 @@ func TestCertificateSigned201_ResponseValidation(t *testing.T) {
 			},
 			Valid: true,
 		},
-		// TODO(parity): upstream rejects empty statusInfo.reasonCode, but this schema has no minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 		{
 			Name:    "invalid missing status",
 			Message: map[string]any{},

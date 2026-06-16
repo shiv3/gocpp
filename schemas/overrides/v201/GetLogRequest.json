@@ -1,0 +1,13 @@
+{
+  "properties": {
+    "requestId": {
+      "minimum": 0
+    },
+    "retries": {
+      "minimum": 0
+    },
+    "retryInterval": {
+      "minimum": 0
+    }
+  }
+}

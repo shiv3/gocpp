@@ -1,192 +1,193 @@
 {
   "$schema": "http://json-schema.org/draft-06/schema#",
+  "additionalProperties": false,
   "comment": "OCPP 2.0.1 FINAL",
   "definitions": {
-	"CustomDataType": {
-	  "description": "This class does not get 'AdditionalProperties = false' in the schema generation, so it can be extended with arbitrary JSON properties to allow adding custom data.",
-	  "javaType": "CustomData",
-	  "type": "object",
-	  "properties": {
-		"vendorId": {
-		  "type": "string",
-		  "maxLength": 255
-		}
-	  },
-	  "required": [
-		"vendorId"
-	  ]
-	},
-	"AttributeEnumType": {
-	  "description": "Type of attribute: Actual, Target, MinSet, MaxSet. Default is Actual when omitted.\r\n",
-	  "javaType": "AttributeEnum",
-	  "type": "string",
-	  "default": "Actual",
-	  "additionalProperties": false,
-	  "enum": [
-		"Actual",
-		"Target",
-		"MinSet",
-		"MaxSet"
-	  ]
-	},
-	"SetVariableStatusEnumType": {
-	  "description": "Result status of setting the variable.\r\n",
-	  "javaType": "SetVariableStatusEnum",
-	  "type": "string",
-	  "additionalProperties": false,
-	  "enum": [
-		"Accepted",
-		"Rejected",
-		"UnknownComponent",
-		"UnknownVariable",
-		"NotSupportedAttributeType",
-		"RebootRequired"
-	  ]
-	},
-	"ComponentType": {
-	  "description": "A physical or logical component\r\n",
-	  "javaType": "Component",
-	  "type": "object",
-	  "additionalProperties": false,
-	  "properties": {
-		"customData": {
-		  "$ref": "#/definitions/CustomDataType"
-		},
-		"evse": {
-		  "$ref": "#/definitions/EVSEType"
-		},
-		"name": {
-		  "description": "Name of the component. Name should be taken from the list of standardized component names whenever possible. Case Insensitive. strongly advised to use Camel Case.\r\n",
-		  "type": "string",
-		  "maxLength": 50
-		},
-		"instance": {
-		  "description": "Name of instance in case the component exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.\r\n",
-		  "type": "string",
-		  "maxLength": 50
-		}
-	  },
-	  "required": [
-		"name"
-	  ]
-	},
-	"EVSEType": {
-	  "description": "EVSE\r\nurn:x-oca:ocpp:uid:2:233123\r\nElectric Vehicle Supply Equipment\r\n",
-	  "javaType": "EVSE",
-	  "type": "object",
-	  "additionalProperties": false,
-	  "properties": {
-		"customData": {
-		  "$ref": "#/definitions/CustomDataType"
-		},
-		"id": {
-		  "description": "Identified_ Object. MRID. Numeric_ Identifier\r\nurn:x-enexis:ecdm:uid:1:569198\r\nEVSE Identifier. This contains a number (&gt; 0) designating an EVSE of the Charging Station.\r\n",
-		  "type": "integer"
-		},
-		"connectorId": {
-		  "description": "An id to designate a specific connector (on an EVSE) by connector index number.\r\n",
-		  "type": "integer"
-		}
-	  },
-	  "required": [
-		"id"
-	  ]
-	},
-	"SetVariableResultType": {
-	  "javaType": "SetVariableResult",
-	  "type": "object",
-	  "additionalProperties": false,
-	  "properties": {
-		"customData": {
-		  "$ref": "#/definitions/CustomDataType"
-		},
-		"attributeType": {
-		  "$ref": "#/definitions/AttributeEnumType"
-		},
-		"attributeStatus": {
-		  "$ref": "#/definitions/SetVariableStatusEnumType"
-		},
-		"attributeStatusInfo": {
-		  "$ref": "#/definitions/StatusInfoType"
-		},
-		"component": {
-		  "$ref": "#/definitions/ComponentType"
-		},
-		"variable": {
-		  "$ref": "#/definitions/VariableType"
-		}
-	  },
-	  "required": [
-		"attributeStatus",
-		"component",
-		"variable"
-	  ]
-	},
-	"StatusInfoType": {
-	  "description": "Element providing more information about the status.\r\n",
-	  "javaType": "StatusInfo",
-	  "type": "object",
-	  "additionalProperties": false,
-	  "properties": {
-		"customData": {
-		  "$ref": "#/definitions/CustomDataType"
-		},
-		"reasonCode": {
-		  "description": "A predefined code for the reason why the status is returned in this response. The string is case-insensitive.\r\n",
-		  "type": "string",
-		  "maxLength": 20
-		},
-		"additionalInfo": {
-		  "description": "Additional text to provide detailed information.\r\n",
-		  "type": "string",
-		  "maxLength": 512
-		}
-	  },
-	  "required": [
-		"reasonCode"
-	  ]
-	},
-	"VariableType": {
-	  "description": "Reference key to a component-variable.\r\n",
-	  "javaType": "Variable",
-	  "type": "object",
-	  "additionalProperties": false,
-	  "properties": {
-		"customData": {
-		  "$ref": "#/definitions/CustomDataType"
-		},
-		"name": {
-		  "description": "Name of the variable. Name should be taken from the list of standardized variable names whenever possible. Case Insensitive. strongly advised to use Camel Case.\r\n",
-		  "type": "string",
-		  "maxLength": 50
-		},
-		"instance": {
-		  "description": "Name of instance in case the variable exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.\r\n",
-		  "type": "string",
-		  "maxLength": 50
-		}
-	  },
-	  "required": [
-		"name"
-	  ]
-	}
+    "AttributeEnumType": {
+      "additionalProperties": false,
+      "default": "Actual",
+      "description": "Type of attribute: Actual, Target, MinSet, MaxSet. Default is Actual when omitted.\r\n",
+      "enum": [
+        "Actual",
+        "Target",
+        "MinSet",
+        "MaxSet"
+      ],
+      "javaType": "AttributeEnum",
+      "type": "string"
+    },
+    "ComponentType": {
+      "additionalProperties": false,
+      "description": "A physical or logical component\r\n",
+      "javaType": "Component",
+      "properties": {
+        "customData": {
+          "$ref": "#/definitions/CustomDataType"
+        },
+        "evse": {
+          "$ref": "#/definitions/EVSEType"
+        },
+        "instance": {
+          "description": "Name of instance in case the component exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.\r\n",
+          "maxLength": 50,
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the component. Name should be taken from the list of standardized component names whenever possible. Case Insensitive. strongly advised to use Camel Case.\r\n",
+          "maxLength": 50,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "CustomDataType": {
+      "description": "This class does not get 'AdditionalProperties = false' in the schema generation, so it can be extended with arbitrary JSON properties to allow adding custom data.",
+      "javaType": "CustomData",
+      "properties": {
+        "vendorId": {
+          "maxLength": 255,
+          "type": "string"
+        }
+      },
+      "required": [
+        "vendorId"
+      ],
+      "type": "object"
+    },
+    "EVSEType": {
+      "additionalProperties": false,
+      "description": "EVSE\r\nurn:x-oca:ocpp:uid:2:233123\r\nElectric Vehicle Supply Equipment\r\n",
+      "javaType": "EVSE",
+      "properties": {
+        "connectorId": {
+          "description": "An id to designate a specific connector (on an EVSE) by connector index number.\r\n",
+          "type": "integer"
+        },
+        "customData": {
+          "$ref": "#/definitions/CustomDataType"
+        },
+        "id": {
+          "description": "Identified_ Object. MRID. Numeric_ Identifier\r\nurn:x-enexis:ecdm:uid:1:569198\r\nEVSE Identifier. This contains a number (\u0026gt; 0) designating an EVSE of the Charging Station.\r\n",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "SetVariableResultType": {
+      "additionalProperties": false,
+      "javaType": "SetVariableResult",
+      "properties": {
+        "attributeStatus": {
+          "$ref": "#/definitions/SetVariableStatusEnumType"
+        },
+        "attributeStatusInfo": {
+          "$ref": "#/definitions/StatusInfoType"
+        },
+        "attributeType": {
+          "$ref": "#/definitions/AttributeEnumType"
+        },
+        "component": {
+          "$ref": "#/definitions/ComponentType"
+        },
+        "customData": {
+          "$ref": "#/definitions/CustomDataType"
+        },
+        "variable": {
+          "$ref": "#/definitions/VariableType"
+        }
+      },
+      "required": [
+        "attributeStatus",
+        "component",
+        "variable"
+      ],
+      "type": "object"
+    },
+    "SetVariableStatusEnumType": {
+      "additionalProperties": false,
+      "description": "Result status of setting the variable.\r\n",
+      "enum": [
+        "Accepted",
+        "Rejected",
+        "UnknownComponent",
+        "UnknownVariable",
+        "NotSupportedAttributeType",
+        "RebootRequired"
+      ],
+      "javaType": "SetVariableStatusEnum",
+      "type": "string"
+    },
+    "StatusInfoType": {
+      "additionalProperties": false,
+      "description": "Element providing more information about the status.\r\n",
+      "javaType": "StatusInfo",
+      "properties": {
+        "additionalInfo": {
+          "description": "Additional text to provide detailed information.\r\n",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "customData": {
+          "$ref": "#/definitions/CustomDataType"
+        },
+        "reasonCode": {
+          "description": "A predefined code for the reason why the status is returned in this response. The string is case-insensitive.\r\n",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "reasonCode"
+      ],
+      "type": "object"
+    },
+    "VariableType": {
+      "additionalProperties": false,
+      "description": "Reference key to a component-variable.\r\n",
+      "javaType": "Variable",
+      "properties": {
+        "customData": {
+          "$ref": "#/definitions/CustomDataType"
+        },
+        "instance": {
+          "description": "Name of instance in case the variable exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.\r\n",
+          "maxLength": 50,
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the variable. Name should be taken from the list of standardized variable names whenever possible. Case Insensitive. strongly advised to use Camel Case.\r\n",
+          "maxLength": 50,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
   },
-  "type": "object",
-  "additionalProperties": false,
   "properties": {
-	"customData": {
-	  "$ref": "#/definitions/CustomDataType"
-	},
-	"setVariableResult": {
-	  "type": "array",
-	  "additionalItems": false,
-	  "items": {
-		"$ref": "#/definitions/SetVariableResultType"
-	  },
-	  "minItems": 1
-	}
+    "customData": {
+      "$ref": "#/definitions/CustomDataType"
+    },
+    "setVariableResult": {
+      "additionalItems": false,
+      "items": {
+        "$ref": "#/definitions/SetVariableResultType"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
   },
   "required": [
-	"setVariableResult"
-  ]
+    "setVariableResult"
+  ],
+  "type": "object"
 }

@@ -1,0 +1,7 @@
+{
+  "properties": {
+    "reservationId": {
+      "minimum": 0
+    }
+  }
+}

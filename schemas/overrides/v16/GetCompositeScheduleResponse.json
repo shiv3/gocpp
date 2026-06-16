@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "connectorId": {
+      "minimum": 0
+    },
+    "chargingSchedule": {
+      "properties": {
+        "chargingSchedulePeriod": {
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

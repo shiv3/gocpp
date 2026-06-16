@@ -183,7 +183,22 @@ func TestSetVariables201_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for component.evse.id minimum.
+		{
+			Name: "invalid component evse id below minimum",
+			Message: map[string]any{
+				"setVariableData": []any{
+					map[string]any{
+						"attributeValue": "dummyValue",
+						"component": map[string]any{
+							"name": "component1",
+							"evse": map[string]any{"id": -1},
+						},
+						"variable": map[string]any{"name": "variable1"},
+					},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -339,7 +354,20 @@ func TestSetVariables201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty attributeStatusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty attributeStatusInfo.reasonCode",
+			Message: map[string]any{
+				"setVariableResult": []any{
+					map[string]any{
+						"attributeStatus":     "Accepted",
+						"component":           map[string]any{"name": "component1"},
+						"variable":            map[string]any{"name": "variable1"},
+						"attributeStatusInfo": map[string]any{"reasonCode": ""},
+					},
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

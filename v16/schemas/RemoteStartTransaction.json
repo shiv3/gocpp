@@ -1,126 +1,127 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "RemoteStartTransactionRequest",
-    "type": "object",
-    "properties": {
-        "connectorId": {
-            "type": "integer"
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "chargingProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "chargingProfileId": {
+          "type": "integer"
         },
-        "idTag": {
-            "type": "string",
-            "maxLength": 20
+        "chargingProfileKind": {
+          "additionalProperties": false,
+          "enum": [
+            "Absolute",
+            "Recurring",
+            "Relative"
+          ],
+          "type": "string"
         },
-        "chargingProfile": {
-            "type": "object",
-            "properties": {
-                "chargingProfileId": {
-                    "type": "integer"
-                },
-                "transactionId": {
-                    "type": "integer"
-                },
-                "stackLevel": {
-                    "type": "integer"
-                },
-                "chargingProfilePurpose": {
-                    "type": "string",
-                    "additionalProperties": false,
-                    "enum": [
-                        "ChargePointMaxProfile",
-                        "TxDefaultProfile",
-                        "TxProfile"
-                    ]
-                },
-                "chargingProfileKind": {
-                    "type": "string",
-                    "additionalProperties": false,
-                    "enum": [
-                        "Absolute",
-                        "Recurring",
-                        "Relative"
-                    ]
-                },
-                "recurrencyKind": {
-                    "type": "string",
-                    "additionalProperties": false,
-                    "enum": [
-                        "Daily",
-                        "Weekly"
-                    ]
-                },
-                "validFrom": {
-                    "type": "string",
-                    "format": "date-time"
-                },
-                "validTo": {
-                    "type": "string",
-                    "format": "date-time"
-                },
-                "chargingSchedule": {
-                    "type": "object",
-                    "properties": {
-                        "duration": {
-                            "type": "integer"
-                        },
-                        "startSchedule": {
-                            "type": "string",
-                            "format": "date-time"
-                        },
-                        "chargingRateUnit": {
-                            "type": "string",
-                            "additionalProperties": false,
-                            "enum": [
-                                "A",
-                                "W"
-                            ]
-                        },
-                        "chargingSchedulePeriod": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "startPeriod": {
-                                        "type": "integer"
-                                    },
-                                    "limit": {
-                                        "type": "number",
-                                        "multipleOf" : 0.1
-                                    },
-                                    "numberPhases": {
-                                        "type": "integer"
-                                    }
-                                },
-                                "additionalProperties": false,
-                                "required": [
-                                    "startPeriod",
-                                    "limit"
-                                ]
-                            }
-                        },
-                        "minChargingRate": {
-                            "type": "number",
-                            "multipleOf" : 0.1
-                        }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                        "chargingRateUnit",
-                        "chargingSchedulePeriod"
-                    ]
-                }
+        "chargingProfilePurpose": {
+          "additionalProperties": false,
+          "enum": [
+            "ChargePointMaxProfile",
+            "TxDefaultProfile",
+            "TxProfile"
+          ],
+          "type": "string"
+        },
+        "chargingSchedule": {
+          "additionalProperties": false,
+          "properties": {
+            "chargingRateUnit": {
+              "additionalProperties": false,
+              "enum": [
+                "A",
+                "W"
+              ],
+              "type": "string"
             },
-            "additionalProperties": false,
-            "required": [
-                "chargingProfileId",
-                "stackLevel",
-                "chargingProfilePurpose",
-                "chargingProfileKind",
-                "chargingSchedule"
-            ]
+            "chargingSchedulePeriod": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "limit": {
+                    "multipleOf": 0.1,
+                    "type": "number"
+                  },
+                  "numberPhases": {
+                    "type": "integer"
+                  },
+                  "startPeriod": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "startPeriod",
+                  "limit"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "duration": {
+              "type": "integer"
+            },
+            "minChargingRate": {
+              "multipleOf": 0.1,
+              "type": "number"
+            },
+            "startSchedule": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "chargingRateUnit",
+            "chargingSchedulePeriod"
+          ],
+          "type": "object"
+        },
+        "recurrencyKind": {
+          "additionalProperties": false,
+          "enum": [
+            "Daily",
+            "Weekly"
+          ],
+          "type": "string"
+        },
+        "stackLevel": {
+          "type": "integer"
+        },
+        "transactionId": {
+          "type": "integer"
+        },
+        "validFrom": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "validTo": {
+          "format": "date-time",
+          "type": "string"
         }
+      },
+      "required": [
+        "chargingProfileId",
+        "stackLevel",
+        "chargingProfilePurpose",
+        "chargingProfileKind",
+        "chargingSchedule"
+      ],
+      "type": "object"
     },
-    "additionalProperties": false,
-    "required": [
-        "idTag"
-    ]
+    "connectorId": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "idTag": {
+      "maxLength": 20,
+      "type": "string"
+    }
+  },
+  "required": [
+    "idTag"
+  ],
+  "title": "RemoteStartTransactionRequest",
+  "type": "object"
 }

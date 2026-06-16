@@ -564,6 +564,16 @@ func TestSignedUpdateFirmware16_RequestValidation(t *testing.T) {
 			Valid: true,
 		},
 		{
+			Name: "valid zero retries and retryInterval",
+			Message: messages.SignedUpdateFirmwareRequest{
+				Firmware:      firmware,
+				RequestID:     42,
+				Retries:       int32Ptr(0),
+				RetryInterval: int32Ptr(0),
+			},
+			Valid: true,
+		},
+		{
 			Name: "invalid missing requestId",
 			Message: map[string]any{
 				"firmware": map[string]any{
@@ -676,7 +686,47 @@ func TestSignedUpdateFirmware16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema overrides for minimum:0 on retries, retryInterval, and requestId.
+		{
+			Name: "invalid requestId below minimum",
+			Message: map[string]any{
+				"requestId": -1,
+				"firmware": map[string]any{
+					"location":           "https://someurl",
+					"retrieveDateTime":   testTime(),
+					"signingCertificate": "1337c0de",
+					"signature":          "deadc0de",
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid retries below minimum",
+			Message: map[string]any{
+				"requestId": 42,
+				"retries":   -1,
+				"firmware": map[string]any{
+					"location":           "https://someurl",
+					"retrieveDateTime":   testTime(),
+					"signingCertificate": "1337c0de",
+					"signature":          "deadc0de",
+				},
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid retryInterval below minimum",
+			Message: map[string]any{
+				"requestId":     42,
+				"retryInterval": -1,
+				"firmware": map[string]any{
+					"location":           "https://someurl",
+					"retrieveDateTime":   testTime(),
+					"signingCertificate": "1337c0de",
+					"signature":          "deadc0de",
+				},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

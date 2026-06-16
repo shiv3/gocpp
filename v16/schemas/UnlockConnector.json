@@ -1,14 +1,15 @@
 {
-    "$schema": "http://json-schema.org/draft-04/schema#",
-    "title": "UnlockConnectorRequest",
-    "type": "object",
-    "properties": {
-        "connectorId": {
-            "type": "integer"
-        }
-    },
-    "additionalProperties": false,
-    "required": [
-        "connectorId"
-    ]
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "connectorId": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "connectorId"
+  ],
+  "title": "UnlockConnectorRequest",
+  "type": "object"
 }

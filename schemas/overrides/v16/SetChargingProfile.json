@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "connectorId": {
+      "minimum": 0
+    },
+    "csChargingProfiles": {
+      "properties": {
+        "chargingSchedule": {
+          "properties": {
+            "chargingSchedulePeriod": {
+              "minItems": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

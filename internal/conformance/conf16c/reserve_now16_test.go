@@ -134,7 +134,16 @@ func TestReserveNow16_RequestValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for minimum:0 on connectorId.
+		{
+			Name: "invalid connectorId below minimum",
+			Message: map[string]any{
+				"connectorId":   -1,
+				"expiryDate":    expiryDate,
+				"idTag":         "12345",
+				"reservationId": 42,
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)

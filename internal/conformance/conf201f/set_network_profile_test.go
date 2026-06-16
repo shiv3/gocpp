@@ -589,9 +589,32 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 			}()),
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for configurationSlot minimum.
-		// TODO(parity): needs schema override for messageTimeout minimum.
-		// TODO(parity): needs schema override for simPin minimum.
+		{
+			Name: "invalid configurationSlot below minimum",
+			Message: messages.SetNetworkProfileRequest{
+				ConfigurationSlot: -1,
+				ConnectionData:    testNetworkConnectionProfile201f(),
+			},
+			Valid: false,
+		},
+		{
+			Name: "invalid messageTimeout below minimum",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.MessageTimeout = -2
+				return data
+			}()),
+			Valid: false,
+		},
+		{
+			Name: "invalid apn.simPin below minimum",
+			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
+				data := testNetworkConnectionProfile201f()
+				data.Apn.SimPin = int32Ptr201f(-1)
+				return data
+			}()),
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
@@ -655,7 +678,14 @@ func TestSetNetworkProfile201_ResponseValidation(t *testing.T) {
 			},
 			Valid: false,
 		},
-		// TODO(parity): needs schema override for empty statusInfo.reasonCode minLength.
+		{
+			Name: "invalid empty statusInfo.reasonCode",
+			Message: map[string]any{
+				"status":     "Accepted",
+				"statusInfo": map[string]any{"reasonCode": ""},
+			},
+			Valid: false,
+		},
 	}
 
 	conformance.RunValidationTable(t, validator, cases)
