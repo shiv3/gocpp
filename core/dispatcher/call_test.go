@@ -138,6 +138,50 @@ func TestDoCall_TolerantSchemaLogsAndContinues(t *testing.T) {
 	require.Contains(t, logs.String(), "kind=response")
 }
 
+func TestDoCall_LenientUsesReturnedPayloads(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	metrics := &schemaFailureMetrics{}
+	cfg := DefaultConfig()
+	cfg.Metrics = metrics
+	cfg.SchemaMode = SchemaModeLenient
+	cfg.SchemaValidateLenient = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, []string, error) {
+		require.Equal(t, ocppj.V16, version)
+		require.Equal(t, "ChangeConfiguration", action)
+		switch kind {
+		case "request":
+			return []byte(`{"status":"Accepted"}`), []string{"enum"}, nil
+		case "response":
+			return []byte(`{"result":"Accepted"}`), []string{"enum"}, nil
+		default:
+			return payload, nil, nil
+		}
+	}
+	c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	sentReq := make(chan []byte, 1)
+	go func() {
+		raw := <-f.Sent()
+		sentReq <- raw
+		var arr []json.RawMessage
+		_ = json.Unmarshal(raw, &arr)
+		var id string
+		_ = json.Unmarshal(arr[1], &id)
+		f.Inject([]byte(`[3,"` + id + `",{"result":"accepted"}]`))
+	}()
+
+	resp, err := DoCall(context.Background(), c, "ChangeConfiguration", []byte(`{"status":"accepted"}`))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"result":"Accepted"}`, string(resp))
+
+	var sentFrame []json.RawMessage
+	require.NoError(t, json.Unmarshal(<-sentReq, &sentFrame))
+	require.JSONEq(t, `{"status":"Accepted"}`, string(sentFrame[3]))
+	require.Equal(t, []string{"enum", "enum"}, metrics.softKeywords)
+}
+
 func TestDoCall_SchemaModeOffSkipsValidation(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")

@@ -247,8 +247,108 @@ func TestConn_TolerantSchemaLogsInvalidHandlerResponseAndContinues(t *testing.T)
 	require.Contains(t, logs.String(), "kind=response")
 }
 
+func TestConn_LenientDispatchesNormalizedPayload(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	reg := NewHandlerRegistry()
+	gotPayload := make(chan []byte, 1)
+	reg.Register("BootNotification", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+		gotPayload <- append([]byte(nil), payload...)
+		return []byte(`{}`), nil
+	})
+	metrics := &schemaFailureMetrics{}
+	cfg := DefaultConfig()
+	cfg.Metrics = metrics
+	cfg.SchemaMode = SchemaModeLenient
+	cfg.SchemaValidateLenient = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, []string, error) {
+		require.Equal(t, ocppj.V16, version)
+		require.Equal(t, "BootNotification", action)
+		if kind == "request" {
+			return []byte(`{"status":"Accepted"}`), []string{"enum"}, nil
+		}
+		return payload, nil, nil
+	}
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	f.Inject([]byte(`[2,"len1","BootNotification",{"status":"accepted"}]`))
+
+	sent := <-f.Sent()
+	require.JSONEq(t, `[3,"len1",{}]`, string(sent))
+	select {
+	case got := <-gotPayload:
+		require.JSONEq(t, `{"status":"Accepted"}`, string(got))
+	default:
+		t.Fatal("handler was not called")
+	}
+	require.Zero(t, metrics.schemaFailures)
+	require.Equal(t, []string{"enum"}, metrics.softKeywords)
+	require.Equal(t, "1.6", metrics.version)
+	require.Equal(t, "BootNotification", metrics.action)
+	require.Equal(t, "request", metrics.kind)
+}
+
+func TestConn_LenientHardFailureRejected(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	reg := NewHandlerRegistry()
+	handlerCalled := make(chan struct{}, 1)
+	reg.Register("BootNotification", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+		handlerCalled <- struct{}{}
+		return []byte(`{}`), nil
+	})
+	metrics := &schemaFailureMetrics{}
+	cfg := DefaultConfig()
+	cfg.Metrics = metrics
+	cfg.SchemaMode = SchemaModeLenient
+	cfg.SchemaValidateLenient = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, []string, error) {
+		return nil, nil, errors.New("type mismatch")
+	}
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	f.Inject([]byte(`[2,"len2","BootNotification",{"x":1}]`))
+
+	sent := <-f.Sent()
+	require.JSONEq(t, `[4,"len2","FormationViolation","type mismatch",{}]`, string(sent))
+	require.Equal(t, 1, metrics.schemaFailures)
+	select {
+	case <-handlerCalled:
+		t.Fatal("handler was called after lenient hard schema failure")
+	default:
+	}
+}
+
+func TestConn_LenientSendsNormalizedResponse(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	reg := NewHandlerRegistry()
+	reg.Register("BootNotification", func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+		return []byte(`{"status":"accepted"}`), nil
+	})
+	cfg := DefaultConfig()
+	cfg.SchemaMode = SchemaModeLenient
+	cfg.SchemaValidateLenient = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, []string, error) {
+		if kind == "response" {
+			return []byte(`{"status":"Accepted"}`), []string{"enum"}, nil
+		}
+		return payload, nil, nil
+	}
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	f.Inject([]byte(`[2,"len3","BootNotification",{}]`))
+
+	sent := <-f.Sent()
+	require.JSONEq(t, `[3,"len3",{"status":"Accepted"}]`, string(sent))
+}
+
 type schemaFailureMetrics struct {
 	schemaFailures int
+	softKeywords   []string
 	version        string
 	action         string
 	kind           string
@@ -261,6 +361,12 @@ func (m *schemaFailureMetrics) CallCompleted(string, string, time.Duration, stri
 func (m *schemaFailureMetrics) PendingDelta(int)                                    {}
 func (m *schemaFailureMetrics) SchemaValidationFailure(version, action, kind string) {
 	m.schemaFailures++
+	m.version = version
+	m.action = action
+	m.kind = kind
+}
+func (m *schemaFailureMetrics) SchemaSoftViolation(version, action, kind, keyword string) {
+	m.softKeywords = append(m.softKeywords, keyword)
 	m.version = version
 	m.action = action
 	m.kind = kind

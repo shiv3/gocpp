@@ -27,3 +27,9 @@ var NoopMetrics MetricsHook = noopMetrics{}
 type schemaValidationMetricsHook interface {
 	SchemaValidationFailure(version, action, direction string)
 }
+
+// schemaSoftViolationMetricsHook is an optional MetricsHook extension that
+// receives one event per soft schema violation keyword in lenient mode.
+type schemaSoftViolationMetricsHook interface {
+	SchemaSoftViolation(version, action, kind, keyword string)
+}

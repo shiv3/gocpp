@@ -10,6 +10,7 @@ import (
 
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/v16"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,6 +47,26 @@ func TestSchemaOptions_LastWinsAndWireDispatcher(t *testing.T) {
 	)
 	require.Equal(t, dispatcher.SchemaModeOff, client.cfg.dispatcher.SchemaMode)
 	require.Nil(t, client.cfg.dispatcher.SchemaValidate)
+}
+
+func TestWithLenientSchemaWiresClosure(t *testing.T) {
+	reg := schema.NewRegistry()
+	require.NoError(t, v16.RegisterSchemas(reg))
+	client := NewClient(
+		"CP_1",
+		"ws://example.invalid/ocpp/CP_1",
+		WithSchemaRegistry(reg),
+		WithLenientSchema(),
+	)
+	require.Equal(t, dispatcher.SchemaModeLenient, client.cfg.dispatcher.SchemaMode)
+	require.NotNil(t, client.cfg.dispatcher.SchemaValidateLenient)
+	require.Nil(t, client.cfg.dispatcher.SchemaValidate)
+
+	out, soft, err := client.cfg.dispatcher.SchemaValidateLenient("1.6", "BootNotification", "request",
+		[]byte(`{"chargePointVendor":"v","chargePointModel":"m","extra":1}`))
+	require.NoError(t, err)
+	require.Contains(t, soft, "additionalProperties")
+	require.NotNil(t, out)
 }
 
 func TestWebSocketPingOptionsWireDispatcher(t *testing.T) {

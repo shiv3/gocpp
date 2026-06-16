@@ -18,6 +18,7 @@ const (
 	SchemaModeOff SchemaMode = iota
 	SchemaModeTolerant
 	SchemaModeStrict
+	SchemaModeLenient
 )
 
 // Config controls a single connection's behavior.
@@ -44,7 +45,13 @@ type Config struct {
 	// SchemaValidate optionally validates a payload for the given version.
 	// nil disables validation. SchemaMode controls how returned errors are handled.
 	SchemaValidate func(version ocppj.Version, action, kind string, payload []byte) error
-	SchemaMode     SchemaMode
+	// SchemaValidateLenient validates a payload in lenient mode. It returns the
+	// possibly enum-normalized payload to dispatch, the soft-violation keywords
+	// seen, and a non-nil error only for hard violations. Used only when
+	// SchemaMode == SchemaModeLenient. Returns primitives so the dispatcher stays
+	// decoupled from core/schema.
+	SchemaValidateLenient func(version ocppj.Version, action, kind string, payload []byte) (out []byte, soft []string, err error)
+	SchemaMode            SchemaMode
 }
 
 // DefaultConfig returns production-sane defaults.

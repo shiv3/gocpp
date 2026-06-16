@@ -23,12 +23,19 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 	}()
 
 	msgID := ocppj.NewMsgID()
-	if err := c.schemaValidationError(action, "request", reqPayload); err != nil {
+	sendPayload := reqPayload
+	if c.cfg.SchemaMode == SchemaModeLenient {
+		out, herr := c.lenientValidate(action, "request", reqPayload)
+		if herr != nil {
+			return nil, herr
+		}
+		sendPayload = out
+	} else if err := c.schemaValidationError(action, "request", reqPayload); err != nil {
 		if c.cfg.SchemaMode == SchemaModeStrict {
 			return nil, err
 		}
 	}
-	raw, err := ocppj.EncodeCall(msgID, action, reqPayload)
+	raw, err := ocppj.EncodeCall(msgID, action, sendPayload)
 	if err != nil {
 		return nil, fmt.Errorf("encode call: %w", err)
 	}
@@ -66,12 +73,19 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 		if res.err != nil {
 			return nil, res.err
 		}
-		if err := c.schemaValidationError(action, "response", res.payload); err != nil {
+		respPayload := res.payload
+		if c.cfg.SchemaMode == SchemaModeLenient {
+			out, herr := c.lenientValidate(action, "response", res.payload)
+			if herr != nil {
+				return nil, herr
+			}
+			respPayload = out
+		} else if err := c.schemaValidationError(action, "response", res.payload); err != nil {
 			if c.cfg.SchemaMode == SchemaModeStrict {
 				return nil, err
 			}
 		}
-		return res.payload, nil
+		return respPayload, nil
 	case <-c.ctx.Done():
 		return nil, context.Cause(c.ctx)
 	case <-ctx.Done():
