@@ -109,6 +109,13 @@ func WithSerializedCalls() Option {
 	return optionFunc(func(c *serverConfig) { c.dispatcher.SerializeOutboundCalls = true })
 }
 
+// WithAsyncQueueSize bounds the per-connection FIFO queue used by CallAsync when
+// WithSerializedCalls is set (default 64). Enqueuing beyond it returns
+// ocppj.ErrQueueFull.
+func WithAsyncQueueSize(n int) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.AsyncQueueSize = n })
+}
+
 // WithOnConnect registers a callback fired after a charge point connection is accepted.
 func WithOnConnect(fn func(*Conn)) Option {
 	return optionFunc(func(c *serverConfig) { c.onConnect = fn })

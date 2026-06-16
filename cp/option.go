@@ -75,6 +75,13 @@ func WithSerializedCalls() Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.SerializeOutboundCalls = true })
 }
 
+// WithAsyncQueueSize bounds the per-connection FIFO queue used by CallAsync when
+// WithSerializedCalls is set (default 64). Enqueuing beyond it returns
+// ocppj.ErrQueueFull.
+func WithAsyncQueueSize(n int) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.AsyncQueueSize = n })
+}
+
 // WithOfflineQueue enables a bounded FIFO queue for CP-originated calls while disconnected.
 func WithOfflineQueue(capacity int) Option {
 	return optionFunc(func(c *clientConfig) {
