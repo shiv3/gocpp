@@ -98,7 +98,7 @@ func (q *outboundQueue) run() {
 		}
 
 		resp, err := dispatcher.DoCall(item.ctx, conn, item.action, item.payload)
-		if closeErr, closed := q.closedState(); closed {
+		if closed, closeErr := q.closedState(); closed {
 			q.finishHead(item, nil, closeErr)
 			continue
 		}
@@ -219,10 +219,10 @@ func (q *outboundQueue) len() int {
 	return len(q.items)
 }
 
-func (q *outboundQueue) closedState() (error, bool) {
+func (q *outboundQueue) closedState() (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return q.closeErr, q.closed
+	return q.closed, q.closeErr
 }
 
 func (item *queuedOutboundCall) finish(payload []byte, err error) {
