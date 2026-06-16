@@ -70,6 +70,22 @@ func TestWithGlobalConcurrencyLimit(t *testing.T) {
 	require.Nil(t, srv.cfg.dispatcher.GlobalHandlerLimiter)
 }
 
+func TestWebSocketPingOptionsWireDispatcher(t *testing.T) {
+	srv := NewServer(
+		WithWebSocketPingInterval(15*time.Second),
+		WithWebSocketPongWait(3*time.Second),
+	)
+
+	require.Equal(t, 15*time.Second, srv.cfg.dispatcher.PingInterval)
+	require.Equal(t, 3*time.Second, srv.cfg.dispatcher.PongWait)
+}
+
+func TestWithSerializedCalls(t *testing.T) {
+	srv := NewServer(WithSerializedCalls())
+
+	require.True(t, srv.cfg.dispatcher.SerializeOutboundCalls)
+}
+
 func testSchemaRegistry(t *testing.T, action string) *schema.Registry {
 	t.Helper()
 	reg := schema.NewRegistry()

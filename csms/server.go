@@ -122,6 +122,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		_ = dconn.Close(nil)
 		return
 	}
+	s.handleConnected(conn)
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
 	defer func() {
 		if s.removeConn(cpID, conn) {
@@ -130,6 +131,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	<-dconn.Context().Done()
+	s.handleDisconnected(conn, context.Cause(dconn.Context()))
 	_ = dconn.Close(nil)
 }
 
@@ -183,6 +185,21 @@ func (s *Server) removeConn(id string, c *Conn) bool {
 	}
 	delete(s.conns, id)
 	return true
+}
+
+func (s *Server) handleConnected(c *Conn) {
+	if s.cfg.onConnect != nil {
+		s.cfg.onConnect(c)
+	}
+}
+
+func (s *Server) handleDisconnected(c *Conn, err error) {
+	if err == nil {
+		err = ocppj.ErrConnClosed
+	}
+	if s.cfg.onDisconnect != nil {
+		s.cfg.onDisconnect(c, err)
+	}
 }
 
 // Get returns the live connection for a charge point, if connected.

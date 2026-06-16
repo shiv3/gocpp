@@ -50,12 +50,21 @@ resp, err := cp.Call(ctx, client, v201p.BootNotification, req)
 ## Options
 
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,
-`WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithAuthenticator`,
-`WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`, `WithDuplicatePolicy`,
-`WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`, `WithGlobalConcurrencyLimit`.
+`WithWriteTimeout`, `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`,
+`WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
+`WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
+`WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
+`WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`.
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
-`WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`.
+`WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithBasicAuth`,
+`WithHTTPHeader`, `WithTLSConfig`, `WithHeartbeatInterval`,
+`WithWebSocketPingInterval` + `WithWebSocketPongWait`, `WithSerializedCalls`,
+`WithOfflineQueue` + `WithRetryInFlightCalls`, `WithOnConnect`, `WithOnDisconnect`,
+`WithOnReconnect`.
+
+> Note: `csms.WithHeartbeatInterval` was removed — in OCPP the Charge Point emits
+> Heartbeat, never the CSMS. Use `cp.WithHeartbeatInterval` on the client.
 
 ### Routing, duplicates, metadata, auth
 
@@ -71,6 +80,31 @@ CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
   For `auth.BasicAuth(verify)`, `verify(cpID, password)` is called with the path-parsed cpID.
 - `csms.CallRaw(ctx, conn, action, payloadJSON)` sends an untyped CSMS→CP operation
   (symmetric with `cp.CallRaw`); prefer the typed `csms.Call` for application code.
+
+### Client auth & TLS
+
+- `cp.WithBasicAuth(user, pass)` sends HTTP Basic credentials on the WebSocket upgrade
+  (OCPP Security Profile 1/2); pair with `csms.WithAuthenticator(auth.BasicAuth(...))`.
+- `cp.WithHTTPHeader(key, value)` appends arbitrary upgrade headers (call repeatedly).
+- `cp.WithTLSConfig(*tls.Config)` controls the `wss://` dial: custom roots, client
+  certificates for mutual TLS (Security Profile 2/3), etc. (CSMS-side TLS is configured on
+  the `http.Server` that serves `srv.Handler()`.)
+
+### Keepalive, Heartbeat, serialization, offline queue
+
+- `WithWebSocketPingInterval(d)` (+ `WithWebSocketPongWait(d)`, default 60s) enables
+  transport-level ping/pong on either side; a missed pong tears the connection down so dead
+  peers are detected. Disabled when interval is 0.
+- `cp.WithHeartbeatInterval(d)` makes the charge point auto-send OCPP `Heartbeat` every `d`.
+- `WithSerializedCalls()` enforces at most one outstanding outbound CALL per connection
+  (some charge points cannot handle concurrent requests). Off by default.
+- `cp.WithOfflineQueue(capacity)` queues CP-originated calls while disconnected and flushes
+  them FIFO on reconnect; a full queue returns `ocppj.ErrQueueFull`. Disabled (fail-fast with
+  `ocppj.ErrNotConnected`) when capacity ≤ 0. By default a CALL that was already in flight
+  when the link dropped fails with `ocppj.ErrConnClosed` (OCPP has no idempotency guarantee);
+  `cp.WithRetryInFlightCalls()` opts into re-sending it after reconnect.
+- Lifecycle callbacks: `cp.WithOnConnect/WithOnDisconnect/WithOnReconnect` and
+  `csms.WithOnConnect(func(*Conn))` / `csms.WithOnDisconnect(func(*Conn, error))`.
 
 ## Validation
 

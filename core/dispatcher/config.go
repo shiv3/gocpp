@@ -22,10 +22,13 @@ const (
 
 // Config controls a single connection's behavior.
 type Config struct {
-	CallTimeout           time.Duration
-	WriteTimeout          time.Duration
-	OutboundQueueSize     int
-	MaxConcurrentHandlers int64
+	CallTimeout            time.Duration
+	WriteTimeout           time.Duration
+	PingInterval           time.Duration
+	PongWait               time.Duration
+	SerializeOutboundCalls bool
+	OutboundQueueSize      int
+	MaxConcurrentHandlers  int64
 	// GlobalHandlerLimiter, when non-nil, bounds the total number of inbound
 	// handlers running concurrently across all connections that share it. It is
 	// acquired in addition to the per-connection MaxConcurrentHandlers budget.
@@ -35,7 +38,7 @@ type Config struct {
 	Logger               *slog.Logger
 	Metrics              MetricsHook
 	Tracer               observability.Tracer
-	// SchemaValidate optionally validates an inbound payload for the given version.
+	// SchemaValidate optionally validates a payload for the given version.
 	// nil disables validation. SchemaMode controls how returned errors are handled.
 	SchemaValidate func(version ocppj.Version, action, kind string, payload []byte) error
 	SchemaMode     SchemaMode

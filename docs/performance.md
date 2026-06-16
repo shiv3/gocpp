@@ -18,8 +18,11 @@ long-lived goroutines (`core/dispatcher/conn.go`):
   `done`.
 
 So the baseline cost is roughly **4 goroutines per connection**, regardless of
-traffic. On top of that, each inbound Call is handled in its own short-lived
-goroutine (`go c.runHandler(frame)`), bounded as described next.
+traffic. Enabling `WithWebSocketPingInterval` adds one more wg-joined goroutine
+per connection (the ping ticker), and on the CP side `WithHeartbeatInterval` adds
+one more — both opt-in and disabled by default. On top of that, each inbound Call
+is handled in its own short-lived goroutine (`go c.runHandler(frame)`), bounded as
+described next.
 
 For `N` connections the fixed baseline is `~4·N` goroutines. Goroutines start
 with a ~2 KB stack, so tens of thousands of mostly-idle connections cost on the
@@ -89,6 +92,8 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 | `OutboundQueueSize` (`dispatcher.Config`) | 64 | Inbound/outbound channel depth; absorbs bursts before back-pressure reaches the socket. |
 | `WithCallTimeout` | 30s | Deadline for an outbound CSMS→CP call awaiting its result. |
 | `WithWriteTimeout` | 10s | Deadline for a single socket write. |
+| `WithSerializedCalls()` | disabled | Caps outbound CALLs to one outstanding per connection; later calls block until the prior one settles. |
+| `WithWebSocketPingInterval(d)` | disabled | Transport keepalive; adds one goroutine per connection and detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |
 
 ## Rules of thumb
 

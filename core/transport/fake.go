@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 )
 
 // ErrFakeClosed is returned by a closed FakeWS.
@@ -17,6 +18,9 @@ type FakeWS struct {
 	sent      chan []byte
 	closeOnce sync.Once
 	done      chan struct{}
+	pingMu    sync.Mutex
+	pingFunc  func(context.Context) error
+	pingCount atomic.Int64
 }
 
 // NewFakeWS creates a fake with the given negotiated subprotocol.
@@ -34,6 +38,16 @@ func (f *FakeWS) Inject(msg []byte) { f.inbound <- msg }
 
 // Sent exposes outbound messages written via Write.
 func (f *FakeWS) Sent() <-chan []byte { return f.sent }
+
+// SetPingFunc configures Ping behavior for tests. nil restores the default.
+func (f *FakeWS) SetPingFunc(fn func(context.Context) error) {
+	f.pingMu.Lock()
+	f.pingFunc = fn
+	f.pingMu.Unlock()
+}
+
+// PingCount returns how many times Ping has been called.
+func (f *FakeWS) PingCount() int64 { return f.pingCount.Load() }
 
 func (f *FakeWS) Read(ctx context.Context) ([]byte, error) {
 	select {
@@ -53,6 +67,24 @@ func (f *FakeWS) Write(ctx context.Context, data []byte) error {
 	case <-f.done:
 		return ErrFakeClosed
 	case f.sent <- data:
+		return nil
+	}
+}
+
+func (f *FakeWS) Ping(ctx context.Context) error {
+	f.pingCount.Add(1)
+	f.pingMu.Lock()
+	fn := f.pingFunc
+	f.pingMu.Unlock()
+	if fn != nil {
+		return fn(ctx)
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-f.done:
+		return ErrFakeClosed
+	default:
 		return nil
 	}
 }
