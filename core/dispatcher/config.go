@@ -23,10 +23,13 @@ const (
 
 // Config controls a single connection's behavior.
 type Config struct {
-	CallTimeout            time.Duration
-	WriteTimeout           time.Duration
-	PingInterval           time.Duration
-	PongWait               time.Duration
+	CallTimeout  time.Duration
+	WriteTimeout time.Duration
+	PingInterval time.Duration
+	PongWait     time.Duration
+	// ReadTimeout cancels the connection if no inbound frame (data, ping, or
+	// pong) arrives within this duration. 0 disables the read idle watchdog.
+	ReadTimeout            time.Duration
 	SerializeOutboundCalls bool
 	OutboundQueueSize      int
 	// AsyncQueueSize bounds the per-connection FIFO queue used by DoCallAsync when
@@ -59,6 +62,9 @@ func DefaultConfig() Config {
 	return Config{
 		CallTimeout:           30 * time.Second,
 		WriteTimeout:          10 * time.Second,
+		PingInterval:          54 * time.Second,
+		PongWait:              60 * time.Second,
+		ReadTimeout:           60 * time.Second,
 		OutboundQueueSize:     64,
 		AsyncQueueSize:        64,
 		MaxConcurrentHandlers: 16,

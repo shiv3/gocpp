@@ -23,6 +23,9 @@ type Conn struct {
 	out chan outbound
 	in  chan ocppj.Frame
 
+	// activity signals inbound frames (data/ping/pong) to the read idle watchdog.
+	activity chan struct{}
+
 	pending *pendingStore
 	reg     *HandlerRegistry
 	sem     *semaphore.Weighted
@@ -66,18 +69,19 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		m = cloneConnMetadata(meta[0])
 	}
 	c := &Conn{
-		id:      id,
-		ws:      ws,
-		version: subprotocolToVersion(ws.Subprotocol()),
-		meta:    m,
-		out:     make(chan outbound, cfg.OutboundQueueSize),
-		in:      make(chan ocppj.Frame, cfg.OutboundQueueSize),
-		pending: newPendingStore(),
-		reg:     reg,
-		sem:     semaphore.NewWeighted(cfg.MaxConcurrentHandlers),
-		outSem:  semaphore.NewWeighted(1),
-		done:    make(chan struct{}),
-		cfg:     cfg,
+		id:       id,
+		ws:       ws,
+		version:  subprotocolToVersion(ws.Subprotocol()),
+		meta:     m,
+		out:      make(chan outbound, cfg.OutboundQueueSize),
+		in:       make(chan ocppj.Frame, cfg.OutboundQueueSize),
+		activity: make(chan struct{}, 1),
+		pending:  newPendingStore(),
+		reg:      reg,
+		sem:      semaphore.NewWeighted(cfg.MaxConcurrentHandlers),
+		outSem:   semaphore.NewWeighted(1),
+		done:     make(chan struct{}),
+		cfg:      cfg,
 	}
 	c.closeWS = sync.OnceFunc(func() { _ = ws.Close(transport.StatusNormalClosure, "closed") })
 	return c
@@ -111,6 +115,16 @@ func (c *Conn) TLS() *tls.ConnectionState {
 // Context returns the connection lifecycle context.
 func (c *Conn) Context() context.Context { return c.ctx }
 
+// NoteActivity records inbound activity, resetting the read idle watchdog.
+// It is safe to call from the websocket read goroutine (e.g. ping/pong
+// callbacks), as the send is non-blocking.
+func (c *Conn) NoteActivity() {
+	select {
+	case c.activity <- struct{}{}:
+	default:
+	}
+}
+
 func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 	cloned := ConnMetadata{
 		RemoteAddr:    meta.RemoteAddr,
@@ -133,6 +147,7 @@ func (c *Conn) Start(parent context.Context) {
 	go c.writer()
 	go c.dispatch()
 	c.startWebSocketPing()
+	c.startReadWatchdog()
 
 	go func() {
 		c.wg.Wait()
@@ -169,6 +184,7 @@ func (c *Conn) reader() {
 			c.cancel(fmt.Errorf("read: %w", err))
 			return
 		}
+		c.NoteActivity()
 		frame, err := ocppj.Parse(msg)
 		if err != nil {
 			c.cfg.Logger.WarnContext(c.ctx, "ocpp parse error",

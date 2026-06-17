@@ -16,7 +16,9 @@ import (
 func TestConn_KeepaliveFires(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := transport.NewFakeWS("ocpp1.6")
-		c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
+		cfg := DefaultConfig()
+		cfg.ReadTimeout = 0 // isolate the OCPP-Heartbeat ticker from the read watchdog
+		c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
 		c.Start(context.Background())
 		defer func() { _ = c.Close(nil) }()
 

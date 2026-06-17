@@ -71,7 +71,20 @@ func (c *Client) Connect(ctx context.Context) error {
 }
 
 func (c *Client) connect(ctx context.Context, reconnected, watch bool) error {
-	wsConn, _, err := websocket.Dial(ctx, c.url, c.cfg.dialOptions())
+	var dconn *dispatcher.Conn
+	opts := c.cfg.dialOptions()
+	opts.OnPingReceived = func(context.Context, []byte) bool {
+		if dconn != nil {
+			dconn.NoteActivity()
+		}
+		return true
+	}
+	opts.OnPongReceived = func(context.Context, []byte) {
+		if dconn != nil {
+			dconn.NoteActivity()
+		}
+	}
+	wsConn, _, err := websocket.Dial(ctx, c.url, opts)
 	if err != nil {
 		return err
 	}
@@ -80,7 +93,7 @@ func (c *Client) connect(ctx context.Context, reconnected, watch bool) error {
 		return ocppj.ErrVersionMismatch
 	}
 	ws := transport.NewCoderWS(wsConn)
-	dconn := dispatcher.NewConn(c.id, ws, c.cfg.dispatcher, c.reg)
+	dconn = dispatcher.NewConn(c.id, ws, c.cfg.dispatcher, c.reg)
 	dconn.Start(context.Background())
 	c.startHeartbeat(dconn)
 	c.handleConnected(dconn, reconnected)

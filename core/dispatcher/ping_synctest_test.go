@@ -24,6 +24,7 @@ func TestConn_WebSocketPingFires(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.PingInterval = time.Minute
 		cfg.PongWait = time.Second
+		cfg.ReadTimeout = 0 // isolate the active ping loop from the read watchdog
 		c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
 		c.Start(context.Background())
 		defer func() { _ = c.Close(nil) }()
