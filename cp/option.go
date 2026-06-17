@@ -70,6 +70,12 @@ func WithWebSocketPongWait(d time.Duration) Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.PongWait = d })
 }
 
+// WithWebSocketReadTimeout sets the read idle timeout: the connection is closed
+// if no inbound frame (data, ping, or pong) arrives within d. 0 disables it.
+func WithWebSocketReadTimeout(d time.Duration) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.ReadTimeout = d })
+}
+
 // WithSerializedCalls limits outbound OCPP Calls to one outstanding request.
 func WithSerializedCalls() Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.SerializeOutboundCalls = true })

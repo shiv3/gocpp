@@ -105,12 +105,25 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+	var dconn *dispatcher.Conn
+	acceptOpts := &websocket.AcceptOptions{
 		Subprotocols:   s.cfg.subProtocols,
 		OriginPatterns: s.cfg.originPatterns,
 		// A custom checkOrigin has already decided; let coder skip its own check.
 		InsecureSkipVerify: s.cfg.insecureSkipVerifyOrigin || s.cfg.checkOrigin != nil,
-	})
+	}
+	acceptOpts.OnPingReceived = func(context.Context, []byte) bool {
+		if dconn != nil {
+			dconn.NoteActivity()
+		}
+		return true
+	}
+	acceptOpts.OnPongReceived = func(context.Context, []byte) {
+		if dconn != nil {
+			dconn.NoteActivity()
+		}
+	}
+	c, err := websocket.Accept(w, r, acceptOpts)
 	if err != nil {
 		return
 	}
@@ -126,7 +139,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
 	dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
 
-	dconn := dispatcher.NewConn(cpID, ws, dcfg, s.reg, dispatcher.ConnMetadata{
+	dconn = dispatcher.NewConn(cpID, ws, dcfg, s.reg, dispatcher.ConnMetadata{
 		RemoteAddr:    r.RemoteAddr,
 		RequestHeader: r.Header,
 		TLS:           r.TLS,

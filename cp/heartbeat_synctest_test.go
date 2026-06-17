@@ -18,7 +18,10 @@ func TestClientHeartbeatSendsCall(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		client := NewClient("CP_1", "ws://example.invalid", WithHeartbeatInterval(time.Minute))
 		f := transport.NewFakeWS("ocpp1.6")
-		dconn := dispatcher.NewConn(client.id, f, client.cfg.dispatcher, client.reg)
+		cfg := client.cfg.dispatcher
+		cfg.PingInterval = 0 // isolate the OCPP Heartbeat from transport keepalive
+		cfg.ReadTimeout = 0
+		dconn := dispatcher.NewConn(client.id, f, cfg, client.reg)
 		dconn.Start(context.Background())
 		defer func() { _ = dconn.Close(nil) }()
 		client.startHeartbeat(dconn)
@@ -40,7 +43,10 @@ func TestClientHeartbeatDisabledSendsNothing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		client := NewClient("CP_1", "ws://example.invalid")
 		f := transport.NewFakeWS("ocpp1.6")
-		dconn := dispatcher.NewConn(client.id, f, client.cfg.dispatcher, client.reg)
+		cfg := client.cfg.dispatcher
+		cfg.PingInterval = 0 // isolate the OCPP Heartbeat from transport keepalive
+		cfg.ReadTimeout = 0
+		dconn := dispatcher.NewConn(client.id, f, cfg, client.reg)
 		dconn.Start(context.Background())
 		defer func() { _ = dconn.Close(nil) }()
 		client.startHeartbeat(dconn)
