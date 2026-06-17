@@ -34,6 +34,9 @@ type serverConfig struct {
 	tracerProvider trace.TracerProvider
 	onConnect      func(*Conn)
 	onDisconnect   func(*Conn, error)
+
+	originPatterns           []string
+	insecureSkipVerifyOrigin bool
 }
 
 func defaultServerConfig() serverConfig {
@@ -155,6 +158,24 @@ func WithDuplicatePolicy(p DuplicatePolicy) Option {
 // disables the global cap (the default), leaving only per-connection limits.
 func WithGlobalConcurrencyLimit(n int) Option {
 	return optionFunc(func(c *serverConfig) { c.globalConcurrencyLimit = n })
+}
+
+// WithOriginPatterns lists host patterns for authorized WebSocket origins
+// (cross-origin allowlist). The request host is always authorized. Patterns are
+// matched per coder/websocket's AcceptOptions.OriginPatterns. Charge points are
+// non-browser clients and usually send no Origin header (always allowed), so
+// this is mainly relevant for browser-based clients.
+func WithOriginPatterns(patterns ...string) Option {
+	return optionFunc(func(c *serverConfig) { c.originPatterns = patterns })
+}
+
+// WithInsecureSkipVerifyOrigin disables WebSocket origin verification entirely,
+// accepting upgrades from any origin. This mirrors disabling the origin check in
+// other OCPP stacks. Use with care: enabling it on a browser-reachable endpoint
+// exposes it to cross-site WebSocket hijacking. Prefer WithOriginPatterns when
+// you only need to allow specific origins.
+func WithInsecureSkipVerifyOrigin() Option {
+	return optionFunc(func(c *serverConfig) { c.insecureSkipVerifyOrigin = true })
 }
 
 // WithSchemaRegistry sets the schema registry used for first-layer validation.

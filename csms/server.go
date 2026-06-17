@@ -100,7 +100,9 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		Subprotocols: s.cfg.subProtocols,
+		Subprotocols:       s.cfg.subProtocols,
+		OriginPatterns:     s.cfg.originPatterns,
+		InsecureSkipVerify: s.cfg.insecureSkipVerifyOrigin,
 	})
 	if err != nil {
 		return

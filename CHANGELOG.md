@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- WebSocket origin verification controls for the CSMS: `WithOriginPatterns(...)`
+  (cross-origin allowlist) and `WithInsecureSkipVerifyOrigin()` (disable the
+  origin check entirely). These map to coder/websocket's `AcceptOptions`. The
+  default is unchanged (same-origin verification; requests without an Origin
+  header — i.e. non-browser charge points — are always allowed).
 - Bidirectional `DataTransfer` support. OCPP 1.6/2.0.1/2.1 allow `DataTransfer`
   to be initiated by either peer; a new `ocppj.SentByBoth` direction marks such
   messages, and `CheckDirection` accepts it for any role/op. The generated

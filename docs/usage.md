@@ -54,7 +54,8 @@ CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithC
 `WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
 `WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
-`WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`.
+`WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
+`WithInsecureSkipVerifyOrigin`.
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithBasicAuth`,
