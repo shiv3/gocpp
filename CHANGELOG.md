@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format is based on
   `RegisterCSMS(*csms.Server, CSMSHandler)`. Replaces the per-message `cp.On` /
   `csms.On` boilerplate with a single call; embed the Unimplemented type to
   implement only the messages you need (gRPC-style). Compile-time type safe.
+- Generated typed send helpers per version (`<version>/calls`): `CP<Action>(ctx,
+  *cp.Client, req)` for charge-point-sendable messages and `CSMS<Action>(ctx,
+  *csms.Conn, req)` for CSMS-sendable messages (DataTransfer gets both). Thin,
+  direction-correct, discoverable wrappers over `cp.Call` / `csms.Call`.
 - WebSocket origin verification controls for the CSMS: `WithOriginPatterns(...)`
   (cross-origin allowlist) and `WithInsecureSkipVerifyOrigin()` (disable the
   origin check entirely). These map to coder/websocket's `AcceptOptions`. The

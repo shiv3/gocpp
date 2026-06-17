@@ -68,6 +68,22 @@ err := v16h.RegisterCP(client, myCP{})
 // CSMS side mirror: v16h.RegisterCSMS(srv, myCSMSHandler{})
 ```
 
+For sending, each version also ships a `calls` package with typed, direction-safe
+helpers over `cp.Call` / `csms.Call`:
+
+```go
+import v16c "github.com/shiv3/gocpp/v16/calls"
+
+// Charge point -> CSMS
+resp, err := v16c.CPBootNotification(ctx, client, v16msg.BootNotificationRequest{
+    ChargePointVendor: "Acme", ChargePointModel: "M1",
+})
+
+// CSMS -> charge point
+conn, _ := srv.Get("CP_1")
+_, err = v16c.CSMSReset(ctx, conn, v16msg.ResetRequest{Type: v16msg.ResetRequestTypeSoft})
+```
+
 ## Options
 
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,

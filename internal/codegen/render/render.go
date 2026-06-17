@@ -176,6 +176,45 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 	return format.Source([]byte(b.String()))
 }
 
+// CallsFile renders typed send helpers for one version: CP<Action> wraps
+// cp.Call for charge-point-sendable messages, CSMS<Action> wraps csms.Call for
+// CSMS-sendable messages. Bidirectional messages (DataTransfer) get both.
+func CallsFile(version string, messages []ir.Message) ([]byte, error) {
+	var cpSend, csmsSend []ir.Message
+	for _, m := range messages {
+		if m.Direction == "SentByCP" || m.Direction == "SentByBoth" {
+			cpSend = append(cpSend, m)
+		}
+		if m.Direction == "SentByCSMS" || m.Direction == "SentByBoth" {
+			csmsSend = append(csmsSend, m)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("package calls\n\n")
+	b.WriteString("import (\n")
+	fmt.Fprintf(&b, "\t%q\n\n", "context")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/cp")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/csms")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/messages")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/profiles")
+	b.WriteString(")\n\n")
+
+	for _, m := range cpSend {
+		fmt.Fprintf(&b, "// CP%s sends a %s request from the charge point to the CSMS.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func CP%s(ctx context.Context, c *cp.Client, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn cp.Call(ctx, c, profiles.%s, req)\n}\n\n", m.Action)
+	}
+	for _, m := range csmsSend {
+		fmt.Fprintf(&b, "// CSMS%s sends a %s request from the CSMS to a connected charge point.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func CSMS%s(ctx context.Context, conn *csms.Conn, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn csms.Call(ctx, conn, profiles.%s, req)\n}\n\n", m.Action)
+	}
+
+	return format.Source([]byte(b.String()))
+}
+
 func versionString(version string) string {
 	switch version {
 	case "v16":
