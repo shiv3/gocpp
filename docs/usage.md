@@ -47,6 +47,27 @@ client.Connect(ctx)              // single connection
 resp, err := cp.Call(ctx, client, v201p.BootNotification, req)
 ```
 
+## Bulk handler registration
+
+Instead of one `cp.On` / `csms.On` per message, each version ships a `handlers`
+package with typed interfaces, embeddable `Unimplemented` defaults (returning a
+`NotSupported` CallError), and one-call registrars. Embed the Unimplemented type
+and override only the messages you handle:
+
+```go
+import v16h "github.com/shiv3/gocpp/v16/handlers"
+
+type myCP struct{ v16h.UnimplementedCPHandler }
+
+func (myCP) OnReset(ctx context.Context, req v16msg.ResetRequest) (v16msg.ResetResponse, error) {
+    return v16msg.ResetResponse{Status: v16msg.ResetResponseStatusAccepted}, nil
+}
+
+// Registers every CSMS->CP handler the type implements in one call.
+err := v16h.RegisterCP(client, myCP{})
+// CSMS side mirror: v16h.RegisterCSMS(srv, myCSMSHandler{})
+```
+
 ## Options
 
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,

@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Generated typed handler interfaces and one-call registrars per version
+  (`<version>/handlers`): `CPHandler` / `CSMSHandler` interfaces, embeddable
+  `UnimplementedCPHandler` / `UnimplementedCSMSHandler` defaults (return a
+  `NotSupported` CallError), and `RegisterCP(*cp.Client, CPHandler)` /
+  `RegisterCSMS(*csms.Server, CSMSHandler)`. Replaces the per-message `cp.On` /
+  `csms.On` boilerplate with a single call; embed the Unimplemented type to
+  implement only the messages you need (gRPC-style). Compile-time type safe.
 - WebSocket origin verification controls for the CSMS: `WithOriginPatterns(...)`
   (cross-origin allowlist) and `WithInsecureSkipVerifyOrigin()` (disable the
   origin check entirely). These map to coder/websocket's `AcceptOptions`. The

@@ -98,6 +98,84 @@ func RegisterFile(version string, messages []ir.Message) ([]byte, error) {
 	return format.Source([]byte(b.String()))
 }
 
+// HandlersFile renders the typed handler interfaces, Unimplemented defaults, and
+// one-call registrars (RegisterCP / RegisterCSMS) for one version.
+func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
+	// cpMsgs: messages a charge point receives (CSMS-initiated or bidirectional).
+	// csmsMsgs: messages a CSMS receives (CP-initiated or bidirectional).
+	var cpMsgs, csmsMsgs []ir.Message
+	for _, m := range messages {
+		if m.Direction == "SentByCSMS" || m.Direction == "SentByBoth" {
+			cpMsgs = append(cpMsgs, m)
+		}
+		if m.Direction == "SentByCP" || m.Direction == "SentByBoth" {
+			csmsMsgs = append(csmsMsgs, m)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("package handlers\n\n")
+	b.WriteString("import (\n")
+	fmt.Fprintf(&b, "\t%q\n\n", "context")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/core/ocppj")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/cp")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/csms")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/messages")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/profiles")
+	b.WriteString(")\n\n")
+
+	// ----- Charge-point side -----
+	b.WriteString("// CPHandler handles CSMS-initiated messages received by a charge point.\n")
+	b.WriteString("type CPHandler interface {\n")
+	for _, m := range cpMsgs {
+		fmt.Fprintf(&b, "\tOn%s(context.Context, messages.%s) (messages.%s, error)\n", m.Action, m.Request, m.Response)
+	}
+	b.WriteString("}\n\n")
+
+	b.WriteString("// UnimplementedCPHandler returns a NotSupported CallError for every message.\n")
+	b.WriteString("// Embed it to implement only the messages you care about.\n")
+	b.WriteString("type UnimplementedCPHandler struct{}\n\n")
+	for _, m := range cpMsgs {
+		fmt.Fprintf(&b, "func (UnimplementedCPHandler) On%s(context.Context, messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn messages.%s{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, %q, nil)\n", m.Response, m.Action+" not implemented")
+		b.WriteString("}\n\n")
+	}
+
+	b.WriteString("// RegisterCP registers every CSMS->CP handler from h on the client.\n")
+	b.WriteString("func RegisterCP(c *cp.Client, h CPHandler) error {\n")
+	for _, m := range cpMsgs {
+		fmt.Fprintf(&b, "\tif err := cp.On(c, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+	}
+	b.WriteString("\treturn nil\n}\n\n")
+
+	// ----- CSMS side -----
+	b.WriteString("// CSMSHandler handles CP-initiated messages received by a CSMS.\n")
+	b.WriteString("type CSMSHandler interface {\n")
+	for _, m := range csmsMsgs {
+		fmt.Fprintf(&b, "\tOn%s(context.Context, *csms.Conn, messages.%s) (messages.%s, error)\n", m.Action, m.Request, m.Response)
+	}
+	b.WriteString("}\n\n")
+
+	b.WriteString("// UnimplementedCSMSHandler returns a NotSupported CallError for every message.\n")
+	b.WriteString("// Embed it to implement only the messages you care about.\n")
+	b.WriteString("type UnimplementedCSMSHandler struct{}\n\n")
+	for _, m := range csmsMsgs {
+		fmt.Fprintf(&b, "func (UnimplementedCSMSHandler) On%s(context.Context, *csms.Conn, messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn messages.%s{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, %q, nil)\n", m.Response, m.Action+" not implemented")
+		b.WriteString("}\n\n")
+	}
+
+	b.WriteString("// RegisterCSMS registers every CP->CSMS handler from h on the server.\n")
+	b.WriteString("func RegisterCSMS(s *csms.Server, h CSMSHandler) error {\n")
+	for _, m := range csmsMsgs {
+		fmt.Fprintf(&b, "\tif err := csms.On(s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+	}
+	b.WriteString("\treturn nil\n}\n")
+
+	return format.Source([]byte(b.String()))
+}
+
 func versionString(version string) string {
 	switch version {
 	case "v16":
