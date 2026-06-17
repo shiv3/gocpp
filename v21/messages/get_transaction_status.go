@@ -9,6 +9,6 @@ type GetTransactionStatusRequest struct {
 
 type GetTransactionStatusResponse struct {
 	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	MessagesInQueue  bool            `json:"messagesInQueue" validate:"required"`
+	MessagesInQueue  bool            `json:"messagesInQueue"`
 	OngoingIndicator *bool           `json:"ongoingIndicator,omitempty" validate:"omitempty"`
 }

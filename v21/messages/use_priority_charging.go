@@ -3,7 +3,7 @@
 package messages
 
 type UsePriorityChargingRequest struct {
-	Activate      bool            `json:"activate" validate:"required"`
+	Activate      bool            `json:"activate"`
 	CustomData    *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	TransactionID string          `json:"transactionId" validate:"required,max=36"`
 }

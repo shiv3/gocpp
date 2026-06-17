@@ -9,7 +9,7 @@ import (
 type NotifyDERStartStopRequest struct {
 	ControlID     string          `json:"controlId" validate:"required,max=36"`
 	CustomData    *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Started       bool            `json:"started" validate:"required"`
+	Started       bool            `json:"started"`
 	SupersededIds []string        `json:"supersededIds,omitempty" validate:"omitempty"`
 	Timestamp     time.Time       `json:"timestamp" validate:"required"`
 }

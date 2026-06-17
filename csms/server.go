@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/shiv3/gocpp/core/dispatcher"
@@ -99,8 +100,16 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.cfg.checkOrigin != nil && !s.cfg.checkOrigin(r) {
+		http.Error(w, "forbidden origin", http.StatusForbidden)
+		return
+	}
+
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		Subprotocols: s.cfg.subProtocols,
+		Subprotocols:   s.cfg.subProtocols,
+		OriginPatterns: s.cfg.originPatterns,
+		// A custom checkOrigin has already decided; let coder skip its own check.
+		InsecureSkipVerify: s.cfg.insecureSkipVerifyOrigin || s.cfg.checkOrigin != nil,
 	})
 	if err != nil {
 		return
@@ -220,7 +229,43 @@ func (s *Server) Get(id string) (*Conn, bool) {
 	return c, ok
 }
 
-// Close shuts down the server and all connections.
+// Close shuts down the server and all connections immediately.
 func (s *Server) Close() {
 	s.cancel()
+}
+
+// Shutdown gracefully closes all live charge-point connections with a normal
+// WebSocket close and waits for them to drain, up to the deadline of ctx. If ctx
+// is cancelled or times out first, remaining connections are force-closed and
+// ctx.Err() is returned. New upgrade attempts during shutdown still go through
+// the normal accept path; stop accepting them by shutting down the HTTP server
+// hosting Handler() before calling Shutdown.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.mu.RLock()
+	conns := make([]*Conn, 0, len(s.conns))
+	for _, c := range s.conns {
+		conns = append(conns, c)
+	}
+	s.mu.RUnlock()
+	for _, c := range conns {
+		_ = c.inner.Close(nil)
+	}
+
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		s.mu.RLock()
+		n := len(s.conns)
+		s.mu.RUnlock()
+		if n == 0 {
+			s.cancel()
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			s.cancel()
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }

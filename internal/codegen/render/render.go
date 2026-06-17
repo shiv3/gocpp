@@ -98,6 +98,123 @@ func RegisterFile(version string, messages []ir.Message) ([]byte, error) {
 	return format.Source([]byte(b.String()))
 }
 
+// HandlersFile renders the typed handler interfaces, Unimplemented defaults, and
+// one-call registrars (RegisterCP / RegisterCSMS) for one version.
+func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
+	// cpMsgs: messages a charge point receives (CSMS-initiated or bidirectional).
+	// csmsMsgs: messages a CSMS receives (CP-initiated or bidirectional).
+	var cpMsgs, csmsMsgs []ir.Message
+	for _, m := range messages {
+		if m.Direction == "SentByCSMS" || m.Direction == "SentByBoth" {
+			cpMsgs = append(cpMsgs, m)
+		}
+		if m.Direction == "SentByCP" || m.Direction == "SentByBoth" {
+			csmsMsgs = append(csmsMsgs, m)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("package handlers\n\n")
+	b.WriteString("import (\n")
+	fmt.Fprintf(&b, "\t%q\n\n", "context")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/core/ocppj")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/cp")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/csms")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/messages")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/profiles")
+	b.WriteString(")\n\n")
+
+	// ----- Charge-point side -----
+	b.WriteString("// CPHandler handles CSMS-initiated messages received by a charge point.\n")
+	b.WriteString("type CPHandler interface {\n")
+	for _, m := range cpMsgs {
+		fmt.Fprintf(&b, "\tOn%s(context.Context, messages.%s) (messages.%s, error)\n", m.Action, m.Request, m.Response)
+	}
+	b.WriteString("}\n\n")
+
+	b.WriteString("// UnimplementedCPHandler returns a NotSupported CallError for every message.\n")
+	b.WriteString("// Embed it to implement only the messages you care about.\n")
+	b.WriteString("type UnimplementedCPHandler struct{}\n\n")
+	for _, m := range cpMsgs {
+		fmt.Fprintf(&b, "func (UnimplementedCPHandler) On%s(context.Context, messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn messages.%s{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, %q, nil)\n", m.Response, m.Action+" not implemented")
+		b.WriteString("}\n\n")
+	}
+
+	b.WriteString("// RegisterCP registers every CSMS->CP handler from h on the client.\n")
+	b.WriteString("func RegisterCP(c *cp.Client, h CPHandler) error {\n")
+	for _, m := range cpMsgs {
+		fmt.Fprintf(&b, "\tif err := cp.On(c, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+	}
+	b.WriteString("\treturn nil\n}\n\n")
+
+	// ----- CSMS side -----
+	b.WriteString("// CSMSHandler handles CP-initiated messages received by a CSMS.\n")
+	b.WriteString("type CSMSHandler interface {\n")
+	for _, m := range csmsMsgs {
+		fmt.Fprintf(&b, "\tOn%s(context.Context, *csms.Conn, messages.%s) (messages.%s, error)\n", m.Action, m.Request, m.Response)
+	}
+	b.WriteString("}\n\n")
+
+	b.WriteString("// UnimplementedCSMSHandler returns a NotSupported CallError for every message.\n")
+	b.WriteString("// Embed it to implement only the messages you care about.\n")
+	b.WriteString("type UnimplementedCSMSHandler struct{}\n\n")
+	for _, m := range csmsMsgs {
+		fmt.Fprintf(&b, "func (UnimplementedCSMSHandler) On%s(context.Context, *csms.Conn, messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn messages.%s{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, %q, nil)\n", m.Response, m.Action+" not implemented")
+		b.WriteString("}\n\n")
+	}
+
+	b.WriteString("// RegisterCSMS registers every CP->CSMS handler from h on the server.\n")
+	b.WriteString("func RegisterCSMS(s *csms.Server, h CSMSHandler) error {\n")
+	for _, m := range csmsMsgs {
+		fmt.Fprintf(&b, "\tif err := csms.On(s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+	}
+	b.WriteString("\treturn nil\n}\n")
+
+	return format.Source([]byte(b.String()))
+}
+
+// CallsFile renders typed send helpers for one version: CP<Action> wraps
+// cp.Call for charge-point-sendable messages, CSMS<Action> wraps csms.Call for
+// CSMS-sendable messages. Bidirectional messages (DataTransfer) get both.
+func CallsFile(version string, messages []ir.Message) ([]byte, error) {
+	var cpSend, csmsSend []ir.Message
+	for _, m := range messages {
+		if m.Direction == "SentByCP" || m.Direction == "SentByBoth" {
+			cpSend = append(cpSend, m)
+		}
+		if m.Direction == "SentByCSMS" || m.Direction == "SentByBoth" {
+			csmsSend = append(csmsSend, m)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("package calls\n\n")
+	b.WriteString("import (\n")
+	fmt.Fprintf(&b, "\t%q\n\n", "context")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/cp")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/csms")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/messages")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/profiles")
+	b.WriteString(")\n\n")
+
+	for _, m := range cpSend {
+		fmt.Fprintf(&b, "// CP%s sends a %s request from the charge point to the CSMS.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func CP%s(ctx context.Context, c *cp.Client, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn cp.Call(ctx, c, profiles.%s, req)\n}\n\n", m.Action)
+	}
+	for _, m := range csmsSend {
+		fmt.Fprintf(&b, "// CSMS%s sends a %s request from the CSMS to a connected charge point.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func CSMS%s(ctx context.Context, conn *csms.Conn, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn csms.Call(ctx, conn, profiles.%s, req)\n}\n\n", m.Action)
+	}
+
+	return format.Source([]byte(b.String()))
+}
+
 func versionString(version string) string {
 	switch version {
 	case "v16":
@@ -157,7 +274,11 @@ func writeStructs(b *strings.Builder, structs []ir.Struct) {
 			if !fld.Required {
 				jsonTag += ",omitempty"
 			}
-			fmt.Fprintf(b, "\t%s %s `json:%q validate:%q`\n", fld.GoName, fld.GoType(), jsonTag, validateTag(fld))
+			if vt := validateTag(fld); vt != "" {
+				fmt.Fprintf(b, "\t%s %s `json:%q validate:%q`\n", fld.GoName, fld.GoType(), jsonTag, vt)
+			} else {
+				fmt.Fprintf(b, "\t%s %s `json:%q`\n", fld.GoName, fld.GoType(), jsonTag)
+			}
 		}
 		b.WriteString("}\n\n")
 	}
@@ -187,9 +308,14 @@ func neededImports(f ir.File, forceTime, forceDecimal bool) []string {
 
 func validateTag(f ir.Field) string {
 	var parts []string
-	if f.Required {
+	switch {
+	case f.Required && f.Type == ir.TypeBool:
+		// A bool is always present on the wire and false is a valid value, so
+		// go-playground's "required" (which rejects the zero value) must not be
+		// emitted — it would reject a legitimate false.
+	case f.Required:
 		parts = append(parts, "required")
-	} else {
+	default:
 		parts = append(parts, "omitempty")
 	}
 	if f.MaxLength > 0 {

@@ -37,11 +37,11 @@ var ClearCache = ocppj.Message[
 	messages.ClearCacheResponse,
 ]{Action: "ClearCache", Direction: ocppj.SentByCSMS}
 
-// DataTransfer is the OCPP DataTransfer message (SentByCP).
+// DataTransfer is the OCPP DataTransfer message (SentByBoth).
 var DataTransfer = ocppj.Message[
 	messages.DataTransferRequest,
 	messages.DataTransferResponse,
-]{Action: "DataTransfer", Direction: ocppj.SentByCP}
+]{Action: "DataTransfer", Direction: ocppj.SentByBoth}
 
 // GetConfiguration is the OCPP GetConfiguration message (SentByCSMS).
 var GetConfiguration = ocppj.Message[

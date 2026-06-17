@@ -21,8 +21,8 @@ type DERCurveGetType struct {
 	CurveType    string          `json:"curveType" validate:"required"`
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	ID           string          `json:"id" validate:"required,max=36"`
-	IsDefault    bool            `json:"isDefault" validate:"required"`
-	IsSuperseded bool            `json:"isSuperseded" validate:"required"`
+	IsDefault    bool            `json:"isDefault"`
+	IsSuperseded bool            `json:"isSuperseded"`
 }
 
 type EnterServiceGetType struct {
@@ -35,24 +35,24 @@ type FixedPFGetType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	FixedPF      FixedPFType     `json:"fixedPF" validate:"required"`
 	ID           string          `json:"id" validate:"required,max=36"`
-	IsDefault    bool            `json:"isDefault" validate:"required"`
-	IsSuperseded bool            `json:"isSuperseded" validate:"required"`
+	IsDefault    bool            `json:"isDefault"`
+	IsSuperseded bool            `json:"isSuperseded"`
 }
 
 type FixedVarGetType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	FixedVar     FixedVarType    `json:"fixedVar" validate:"required"`
 	ID           string          `json:"id" validate:"required,max=36"`
-	IsDefault    bool            `json:"isDefault" validate:"required"`
-	IsSuperseded bool            `json:"isSuperseded" validate:"required"`
+	IsDefault    bool            `json:"isDefault"`
+	IsSuperseded bool            `json:"isSuperseded"`
 }
 
 type FreqDroopGetType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	FreqDroop    FreqDroopType   `json:"freqDroop" validate:"required"`
 	ID           string          `json:"id" validate:"required,max=36"`
-	IsDefault    bool            `json:"isDefault" validate:"required"`
-	IsSuperseded bool            `json:"isSuperseded" validate:"required"`
+	IsDefault    bool            `json:"isDefault"`
+	IsSuperseded bool            `json:"isSuperseded"`
 }
 
 type GradientGetType struct {
@@ -64,8 +64,8 @@ type GradientGetType struct {
 type LimitMaxDischargeGetType struct {
 	CustomData        *CustomDataType       `json:"customData,omitempty" validate:"omitempty"`
 	ID                string                `json:"id" validate:"required,max=36"`
-	IsDefault         bool                  `json:"isDefault" validate:"required"`
-	IsSuperseded      bool                  `json:"isSuperseded" validate:"required"`
+	IsDefault         bool                  `json:"isDefault"`
+	IsSuperseded      bool                  `json:"isSuperseded"`
 	LimitMaxDischarge LimitMaxDischargeType `json:"limitMaxDischarge" validate:"required"`
 }
 

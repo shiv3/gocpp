@@ -18,3 +18,13 @@ func TestCheckDirection(t *testing.T) {
 	require.NoError(t, CheckDirection(RoleCP, OpCall, ocppj.SentByCP))
 	require.ErrorIs(t, CheckDirection(RoleCP, OpHandle, ocppj.SentByCP), ocppj.ErrInvalidDirection)
 }
+
+func TestCheckDirection_Bidirectional(t *testing.T) {
+	// Bidirectional messages (e.g. DataTransfer) may be handled and called by
+	// either peer, per the OCPP specification.
+	for _, role := range []Role{RoleCSMS, RoleCP} {
+		for _, op := range []Op{OpHandle, OpCall} {
+			require.NoError(t, CheckDirection(role, op, ocppj.SentByBoth))
+		}
+	}
+}

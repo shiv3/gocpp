@@ -113,10 +113,10 @@ type PriceRuleType struct {
 }
 
 type TaxRuleType struct {
-	AppliesToEnergyFee          bool               `json:"appliesToEnergyFee" validate:"required"`
-	AppliesToMinimumMaximumCost bool               `json:"appliesToMinimumMaximumCost" validate:"required"`
-	AppliesToOverstayFee        bool               `json:"appliesToOverstayFee" validate:"required"`
-	AppliesToParkingFee         bool               `json:"appliesToParkingFee" validate:"required"`
+	AppliesToEnergyFee          bool               `json:"appliesToEnergyFee"`
+	AppliesToMinimumMaximumCost bool               `json:"appliesToMinimumMaximumCost"`
+	AppliesToOverstayFee        bool               `json:"appliesToOverstayFee"`
+	AppliesToParkingFee         bool               `json:"appliesToParkingFee"`
 	CustomData                  *CustomDataType    `json:"customData,omitempty" validate:"omitempty"`
 	TaxIncludedInPrice          *bool              `json:"taxIncludedInPrice,omitempty" validate:"omitempty"`
 	TaxRate                     RationalNumberType `json:"taxRate" validate:"required"`

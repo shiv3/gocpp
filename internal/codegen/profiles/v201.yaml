@@ -92,7 +92,7 @@ profiles:
       - { name: MeterValues, request: MeterValuesRequest.json, response: MeterValuesResponse.json, dir: SentByCP }
   DataTransfer:
     messages:
-      - { name: DataTransfer, request: DataTransferRequest.json, response: DataTransferResponse.json, dir: SentByCP }
+      - { name: DataTransfer, request: DataTransferRequest.json, response: DataTransferResponse.json, dir: SentByBoth }
   SecurityProfiles:
     messages:
       - { name: SecurityEventNotification, request: SecurityEventNotificationRequest.json, response: SecurityEventNotificationResponse.json, dir: SentByCP }

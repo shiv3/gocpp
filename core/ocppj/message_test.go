@@ -9,6 +9,9 @@ func TestDirection_String(t *testing.T) {
 	if SentByCSMS.String() != "SentByCSMS" {
 		t.Errorf("got %q", SentByCSMS.String())
 	}
+	if SentByBoth.String() != "SentByBoth" {
+		t.Errorf("got %q", SentByBoth.String())
+	}
 }
 
 func TestMessage_Fields(t *testing.T) {

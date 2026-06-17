@@ -47,6 +47,43 @@ client.Connect(ctx)              // single connection
 resp, err := cp.Call(ctx, client, v201p.BootNotification, req)
 ```
 
+## Bulk handler registration
+
+Instead of one `cp.On` / `csms.On` per message, each version ships a `handlers`
+package with typed interfaces, embeddable `Unimplemented` defaults (returning a
+`NotSupported` CallError), and one-call registrars. Embed the Unimplemented type
+and override only the messages you handle:
+
+```go
+import v16h "github.com/shiv3/gocpp/v16/handlers"
+
+type myCP struct{ v16h.UnimplementedCPHandler }
+
+func (myCP) OnReset(ctx context.Context, req v16msg.ResetRequest) (v16msg.ResetResponse, error) {
+    return v16msg.ResetResponse{Status: v16msg.ResetResponseStatusAccepted}, nil
+}
+
+// Registers every CSMS->CP handler the type implements in one call.
+err := v16h.RegisterCP(client, myCP{})
+// CSMS side mirror: v16h.RegisterCSMS(srv, myCSMSHandler{})
+```
+
+For sending, each version also ships a `calls` package with typed, direction-safe
+helpers over `cp.Call` / `csms.Call`:
+
+```go
+import v16c "github.com/shiv3/gocpp/v16/calls"
+
+// Charge point -> CSMS
+resp, err := v16c.CPBootNotification(ctx, client, v16msg.BootNotificationRequest{
+    ChargePointVendor: "Acme", ChargePointModel: "M1",
+})
+
+// CSMS -> charge point
+conn, _ := srv.Get("CP_1")
+_, err = v16c.CSMSReset(ctx, conn, v16msg.ResetRequest{Type: v16msg.ResetRequestTypeSoft})
+```
+
 ## Options
 
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,
@@ -54,7 +91,8 @@ CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithC
 `WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
 `WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
-`WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`.
+`WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
+`WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`.
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithBasicAuth`,
@@ -124,6 +162,12 @@ csms.CallAsync(ctx, conn, v16p.GetConfiguration, req, func(resp v16msg.GetConfig
   `cp.WithRetryInFlightCalls()` opts into re-sending it after reconnect.
 - Lifecycle callbacks: `cp.WithOnConnect/WithOnDisconnect/WithOnReconnect` and
   `csms.WithOnConnect(func(*Conn))` / `csms.WithOnDisconnect(func(*Conn, error))`.
+- Handlers registered with `cp.On` / `handlers.RegisterCP` live on the client and persist
+  across `client.Run(ctx)` reconnects — no need to re-register after a drop.
+- `csms.WithOriginPatterns` / `WithInsecureSkipVerifyOrigin` / `WithCheckOrigin` control
+  WebSocket origin verification (default: same-origin; no-Origin requests, e.g. charge
+  points, are always allowed).
+- `srv.Shutdown(ctx)` gracefully drains live connections; `srv.Close()` tears down now.
 
 ## Validation
 

@@ -157,6 +157,20 @@ func generate(cfg genConfig) error {
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "profiles", "register.go"), registerSrc); err != nil {
 		return err
 	}
+	handlersSrc, err := render.HandlersFile(cfg.version, allMessages)
+	if err != nil {
+		return fmt.Errorf("render handlers: %w", err)
+	}
+	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "handlers", "handlers.go"), handlersSrc); err != nil {
+		return err
+	}
+	callsSrc, err := render.CallsFile(cfg.version, allMessages)
+	if err != nil {
+		return fmt.Errorf("render calls: %w", err)
+	}
+	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "calls", "calls.go"), callsSrc); err != nil {
+		return err
+	}
 	if err := writeEmbed(cfg.outRoot, cfg.version); err != nil {
 		return err
 	}

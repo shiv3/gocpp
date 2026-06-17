@@ -7,6 +7,44 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `csms.Server.Shutdown(ctx)`: gracefully closes live charge-point connections and
+  waits for them to drain, up to the ctx deadline (force-closes on timeout).
+  `Close()` remains the immediate teardown.
+- `csms.WithCheckOrigin(func(*http.Request) bool)`: custom WebSocket origin
+  predicate for logic that `WithOriginPatterns` can't express.
+- `core/datatransfer` package: generic `Marshal[T]` / `Unmarshal[T]` helpers for
+  the free-form `DataTransfer` `Data` payload (an optional JSON string).
+- Generated typed handler interfaces and one-call registrars per version
+  (`<version>/handlers`): `CPHandler` / `CSMSHandler` interfaces, embeddable
+  `UnimplementedCPHandler` / `UnimplementedCSMSHandler` defaults (return a
+  `NotSupported` CallError), and `RegisterCP(*cp.Client, CPHandler)` /
+  `RegisterCSMS(*csms.Server, CSMSHandler)`. Replaces the per-message `cp.On` /
+  `csms.On` boilerplate with a single call; embed the Unimplemented type to
+  implement only the messages you need (gRPC-style). Compile-time type safe.
+- Generated typed send helpers per version (`<version>/calls`): `CP<Action>(ctx,
+  *cp.Client, req)` for charge-point-sendable messages and `CSMS<Action>(ctx,
+  *csms.Conn, req)` for CSMS-sendable messages (DataTransfer gets both). Thin,
+  direction-correct, discoverable wrappers over `cp.Call` / `csms.Call`.
+- WebSocket origin verification controls for the CSMS: `WithOriginPatterns(...)`
+  (cross-origin allowlist) and `WithInsecureSkipVerifyOrigin()` (disable the
+  origin check entirely). These map to coder/websocket's `AcceptOptions`. The
+  default is unchanged (same-origin verification; requests without an Origin
+  header — i.e. non-browser charge points — are always allowed).
+
+### Fixed
+- Generated `validate` struct tags no longer emit `required` on boolean fields.
+  go-playground's `required` rejects the zero value, which would have flagged a
+  legitimate `false` (e.g. `ConfigurationKey.readonly: false`) for anyone running
+  struct-tag validation. (gocpp's own validation is JSON-Schema based and was
+  unaffected.)
+- Bidirectional `DataTransfer` support. OCPP 1.6/2.0.1/2.1 allow `DataTransfer`
+  to be initiated by either peer; a new `ocppj.SentByBoth` direction marks such
+  messages, and `CheckDirection` accepts it for any role/op. The generated
+  `DataTransfer` profile descriptor (`v16`/`v201`/`v21`) is now `SentByBoth`, so a
+  single descriptor works for all of `csms.On`, `csms.Call`, `cp.On`, and
+  `cp.Call`. Previously the CSMS-initiated direction (`csms.Call` / `cp.On`)
+  returned `ocppj.ErrInvalidDirection`. Backward compatible: existing
+  charge-point-initiated usage is unaffected.
 - `WithLenientSchema()` (CSMS and CP): a fourth schema-validation mode between
   strict and tolerant. Structurally broken messages (wrong type, missing required)
   are still rejected, but benign non-compliance is logged and passed: unknown/extra
