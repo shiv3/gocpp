@@ -172,7 +172,7 @@ func TestE2E_WebSocketReadTimeoutReapsSilentPeer(t *testing.T) {
 		Subprotocols: []string{"ocpp1.6"},
 	})
 	require.NoError(t, err)
-	defer rawConn.CloseNow()
+	defer func() { _ = rawConn.CloseNow() }()
 
 	select {
 	case err := <-disconnected:
