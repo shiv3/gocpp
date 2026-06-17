@@ -37,6 +37,7 @@ type serverConfig struct {
 
 	originPatterns           []string
 	insecureSkipVerifyOrigin bool
+	checkOrigin              func(r *http.Request) bool
 }
 
 func defaultServerConfig() serverConfig {
@@ -176,6 +177,15 @@ func WithOriginPatterns(patterns ...string) Option {
 // you only need to allow specific origins.
 func WithInsecureSkipVerifyOrigin() Option {
 	return optionFunc(func(c *serverConfig) { c.insecureSkipVerifyOrigin = true })
+}
+
+// WithCheckOrigin sets a custom WebSocket origin validator. When set, the
+// function is called for every upgrade request; returning false rejects it with
+// 403 Forbidden, and gocpp bypasses coder/websocket's built-in origin check (the
+// supplied function is fully responsible for the decision). Use this for logic
+// that WithOriginPatterns can't express; otherwise prefer WithOriginPatterns.
+func WithCheckOrigin(fn func(r *http.Request) bool) Option {
+	return optionFunc(func(c *serverConfig) { c.checkOrigin = fn })
 }
 
 // WithSchemaRegistry sets the schema registry used for first-layer validation.

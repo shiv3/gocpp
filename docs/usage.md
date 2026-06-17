@@ -92,7 +92,7 @@ CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithC
 `WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
 `WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
-`WithInsecureSkipVerifyOrigin`.
+`WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`.
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithBasicAuth`,
@@ -162,6 +162,12 @@ csms.CallAsync(ctx, conn, v16p.GetConfiguration, req, func(resp v16msg.GetConfig
   `cp.WithRetryInFlightCalls()` opts into re-sending it after reconnect.
 - Lifecycle callbacks: `cp.WithOnConnect/WithOnDisconnect/WithOnReconnect` and
   `csms.WithOnConnect(func(*Conn))` / `csms.WithOnDisconnect(func(*Conn, error))`.
+- Handlers registered with `cp.On` / `handlers.RegisterCP` live on the client and persist
+  across `client.Run(ctx)` reconnects — no need to re-register after a drop.
+- `csms.WithOriginPatterns` / `WithInsecureSkipVerifyOrigin` / `WithCheckOrigin` control
+  WebSocket origin verification (default: same-origin; no-Origin requests, e.g. charge
+  points, are always allowed).
+- `srv.Shutdown(ctx)` gracefully drains live connections; `srv.Close()` tears down now.
 
 ## Validation
 
