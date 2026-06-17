@@ -28,7 +28,7 @@ type VariableMonitoringType struct {
 	EventNotificationType string          `json:"eventNotificationType" validate:"required"`
 	ID                    int32           `json:"id" validate:"required"`
 	Severity              int32           `json:"severity" validate:"required"`
-	Transaction           bool            `json:"transaction" validate:"required"`
+	Transaction           bool            `json:"transaction"`
 	Type                  string          `json:"type" validate:"required"`
 	Value                 decimal.Decimal `json:"value" validate:"required"`
 }

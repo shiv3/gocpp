@@ -274,7 +274,11 @@ func writeStructs(b *strings.Builder, structs []ir.Struct) {
 			if !fld.Required {
 				jsonTag += ",omitempty"
 			}
-			fmt.Fprintf(b, "\t%s %s `json:%q validate:%q`\n", fld.GoName, fld.GoType(), jsonTag, validateTag(fld))
+			if vt := validateTag(fld); vt != "" {
+				fmt.Fprintf(b, "\t%s %s `json:%q validate:%q`\n", fld.GoName, fld.GoType(), jsonTag, vt)
+			} else {
+				fmt.Fprintf(b, "\t%s %s `json:%q`\n", fld.GoName, fld.GoType(), jsonTag)
+			}
 		}
 		b.WriteString("}\n\n")
 	}
@@ -304,9 +308,14 @@ func neededImports(f ir.File, forceTime, forceDecimal bool) []string {
 
 func validateTag(f ir.Field) string {
 	var parts []string
-	if f.Required {
+	switch {
+	case f.Required && f.Type == ir.TypeBool:
+		// A bool is always present on the wire and false is a valid value, so
+		// go-playground's "required" (which rejects the zero value) must not be
+		// emitted — it would reject a legitimate false.
+	case f.Required:
 		parts = append(parts, "required")
-	} else {
+	default:
 		parts = append(parts, "omitempty")
 	}
 	if f.MaxLength > 0 {

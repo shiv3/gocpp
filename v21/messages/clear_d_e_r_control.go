@@ -6,7 +6,7 @@ type ClearDERControlRequest struct {
 	ControlID   *string         `json:"controlId,omitempty" validate:"omitempty,max=36"`
 	ControlType *string         `json:"controlType,omitempty" validate:"omitempty"`
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	IsDefault   bool            `json:"isDefault" validate:"required"`
+	IsDefault   bool            `json:"isDefault"`
 }
 
 type ClearDERControlResponse struct {

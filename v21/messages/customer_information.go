@@ -3,12 +3,12 @@
 package messages
 
 type CustomerInformationRequest struct {
-	Clear               bool                     `json:"clear" validate:"required"`
+	Clear               bool                     `json:"clear"`
 	CustomData          *CustomDataType          `json:"customData,omitempty" validate:"omitempty"`
 	CustomerCertificate *CertificateHashDataType `json:"customerCertificate,omitempty" validate:"omitempty"`
 	CustomerIdentifier  *string                  `json:"customerIdentifier,omitempty" validate:"omitempty,max=64"`
 	IDToken             *IdTokenType             `json:"idToken,omitempty" validate:"omitempty"`
-	Report              bool                     `json:"report" validate:"required"`
+	Report              bool                     `json:"report"`
 	RequestID           int32                    `json:"requestId" validate:"required"`
 }
 

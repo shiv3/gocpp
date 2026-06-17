@@ -38,7 +38,7 @@ type VariableCharacteristicsType struct {
 	DataType           string           `json:"dataType" validate:"required"`
 	MaxLimit           *decimal.Decimal `json:"maxLimit,omitempty" validate:"omitempty"`
 	MinLimit           *decimal.Decimal `json:"minLimit,omitempty" validate:"omitempty"`
-	SupportsMonitoring bool             `json:"supportsMonitoring" validate:"required"`
+	SupportsMonitoring bool             `json:"supportsMonitoring"`
 	Unit               *string          `json:"unit,omitempty" validate:"omitempty,max=16"`
 	ValuesList         *string          `json:"valuesList,omitempty" validate:"omitempty,max=1000"`
 }

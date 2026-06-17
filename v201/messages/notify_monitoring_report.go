@@ -27,7 +27,7 @@ type VariableMonitoringType struct {
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	ID          int32           `json:"id" validate:"required"`
 	Severity    int32           `json:"severity" validate:"required"`
-	Transaction bool            `json:"transaction" validate:"required"`
+	Transaction bool            `json:"transaction"`
 	Type        string          `json:"type" validate:"required"`
 	Value       decimal.Decimal `json:"value" validate:"required"`
 }

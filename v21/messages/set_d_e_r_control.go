@@ -18,7 +18,7 @@ type SetDERControlRequest struct {
 	FixedVar          *FixedVarType          `json:"fixedVar,omitempty" validate:"omitempty"`
 	FreqDroop         *FreqDroopType         `json:"freqDroop,omitempty" validate:"omitempty"`
 	Gradient          *GradientType          `json:"gradient,omitempty" validate:"omitempty"`
-	IsDefault         bool                   `json:"isDefault" validate:"required"`
+	IsDefault         bool                   `json:"isDefault"`
 	LimitMaxDischarge *LimitMaxDischargeType `json:"limitMaxDischarge,omitempty" validate:"omitempty"`
 }
 
@@ -79,7 +79,7 @@ type FixedPFType struct {
 	CustomData   *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
 	Displacement decimal.Decimal  `json:"displacement" validate:"required"`
 	Duration     *decimal.Decimal `json:"duration,omitempty" validate:"omitempty"`
-	Excitation   bool             `json:"excitation" validate:"required"`
+	Excitation   bool             `json:"excitation"`
 	Priority     int32            `json:"priority" validate:"required"`
 	StartTime    *time.Time       `json:"startTime,omitempty" validate:"omitempty"`
 }
