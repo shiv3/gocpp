@@ -7,7 +7,7 @@ profiles:
       - { name: ChangeAvailability,     request: ChangeAvailability.json,     response: ChangeAvailabilityResponse.json,     dir: SentByCSMS }
       - { name: ChangeConfiguration,    request: ChangeConfiguration.json,    response: ChangeConfigurationResponse.json,    dir: SentByCSMS }
       - { name: ClearCache,             request: ClearCache.json,             response: ClearCacheResponse.json,             dir: SentByCSMS }
-      - { name: DataTransfer,           request: DataTransfer.json,           response: DataTransferResponse.json,           dir: SentByCP }
+      - { name: DataTransfer,           request: DataTransfer.json,           response: DataTransferResponse.json,           dir: SentByBoth }
       - { name: GetConfiguration,       request: GetConfiguration.json,       response: GetConfigurationResponse.json,       dir: SentByCSMS }
       - { name: Heartbeat,              request: Heartbeat.json,              response: HeartbeatResponse.json,              dir: SentByCP }
       - { name: MeterValues,            request: MeterValues.json,            response: MeterValuesResponse.json,            dir: SentByCP }

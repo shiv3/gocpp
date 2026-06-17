@@ -20,7 +20,12 @@ const (
 
 // CheckDirection validates that a role may perform op on a message with the given
 // direction. CSMS handles SentByCP and calls SentByCSMS; CP is the mirror.
+// Bidirectional messages (SentByBoth, e.g. DataTransfer) may be handled and
+// called by either peer, per the OCPP specification.
 func CheckDirection(role Role, op Op, dir ocppj.Direction) error {
+	if dir == ocppj.SentByBoth {
+		return nil
+	}
 	var want ocppj.Direction
 	switch {
 	case role == RoleCSMS && op == OpHandle, role == RoleCP && op == OpCall:

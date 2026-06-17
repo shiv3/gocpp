@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Bidirectional `DataTransfer` support. OCPP 1.6/2.0.1/2.1 allow `DataTransfer`
+  to be initiated by either peer; a new `ocppj.SentByBoth` direction marks such
+  messages, and `CheckDirection` accepts it for any role/op. The generated
+  `DataTransfer` profile descriptor (`v16`/`v201`/`v21`) is now `SentByBoth`, so a
+  single descriptor works for all of `csms.On`, `csms.Call`, `cp.On`, and
+  `cp.Call`. Previously the CSMS-initiated direction (`csms.Call` / `cp.On`)
+  returned `ocppj.ErrInvalidDirection`. Backward compatible: existing
+  charge-point-initiated usage is unaffected.
 - `WithLenientSchema()` (CSMS and CP): a fourth schema-validation mode between
   strict and tolerant. Structurally broken messages (wrong type, missing required)
   are still rejected, but benign non-compliance is logged and passed: unknown/extra

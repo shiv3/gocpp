@@ -6,6 +6,7 @@ type Direction int
 const (
 	SentByCP   Direction = iota + 1 // Charge Point initiates (e.g. BootNotification)
 	SentByCSMS                      // Central System initiates (e.g. ChangeConfiguration)
+	SentByBoth                      // either peer may initiate (e.g. DataTransfer)
 )
 
 func (d Direction) String() string {
@@ -14,6 +15,8 @@ func (d Direction) String() string {
 		return "SentByCP"
 	case SentByCSMS:
 		return "SentByCSMS"
+	case SentByBoth:
+		return "SentByBoth"
 	default:
 		return "UnknownDirection"
 	}

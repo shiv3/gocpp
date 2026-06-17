@@ -7,8 +7,8 @@ import (
 	"github.com/shiv3/gocpp/v201/messages"
 )
 
-// DataTransfer is the OCPP DataTransfer message (SentByCP).
+// DataTransfer is the OCPP DataTransfer message (SentByBoth).
 var DataTransfer = ocppj.Message[
 	messages.DataTransferRequest,
 	messages.DataTransferResponse,
-]{Action: "DataTransfer", Direction: ocppj.SentByCP}
+]{Action: "DataTransfer", Direction: ocppj.SentByBoth}
