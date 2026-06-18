@@ -115,3 +115,96 @@ func (s *Signer) SignPayload(action string, msgType ocppj.MessageType, payload [
 	}
 	return json.Marshal(flattenedJWS{Protected: parts[0], Payload: parts[1], Signature: parts[2]})
 }
+
+// Header holds the parsed protected-header fields of a signed OCPP payload.
+type Header struct {
+	Alg               string
+	X5tS256           string
+	OCPPAction        string
+	OCPPMessageTypeId int
+}
+
+// Verifier verifies signed OCPP payloads against trusted certificates indexed by
+// their x5t#S256 thumbprint.
+type Verifier struct {
+	byThumb map[string]*x509.Certificate
+	all     []*x509.Certificate
+}
+
+// NewVerifier indexes certs by x5t#S256.
+func NewVerifier(certs ...*x509.Certificate) *Verifier {
+	v := &Verifier{byThumb: make(map[string]*x509.Certificate, len(certs)), all: certs}
+	for _, c := range certs {
+		v.byThumb[Thumbprint(c)] = c
+	}
+	return v
+}
+
+// VerifyPayload verifies the Flattened JWS and returns the inner payload plus the
+// protected header. When expectedAction != "" or expectedMsgType != 0, the
+// corresponding header fields must match. Only ES256/RS256/RS384 are accepted.
+func (v *Verifier) VerifyPayload(signed []byte, expectedAction string, expectedMsgType ocppj.MessageType) ([]byte, Header, error) {
+	jws, err := jose.ParseSigned(string(signed), allowedAlgs)
+	if err != nil {
+		return nil, Header{}, fmt.Errorf("signing: parse: %w", err)
+	}
+	if len(jws.Signatures) != 1 {
+		return nil, Header{}, fmt.Errorf("signing: expected exactly one signature")
+	}
+	hdr := parseHeader(jws.Signatures[0].Protected)
+
+	// Select the verifying certificate by x5t#S256, else try all trusted certs.
+	var candidates []*x509.Certificate
+	if c, ok := v.byThumb[hdr.X5tS256]; ok {
+		candidates = []*x509.Certificate{c}
+	} else {
+		candidates = v.all
+	}
+	if len(candidates) == 0 {
+		return nil, Header{}, fmt.Errorf("signing: no trusted certificate for x5t#S256 %q", hdr.X5tS256)
+	}
+
+	var payload []byte
+	verr := fmt.Errorf("signing: no candidate certificate verified the signature")
+	for _, c := range candidates {
+		if payload, verr = jws.Verify(c.PublicKey); verr == nil {
+			break
+		}
+	}
+	if verr != nil {
+		return nil, Header{}, fmt.Errorf("signing: verification failed: %w", verr)
+	}
+
+	if expectedAction != "" && hdr.OCPPAction != expectedAction {
+		return nil, Header{}, fmt.Errorf("signing: header OCPPAction %q != expected %q", hdr.OCPPAction, expectedAction)
+	}
+	if expectedMsgType != 0 && hdr.OCPPMessageTypeId != int(expectedMsgType) {
+		return nil, Header{}, fmt.Errorf("signing: header OCPPMessageTypeId %d != expected %d", hdr.OCPPMessageTypeId, int(expectedMsgType))
+	}
+	return payload, hdr, nil
+}
+
+// UnwrapPayload returns the inner payload of a Flattened JWS WITHOUT verifying the
+// signature (Part 4 §7.2: extracting the encapsulated message is mandatory;
+// verification is optional).
+func UnwrapPayload(signed []byte) ([]byte, error) {
+	jws, err := jose.ParseSigned(string(signed), allowedAlgs)
+	if err != nil {
+		return nil, fmt.Errorf("signing: parse: %w", err)
+	}
+	return jws.UnsafePayloadWithoutVerification(), nil
+}
+
+func parseHeader(p jose.Header) Header {
+	h := Header{Alg: p.Algorithm}
+	if s, ok := p.ExtraHeaders[jose.HeaderKey("x5t#S256")].(string); ok {
+		h.X5tS256 = s
+	}
+	if s, ok := p.ExtraHeaders[jose.HeaderKey("OCPPAction")].(string); ok {
+		h.OCPPAction = s
+	}
+	if f, ok := p.ExtraHeaders[jose.HeaderKey("OCPPMessageTypeId")].(float64); ok {
+		h.OCPPMessageTypeId = int(f)
+	}
+	return h
+}
