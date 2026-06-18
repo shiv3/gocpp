@@ -3,6 +3,7 @@ package dispatcher
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -187,24 +188,41 @@ func (c *Conn) reader() {
 		c.NoteActivity()
 		frame, err := ocppj.Parse(msg)
 		if err != nil {
+			if errors.Is(err, ocppj.ErrIgnoredMessageType) {
+				c.cfg.Logger.DebugContext(c.ctx, "ignored unknown message type",
+					"cp_id", c.id, "err", err)
+				continue
+			}
 			c.cfg.Logger.WarnContext(c.ctx, "ocpp parse error",
 				"cp_id", c.id, "err", err)
 			continue
 		}
-		switch frame.Type {
-		case ocppj.CallResult:
-			c.pending.resolve(frame.MsgID, rawResult{payload: frame.Payload})
-		case ocppj.MessageTypeCallError:
-			ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc}
-			c.pending.resolve(frame.MsgID, rawResult{err: ce})
-		case ocppj.Call:
-			select {
-			case c.in <- frame:
-			case <-c.ctx.Done():
-				return
-			}
+		if !c.routeInbound(frame) {
+			return
 		}
 	}
+}
+
+// routeInbound dispatches a parsed frame. It returns false when the connection
+// context is done and the reader must stop.
+func (c *Conn) routeInbound(frame ocppj.Frame) bool {
+	switch frame.Type {
+	case ocppj.CallResult:
+		c.pending.resolve(frame.MsgID, rawResult{payload: frame.Payload})
+	case ocppj.MessageTypeCallError:
+		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc}
+		c.pending.resolve(frame.MsgID, rawResult{err: ce})
+	case ocppj.MessageTypeCallResultError:
+		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, IsResultError: true}
+		c.pending.resolve(frame.MsgID, rawResult{err: ce})
+	case ocppj.Call, ocppj.Send:
+		select {
+		case c.in <- frame:
+		case <-c.ctx.Done():
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Conn) writer() {
