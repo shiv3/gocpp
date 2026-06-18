@@ -29,7 +29,7 @@ func TestVerifyRoundTrip(t *testing.T) {
 	require.JSONEq(t, `{"reason":"PowerUp"}`, string(payload))
 	require.Equal(t, "ES256", hdr.Alg)
 	require.Equal(t, "BootNotification", hdr.OCPPAction)
-	require.Equal(t, 2, hdr.OCPPMessageTypeId)
+	require.Equal(t, 2, hdr.OCPPMessageTypeID)
 	require.Equal(t, Thumbprint(cert), hdr.X5tS256)
 }
 

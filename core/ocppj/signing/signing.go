@@ -121,7 +121,7 @@ type Header struct {
 	Alg               string
 	X5tS256           string
 	OCPPAction        string
-	OCPPMessageTypeId int
+	OCPPMessageTypeID int
 }
 
 // Verifier verifies signed OCPP payloads against trusted certificates indexed by
@@ -178,8 +178,8 @@ func (v *Verifier) VerifyPayload(signed []byte, expectedAction string, expectedM
 	if expectedAction != "" && hdr.OCPPAction != expectedAction {
 		return nil, Header{}, fmt.Errorf("signing: header OCPPAction %q != expected %q", hdr.OCPPAction, expectedAction)
 	}
-	if expectedMsgType != 0 && hdr.OCPPMessageTypeId != int(expectedMsgType) {
-		return nil, Header{}, fmt.Errorf("signing: header OCPPMessageTypeId %d != expected %d", hdr.OCPPMessageTypeId, int(expectedMsgType))
+	if expectedMsgType != 0 && hdr.OCPPMessageTypeID != int(expectedMsgType) {
+		return nil, Header{}, fmt.Errorf("signing: header OCPPMessageTypeId %d != expected %d", hdr.OCPPMessageTypeID, int(expectedMsgType))
 	}
 	return payload, hdr, nil
 }
@@ -204,7 +204,7 @@ func parseHeader(p jose.Header) Header {
 		h.OCPPAction = s
 	}
 	if f, ok := p.ExtraHeaders[jose.HeaderKey("OCPPMessageTypeId")].(float64); ok {
-		h.OCPPMessageTypeId = int(f)
+		h.OCPPMessageTypeID = int(f)
 	}
 	return h
 }
