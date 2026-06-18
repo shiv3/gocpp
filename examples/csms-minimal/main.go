@@ -8,9 +8,23 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/csms"
+	v16h "github.com/shiv3/gocpp/v16/handlers"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
-	v16p "github.com/shiv3/gocpp/v16/profiles"
 )
+
+// handler implements the CP->CSMS messages this server cares about. Embedding
+// UnimplementedCSMSHandler makes every other message return a NotSupported
+// CallError automatically.
+type handler struct{ v16h.UnimplementedCSMSHandler }
+
+func (handler) OnBootNotification(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
+	slog.Info("boot", "cp", c.ID(), "vendor", req.ChargePointVendor)
+	return v16msg.BootNotificationResponse{Status: v16msg.RegistrationStatusAccepted, CurrentTime: time.Now(), Interval: 300}, nil
+}
+
+func (handler) OnHeartbeat(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
+	return v16msg.HeartbeatResponse{CurrentTime: time.Now()}, nil
+}
 
 func main() {
 	srv := csms.NewServer(
@@ -18,15 +32,7 @@ func main() {
 		csms.WithLogger(slog.Default()),
 	)
 
-	if err := csms.On(srv, v16p.BootNotification, func(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
-		slog.Info("boot", "cp", c.ID(), "vendor", req.ChargePointVendor)
-		return v16msg.BootNotificationResponse{Status: v16msg.RegistrationStatusAccepted, CurrentTime: time.Now(), Interval: 300}, nil
-	}); err != nil {
-		log.Fatal(err)
-	}
-	if err := csms.On(srv, v16p.Heartbeat, func(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
-		return v16msg.HeartbeatResponse{CurrentTime: time.Now()}, nil
-	}); err != nil {
+	if err := v16h.RegisterCSMS(srv, handler{}); err != nil {
 		log.Fatal(err)
 	}
 
