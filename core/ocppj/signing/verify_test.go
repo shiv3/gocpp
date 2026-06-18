@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
@@ -74,6 +75,42 @@ func TestUnwrapPayloadNoVerify(t *testing.T) {
 	payload, err := UnwrapPayload(signed)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"k":1}`, string(payload))
+}
+
+func testRSACert(t *testing.T) (*rsa.PrivateKey, *x509.Certificate) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(3), Subject: pkix.Name{CommonName: "rsa-cs"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+	return key, cert
+}
+
+func TestVerifyRoundTripRS256(t *testing.T) {
+	key, cert := testRSACert(t)
+	s, err := NewSigner(key, cert) // RSA -> RS256
+	require.NoError(t, err)
+	signed, err := s.SignPayload("Heartbeat", ocppj.Call, []byte(`{}`))
+	require.NoError(t, err)
+	payload, hdr, err := NewVerifier(cert).VerifyPayload(signed, "Heartbeat", ocppj.Call)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(payload))
+	require.Equal(t, "RS256", hdr.Alg)
+}
+
+func TestVerifyRoundTripRS384(t *testing.T) {
+	key, cert := testRSACert(t)
+	s, err := NewSignerWithAlgorithm(key, cert, "RS384")
+	require.NoError(t, err)
+	signed, err := s.SignPayload("Heartbeat", ocppj.Call, []byte(`{}`))
+	require.NoError(t, err)
+	payload, hdr, err := NewVerifier(cert).VerifyPayload(signed, "Heartbeat", ocppj.Call)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, string(payload))
+	require.Equal(t, "RS384", hdr.Alg)
 }
 
 func TestVerifyRejectsUntrustedThumbprint(t *testing.T) {
