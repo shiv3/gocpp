@@ -27,7 +27,11 @@ type CallError struct {
 	Code        ErrorCode
 	Description string
 	Details     map[string]any
-	cause       error
+	// IsResultError marks a CallError that arrived as a CALLRESULTERROR (type 5)
+	// rather than a CALLERROR (type 4). Wire content is identical; this is for
+	// observability only.
+	IsResultError bool
+	cause         error
 }
 
 func (e *CallError) Error() string {

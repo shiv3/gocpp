@@ -52,7 +52,6 @@ func TestParse_Errors(t *testing.T) {
 		{"not json", `not json`},
 		{"not array", `{"a":1}`},
 		{"empty array", `[]`},
-		{"bad type", `[9,"x"]`},
 		{"call too short", `[2,"x"]`},
 	}
 	for _, tc := range cases {
@@ -62,4 +61,35 @@ func TestParse_Errors(t *testing.T) {
 			require.ErrorAs(t, err, &pe)
 		})
 	}
+}
+
+func TestParseSend(t *testing.T) {
+	raw := []byte(`[6,"abc","NotifyPeriodicEventStream",{"id":123}]`)
+	f, err := Parse(raw)
+	require.NoError(t, err)
+	require.Equal(t, Send, f.Type)
+	require.Equal(t, "abc", f.MsgID)
+	require.Equal(t, "NotifyPeriodicEventStream", f.Action)
+	require.JSONEq(t, `{"id":123}`, string(f.Payload))
+}
+
+func TestParseSendWrongArity(t *testing.T) {
+	_, err := Parse([]byte(`[6,"abc","Action"]`))
+	require.Error(t, err)
+}
+
+func TestParseCallResultError(t *testing.T) {
+	raw := []byte(`[5,"abc","FormatViolation","bad result",{"k":"v"}]`)
+	f, err := Parse(raw)
+	require.NoError(t, err)
+	require.Equal(t, MessageTypeCallResultError, f.Type)
+	require.Equal(t, "abc", f.MsgID)
+	require.Equal(t, "FormatViolation", f.ErrCode)
+	require.Equal(t, "bad result", f.ErrDesc)
+	require.JSONEq(t, `{"k":"v"}`, string(f.ErrData))
+}
+
+func TestParseUnknownMessageTypeIgnored(t *testing.T) {
+	_, err := Parse([]byte(`[7,"abc",{}]`))
+	require.ErrorIs(t, err, ErrIgnoredMessageType)
 }

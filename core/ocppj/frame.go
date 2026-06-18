@@ -7,9 +7,11 @@ import "fmt"
 type MessageType int
 
 const (
-	Call                 MessageType = 2
-	CallResult           MessageType = 3
-	MessageTypeCallError MessageType = 4
+	Call                       MessageType = 2
+	CallResult                 MessageType = 3
+	MessageTypeCallError       MessageType = 4
+	MessageTypeCallResultError MessageType = 5 // OCPP 2.1
+	Send                       MessageType = 6 // OCPP 2.1
 )
 
 func (m MessageType) String() string {
@@ -20,6 +22,10 @@ func (m MessageType) String() string {
 		return "CallResult"
 	case MessageTypeCallError:
 		return "CallError"
+	case MessageTypeCallResultError:
+		return "CallResultError"
+	case Send:
+		return "Send"
 	default:
 		return fmt.Sprintf("Unknown(%d)", int(m))
 	}

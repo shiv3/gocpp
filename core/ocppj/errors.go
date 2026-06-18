@@ -34,4 +34,9 @@ var (
 
 	ErrUnsupportedVersion = errors.New("ocpp: unsupported version")
 	ErrVersionMismatch    = errors.New("ocpp: version mismatch on connection")
+
+	// ErrIgnoredMessageType is returned by Parse for a well-formed frame whose
+	// MessageTypeId is not one this implementation handles. Per OCPP 2.1 Part 4
+	// §4.4 the payload is ignored; the reader drops it without warning.
+	ErrIgnoredMessageType = errors.New("ocpp: ignored message type")
 )
