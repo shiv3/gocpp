@@ -111,6 +111,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		OriginPatterns: s.cfg.originPatterns,
 		// A custom checkOrigin has already decided; let coder skip its own check.
 		InsecureSkipVerify: s.cfg.insecureSkipVerifyOrigin || s.cfg.checkOrigin != nil,
+		CompressionMode:    s.cfg.compressionMode.Coder(),
 	}
 	acceptOpts.OnPingReceived = func(context.Context, []byte) bool {
 		if dconn != nil {

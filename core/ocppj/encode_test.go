@@ -24,6 +24,18 @@ func TestEncodeCallError(t *testing.T) {
 	require.JSONEq(t, `[4,"abc","NotImplemented","nope",{}]`, string(raw))
 }
 
+func TestEncodeSend(t *testing.T) {
+	raw, err := EncodeSend("abc", "NotifyPeriodicEventStream", []byte(`{"id":1}`))
+	require.NoError(t, err)
+	require.JSONEq(t, `[6,"abc","NotifyPeriodicEventStream",{"id":1}]`, string(raw))
+}
+
+func TestEncodeCallResultError(t *testing.T) {
+	raw, err := EncodeCallResultError("abc", "FormatViolation", "bad", nil)
+	require.NoError(t, err)
+	require.JSONEq(t, `[5,"abc","FormatViolation","bad",{}]`, string(raw))
+}
+
 func TestEncodeParse_RoundTrip(t *testing.T) {
 	raw, err := EncodeCall("id1", "Authorize", []byte(`{"idTag":"T"}`))
 	require.NoError(t, err)

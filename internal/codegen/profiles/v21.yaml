@@ -110,6 +110,7 @@ profiles:
       - { name: ClosePeriodicEventStream,  request: ClosePeriodicEventStreamRequest.json,  response: ClosePeriodicEventStreamResponse.json,  dir: SentByCSMS }
       - { name: GetPeriodicEventStream,    request: GetPeriodicEventStreamRequest.json,    response: GetPeriodicEventStreamResponse.json,    dir: SentByCSMS }
       - { name: OpenPeriodicEventStream,   request: OpenPeriodicEventStreamRequest.json,   response: OpenPeriodicEventStreamResponse.json,   dir: SentByCSMS }
+      - { name: NotifyPeriodicEventStream, send: NotifyPeriodicEventStream.json, dir: SentByCP }
   TariffAndCost:
     messages:
       - { name: CostUpdated,             request: CostUpdatedRequest.json,             response: CostUpdatedResponse.json,             dir: SentByCSMS }

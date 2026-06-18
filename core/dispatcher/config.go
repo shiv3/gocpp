@@ -8,6 +8,7 @@ import (
 
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/ocppj/signing"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -55,6 +56,15 @@ type Config struct {
 	// decoupled from core/schema.
 	SchemaValidateLenient func(version ocppj.Version, action, kind string, payload []byte) (out []byte, soft []string, err error)
 	SchemaMode            SchemaMode
+
+	// Signer, when non-nil, signs outbound CALL/SEND messages as OCPP 2.1 Signed
+	// Messages (Part 4 Ch 7).
+	Signer *signing.Signer
+	// Verifier, when non-nil, verifies inbound signed CALL/SEND messages.
+	Verifier *signing.Verifier
+	// RequireSignatureVerification rejects a signed inbound message whose
+	// signature cannot be verified (instead of unwrapping and processing it).
+	RequireSignatureVerification bool
 }
 
 // DefaultConfig returns production-sane defaults.

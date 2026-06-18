@@ -72,6 +72,41 @@ func generate(cfg genConfig) error {
 		prof := ps.Profiles[profName]
 		pm := profMsgs{name: profName}
 		for _, m := range prof.Messages {
+			if m.Send != "" {
+				reqStruct := m.Name
+				reqStructs, reqEnums, err := loadTree(cfg.schemaDir, m.Send, reqStruct)
+				if err != nil {
+					return err
+				}
+				msgStructs, err := filterNewStructs(reqStructs, structByName)
+				if err != nil {
+					return err
+				}
+				for _, e := range reqEnums {
+					if err := addEnum(&enumsFile, enumByName, e); err != nil {
+						return err
+					}
+				}
+				if err := copySchema(cfg.schemaDir, m.Send, cfg.outRoot, cfg.version); err != nil {
+					return err
+				}
+				messageFiles[snakeName(m.Name)+".go"] = ir.File{
+					Version: cfg.version,
+					Package: "messages",
+					Structs: msgStructs,
+				}
+				msg := ir.Message{
+					Action:        m.Name,
+					Direction:     m.Dir,
+					Request:       reqStruct,
+					RequestSchema: m.Send,
+					IsSend:        true,
+				}
+				pm.msgs = append(pm.msgs, msg)
+				allMessages = append(allMessages, msg)
+				continue
+			}
+
 			reqStruct := m.Name + "Request"
 			respStruct := m.Name + "Response"
 			reqStructs, reqEnums, err := loadTree(cfg.schemaDir, m.Request, reqStruct)

@@ -30,6 +30,14 @@ type Message[Req, Resp any] struct {
 	Direction Direction
 }
 
+// SendMessage binds an OCPP 2.1 SEND action to its request type at compile time.
+// SEND messages are unconfirmed and have no response type. Generated code creates
+// package-level SendMessage values; user code passes them to Send/OnSend.
+type SendMessage[Req any] struct {
+	Action    string
+	Direction Direction
+}
+
 // Version identifies an OCPP protocol version.
 type Version string
 

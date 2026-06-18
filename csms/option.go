@@ -8,15 +8,18 @@ import (
 	"github.com/shiv3/gocpp/core/auth"
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/observability"
+	"github.com/shiv3/gocpp/core/ocppj/signing"
 	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
+	"github.com/shiv3/gocpp/core/transport"
 	"go.opentelemetry.io/otel/trace"
 )
 
 type serverConfig struct {
 	dispatcher      dispatcher.Config
 	subProtocols    []string
+	compressionMode transport.CompressionMode
 	path            string
 	cpIDExtractor   CPIDExtractor
 	instanceID      string
@@ -44,6 +47,7 @@ func defaultServerConfig() serverConfig {
 	return serverConfig{
 		dispatcher:      dispatcher.DefaultConfig(),
 		subProtocols:    []string{"ocpp1.6"},
+		compressionMode: transport.CompressionNoContextTakeover,
 		path:            "/ocpp/",
 		duplicatePolicy: DuplicatePolicyCloseExisting,
 		auth:            auth.None{},
@@ -91,6 +95,28 @@ func WithWriteTimeout(d time.Duration) Option {
 // WithSubProtocols sets the offered WebSocket subprotocols (in preference order).
 func WithSubProtocols(p ...string) Option {
 	return optionFunc(func(c *serverConfig) { c.subProtocols = p })
+}
+
+// WithCompression sets the RFC 7692 permessage-deflate mode the server offers.
+// Defaults to transport.CompressionNoContextTakeover; pass
+// transport.CompressionDisabled to opt out.
+func WithCompression(m transport.CompressionMode) Option {
+	return optionFunc(func(c *serverConfig) { c.compressionMode = m })
+}
+
+// WithSigner signs outbound CSMS->CP CALL/SEND messages (OCPP 2.1 Signed Messages).
+func WithSigner(s *signing.Signer) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.Signer = s })
+}
+
+// WithVerifier verifies inbound signed CP->CSMS messages.
+func WithVerifier(v *signing.Verifier) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.Verifier = v })
+}
+
+// WithRequireSignature rejects inbound signed messages that fail verification.
+func WithRequireSignature(require bool) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.RequireSignatureVerification = require })
 }
 
 // WithLogger sets the structured logger.

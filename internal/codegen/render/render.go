@@ -57,6 +57,11 @@ func Profile(f ir.File, profileName string) ([]byte, error) {
 
 	for _, m := range f.Messages {
 		fmt.Fprintf(&b, "// %s is the OCPP %s message (%s).\n", m.Action, m.Action, m.Direction)
+		if m.IsSend {
+			fmt.Fprintf(&b, "var %s = ocppj.SendMessage[\n\tmessages.%s,\n]{Action: %q, Direction: ocppj.%s}\n\n",
+				m.Action, m.Request, m.Action, m.Direction)
+			continue
+		}
 		fmt.Fprintf(&b, "var %s = ocppj.Message[\n\tmessages.%s,\n\tmessages.%s,\n]{Action: %q, Direction: ocppj.%s}\n\n",
 			m.Action, m.Request, m.Response, m.Action, m.Direction)
 	}
@@ -81,11 +86,15 @@ func RegisterFile(version string, messages []ir.Message) ([]byte, error) {
 		if requestSchema == "" {
 			requestSchema = m.Action + ".json"
 		}
+		fmt.Fprintf(&b, "\t\t{%q, \"request\", %q},\n", m.Action, requestSchema)
+		// SEND messages (OCPP 2.1) are request-only: no response schema.
+		if m.IsSend {
+			continue
+		}
 		responseSchema := m.ResponseSchema
 		if responseSchema == "" {
 			responseSchema = m.Action + "Response.json"
 		}
-		fmt.Fprintf(&b, "\t\t{%q, \"request\", %q},\n", m.Action, requestSchema)
 		fmt.Fprintf(&b, "\t\t{%q, \"response\", %q},\n", m.Action, responseSchema)
 	}
 	b.WriteString("\t} {\n")
@@ -129,6 +138,10 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// CPHandler handles CSMS-initiated messages received by a charge point.\n")
 	b.WriteString("type CPHandler interface {\n")
 	for _, m := range cpMsgs {
+		if m.IsSend {
+			fmt.Fprintf(&b, "\tOn%s(context.Context, messages.%s) error\n", m.Action, m.Request)
+			continue
+		}
 		fmt.Fprintf(&b, "\tOn%s(context.Context, messages.%s) (messages.%s, error)\n", m.Action, m.Request, m.Response)
 	}
 	b.WriteString("}\n\n")
@@ -137,6 +150,11 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// Embed it to implement only the messages you care about.\n")
 	b.WriteString("type UnimplementedCPHandler struct{}\n\n")
 	for _, m := range cpMsgs {
+		if m.IsSend {
+			fmt.Fprintf(&b, "func (UnimplementedCPHandler) On%s(context.Context, messages.%s) error {\n", m.Action, m.Request)
+			b.WriteString("\treturn nil\n}\n\n")
+			continue
+		}
 		fmt.Fprintf(&b, "func (UnimplementedCPHandler) On%s(context.Context, messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
 		fmt.Fprintf(&b, "\treturn messages.%s{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, %q, nil)\n", m.Response, m.Action+" not implemented")
 		b.WriteString("}\n\n")
@@ -145,6 +163,10 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// RegisterCP registers every CSMS->CP handler from h on the client.\n")
 	b.WriteString("func RegisterCP(c *cp.Client, h CPHandler) error {\n")
 	for _, m := range cpMsgs {
+		if m.IsSend {
+			fmt.Fprintf(&b, "\tif err := cp.OnSend(c, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+			continue
+		}
 		fmt.Fprintf(&b, "\tif err := cp.On(c, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
 	}
 	b.WriteString("\treturn nil\n}\n\n")
@@ -153,6 +175,10 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// CSMSHandler handles CP-initiated messages received by a CSMS.\n")
 	b.WriteString("type CSMSHandler interface {\n")
 	for _, m := range csmsMsgs {
+		if m.IsSend {
+			fmt.Fprintf(&b, "\tOn%s(context.Context, *csms.Conn, messages.%s) error\n", m.Action, m.Request)
+			continue
+		}
 		fmt.Fprintf(&b, "\tOn%s(context.Context, *csms.Conn, messages.%s) (messages.%s, error)\n", m.Action, m.Request, m.Response)
 	}
 	b.WriteString("}\n\n")
@@ -161,6 +187,11 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// Embed it to implement only the messages you care about.\n")
 	b.WriteString("type UnimplementedCSMSHandler struct{}\n\n")
 	for _, m := range csmsMsgs {
+		if m.IsSend {
+			fmt.Fprintf(&b, "func (UnimplementedCSMSHandler) On%s(context.Context, *csms.Conn, messages.%s) error {\n", m.Action, m.Request)
+			b.WriteString("\treturn nil\n}\n\n")
+			continue
+		}
 		fmt.Fprintf(&b, "func (UnimplementedCSMSHandler) On%s(context.Context, *csms.Conn, messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
 		fmt.Fprintf(&b, "\treturn messages.%s{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, %q, nil)\n", m.Response, m.Action+" not implemented")
 		b.WriteString("}\n\n")
@@ -169,6 +200,10 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// RegisterCSMS registers every CP->CSMS handler from h on the server.\n")
 	b.WriteString("func RegisterCSMS(s *csms.Server, h CSMSHandler) error {\n")
 	for _, m := range csmsMsgs {
+		if m.IsSend {
+			fmt.Fprintf(&b, "\tif err := csms.OnSend(s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+			continue
+		}
 		fmt.Fprintf(&b, "\tif err := csms.On(s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
 	}
 	b.WriteString("\treturn nil\n}\n")
@@ -202,11 +237,23 @@ func CallsFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString(")\n\n")
 
 	for _, m := range cpSend {
+		if m.IsSend {
+			fmt.Fprintf(&b, "// CP%s sends a %s SEND from the charge point to the CSMS (no response).\n", m.Action, m.Action)
+			fmt.Fprintf(&b, "func CP%s(ctx context.Context, c *cp.Client, req messages.%s) error {\n", m.Action, m.Request)
+			fmt.Fprintf(&b, "\treturn cp.Send(ctx, c, profiles.%s, req)\n}\n\n", m.Action)
+			continue
+		}
 		fmt.Fprintf(&b, "// CP%s sends a %s request from the charge point to the CSMS.\n", m.Action, m.Action)
 		fmt.Fprintf(&b, "func CP%s(ctx context.Context, c *cp.Client, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
 		fmt.Fprintf(&b, "\treturn cp.Call(ctx, c, profiles.%s, req)\n}\n\n", m.Action)
 	}
 	for _, m := range csmsSend {
+		if m.IsSend {
+			fmt.Fprintf(&b, "// CSMS%s sends a %s SEND from the CSMS to a connected charge point (no response).\n", m.Action, m.Action)
+			fmt.Fprintf(&b, "func CSMS%s(ctx context.Context, conn *csms.Conn, req messages.%s) error {\n", m.Action, m.Request)
+			fmt.Fprintf(&b, "\treturn csms.Send(ctx, conn, profiles.%s, req)\n}\n\n", m.Action)
+			continue
+		}
 		fmt.Fprintf(&b, "// CSMS%s sends a %s request from the CSMS to a connected charge point.\n", m.Action, m.Action)
 		fmt.Fprintf(&b, "func CSMS%s(ctx context.Context, conn *csms.Conn, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
 		fmt.Fprintf(&b, "\treturn csms.Call(ctx, conn, profiles.%s, req)\n}\n\n", m.Action)
@@ -249,6 +296,12 @@ func ClientFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// NewCP wraps c so its CP->CSMS messages can be sent as methods.\n")
 	b.WriteString("func NewCP(c *cp.Client) CP { return CP{c} }\n\n")
 	for _, m := range cpSend {
+		if m.IsSend {
+			fmt.Fprintf(&b, "// %s sends a %s SEND from the charge point to the CSMS (no response).\n", m.Action, m.Action)
+			fmt.Fprintf(&b, "func (c CP) %s(ctx context.Context, req messages.%s) error {\n", m.Action, m.Request)
+			fmt.Fprintf(&b, "\treturn cp.Send(ctx, c.Client, profiles.%s, req)\n}\n\n", m.Action)
+			continue
+		}
 		fmt.Fprintf(&b, "// %s sends a %s request from the charge point to the CSMS.\n", m.Action, m.Action)
 		fmt.Fprintf(&b, "func (c CP) %s(ctx context.Context, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
 		fmt.Fprintf(&b, "\treturn cp.Call(ctx, c.Client, profiles.%s, req)\n}\n\n", m.Action)
@@ -264,6 +317,12 @@ func ClientFile(version string, messages []ir.Message) ([]byte, error) {
 	b.WriteString("// NewCSMS wraps c so its CSMS->CP messages can be sent as methods.\n")
 	b.WriteString("func NewCSMS(c *csms.Conn) CSMS { return CSMS{c} }\n\n")
 	for _, m := range csmsSend {
+		if m.IsSend {
+			fmt.Fprintf(&b, "// %s sends a %s SEND from the CSMS to the charge point (no response).\n", m.Action, m.Action)
+			fmt.Fprintf(&b, "func (c CSMS) %s(ctx context.Context, req messages.%s) error {\n", m.Action, m.Request)
+			fmt.Fprintf(&b, "\treturn csms.Send(ctx, c.Conn, profiles.%s, req)\n}\n\n", m.Action)
+			continue
+		}
 		fmt.Fprintf(&b, "// %s sends a %s request from the CSMS to the charge point.\n", m.Action, m.Action)
 		fmt.Fprintf(&b, "func (c CSMS) %s(ctx context.Context, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
 		fmt.Fprintf(&b, "\treturn csms.Call(ctx, c.Conn, profiles.%s, req)\n}\n\n", m.Action)

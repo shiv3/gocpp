@@ -76,6 +76,11 @@ func CPNotifyCustomerInformation(ctx context.Context, c *cp.Client, req messages
 	return cp.Call(ctx, c, profiles.NotifyCustomerInformation, req)
 }
 
+// CPNotifyPeriodicEventStream sends a NotifyPeriodicEventStream SEND from the charge point to the CSMS (no response).
+func CPNotifyPeriodicEventStream(ctx context.Context, c *cp.Client, req messages.NotifyPeriodicEventStream) error {
+	return cp.Send(ctx, c, profiles.NotifyPeriodicEventStream, req)
+}
+
 // CPNotifyDisplayMessages sends a NotifyDisplayMessages request from the charge point to the CSMS.
 func CPNotifyDisplayMessages(ctx context.Context, c *cp.Client, req messages.NotifyDisplayMessagesRequest) (messages.NotifyDisplayMessagesResponse, error) {
 	return cp.Call(ctx, c, profiles.NotifyDisplayMessages, req)

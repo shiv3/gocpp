@@ -113,7 +113,8 @@ func (c *Client) startHeartbeat(dconn *dispatcher.Conn) {
 
 func (c *clientConfig) dialOptions() *websocket.DialOptions {
 	opts := &websocket.DialOptions{
-		Subprotocols: c.subProtocols,
+		Subprotocols:    c.subProtocols,
+		CompressionMode: c.compressionMode.Coder(),
 	}
 	if c.httpHeader != nil {
 		opts.HTTPHeader = c.httpHeader.Clone()

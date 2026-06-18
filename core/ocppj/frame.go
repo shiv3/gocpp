@@ -7,9 +7,11 @@ import "fmt"
 type MessageType int
 
 const (
-	Call                 MessageType = 2
-	CallResult           MessageType = 3
-	MessageTypeCallError MessageType = 4
+	Call                       MessageType = 2
+	CallResult                 MessageType = 3
+	MessageTypeCallError       MessageType = 4
+	MessageTypeCallResultError MessageType = 5 // OCPP 2.1
+	Send                       MessageType = 6 // OCPP 2.1
 )
 
 func (m MessageType) String() string {
@@ -20,6 +22,10 @@ func (m MessageType) String() string {
 		return "CallResult"
 	case MessageTypeCallError:
 		return "CallError"
+	case MessageTypeCallResultError:
+		return "CallResultError"
+	case Send:
+		return "Send"
 	default:
 		return fmt.Sprintf("Unknown(%d)", int(m))
 	}
@@ -28,10 +34,11 @@ func (m MessageType) String() string {
 // Frame is a parsed OCPP-J message.
 type Frame struct {
 	Type    MessageType
+	Signed  bool // OCPP 2.1: action carried a "-Signed" suffix; Payload is a JWS object
 	MsgID   string
-	Action  string // Call only
-	Payload []byte // Call / CallResult: raw JSON object
-	ErrCode string // CallError only
-	ErrDesc string // CallError only
-	ErrData []byte // CallError only: raw JSON object
+	Action  string // Call / Send
+	Payload []byte // Call / CallResult / Send: raw JSON object
+	ErrCode string // CallError / CallResultError
+	ErrDesc string // CallError / CallResultError
+	ErrData []byte // CallError / CallResultError: raw JSON object
 }

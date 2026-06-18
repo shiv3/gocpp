@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/coder/websocket v1.8.15
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2

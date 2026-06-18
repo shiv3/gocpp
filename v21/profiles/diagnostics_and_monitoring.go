@@ -96,3 +96,6 @@ var OpenPeriodicEventStream = ocppj.Message[
 	messages.OpenPeriodicEventStreamRequest,
 	messages.OpenPeriodicEventStreamResponse,
 ]{Action: "OpenPeriodicEventStream", Direction: ocppj.SentByCSMS}
+
+// NotifyPeriodicEventStream is the OCPP NotifyPeriodicEventStream message (SentByCP).
+var NotifyPeriodicEventStream = ocppj.SendMessage[messages.NotifyPeriodicEventStream]{Action: "NotifyPeriodicEventStream", Direction: ocppj.SentByCP}
