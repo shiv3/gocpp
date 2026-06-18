@@ -78,14 +78,13 @@ func TestDoCallAsync_SerializedFIFO(t *testing.T) {
 	for _, want := range []string{"A", "B", "C"} {
 		raw := <-f.Sent()
 		require.Equal(t, want, callAction(t, raw), "calls must be sent FIFO, one outstanding")
-		// No further frame is sent until the in-flight call is answered.
+		// No further frame is sent until the in-flight call is answered. Check
+		// len (non-consuming) rather than receiving: require.Never runs the
+		// condition in a background goroutine that can outlive the call, and a
+		// receive would let that straggler steal the next frame and deadlock the
+		// following <-f.Sent().
 		require.Never(t, func() bool {
-			select {
-			case <-f.Sent():
-				return true
-			default:
-				return false
-			}
+			return len(f.Sent()) > 0
 		}, 30*time.Millisecond, time.Millisecond)
 		f.Inject([]byte(`[3,"` + callID(t, raw) + `",{}]`))
 		require.Equal(t, want, <-order)
