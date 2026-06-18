@@ -35,7 +35,16 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 			return nil, err
 		}
 	}
-	raw, err := ocppj.EncodeCall(msgID, action, sendPayload)
+	var raw []byte
+	if c.cfg.Signer != nil {
+		signed, serr := c.cfg.Signer.SignPayload(action, ocppj.Call, sendPayload)
+		if serr != nil {
+			return nil, fmt.Errorf("sign call: %w", serr)
+		}
+		raw, err = ocppj.EncodeSignedCall(msgID, action, signed)
+	} else {
+		raw, err = ocppj.EncodeCall(msgID, action, sendPayload)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("encode call: %w", err)
 	}

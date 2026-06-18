@@ -78,7 +78,20 @@ func DoSend(ctx context.Context, c *Conn, action string, reqPayload []byte) (err
 			return verr
 		}
 	}
-	raw, encErr := ocppj.EncodeSend(ocppj.NewMsgID(), action, sendPayload)
+	msgID := ocppj.NewMsgID()
+	var (
+		raw    []byte
+		encErr error
+	)
+	if c.cfg.Signer != nil {
+		signed, serr := c.cfg.Signer.SignPayload(action, ocppj.Send, sendPayload)
+		if serr != nil {
+			return fmt.Errorf("sign send: %w", serr)
+		}
+		raw, encErr = ocppj.EncodeSignedSend(msgID, action, signed)
+	} else {
+		raw, encErr = ocppj.EncodeSend(msgID, action, sendPayload)
+	}
 	if encErr != nil {
 		return fmt.Errorf("encode send: %w", encErr)
 	}
