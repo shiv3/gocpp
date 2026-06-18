@@ -34,6 +34,7 @@ func (m MessageType) String() string {
 // Frame is a parsed OCPP-J message.
 type Frame struct {
 	Type    MessageType
+	Signed  bool // OCPP 2.1: action carried a "-Signed" suffix; Payload is a JWS object
 	MsgID   string
 	Action  string // Call / Send
 	Payload []byte // Call / CallResult / Send: raw JSON object

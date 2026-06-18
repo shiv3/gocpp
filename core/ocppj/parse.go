@@ -3,9 +3,23 @@ package ocppj
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 const maxRawInError = 256
+
+// signedSuffix is the OCPP 2.1 Part 4 §7.1 marker appended to a signed message's
+// action name (e.g. "BootNotification-Signed").
+const signedSuffix = "-Signed"
+
+// splitSignedAction reports whether action carries the "-Signed" suffix and
+// returns the base action with the suffix removed.
+func splitSignedAction(action string) (base string, signed bool) {
+	if b, ok := strings.CutSuffix(action, signedSuffix); ok {
+		return b, true
+	}
+	return action, false
+}
 
 func truncateRaw(raw []byte) string {
 	if len(raw) > maxRawInError {
@@ -41,7 +55,8 @@ func Parse(raw []byte) (Frame, error) {
 		if err := json.Unmarshal(arr[2], &action); err != nil {
 			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "action not a string"}
 		}
-		return Frame{Type: Call, MsgID: msgID, Action: action, Payload: arr[3]}, nil
+		base, signed := splitSignedAction(action)
+		return Frame{Type: Call, Signed: signed, MsgID: msgID, Action: base, Payload: arr[3]}, nil
 	case CallResult:
 		if len(arr) != 3 {
 			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "call result must have 3 elements"}
@@ -63,7 +78,8 @@ func Parse(raw []byte) (Frame, error) {
 		if err := json.Unmarshal(arr[2], &action); err != nil {
 			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "action not a string"}
 		}
-		return Frame{Type: Send, MsgID: msgID, Action: action, Payload: arr[3]}, nil
+		base, signed := splitSignedAction(action)
+		return Frame{Type: Send, Signed: signed, MsgID: msgID, Action: base, Payload: arr[3]}, nil
 	case MessageTypeCallResultError:
 		if len(arr) != 5 {
 			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "call result error must have 5 elements"}

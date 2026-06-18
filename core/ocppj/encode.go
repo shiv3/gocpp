@@ -60,3 +60,14 @@ func EncodeCallResultError(msgID, code, desc string, details []byte) ([]byte, er
 	}
 	return encodeArray(int(MessageTypeCallResultError), msgID, code, desc, json.RawMessage(details))
 }
+
+// EncodeSignedCall builds a [2, msgID, action+"-Signed", signedPayload] frame
+// (OCPP 2.1 Part 4 Ch 7). signedPayload is a Flattened JWS JSON object.
+func EncodeSignedCall(msgID, action string, signedPayload []byte) ([]byte, error) {
+	return encodeArray(int(Call), msgID, action+signedSuffix, json.RawMessage(signedPayload))
+}
+
+// EncodeSignedSend builds a [6, msgID, action+"-Signed", signedPayload] frame.
+func EncodeSignedSend(msgID, action string, signedPayload []byte) ([]byte, error) {
+	return encodeArray(int(Send), msgID, action+signedSuffix, json.RawMessage(signedPayload))
+}
