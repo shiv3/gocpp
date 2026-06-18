@@ -77,12 +77,14 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 		if c.cfg.SchemaMode == SchemaModeLenient {
 			out, herr := c.lenientValidate(action, "response", res.payload)
 			if herr != nil {
+				c.maybeSendResultError(msgID, herr)
 				return nil, herr
 			}
 			respPayload = out
-		} else if err := c.schemaValidationError(action, "response", res.payload); err != nil {
+		} else if verr := c.schemaValidationError(action, "response", res.payload); verr != nil {
 			if c.cfg.SchemaMode == SchemaModeStrict {
-				return nil, err
+				c.maybeSendResultError(msgID, verr)
+				return nil, verr
 			}
 		}
 		return respPayload, nil
@@ -91,6 +93,16 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// maybeSendResultError notifies the peer that the CALLRESULT it sent could not
+// be processed, by emitting a CALLRESULTERROR (OCPP 2.1 only). On older versions
+// there is no such message type, so the failure stays local.
+func (c *Conn) maybeSendResultError(msgID string, cause error) {
+	if c.version != ocppj.V21 {
+		return
+	}
+	c.sendCallResultError(msgID, ocppj.WrapCallError(ocppj.ErrorCodeFormatViolation, cause, nil))
 }
 
 func (c *Conn) acquireOutboundSlot(ctx context.Context) (func(), error) {

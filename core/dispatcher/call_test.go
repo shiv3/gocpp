@@ -326,3 +326,108 @@ func callID(t *testing.T, raw []byte) string {
 	require.NoError(t, json.Unmarshal(arr[1], &id))
 	return id
 }
+
+// readOutboundCall drains f.Sent() until a Call frame ([2,...]) is found and
+// returns its msgID. Non-Call frames (e.g. pings) are skipped.
+func readOutboundCall(t *testing.T, f *transport.FakeWS) string {
+	t.Helper()
+	for {
+		select {
+		case raw := <-f.Sent():
+			frame, err := ocppj.Parse(raw)
+			if err != nil {
+				continue
+			}
+			if frame.Type == ocppj.Call {
+				return frame.MsgID
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timeout waiting for outbound Call frame")
+		}
+	}
+}
+
+func TestDoCallInvalidResultEmitsCallResultError(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	f := transport.NewFakeWS("ocpp2.1")
+	cfg := DefaultConfig()
+	cfg.SchemaMode = SchemaModeStrict
+	cfg.SchemaValidate = func(_ ocppj.Version, _, kind string, _ []byte) error {
+		if kind == "response" {
+			return errors.New("schema: response invalid")
+		}
+		return nil
+	}
+	c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, e := DoCall(context.Background(), c, "Heartbeat", []byte(`{}`))
+		errCh <- e
+	}()
+
+	// Wait for the outbound CALL and capture its msgID.
+	msgID := readOutboundCall(t, f)
+
+	// Inject a bad CALLRESULT — validation should reject it.
+	f.Inject([]byte(`[3,"` + msgID + `",{"currentTime":"bad"}]`))
+
+	// DoCall must return an error.
+	require.Error(t, <-errCh)
+
+	// A CALLRESULTERROR [5,...] must have been emitted with the same msgID.
+	select {
+	case raw := <-f.Sent():
+		frame, err := ocppj.Parse(raw)
+		require.NoError(t, err)
+		require.Equal(t, ocppj.MessageTypeCallResultError, frame.Type)
+		require.Equal(t, msgID, frame.MsgID)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for CALLRESULTERROR frame")
+	}
+}
+
+func TestDoCallInvalidResultNoCallResultErrorOnOlderVersion(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	f := transport.NewFakeWS("ocpp2.0.1")
+	cfg := DefaultConfig()
+	cfg.SchemaMode = SchemaModeStrict
+	cfg.SchemaValidate = func(_ ocppj.Version, _, kind string, _ []byte) error {
+		if kind == "response" {
+			return errors.New("schema: response invalid")
+		}
+		return nil
+	}
+	c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, e := DoCall(context.Background(), c, "Heartbeat", []byte(`{}`))
+		errCh <- e
+	}()
+
+	msgID := readOutboundCall(t, f)
+
+	f.Inject([]byte(`[3,"` + msgID + `",{"currentTime":"bad"}]`))
+
+	// DoCall must still return an error.
+	require.Error(t, <-errCh)
+
+	// No CALLRESULTERROR should be emitted for a non-2.1 connection.
+	select {
+	case extra := <-f.Sent():
+		frame, _ := ocppj.Parse(extra)
+		if frame.Type == ocppj.MessageTypeCallResultError {
+			t.Fatalf("unexpected CALLRESULTERROR frame on non-2.1 connection: %s", extra)
+		}
+		// Any other frame (unlikely here) is fine to ignore.
+	case <-time.After(100 * time.Millisecond):
+		// Nothing sent — correct behaviour.
+	}
+}
