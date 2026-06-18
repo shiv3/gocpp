@@ -46,3 +46,17 @@ func EncodeCallError(msgID, code, desc string, details []byte) ([]byte, error) {
 	}
 	return encodeArray(int(MessageTypeCallError), msgID, code, desc, json.RawMessage(details))
 }
+
+// EncodeSend builds a [6, msgID, action, payload] frame (OCPP 2.1 SEND).
+func EncodeSend(msgID, action string, payload []byte) ([]byte, error) {
+	return encodeArray(int(Send), msgID, action, json.RawMessage(payload))
+}
+
+// EncodeCallResultError builds a [5, msgID, code, desc, details] frame (OCPP 2.1
+// CALLRESULTERROR).
+func EncodeCallResultError(msgID, code, desc string, details []byte) ([]byte, error) {
+	if len(details) == 0 {
+		details = []byte("{}")
+	}
+	return encodeArray(int(MessageTypeCallResultError), msgID, code, desc, json.RawMessage(details))
+}
