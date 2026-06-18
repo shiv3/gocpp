@@ -13,13 +13,22 @@ import (
 
 type HandlerFunc func(ctx context.Context, c *Conn, payload []byte) ([]byte, error)
 
+// SendHandlerFunc handles an inbound SEND frame (OCPP 2.1 message type 6).
+// A SEND is unconfirmed: the handler must not return a reply; the dispatcher
+// never sends one regardless.
+type SendHandlerFunc func(ctx context.Context, c *Conn, payload []byte) error
+
 type HandlerRegistry struct {
-	mu sync.RWMutex
-	hs map[string]HandlerFunc
+	mu    sync.RWMutex
+	hs    map[string]HandlerFunc
+	sends map[string]SendHandlerFunc
 }
 
 func NewHandlerRegistry() *HandlerRegistry {
-	return &HandlerRegistry{hs: make(map[string]HandlerFunc)}
+	return &HandlerRegistry{
+		hs:    make(map[string]HandlerFunc),
+		sends: make(map[string]SendHandlerFunc),
+	}
 }
 
 func (r *HandlerRegistry) Lookup(action string) (HandlerFunc, bool) {
@@ -35,10 +44,29 @@ func (r *HandlerRegistry) Register(action string, h HandlerFunc) {
 	r.hs[action] = h
 }
 
+func (r *HandlerRegistry) RegisterSend(action string, h SendHandlerFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sends[action] = h
+}
+
+func (r *HandlerRegistry) LookupSend(action string) (SendHandlerFunc, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	h, ok := r.sends[action]
+	return h, ok
+}
+
 func (c *Conn) runHandler(frame ocppj.Frame) {
 	defer c.sem.Release(1)
 	if c.cfg.GlobalHandlerLimiter != nil {
 		defer c.cfg.GlobalHandlerLimiter.Release(1)
+	}
+
+	// SEND (type 6) is unconfirmed: dispatch and never reply.
+	if frame.Type == ocppj.Send {
+		c.runSendHandler(frame)
+		return
 	}
 
 	start := time.Now()
@@ -116,6 +144,38 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		}
 	}
 	c.sendCallResult(frame.MsgID, respPayload)
+}
+
+// runSendHandler dispatches an inbound SEND (OCPP 2.1). A SEND is unconfirmed:
+// the receiver MUST NOT reply with a CallResult or CallError, so every outcome
+// (missing handler, schema-invalid, handler error) is logged and dropped.
+func (c *Conn) runSendHandler(frame ocppj.Frame) {
+	h, ok := c.reg.LookupSend(frame.Action)
+	if !ok {
+		c.cfg.Logger.DebugContext(c.ctx, "no SEND handler registered, dropping",
+			"cp_id", c.id, "action", frame.Action)
+		return
+	}
+	reqPayload := frame.Payload
+	if c.cfg.SchemaMode == SchemaModeLenient {
+		out, herr := c.lenientValidate(frame.Action, "request", frame.Payload)
+		if herr != nil {
+			c.cfg.Logger.WarnContext(c.ctx, "dropping schema-invalid SEND",
+				"cp_id", c.id, "action", frame.Action, "err", herr)
+			return
+		}
+		reqPayload = out
+	} else if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
+		if c.cfg.SchemaMode == SchemaModeStrict {
+			c.cfg.Logger.WarnContext(c.ctx, "dropping schema-invalid SEND",
+				"cp_id", c.id, "action", frame.Action, "err", err)
+			return
+		}
+	}
+	if err := h(c.ctx, c, reqPayload); err != nil {
+		c.cfg.Logger.WarnContext(c.ctx, "SEND handler error",
+			"cp_id", c.id, "action", frame.Action, "err", err)
+	}
 }
 
 // mapHandlerError converts a handler error into a CallError per spec §6.5.
