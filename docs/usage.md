@@ -23,10 +23,14 @@ go srv.ListenAndServe(":8080")
 
 // Send a CSMS-originated message to a connected charge point.
 if conn, ok := srv.Get("CP_1"); ok {
-    _, err := csms.Call(ctx, conn, v201p.Reset, v201msg.ResetRequest{Type: "OnIdle"})
+    _, err := v201client.NewCSMS(conn).Reset(ctx, v201msg.ResetRequest{Type: "OnIdle"})
     _ = err
 }
 ```
+
+`v201client.NewCSMS(conn)` (from `github.com/shiv3/gocpp/v201/client`) wraps the
+`*csms.Conn` with a typed send method per CSMS-originated message. The low-level
+`csms.Call(ctx, conn, v201p.Reset, req)` is still available if you prefer it.
 
 `csms.NewServer().Handler()` returns an `http.Handler` if you want to mount the
 WebSocket endpoint on your own mux / TLS server.
@@ -44,8 +48,14 @@ cp.On(client, v201p.Reset, func(ctx context.Context, req v201msg.ResetRequest) (
 client.Connect(ctx)              // single connection
 // or client.Run(ctx)           // auto-reconnect with exponential backoff
 
-resp, err := cp.Call(ctx, client, v201p.BootNotification, req)
+// Typed send method per CP-originated message (from github.com/shiv3/gocpp/v201/client).
+cpc := v201client.NewCP(client)
+resp, err := cpc.BootNotification(ctx, req)
+// Low-level equivalent: cp.Call(ctx, client, v201p.BootNotification, req)
 ```
+
+The wrapper embeds `*cp.Client`, so `cpc.Connect`, `cpc.Close`, `cpc.IsConnected`,
+etc. remain available — it can serve as your primary client handle.
 
 ## Bulk handler registration
 
@@ -68,21 +78,34 @@ err := v16h.RegisterCP(client, myCP{})
 // CSMS side mirror: v16h.RegisterCSMS(srv, myCSMSHandler{})
 ```
 
-For sending, each version also ships a `calls` package with typed, direction-safe
-helpers over `cp.Call` / `csms.Call`:
+## Sending typed messages
+
+The recommended way to send is the per-version `client` package, which wraps the
+client/conn with one method per direction-appropriate message (plus an `…Async`
+variant — see [Async](#async-callback-calls)). This is usually preferred over
+calling `cp.Call` / `csms.Call` directly:
 
 ```go
-import v16c "github.com/shiv3/gocpp/v16/calls"
+import v16client "github.com/shiv3/gocpp/v16/client"
 
-// Charge point -> CSMS
-resp, err := v16c.CPBootNotification(ctx, client, v16msg.BootNotificationRequest{
+// Charge point -> CSMS. CP embeds *cp.Client.
+cpc := v16client.NewCP(client)
+resp, err := cpc.BootNotification(ctx, v16msg.BootNotificationRequest{
     ChargePointVendor: "Acme", ChargePointModel: "M1",
 })
 
-// CSMS -> charge point
+// CSMS -> charge point. CSMS embeds *csms.Conn.
 conn, _ := srv.Get("CP_1")
-_, err = v16c.CSMSReset(ctx, conn, v16msg.ResetRequest{Type: v16msg.ResetRequestTypeSoft})
+_, err = v16client.NewCSMS(conn).Reset(ctx, v16msg.ResetRequest{Type: v16msg.ResetRequestTypeSoft})
 ```
+
+Two lower-level alternatives exist if you don't want the wrapper:
+
+- `cp.Call(ctx, client, v16p.BootNotification, req)` / `csms.Call(ctx, conn, v16p.Reset, req)`
+  — the generic typed primitives.
+- The `calls` package free functions, which take the client/conn as an argument:
+  `v16c.CPBootNotification(ctx, client, req)` / `v16c.CSMSReset(ctx, conn, req)`
+  (`import v16c "github.com/shiv3/gocpp/v16/calls"`).
 
 ## Options
 
@@ -127,6 +150,11 @@ need concurrency. For an ocpp-go `SendRequestAsync`-style callback API, use `Cal
 ```go
 csms.CallAsync(ctx, conn, v16p.GetConfiguration, req, func(resp v16msg.GetConfigurationResponse, err error) {
     // delivered when the response (or error) arrives; do not block here
+})
+
+// Equivalent via the client package: every send method has an …Async variant.
+v16client.NewCSMS(conn).GetConfigurationAsync(ctx, req, func(resp v16msg.GetConfigurationResponse, err error) {
+    // ...
 })
 ```
 

@@ -50,14 +50,22 @@ log.Fatal(srv.ListenAndServe(":8080")) // ws://host:8080/ocpp/{cpId}
 ### Charge point (client)
 
 ```go
+import v16client "github.com/shiv3/gocpp/v16/client"
+
 client := cp.NewClient("CP_1", "ws://localhost:8080/ocpp/CP_1", cp.WithSubProtocols("ocpp1.6"))
 if err := client.Connect(ctx); err != nil { log.Fatal(err) }
 defer client.Close()
 
-resp, err := cp.Call(ctx, client, v16p.BootNotification, v16msg.BootNotificationRequest{
+// Typed send methods: one method per CP-originated message.
+cpc := v16client.NewCP(client)
+resp, err := cpc.BootNotification(ctx, v16msg.BootNotificationRequest{
     ChargePointVendor: "Acme", ChargePointModel: "Model-X",
 })
 ```
+
+> The wrapper embeds `*cp.Client`, so `cpc.Connect`, `cpc.Close`, etc. still work. The
+> low-level `cp.Call(ctx, client, v16p.BootNotification, req)` remains available if you
+> need it.
 
 Runnable examples: [`examples/csms-minimal`](examples/csms-minimal),
 [`examples/cp-minimal`](examples/cp-minimal).
@@ -70,6 +78,8 @@ Runnable examples: [`examples/csms-minimal`](examples/csms-minimal),
 | `cp` | Charge point client: `NewClient`, `Connect`, `On`, `Call`, `Run` |
 | `v16`, `v201`, `v21` | Per-version metadata + `RegisterSchemas` |
 | `v16/messages`, `…/profiles` | Generated message structs + `ocppj.Message` profile vars |
+| `v16/client`, `…/client` | Typed send methods: `NewCP(c).BootNotification(…)`, `NewCSMS(conn).Reset(…)` (+ `…Async`) |
+| `v16/handlers`, `…/handlers` | Typed handler interfaces + one-call `RegisterCP` / `RegisterCSMS` |
 | `core/ocppj` | OCPP-J framing (Call/CallResult/CallError), errors |
 | `core/dispatcher` | Version-agnostic connection lifecycle + pending-call tracking |
 | `core/schema` | JSON-Schema validator + registry |

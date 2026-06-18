@@ -13,8 +13,8 @@ a single module that also speaks OCPP 2.1.
 | Implement the `core.ChargePointHandler` interface (CP side) | `cp.On(client, v16p.<Msg>, handler)` per message, or `v16/handlers.CPHandler` + `handlers.RegisterCP(client, h)` |
 | `cs.SetNewChargePointHandler(...)` / `SetChargePointDisconnectedHandler(...)` | `csms.WithOnConnect` / `csms.WithOnDisconnect`; look up live conns with `srv.Get(id)` |
 | `req.(*core.BootNotificationRequest)` type assertion in a generic handler | typed `req v16msg.BootNotificationRequest` parameter — no assertion |
-| `cs.SendRequestAsync(cpID, req, cb)` | `csms.CallAsync(ctx, conn, v16p.<Msg>, req, cb)` (callback, like ocpp-go) or `csms.Call(...)` (synchronous); typed wrappers `v16/calls.CSMS<Msg>(ctx, conn, req)` |
-| `cp.SendRequestAsync(...)` | `cp.CallAsync(...)` / `cp.Call(...)`; typed wrappers `v16/calls.CP<Msg>(ctx, client, req)` |
+| `cs.SendRequestAsync(cpID, req, cb)` | `v16client.NewCSMS(conn).<Msg>Async(ctx, req, cb)` (callback, like ocpp-go) or `.<Msg>(ctx, req)` (synchronous). Lower level: `csms.CallAsync` / `csms.Call`, or free functions `v16/calls.CSMS<Msg>(ctx, conn, req)` |
+| `cp.SendRequestAsync(...)` | `v16client.NewCP(client).<Msg>Async(ctx, req, cb)` / `.<Msg>(ctx, req)`. Lower level: `cp.CallAsync` / `cp.Call`, or `v16/calls.CP<Msg>(ctx, client, req)` |
 | `ocpp16.NewChargePoint(id, nil, nil)` | `cp.NewClient(id, url, cp.WithSubProtocols("ocpp1.6"))` |
 | `cp.Start(csmsURL)` | `client.Connect(ctx)` (single) or `client.Run(ctx)` (auto-reconnect; handlers persist across reconnects) |
 | disable WebSocket origin check | `csms.WithInsecureSkipVerifyOrigin()` (or `WithOriginPatterns` / `WithCheckOrigin`) |
