@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/cp"
+	v16client "github.com/shiv3/gocpp/v16/client"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
-	v16p "github.com/shiv3/gocpp/v16/profiles"
 )
 
 func main() {
@@ -21,7 +21,8 @@ func main() {
 	}
 	defer client.Close()
 
-	boot, err := cp.Call(ctx, client, v16p.BootNotification, v16msg.BootNotificationRequest{
+	cpc := v16client.NewCP(client)
+	boot, err := cpc.BootNotification(ctx, v16msg.BootNotificationRequest{
 		ChargePointVendor: "Acme", ChargePointModel: "Model-X",
 	})
 	if err != nil {

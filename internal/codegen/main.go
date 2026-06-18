@@ -171,6 +171,13 @@ func generate(cfg genConfig) error {
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "calls", "calls.go"), callsSrc); err != nil {
 		return err
 	}
+	clientSrc, err := render.ClientFile(cfg.version, allMessages)
+	if err != nil {
+		return fmt.Errorf("render client: %w", err)
+	}
+	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "client", "client.go"), clientSrc); err != nil {
+		return err
+	}
 	if err := writeEmbed(cfg.outRoot, cfg.version); err != nil {
 		return err
 	}

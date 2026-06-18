@@ -8,6 +8,7 @@ import (
 
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
+	v16client "github.com/shiv3/gocpp/v16/client"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
 	v16p "github.com/shiv3/gocpp/v16/profiles"
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,7 @@ func TestE2E_DataTransfer_Bidirectional(t *testing.T) {
 	defer client.Close()
 
 	// Direction 1: CP -> CSMS
-	resp, err := cp.Call(ctx, client, v16p.DataTransfer, v16msg.DataTransferRequest{VendorID: "cp-vendor"})
+	resp, err := v16client.NewCP(client).DataTransfer(ctx, v16msg.DataTransferRequest{VendorID: "cp-vendor"})
 	require.NoError(t, err)
 	require.Equal(t, v16msg.DataTransferResponseStatusAccepted, resp.Status)
 
@@ -57,7 +58,7 @@ func TestE2E_DataTransfer_Bidirectional(t *testing.T) {
 		return ok
 	}, 5*time.Second, 10*time.Millisecond)
 
-	resp2, err := csms.Call(ctx, conn, v16p.DataTransfer, v16msg.DataTransferRequest{VendorID: "csms-vendor"})
+	resp2, err := v16client.NewCSMS(conn).DataTransfer(ctx, v16msg.DataTransferRequest{VendorID: "csms-vendor"})
 	require.NoError(t, err)
 	require.Equal(t, v16msg.DataTransferResponseStatusAccepted, resp2.Status)
 }

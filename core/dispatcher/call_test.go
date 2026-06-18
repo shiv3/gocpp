@@ -237,13 +237,11 @@ func TestDoCall_SerializeOutboundCallsEnabled(t *testing.T) {
 	}()
 	<-secondStarted
 
+	// Check len (non-consuming) rather than receiving: require.Never runs the
+	// condition in a background goroutine that can outlive the call, and a receive
+	// would let that straggler steal the second frame and deadlock <-f.Sent() below.
 	require.Never(t, func() bool {
-		select {
-		case <-f.Sent():
-			return true
-		default:
-			return false
-		}
+		return len(f.Sent()) > 0
 	}, 50*time.Millisecond, time.Millisecond)
 
 	f.Inject([]byte(`[3,"` + firstID + `",{}]`))

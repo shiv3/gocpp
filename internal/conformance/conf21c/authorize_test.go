@@ -8,7 +8,6 @@ import (
 	"time"
 
 	ocppj "github.com/shiv3/gocpp/core/ocppj"
-	schema "github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
@@ -217,8 +216,7 @@ func requireCPRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.Mes
 }
 
 func TestAuthorize21_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "Authorize", "request")
 
 	cases := []conformance.ValidationCase{
@@ -264,8 +262,7 @@ func TestAuthorize21_RequestValidation(t *testing.T) {
 }
 
 func TestAuthorize21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "Authorize", "response")
 
 	cases := []conformance.ValidationCase{

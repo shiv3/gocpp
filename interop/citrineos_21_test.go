@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/cp"
+	v21client "github.com/shiv3/gocpp/v21/client"
 	v21msg "github.com/shiv3/gocpp/v21/messages"
-	v21p "github.com/shiv3/gocpp/v21/profiles"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,7 +32,7 @@ func TestInterop_CitrineOS21_Boot(t *testing.T) {
 	require.NoError(t, client.Connect(ctx))
 	defer client.Close()
 
-	resp, err := cp.Call(ctx, client, v21p.BootNotification, v21msg.BootNotificationRequest{
+	resp, err := v21client.NewCP(client).BootNotification(ctx, v21msg.BootNotificationRequest{
 		ChargingStation: v21msg.ChargingStationType{VendorName: "gocpp", Model: "Interop"},
 		Reason:          "PowerUp",
 	})

@@ -215,6 +215,66 @@ func CallsFile(version string, messages []ir.Message) ([]byte, error) {
 	return format.Source([]byte(b.String()))
 }
 
+// ClientFile renders version-bound wrapper types with typed send methods: CP
+// embeds *cp.Client and exposes a method per CP-sendable action; CSMS embeds
+// *csms.Conn and exposes a method per CSMS-sendable action. Each action gets a
+// synchronous method (wrapping Call) and an <Action>Async method (wrapping
+// CallAsync). Bidirectional messages (DataTransfer) appear on both.
+func ClientFile(version string, messages []ir.Message) ([]byte, error) {
+	var cpSend, csmsSend []ir.Message
+	for _, m := range messages {
+		if m.Direction == "SentByCP" || m.Direction == "SentByBoth" {
+			cpSend = append(cpSend, m)
+		}
+		if m.Direction == "SentByCSMS" || m.Direction == "SentByBoth" {
+			csmsSend = append(csmsSend, m)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("package client\n\n")
+	b.WriteString("import (\n")
+	fmt.Fprintf(&b, "\t%q\n\n", "context")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/cp")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/csms")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/messages")
+	fmt.Fprintf(&b, "\t%q\n", "github.com/shiv3/gocpp/"+version+"/profiles")
+	b.WriteString(")\n\n")
+
+	// ----- Charge-point side -----
+	b.WriteString("// CP wraps *cp.Client with typed send methods for messages a charge point\n")
+	b.WriteString("// sends to the CSMS.\n")
+	b.WriteString("type CP struct{ *cp.Client }\n\n")
+	b.WriteString("// NewCP wraps c so its CP->CSMS messages can be sent as methods.\n")
+	b.WriteString("func NewCP(c *cp.Client) CP { return CP{c} }\n\n")
+	for _, m := range cpSend {
+		fmt.Fprintf(&b, "// %s sends a %s request from the charge point to the CSMS.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func (c CP) %s(ctx context.Context, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn cp.Call(ctx, c.Client, profiles.%s, req)\n}\n\n", m.Action)
+		fmt.Fprintf(&b, "// %sAsync sends a %s request without blocking, delivering the response to cb.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func (c CP) %sAsync(ctx context.Context, req messages.%s, cb func(messages.%s, error)) error {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn cp.CallAsync(ctx, c.Client, profiles.%s, req, cb)\n}\n\n", m.Action)
+	}
+
+	// ----- CSMS side -----
+	b.WriteString("// CSMS wraps *csms.Conn with typed send methods for messages a CSMS sends to\n")
+	b.WriteString("// a connected charge point.\n")
+	b.WriteString("type CSMS struct{ *csms.Conn }\n\n")
+	b.WriteString("// NewCSMS wraps c so its CSMS->CP messages can be sent as methods.\n")
+	b.WriteString("func NewCSMS(c *csms.Conn) CSMS { return CSMS{c} }\n\n")
+	for _, m := range csmsSend {
+		fmt.Fprintf(&b, "// %s sends a %s request from the CSMS to the charge point.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func (c CSMS) %s(ctx context.Context, req messages.%s) (messages.%s, error) {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn csms.Call(ctx, c.Conn, profiles.%s, req)\n}\n\n", m.Action)
+		fmt.Fprintf(&b, "// %sAsync sends a %s request without blocking, delivering the response to cb.\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "func (c CSMS) %sAsync(ctx context.Context, req messages.%s, cb func(messages.%s, error)) error {\n", m.Action, m.Request, m.Response)
+		fmt.Fprintf(&b, "\treturn csms.CallAsync(ctx, c.Conn, profiles.%s, req, cb)\n}\n\n", m.Action)
+	}
+
+	return format.Source([]byte(b.String()))
+}
+
 func versionString(version string) string {
 	switch version {
 	case "v16":

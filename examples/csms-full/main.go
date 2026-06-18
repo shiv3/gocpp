@@ -39,6 +39,7 @@ import (
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/csms"
+	v16client "github.com/shiv3/gocpp/v16/client"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
 	v16p "github.com/shiv3/gocpp/v16/profiles"
 	"go.opentelemetry.io/otel/attribute"
@@ -278,7 +279,8 @@ func (a *app) registerHandlers() {
 		return v16msg.FirmwareStatusNotificationResponse{}, nil
 	}))
 	// Note: ChangeConfiguration/GetConfiguration are SentByCSMS (CSMS -> CP); the CSMS
-	// *sends* them via csms.Call, so they are not registered as inbound handlers here.
+	// *sends* them (via v16client.NewCSMS(conn)), so they are not registered as
+	// inbound handlers here.
 }
 
 func knownIDTag(idTag string) bool {
@@ -297,7 +299,7 @@ func (a *app) driveRemoteStart(c *csms.Conn) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	connector := int32(1)
-	resp, err := csms.Call(ctx, c, v16p.RemoteStartTransaction, v16msg.RemoteStartTransactionRequest{
+	resp, err := v16client.NewCSMS(c).RemoteStartTransaction(ctx, v16msg.RemoteStartTransactionRequest{
 		IDTag:       "TAG001",
 		ConnectorID: &connector,
 	})

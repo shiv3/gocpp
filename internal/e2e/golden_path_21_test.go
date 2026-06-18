@@ -8,6 +8,7 @@ import (
 
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
+	v21client "github.com/shiv3/gocpp/v21/client"
 	v21msg "github.com/shiv3/gocpp/v21/messages"
 	v21p "github.com/shiv3/gocpp/v21/profiles"
 	"github.com/stretchr/testify/require"
@@ -50,8 +51,9 @@ func TestE2E_21ChargingSessionGoldenPath(t *testing.T) {
 	require.NoError(t, client.Connect(ctx))
 	defer client.Close()
 	require.Equal(t, "ocpp2.1", client.NegotiatedProtocol())
+	cpc := v21client.NewCP(client)
 
-	boot, err := cp.Call(ctx, client, v21p.BootNotification, v21msg.BootNotificationRequest{
+	boot, err := cpc.BootNotification(ctx, v21msg.BootNotificationRequest{
 		ChargingStation: v21msg.ChargingStationType{VendorName: "Acme", Model: "M21"},
 		Reason:          "PowerUp",
 	})
@@ -61,7 +63,7 @@ func TestE2E_21ChargingSessionGoldenPath(t *testing.T) {
 	// 2.1-specific message: CSMS pushes NotifyAllowedEnergyTransfer to the CP.
 	conn, ok := srv.Get("CP_21")
 	require.True(t, ok)
-	naet, err := csms.Call(ctx, conn, v21p.NotifyAllowedEnergyTransfer, v21msg.NotifyAllowedEnergyTransferRequest{
+	naet, err := v21client.NewCSMS(conn).NotifyAllowedEnergyTransfer(ctx, v21msg.NotifyAllowedEnergyTransferRequest{
 		AllowedEnergyTransfer: []string{"AC_single_phase"},
 		TransactionID:         "tx-21-1",
 	})
@@ -69,14 +71,14 @@ func TestE2E_21ChargingSessionGoldenPath(t *testing.T) {
 	require.Equal(t, "Accepted", naet.Status)
 	require.Equal(t, "tx-21-1", <-derTransfer)
 
-	auth, err := cp.Call(ctx, client, v21p.Authorize, v21msg.AuthorizeRequest{
+	auth, err := cpc.Authorize(ctx, v21msg.AuthorizeRequest{
 		IDToken: v21msg.IdTokenType{IDToken: "TAG1", Type: "ISO14443"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Accepted", auth.IDTokenInfo.Status)
 
 	idToken := v21msg.IdTokenType{IDToken: "TAG1", Type: "ISO14443"}
-	_, err = cp.Call(ctx, client, v21p.TransactionEvent, v21msg.TransactionEventRequest{
+	_, err = cpc.TransactionEvent(ctx, v21msg.TransactionEventRequest{
 		EventType:       "Started",
 		IDToken:         &idToken,
 		SeqNo:           1,
@@ -88,7 +90,7 @@ func TestE2E_21ChargingSessionGoldenPath(t *testing.T) {
 	require.Equal(t, "Started", <-transactionEvents)
 
 	stoppedReason := "EVDisconnected"
-	_, err = cp.Call(ctx, client, v21p.TransactionEvent, v21msg.TransactionEventRequest{
+	_, err = cpc.TransactionEvent(ctx, v21msg.TransactionEventRequest{
 		EventType:       "Ended",
 		SeqNo:           2,
 		Timestamp:       time.Now().UTC(),

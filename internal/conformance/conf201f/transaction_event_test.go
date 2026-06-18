@@ -4,12 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v201"
+	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
-	"github.com/stretchr/testify/require"
 )
 
 func testTransactionInfo201f() messages.TransactionType {
@@ -53,8 +51,7 @@ func testTransactionEventRequest201f() messages.TransactionEventRequest {
 func TestTransactionEvent201_RequestValidation(t *testing.T) {
 	useDecimalJSONWithoutQuotes201f(t)
 
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "TransactionEvent", "request")
 
 	cases := []conformance.ValidationCase{
@@ -379,8 +376,7 @@ func TestTransactionEvent201_RequestValidation(t *testing.T) {
 func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 	useDecimalJSONWithoutQuotes201f(t)
 
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "TransactionEvent", "response")
 
 	cases := []conformance.ValidationCase{

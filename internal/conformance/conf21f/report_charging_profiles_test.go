@@ -4,19 +4,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReportChargingProfiles21_RequestValidation(t *testing.T) {
 	useDecimalJSONWithoutQuotes21(t)
 
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "ReportChargingProfiles", "request")
 
 	cases := []conformance.ValidationCase{
@@ -73,8 +70,7 @@ func TestReportChargingProfiles21_RequestValidation(t *testing.T) {
 }
 
 func TestReportChargingProfiles21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "ReportChargingProfiles", "response")
 
 	cases := []conformance.ValidationCase{

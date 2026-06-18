@@ -9,9 +9,9 @@ import (
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
+	v16client "github.com/shiv3/gocpp/v16/client"
 	"github.com/shiv3/gocpp/v16/handlers"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
-	v16p "github.com/shiv3/gocpp/v16/profiles"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,7 +55,7 @@ func TestE2E_RegisterHandlers(t *testing.T) {
 	defer client.Close()
 
 	// Implemented CP->CSMS handler responds.
-	bootResp, err := cp.Call(ctx, client, v16p.BootNotification, v16msg.BootNotificationRequest{
+	bootResp, err := v16client.NewCP(client).BootNotification(ctx, v16msg.BootNotificationRequest{
 		ChargePointVendor: "Acme", ChargePointModel: "M1",
 	})
 	require.NoError(t, err)
@@ -71,13 +71,14 @@ func TestE2E_RegisterHandlers(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond)
 
 	// Implemented CSMS->CP handler responds.
-	resetResp, err := csms.Call(ctx, conn, v16p.Reset, v16msg.ResetRequest{Type: v16msg.ResetRequestTypeSoft})
+	csmsConn := v16client.NewCSMS(conn)
+	resetResp, err := csmsConn.Reset(ctx, v16msg.ResetRequest{Type: v16msg.ResetRequestTypeSoft})
 	require.NoError(t, err)
 	require.Equal(t, v16msg.ResetResponseStatusAccepted, resetResp.Status)
 	require.True(t, cpHandler.resetCalled)
 
 	// Unimplemented CSMS->CP message returns a NotSupported CallError.
-	_, err = csms.Call(ctx, conn, v16p.ChangeConfiguration, v16msg.ChangeConfigurationRequest{Key: "k", Value: "v"})
+	_, err = csmsConn.ChangeConfiguration(ctx, v16msg.ChangeConfigurationRequest{Key: "k", Value: "v"})
 	require.Error(t, err)
 	var callErr *ocppj.CallError
 	require.ErrorAs(t, err, &callErr)

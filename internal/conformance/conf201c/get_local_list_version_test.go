@@ -11,7 +11,7 @@ import (
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v201"
+	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
 	"github.com/stretchr/testify/require"
@@ -25,8 +25,7 @@ const (
 func registry201(t *testing.T) *schema.Registry {
 	t.Helper()
 
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	return reg
 }
 

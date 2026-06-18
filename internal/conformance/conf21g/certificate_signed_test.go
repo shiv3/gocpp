@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	"github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
 	"github.com/shopspring/decimal"
@@ -329,8 +328,7 @@ func requireCSMSRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.M
 }
 
 func TestCertificateSigned21_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "CertificateSigned", "request")
 
 	cases := []conformance.ValidationCase{
@@ -386,8 +384,7 @@ func TestCertificateSigned21_RequestValidation(t *testing.T) {
 }
 
 func TestCertificateSigned21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "CertificateSigned", "response")
 
 	cases := []conformance.ValidationCase{

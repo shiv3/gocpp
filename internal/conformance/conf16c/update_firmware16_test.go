@@ -7,18 +7,16 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v16"
+	v16 "github.com/shiv3/gocpp/v16"
 	messages "github.com/shiv3/gocpp/v16/messages"
 	v16profiles "github.com/shiv3/gocpp/v16/profiles"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUpdateFirmware16_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v16.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "UpdateFirmware", "request")
 
 	retrieveDate := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
@@ -108,8 +106,7 @@ func TestUpdateFirmware16_RequestValidation(t *testing.T) {
 }
 
 func TestUpdateFirmware16_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v16.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "UpdateFirmware", "response")
 
 	cases := []conformance.ValidationCase{

@@ -4,12 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	"github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/stretchr/testify/require"
 )
 
 func validReportDERControlPayload21() map[string]any {
@@ -139,8 +137,7 @@ func validReportDERControlPayload21() map[string]any {
 }
 
 func TestReportDERControl21_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "ReportDERControl", "request")
 
 	validPayload := validReportDERControlPayload21()
@@ -234,8 +231,7 @@ func TestReportDERControl21_RequestValidation(t *testing.T) {
 }
 
 func TestReportDERControl21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "ReportDERControl", "response")
 
 	cases := []conformance.ValidationCase{

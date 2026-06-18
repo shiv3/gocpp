@@ -10,7 +10,7 @@ import (
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v201"
+	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	"github.com/stretchr/testify/require"
 )
@@ -22,8 +22,7 @@ type validationCase = conformance.ValidationCase
 func newRegistry201(t *testing.T) *schema.Registry {
 	t.Helper()
 
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	return reg
 }
 
