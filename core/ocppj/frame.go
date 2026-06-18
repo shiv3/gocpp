@@ -35,9 +35,9 @@ func (m MessageType) String() string {
 type Frame struct {
 	Type    MessageType
 	MsgID   string
-	Action  string // Call only
-	Payload []byte // Call / CallResult: raw JSON object
-	ErrCode string // CallError only
-	ErrDesc string // CallError only
-	ErrData []byte // CallError only: raw JSON object
+	Action  string // Call / Send
+	Payload []byte // Call / CallResult / Send: raw JSON object
+	ErrCode string // CallError / CallResultError
+	ErrDesc string // CallError / CallResultError
+	ErrData []byte // CallError / CallResultError: raw JSON object
 }
