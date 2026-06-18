@@ -87,6 +87,14 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		}
 	}()
 
+	decoded, reject := c.decodeSignedPayload(frame)
+	if reject != nil {
+		status = "signature_invalid"
+		c.sendCallError(frame.MsgID, reject)
+		return
+	}
+	frame.Payload = decoded
+
 	h, ok := c.reg.Lookup(frame.Action)
 	if !ok {
 		status = "not_implemented"
@@ -165,6 +173,13 @@ func (c *Conn) runSendHandler(frame ocppj.Frame) {
 			"cp_id", c.id, "action", frame.Action)
 		return
 	}
+	decoded, reject := c.decodeSignedPayload(frame)
+	if reject != nil {
+		c.cfg.Logger.WarnContext(c.ctx, "dropping unverifiable signed SEND",
+			"cp_id", c.id, "action", frame.Action, "code", reject.Code)
+		return
+	}
+	frame.Payload = decoded
 	reqPayload := frame.Payload
 	if c.cfg.SchemaMode == SchemaModeLenient {
 		out, herr := c.lenientValidate(frame.Action, "request", frame.Payload)
