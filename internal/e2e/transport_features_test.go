@@ -13,6 +13,7 @@ import (
 	"github.com/shiv3/gocpp/core/auth"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
+	v16client "github.com/shiv3/gocpp/v16/client"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
 	v16p "github.com/shiv3/gocpp/v16/profiles"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,7 @@ func TestE2E_ClientBasicAuth(t *testing.T) {
 	ok := cp.NewClient("CP_1", url, cp.WithSubProtocols("ocpp1.6"), cp.WithBasicAuth("CP_1", "s3cret"))
 	require.NoError(t, ok.Connect(ctx))
 	defer ok.Close()
-	_, err := cp.Call(ctx, ok, v16p.Heartbeat, v16msg.HeartbeatRequest{})
+	_, err := v16client.NewCP(ok).Heartbeat(ctx, v16msg.HeartbeatRequest{})
 	require.NoError(t, err)
 
 	// Wrong credentials: the server rejects the upgrade (HTTP 401).
@@ -76,7 +77,7 @@ func TestE2E_ClientTLS(t *testing.T) {
 	require.NoError(t, client.Connect(ctx))
 	defer client.Close()
 
-	_, err := cp.Call(ctx, client, v16p.Heartbeat, v16msg.HeartbeatRequest{})
+	_, err := v16client.NewCP(client).Heartbeat(ctx, v16msg.HeartbeatRequest{})
 	require.NoError(t, err)
 }
 
@@ -140,7 +141,7 @@ func TestE2E_WebSocketPingKeepsIdleConnectionAlive(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	require.True(t, client.IsConnected())
-	_, err := cp.Call(ctx, client, v16p.Heartbeat, v16msg.HeartbeatRequest{})
+	_, err := v16client.NewCP(client).Heartbeat(ctx, v16msg.HeartbeatRequest{})
 	require.NoError(t, err)
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
+	v201client "github.com/shiv3/gocpp/v201/client"
 	v201msg "github.com/shiv3/gocpp/v201/messages"
 	v201p "github.com/shiv3/gocpp/v201/profiles"
 	"github.com/stretchr/testify/require"
@@ -56,15 +57,16 @@ func TestE2E_201TransactionEventGoldenPath(t *testing.T) {
 	require.NoError(t, client.Connect(ctx))
 	defer client.Close()
 	require.Equal(t, "ocpp2.0.1", client.NegotiatedProtocol())
+	cpc := v201client.NewCP(client)
 
-	boot, err := cp.Call(ctx, client, v201p.BootNotification, v201msg.BootNotificationRequest{
+	boot, err := cpc.BootNotification(ctx, v201msg.BootNotificationRequest{
 		ChargingStation: v201msg.ChargingStationType{VendorName: "Acme", Model: "M201"},
 		Reason:          "PowerUp",
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Accepted", boot.Status)
 
-	auth, err := cp.Call(ctx, client, v201p.Authorize, v201msg.AuthorizeRequest{
+	auth, err := cpc.Authorize(ctx, v201msg.AuthorizeRequest{
 		IDToken: v201msg.IdTokenType{IDToken: "TAG1", Type: "ISO14443"},
 	})
 	require.NoError(t, err)
@@ -72,7 +74,7 @@ func TestE2E_201TransactionEventGoldenPath(t *testing.T) {
 
 	connectorID := int32(1)
 	idToken := v201msg.IdTokenType{IDToken: "TAG1", Type: "ISO14443"}
-	_, err = cp.Call(ctx, client, v201p.TransactionEvent, v201msg.TransactionEventRequest{
+	_, err = cpc.TransactionEvent(ctx, v201msg.TransactionEventRequest{
 		EventType:       "Started",
 		EVSE:            &v201msg.EVSEType{ID: 1, ConnectorID: &connectorID},
 		IDToken:         &idToken,
@@ -85,7 +87,7 @@ func TestE2E_201TransactionEventGoldenPath(t *testing.T) {
 	require.Equal(t, "Started", <-transactionEvents)
 
 	stoppedReason := "EVDisconnected"
-	_, err = cp.Call(ctx, client, v201p.TransactionEvent, v201msg.TransactionEventRequest{
+	_, err = cpc.TransactionEvent(ctx, v201msg.TransactionEventRequest{
 		EventType: "Ended",
 		SeqNo:     2,
 		Timestamp: time.Now().UTC(),

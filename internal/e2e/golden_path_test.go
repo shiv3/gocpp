@@ -8,6 +8,7 @@ import (
 
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
+	v16client "github.com/shiv3/gocpp/v16/client"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
 	v16p "github.com/shiv3/gocpp/v16/profiles"
 	"github.com/stretchr/testify/require"
@@ -44,25 +45,26 @@ func TestE2E_ChargingSessionGoldenPath(t *testing.T) {
 	defer cancel()
 	require.NoError(t, client.Connect(ctx))
 	defer client.Close()
+	cpc := v16client.NewCP(client)
 
-	boot, err := cp.Call(ctx, client, v16p.BootNotification, v16msg.BootNotificationRequest{ChargePointVendor: "Acme", ChargePointModel: "M1"})
+	boot, err := cpc.BootNotification(ctx, v16msg.BootNotificationRequest{ChargePointVendor: "Acme", ChargePointModel: "M1"})
 	require.NoError(t, err)
 	require.Equal(t, v16msg.RegistrationStatusAccepted, boot.Status)
 
-	_, err = cp.Call(ctx, client, v16p.StatusNotification, v16msg.StatusNotificationRequest{ConnectorID: 1, ErrorCode: v16msg.StatusNotificationRequestErrorCodeNoError, Status: v16msg.StatusNotificationRequestStatusPreparing})
+	_, err = cpc.StatusNotification(ctx, v16msg.StatusNotificationRequest{ConnectorID: 1, ErrorCode: v16msg.StatusNotificationRequestErrorCodeNoError, Status: v16msg.StatusNotificationRequestStatusPreparing})
 	require.NoError(t, err)
 
-	auth, err := cp.Call(ctx, client, v16p.Authorize, v16msg.AuthorizeRequest{IDTag: "TAG1"})
+	auth, err := cpc.Authorize(ctx, v16msg.AuthorizeRequest{IDTag: "TAG1"})
 	require.NoError(t, err)
 	require.Equal(t, v16msg.IDTagInfoStatusAccepted, auth.IDTagInfo.Status)
 
-	start, err := cp.Call(ctx, client, v16p.StartTransaction, v16msg.StartTransactionRequest{ConnectorID: 1, IDTag: "TAG1", MeterStart: 0, Timestamp: time.Now()})
+	start, err := cpc.StartTransaction(ctx, v16msg.StartTransactionRequest{ConnectorID: 1, IDTag: "TAG1", MeterStart: 0, Timestamp: time.Now()})
 	require.NoError(t, err)
 	require.Equal(t, int32(1), start.TransactionID)
 
-	_, err = cp.Call(ctx, client, v16p.MeterValues, v16msg.MeterValuesRequest{ConnectorID: 1, MeterValue: []v16msg.MeterValue{{Timestamp: time.Now(), SampledValue: []v16msg.SampledValue{{Value: "100"}}}}})
+	_, err = cpc.MeterValues(ctx, v16msg.MeterValuesRequest{ConnectorID: 1, MeterValue: []v16msg.MeterValue{{Timestamp: time.Now(), SampledValue: []v16msg.SampledValue{{Value: "100"}}}}})
 	require.NoError(t, err)
 
-	_, err = cp.Call(ctx, client, v16p.StopTransaction, v16msg.StopTransactionRequest{TransactionID: 1, MeterStop: 100, Timestamp: time.Now()})
+	_, err = cpc.StopTransaction(ctx, v16msg.StopTransactionRequest{TransactionID: 1, MeterStop: 100, Timestamp: time.Now()})
 	require.NoError(t, err)
 }
