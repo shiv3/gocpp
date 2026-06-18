@@ -8,11 +8,13 @@ import (
 
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/transport"
 )
 
 type clientConfig struct {
 	dispatcher           dispatcher.Config
 	subProtocols         []string
+	compressionMode      transport.CompressionMode
 	heartbeatInterval    time.Duration
 	basicAuthUser        string
 	basicAuthPass        string
@@ -28,8 +30,9 @@ type clientConfig struct {
 
 func defaultClientConfig() clientConfig {
 	return clientConfig{
-		dispatcher:   dispatcher.DefaultConfig(),
-		subProtocols: []string{"ocpp1.6"},
+		dispatcher:      dispatcher.DefaultConfig(),
+		subProtocols:    []string{"ocpp1.6"},
+		compressionMode: transport.CompressionNoContextTakeover,
 	}
 }
 
@@ -43,6 +46,13 @@ func (f optionFunc) apply(c *clientConfig) { f(c) }
 // WithSubProtocols sets offered subprotocols.
 func WithSubProtocols(p ...string) Option {
 	return optionFunc(func(c *clientConfig) { c.subProtocols = p })
+}
+
+// WithCompression sets the RFC 7692 permessage-deflate mode for the dial.
+// Defaults to transport.CompressionNoContextTakeover; pass
+// transport.CompressionDisabled to opt out.
+func WithCompression(m transport.CompressionMode) Option {
+	return optionFunc(func(c *clientConfig) { c.compressionMode = m })
 }
 
 // WithLogger sets the structured logger.

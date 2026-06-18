@@ -11,12 +11,14 @@ import (
 	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
+	"github.com/shiv3/gocpp/core/transport"
 	"go.opentelemetry.io/otel/trace"
 )
 
 type serverConfig struct {
 	dispatcher      dispatcher.Config
 	subProtocols    []string
+	compressionMode transport.CompressionMode
 	path            string
 	cpIDExtractor   CPIDExtractor
 	instanceID      string
@@ -44,6 +46,7 @@ func defaultServerConfig() serverConfig {
 	return serverConfig{
 		dispatcher:      dispatcher.DefaultConfig(),
 		subProtocols:    []string{"ocpp1.6"},
+		compressionMode: transport.CompressionNoContextTakeover,
 		path:            "/ocpp/",
 		duplicatePolicy: DuplicatePolicyCloseExisting,
 		auth:            auth.None{},
@@ -91,6 +94,13 @@ func WithWriteTimeout(d time.Duration) Option {
 // WithSubProtocols sets the offered WebSocket subprotocols (in preference order).
 func WithSubProtocols(p ...string) Option {
 	return optionFunc(func(c *serverConfig) { c.subProtocols = p })
+}
+
+// WithCompression sets the RFC 7692 permessage-deflate mode the server offers.
+// Defaults to transport.CompressionNoContextTakeover; pass
+// transport.CompressionDisabled to opt out.
+func WithCompression(m transport.CompressionMode) Option {
+	return optionFunc(func(c *serverConfig) { c.compressionMode = m })
 }
 
 // WithLogger sets the structured logger.
