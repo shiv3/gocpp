@@ -40,8 +40,8 @@ import (
 	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/csms"
 	v16client "github.com/shiv3/gocpp/v16/client"
+	v16h "github.com/shiv3/gocpp/v16/handlers"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
-	v16p "github.com/shiv3/gocpp/v16/profiles"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -194,6 +194,11 @@ func setupOTel(ctx context.Context) (trace.TracerProvider, observability.Metrics
 }
 
 type app struct {
+	// Embedding UnimplementedCSMSHandler makes *app a complete v16h.CSMSHandler:
+	// the messages whose On* methods are defined below are handled, and every
+	// other CP->CSMS message returns a NotSupported CallError.
+	v16h.UnimplementedCSMSHandler
+
 	logger          *slog.Logger
 	srv             *csms.Server
 	txStore         storage.TransactionStore
@@ -203,84 +208,90 @@ type app struct {
 	txCounter       atomic.Int32
 }
 
+// idTagAccepted/idTagInvalid are the canned authorization results shared by the
+// Authorize/StartTransaction/StopTransaction handlers.
+var (
+	idTagAccepted = v16msg.IDTagInfo{Status: v16msg.IDTagInfoStatusAccepted}
+	idTagInvalid  = v16msg.IDTagInfo{Status: v16msg.IDTagInfoStatusInvalid}
+)
+
+// registerHandlers wires every CP->CSMS handler *app implements in one call.
+// ChangeConfiguration/GetConfiguration are SentByCSMS (CSMS -> CP); the CSMS
+// *sends* those (via v16client.NewCSMS(conn)), so they are not handlers here.
 func (a *app) registerHandlers() {
-	accepted := v16msg.IDTagInfo{Status: v16msg.IDTagInfoStatusAccepted}
-	invalid := v16msg.IDTagInfo{Status: v16msg.IDTagInfoStatusInvalid}
+	must(v16h.RegisterCSMS(a.srv, a))
+}
 
-	must(csms.On(a.srv, v16p.BootNotification, func(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
-		a.logger.Info("BootNotification", "cp", c.ID(), "vendor", req.ChargePointVendor, "model", req.ChargePointModel)
-		if a.autoRemoteStart {
-			go a.driveRemoteStart(c)
-		}
-		return v16msg.BootNotificationResponse{CurrentTime: time.Now().UTC(), Interval: 300, Status: v16msg.RegistrationStatusAccepted}, nil
-	}))
+func (a *app) OnBootNotification(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
+	a.logger.Info("BootNotification", "cp", c.ID(), "vendor", req.ChargePointVendor, "model", req.ChargePointModel)
+	if a.autoRemoteStart {
+		go a.driveRemoteStart(c)
+	}
+	return v16msg.BootNotificationResponse{CurrentTime: time.Now().UTC(), Interval: 300, Status: v16msg.RegistrationStatusAccepted}, nil
+}
 
-	must(csms.On(a.srv, v16p.Heartbeat, func(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
-		a.logger.Info("Heartbeat", "cp", c.ID())
-		return v16msg.HeartbeatResponse{CurrentTime: time.Now().UTC()}, nil
-	}))
+func (a *app) OnHeartbeat(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
+	a.logger.Info("Heartbeat", "cp", c.ID())
+	return v16msg.HeartbeatResponse{CurrentTime: time.Now().UTC()}, nil
+}
 
-	must(csms.On(a.srv, v16p.StatusNotification, func(ctx context.Context, c *csms.Conn, req v16msg.StatusNotificationRequest) (v16msg.StatusNotificationResponse, error) {
-		a.logger.Info("StatusNotification", "cp", c.ID(), "connector", req.ConnectorID, "status", req.Status)
-		return v16msg.StatusNotificationResponse{}, nil
-	}))
+func (a *app) OnStatusNotification(ctx context.Context, c *csms.Conn, req v16msg.StatusNotificationRequest) (v16msg.StatusNotificationResponse, error) {
+	a.logger.Info("StatusNotification", "cp", c.ID(), "connector", req.ConnectorID, "status", req.Status)
+	return v16msg.StatusNotificationResponse{}, nil
+}
 
-	must(csms.On(a.srv, v16p.Authorize, func(ctx context.Context, c *csms.Conn, req v16msg.AuthorizeRequest) (v16msg.AuthorizeResponse, error) {
-		a.logger.Info("Authorize", "cp", c.ID(), "idTag", req.IDTag)
-		if !knownIDTag(req.IDTag) {
-			return v16msg.AuthorizeResponse{IDTagInfo: invalid}, nil
-		}
-		return v16msg.AuthorizeResponse{IDTagInfo: accepted}, nil
-	}))
+func (a *app) OnAuthorize(ctx context.Context, c *csms.Conn, req v16msg.AuthorizeRequest) (v16msg.AuthorizeResponse, error) {
+	a.logger.Info("Authorize", "cp", c.ID(), "idTag", req.IDTag)
+	if !knownIDTag(req.IDTag) {
+		return v16msg.AuthorizeResponse{IDTagInfo: idTagInvalid}, nil
+	}
+	return v16msg.AuthorizeResponse{IDTagInfo: idTagAccepted}, nil
+}
 
-	must(csms.On(a.srv, v16p.StartTransaction, func(ctx context.Context, c *csms.Conn, req v16msg.StartTransactionRequest) (v16msg.StartTransactionResponse, error) {
-		txID := a.txCounter.Add(1)
-		err := a.txStore.Begin(ctx, storage.Transaction{
-			ID:         itoa(txID),
-			CPID:       c.ID(),
-			EVSEID:     int(req.ConnectorID),
-			IDTag:      req.IDTag,
-			StartedAt:  time.Now().UTC(),
-			MeterStart: int(req.MeterStart),
-			Status:     storage.TransactionActive,
-		})
-		if err != nil {
-			a.logger.Error("tx begin", "err", err)
-		}
-		a.logger.Info("StartTransaction", "cp", c.ID(), "tx", txID, "idTag", req.IDTag, "meterStart", req.MeterStart)
-		return v16msg.StartTransactionResponse{TransactionID: txID, IDTagInfo: accepted}, nil
-	}))
+func (a *app) OnStartTransaction(ctx context.Context, c *csms.Conn, req v16msg.StartTransactionRequest) (v16msg.StartTransactionResponse, error) {
+	txID := a.txCounter.Add(1)
+	err := a.txStore.Begin(ctx, storage.Transaction{
+		ID:         itoa(txID),
+		CPID:       c.ID(),
+		EVSEID:     int(req.ConnectorID),
+		IDTag:      req.IDTag,
+		StartedAt:  time.Now().UTC(),
+		MeterStart: int(req.MeterStart),
+		Status:     storage.TransactionActive,
+	})
+	if err != nil {
+		a.logger.Error("tx begin", "err", err)
+	}
+	a.logger.Info("StartTransaction", "cp", c.ID(), "tx", txID, "idTag", req.IDTag, "meterStart", req.MeterStart)
+	return v16msg.StartTransactionResponse{TransactionID: txID, IDTagInfo: idTagAccepted}, nil
+}
 
-	must(csms.On(a.srv, v16p.MeterValues, func(ctx context.Context, c *csms.Conn, req v16msg.MeterValuesRequest) (v16msg.MeterValuesResponse, error) {
-		if req.TransactionID != nil && len(req.MeterValue) > 0 {
-			a.logger.Info("MeterValues", "cp", c.ID(), "tx", *req.TransactionID, "samples", len(req.MeterValue))
-		}
-		return v16msg.MeterValuesResponse{}, nil
-	}))
+func (a *app) OnMeterValues(ctx context.Context, c *csms.Conn, req v16msg.MeterValuesRequest) (v16msg.MeterValuesResponse, error) {
+	if req.TransactionID != nil && len(req.MeterValue) > 0 {
+		a.logger.Info("MeterValues", "cp", c.ID(), "tx", *req.TransactionID, "samples", len(req.MeterValue))
+	}
+	return v16msg.MeterValuesResponse{}, nil
+}
 
-	must(csms.On(a.srv, v16p.StopTransaction, func(ctx context.Context, c *csms.Conn, req v16msg.StopTransactionRequest) (v16msg.StopTransactionResponse, error) {
-		txID := itoa(req.TransactionID)
-		_ = a.txStore.End(ctx, txID, storage.TransactionEnd{EndedAt: time.Now().UTC(), MeterStop: int(req.MeterStop), Status: storage.TransactionCompleted})
-		a.logger.Info("StopTransaction", "cp", c.ID(), "tx", req.TransactionID, "meterStop", req.MeterStop)
-		return v16msg.StopTransactionResponse{IDTagInfo: &accepted}, nil
-	}))
+func (a *app) OnStopTransaction(ctx context.Context, c *csms.Conn, req v16msg.StopTransactionRequest) (v16msg.StopTransactionResponse, error) {
+	txID := itoa(req.TransactionID)
+	_ = a.txStore.End(ctx, txID, storage.TransactionEnd{EndedAt: time.Now().UTC(), MeterStop: int(req.MeterStop), Status: storage.TransactionCompleted})
+	a.logger.Info("StopTransaction", "cp", c.ID(), "tx", req.TransactionID, "meterStop", req.MeterStop)
+	return v16msg.StopTransactionResponse{IDTagInfo: &idTagAccepted}, nil
+}
 
-	must(csms.On(a.srv, v16p.DataTransfer, func(ctx context.Context, c *csms.Conn, req v16msg.DataTransferRequest) (v16msg.DataTransferResponse, error) {
-		return v16msg.DataTransferResponse{Status: "Accepted"}, nil
-	}))
+func (a *app) OnDataTransfer(ctx context.Context, c *csms.Conn, req v16msg.DataTransferRequest) (v16msg.DataTransferResponse, error) {
+	return v16msg.DataTransferResponse{Status: "Accepted"}, nil
+}
 
-	must(csms.On(a.srv, v16p.DiagnosticsStatusNotification, func(ctx context.Context, c *csms.Conn, req v16msg.DiagnosticsStatusNotificationRequest) (v16msg.DiagnosticsStatusNotificationResponse, error) {
-		a.logger.Info("DiagnosticsStatusNotification", "cp", c.ID(), "status", req.Status)
-		return v16msg.DiagnosticsStatusNotificationResponse{}, nil
-	}))
+func (a *app) OnDiagnosticsStatusNotification(ctx context.Context, c *csms.Conn, req v16msg.DiagnosticsStatusNotificationRequest) (v16msg.DiagnosticsStatusNotificationResponse, error) {
+	a.logger.Info("DiagnosticsStatusNotification", "cp", c.ID(), "status", req.Status)
+	return v16msg.DiagnosticsStatusNotificationResponse{}, nil
+}
 
-	must(csms.On(a.srv, v16p.FirmwareStatusNotification, func(ctx context.Context, c *csms.Conn, req v16msg.FirmwareStatusNotificationRequest) (v16msg.FirmwareStatusNotificationResponse, error) {
-		a.logger.Info("FirmwareStatusNotification", "cp", c.ID(), "status", req.Status)
-		return v16msg.FirmwareStatusNotificationResponse{}, nil
-	}))
-	// Note: ChangeConfiguration/GetConfiguration are SentByCSMS (CSMS -> CP); the CSMS
-	// *sends* them (via v16client.NewCSMS(conn)), so they are not registered as
-	// inbound handlers here.
+func (a *app) OnFirmwareStatusNotification(ctx context.Context, c *csms.Conn, req v16msg.FirmwareStatusNotificationRequest) (v16msg.FirmwareStatusNotificationResponse, error) {
+	a.logger.Info("FirmwareStatusNotification", "cp", c.ID(), "status", req.Status)
+	return v16msg.FirmwareStatusNotificationResponse{}, nil
 }
 
 func knownIDTag(idTag string) bool {

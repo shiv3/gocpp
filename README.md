@@ -34,18 +34,31 @@ Requires Go 1.25+.
 ### CSMS (central system)
 
 ```go
-srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1", "ocpp2.0.1", "ocpp1.6"))
+import v16h "github.com/shiv3/gocpp/v16/handlers"
 
-csms.On(srv, v16p.BootNotification, func(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
+// Embed Unimplemented and override only the messages you handle; the rest
+// return a NotSupported CallError automatically.
+type csmsHandler struct{ v16h.UnimplementedCSMSHandler }
+
+func (csmsHandler) OnBootNotification(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
     return v16msg.BootNotificationResponse{
         Status:      v16msg.RegistrationStatusAccepted,
         CurrentTime: time.Now(),
         Interval:    300,
     }, nil
-})
+}
 
-log.Fatal(srv.ListenAndServe(":8080")) // ws://host:8080/ocpp/{cpId}
+func main() {
+    srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1", "ocpp2.0.1", "ocpp1.6"))
+    if err := v16h.RegisterCSMS(srv, csmsHandler{}); err != nil {
+        log.Fatal(err)
+    }
+    log.Fatal(srv.ListenAndServe(":8080")) // ws://host:8080/ocpp/{cpId}
+}
 ```
+
+> Need just one message, or dynamic registration? The lower-level
+> `csms.On(srv, v16p.BootNotification, handlerFunc)` registers a single handler.
 
 ### Charge point (client)
 
