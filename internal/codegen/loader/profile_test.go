@@ -1,6 +1,30 @@
 package loader
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestLoadProfileSendMessage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+version: v21
+profiles:
+  Monitoring:
+    messages:
+      - { name: NotifyPeriodicEventStream, send: NotifyPeriodicEventStream.json, dir: SentByCP }
+`), 0o600))
+
+	ps, err := LoadProfile(path)
+	require.NoError(t, err)
+	m := ps.Profiles["Monitoring"].Messages[0]
+	require.Equal(t, "NotifyPeriodicEventStream.json", m.Send)
+	require.Empty(t, m.Response)
+}
 
 func TestLoadProfile(t *testing.T) {
 	p, err := LoadProfile("../profiles/v16.yaml")

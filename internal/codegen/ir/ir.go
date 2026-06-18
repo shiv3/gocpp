@@ -82,9 +82,10 @@ type Message struct {
 	Action         string
 	Direction      string // "SentByCP" or "SentByCSMS"
 	Request        string // request struct GoName
-	Response       string // response struct GoName
+	Response       string // response struct GoName ("" for SEND)
 	RequestSchema  string // request schema filename
-	ResponseSchema string // response schema filename
+	ResponseSchema string // response schema filename ("" for SEND)
+	IsSend         bool   // OCPP 2.1 SEND: unconfirmed, no response
 }
 
 // File is the full IR for one version, ready to render.

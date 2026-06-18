@@ -13,6 +13,7 @@ type ProfileMessage struct {
 	Name     string `yaml:"name"`
 	Request  string `yaml:"request"`
 	Response string `yaml:"response"`
+	Send     string `yaml:"send"` // OCPP 2.1 SEND: request-only, no response
 	Dir      string `yaml:"dir"`
 }
 

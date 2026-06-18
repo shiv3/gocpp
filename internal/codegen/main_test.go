@@ -59,6 +59,57 @@ func TestGenerate_WritesBootNotification(t *testing.T) {
 	assertFileContains(t, string(pb), "var BootNotification = ocppj.Message[")
 }
 
+func TestGenerate_WritesSendMessage(t *testing.T) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Fatalf("findRepoRoot() error = %v", err)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+	if err := os.Chdir(repoRoot); err != nil {
+		t.Fatalf("Chdir(repoRoot) error = %v", err)
+	}
+
+	tmp := t.TempDir()
+
+	// Write a minimal profile YAML with a single SEND message.
+	profileYAML := filepath.Join(tmp, "v21.yaml")
+	profileContent := `version: v21
+profiles:
+  Monitoring:
+    messages:
+      - { name: NotifyPeriodicEventStream, send: NotifyPeriodicEventStream.json, dir: SentByCP }
+`
+	if err := os.WriteFile(profileYAML, []byte(profileContent), 0o600); err != nil {
+		t.Fatalf("WriteFile profile: %v", err)
+	}
+
+	cfg := genConfig{
+		version:     "v21",
+		profileYAML: profileYAML,
+		schemaDir:   "schemas/v21",
+		outRoot:     tmp,
+	}
+
+	if err := generate(cfg); err != nil {
+		t.Fatalf("generate() error = %v", err)
+	}
+
+	msgFile := filepath.Join(tmp, "v21", "messages", "notify_periodic_event_stream.go")
+	b, err := os.ReadFile(msgFile)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", msgFile, err)
+	}
+	assertFileContains(t, string(b), "type NotifyPeriodicEventStream struct")
+}
+
 func findRepoRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {

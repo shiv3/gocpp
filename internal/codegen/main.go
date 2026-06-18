@@ -72,6 +72,41 @@ func generate(cfg genConfig) error {
 		prof := ps.Profiles[profName]
 		pm := profMsgs{name: profName}
 		for _, m := range prof.Messages {
+			if m.Send != "" {
+				reqStruct := m.Name
+				reqStructs, reqEnums, err := loadTree(cfg.schemaDir, m.Send, reqStruct)
+				if err != nil {
+					return err
+				}
+				msgStructs, err := filterNewStructs(reqStructs, structByName)
+				if err != nil {
+					return err
+				}
+				for _, e := range reqEnums {
+					if err := addEnum(&enumsFile, enumByName, e); err != nil {
+						return err
+					}
+				}
+				if err := copySchema(cfg.schemaDir, m.Send, cfg.outRoot, cfg.version); err != nil {
+					return err
+				}
+				messageFiles[snakeName(m.Name)+".go"] = ir.File{
+					Version: cfg.version,
+					Package: "messages",
+					Structs: msgStructs,
+				}
+				msg := ir.Message{
+					Action:        m.Name,
+					Direction:     m.Dir,
+					Request:       reqStruct,
+					RequestSchema: m.Send,
+					IsSend:        true,
+				}
+				pm.msgs = append(pm.msgs, msg)
+				allMessages = append(allMessages, msg)
+				continue
+			}
+
 			reqStruct := m.Name + "Request"
 			respStruct := m.Name + "Response"
 			reqStructs, reqEnums, err := loadTree(cfg.schemaDir, m.Request, reqStruct)
@@ -139,8 +174,21 @@ func generate(cfg genConfig) error {
 		}
 	}
 
+	// filterCallReply returns only call/reply (non-SEND) messages; SEND-only
+	// render support is added in a later task.
+	filterCallReply := func(msgs []ir.Message) []ir.Message {
+		out := make([]ir.Message, 0, len(msgs))
+		for _, m := range msgs {
+			if !m.IsSend {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+
 	for _, pm := range profiles {
-		pf := ir.File{Version: cfg.version, Messages: pm.msgs}
+		callReplyMsgs := filterCallReply(pm.msgs)
+		pf := ir.File{Version: cfg.version, Messages: callReplyMsgs}
 		src, err := render.Profile(pf, pm.name)
 		if err != nil {
 			return fmt.Errorf("render profile %s: %w", pm.name, err)
@@ -150,28 +198,29 @@ func generate(cfg genConfig) error {
 			return err
 		}
 	}
-	registerSrc, err := render.RegisterFile(cfg.version, allMessages)
+	callReplyMessages := filterCallReply(allMessages)
+	registerSrc, err := render.RegisterFile(cfg.version, callReplyMessages)
 	if err != nil {
 		return fmt.Errorf("render schema registration: %w", err)
 	}
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "profiles", "register.go"), registerSrc); err != nil {
 		return err
 	}
-	handlersSrc, err := render.HandlersFile(cfg.version, allMessages)
+	handlersSrc, err := render.HandlersFile(cfg.version, callReplyMessages)
 	if err != nil {
 		return fmt.Errorf("render handlers: %w", err)
 	}
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "handlers", "handlers.go"), handlersSrc); err != nil {
 		return err
 	}
-	callsSrc, err := render.CallsFile(cfg.version, allMessages)
+	callsSrc, err := render.CallsFile(cfg.version, callReplyMessages)
 	if err != nil {
 		return fmt.Errorf("render calls: %w", err)
 	}
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "calls", "calls.go"), callsSrc); err != nil {
 		return err
 	}
-	clientSrc, err := render.ClientFile(cfg.version, allMessages)
+	clientSrc, err := render.ClientFile(cfg.version, callReplyMessages)
 	if err != nil {
 		return fmt.Errorf("render client: %w", err)
 	}
