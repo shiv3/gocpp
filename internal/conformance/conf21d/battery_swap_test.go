@@ -12,7 +12,7 @@ import (
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
 	"github.com/shopspring/decimal"
@@ -26,8 +26,7 @@ func init() {
 func must21Validator(t *testing.T, action, kind string) *schema.Validator {
 	t.Helper()
 
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	return conformance.MustValidator(t, reg, "2.1", action, kind)
 }
 

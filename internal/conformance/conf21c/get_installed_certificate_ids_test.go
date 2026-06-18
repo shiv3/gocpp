@@ -3,17 +3,14 @@ package conf21c
 import (
 	"testing"
 
-	schema "github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/stretchr/testify/require"
 )
 
 func TestGetInstalledCertificateIds21_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "GetInstalledCertificateIds", "request")
 
 	cases := []conformance.ValidationCase{
@@ -44,8 +41,7 @@ func TestGetInstalledCertificateIds21_RequestValidation(t *testing.T) {
 }
 
 func TestGetInstalledCertificateIds21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "GetInstalledCertificateIds", "response")
 
 	cases := []conformance.ValidationCase{

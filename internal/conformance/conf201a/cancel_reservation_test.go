@@ -6,18 +6,16 @@ import (
 	"testing"
 
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v201"
+	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	"github.com/shiv3/gocpp/v201/profiles"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCancelReservation201_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "CancelReservation", "request")
 
 	cases := []conformance.ValidationCase{
@@ -62,8 +60,7 @@ func TestCancelReservation201_RequestValidation(t *testing.T) {
 }
 
 func TestCancelReservation201_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "CancelReservation", "response")
 
 	cases := []conformance.ValidationCase{

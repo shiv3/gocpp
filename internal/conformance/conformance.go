@@ -5,7 +5,10 @@ package conformance
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
+	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +18,33 @@ import (
 	"github.com/shiv3/gocpp/csms"
 	"github.com/stretchr/testify/require"
 )
+
+var (
+	regMu    sync.Mutex
+	regCache = map[uintptr]*schema.Registry{}
+)
+
+// SchemaRegistry returns a process-cached registry built by register (e.g.
+// v21.RegisterSchemas). Building a registry eagerly compiles every schema for a
+// version — ~24ms for 2.1's 181 schemas, far more under -race — so rebuilding it
+// in each conformance test (which needs only a validator or two) dominated the
+// suite's runtime. Caching one registry per register func makes every test after
+// the first reuse it. The registry is read-only after building (validators are
+// immutable and Lookup is read-locked), so sharing across tests is safe.
+func SchemaRegistry(register func(*schema.Registry) error) *schema.Registry {
+	key := reflect.ValueOf(register).Pointer()
+	regMu.Lock()
+	defer regMu.Unlock()
+	if r, ok := regCache[key]; ok {
+		return r
+	}
+	r := schema.NewRegistry()
+	if err := register(r); err != nil {
+		panic(fmt.Sprintf("conformance: build schema registry: %v", err))
+	}
+	regCache[key] = r
+	return r
+}
 
 // ValidationCase is one named JSON Schema validation scenario.
 type ValidationCase struct {

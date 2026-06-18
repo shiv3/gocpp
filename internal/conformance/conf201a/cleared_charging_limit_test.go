@@ -5,18 +5,16 @@ import (
 	"testing"
 
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v201"
+	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
 	"github.com/stretchr/testify/require"
 )
 
 func TestClearedChargingLimit201_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "ClearedChargingLimit", "request")
 
 	cases := []conformance.ValidationCase{
@@ -70,8 +68,7 @@ func TestClearedChargingLimit201_RequestValidation(t *testing.T) {
 }
 
 func TestClearedChargingLimit201_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "ClearedChargingLimit", "response")
 
 	cases := []conformance.ValidationCase{

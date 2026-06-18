@@ -7,18 +7,16 @@ import (
 	"testing"
 
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v16"
+	v16 "github.com/shiv3/gocpp/v16"
 	"github.com/shiv3/gocpp/v16/messages"
 	v16profiles "github.com/shiv3/gocpp/v16/profiles"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDataTransfer16_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v16.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "DataTransfer", "request")
 
 	cases := []conformance.ValidationCase{
@@ -72,8 +70,7 @@ func TestDataTransfer16_RequestValidation(t *testing.T) {
 }
 
 func TestDataTransfer16_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v16.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "DataTransfer", "response")
 
 	cases := []conformance.ValidationCase{

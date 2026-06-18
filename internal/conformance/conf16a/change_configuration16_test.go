@@ -7,18 +7,16 @@ import (
 	"testing"
 
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v16"
+	v16 "github.com/shiv3/gocpp/v16"
 	"github.com/shiv3/gocpp/v16/messages"
 	v16profiles "github.com/shiv3/gocpp/v16/profiles"
 	"github.com/stretchr/testify/require"
 )
 
 func TestChangeConfiguration16_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v16.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "ChangeConfiguration", "request")
 
 	cases := []conformance.ValidationCase{
@@ -71,8 +69,7 @@ func TestChangeConfiguration16_RequestValidation(t *testing.T) {
 }
 
 func TestChangeConfiguration16_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v16.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "ChangeConfiguration", "response")
 
 	cases := []conformance.ValidationCase{

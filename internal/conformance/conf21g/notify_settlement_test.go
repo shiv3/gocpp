@@ -4,12 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	"github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/stretchr/testify/require"
 )
 
 func validNotifySettlementPayload21() map[string]any {
@@ -37,8 +35,7 @@ func validNotifySettlementPayload21() map[string]any {
 }
 
 func TestNotifySettlement21_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "NotifySettlement", "request")
 
 	validPayload := validNotifySettlementPayload21()
@@ -90,8 +87,7 @@ func TestNotifySettlement21_RequestValidation(t *testing.T) {
 }
 
 func TestNotifySettlement21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "NotifySettlement", "response")
 
 	cases := []conformance.ValidationCase{

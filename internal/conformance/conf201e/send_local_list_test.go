@@ -3,17 +3,14 @@ package conf201e
 import (
 	"testing"
 
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v201"
+	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSendLocalList201_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "SendLocalList", "request")
 
 	authData := testAuthorizationData201e()
@@ -115,8 +112,7 @@ func TestSendLocalList201_RequestValidation(t *testing.T) {
 }
 
 func TestSendLocalList201_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v201.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "SendLocalList", "response")
 
 	cases := []conformance.ValidationCase{

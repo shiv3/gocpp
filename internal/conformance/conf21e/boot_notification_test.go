@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
 	"github.com/stretchr/testify/require"
@@ -104,8 +103,7 @@ func requireCSMSRejectsWrongDirection[Req, Resp any](t *testing.T, msg ocppj.Mes
 }
 
 func TestBootNotification21_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "BootNotification", "request")
 
 	cases := []conformance.ValidationCase{
@@ -185,8 +183,7 @@ func TestBootNotification21_RequestValidation(t *testing.T) {
 }
 
 func TestBootNotification21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "BootNotification", "response")
 
 	cases := []conformance.ValidationCase{

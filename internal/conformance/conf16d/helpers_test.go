@@ -11,7 +11,7 @@ import (
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v16"
+	v16 "github.com/shiv3/gocpp/v16"
 	"github.com/shiv3/gocpp/v16/messages"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
@@ -24,8 +24,7 @@ func init() {
 func must16Validator(t *testing.T, action, kind string) *schema.Validator {
 	t.Helper()
 
-	reg := schema.NewRegistry()
-	require.NoError(t, v16.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	return conformance.MustValidator(t, reg, "1.6", action, kind)
 }
 

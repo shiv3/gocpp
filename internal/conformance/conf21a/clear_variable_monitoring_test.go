@@ -3,17 +3,14 @@ package conf21a
 import (
 	"testing"
 
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/internal/conformance"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	"github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/stretchr/testify/require"
 )
 
 func TestClearVariableMonitoring21_RequestValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 
 	cases := []conformance.ValidationCase{
 		{
@@ -34,8 +31,7 @@ func TestClearVariableMonitoring21_RequestValidation(t *testing.T) {
 }
 
 func TestClearVariableMonitoring21_ResponseValidation(t *testing.T) {
-	reg := schema.NewRegistry()
-	require.NoError(t, v21.RegisterSchemas(reg))
+	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 
 	cases := []conformance.ValidationCase{
 		{

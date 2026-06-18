@@ -8,7 +8,7 @@ import (
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
-	"github.com/shiv3/gocpp/v21"
+	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
