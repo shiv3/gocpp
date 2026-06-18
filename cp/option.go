@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/ocppj/signing"
 	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/core/transport"
 )
@@ -53,6 +54,22 @@ func WithSubProtocols(p ...string) Option {
 // transport.CompressionDisabled to opt out.
 func WithCompression(m transport.CompressionMode) Option {
 	return optionFunc(func(c *clientConfig) { c.compressionMode = m })
+}
+
+// WithSigner signs outbound CALL/SEND messages (OCPP 2.1 Signed Messages).
+func WithSigner(s *signing.Signer) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.Signer = s })
+}
+
+// WithVerifier verifies inbound signed CALL/SEND messages.
+func WithVerifier(v *signing.Verifier) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.Verifier = v })
+}
+
+// WithRequireSignature rejects inbound signed messages that fail verification
+// instead of unwrapping and processing them.
+func WithRequireSignature(require bool) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.RequireSignatureVerification = require })
 }
 
 // WithLogger sets the structured logger.
