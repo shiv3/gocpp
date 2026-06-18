@@ -496,6 +496,7 @@ type CSMSHandler interface {
 	OnNotifyMonitoringReport(context.Context, *csms.Conn, messages.NotifyMonitoringReportRequest) (messages.NotifyMonitoringReportResponse, error)
 	OnLogStatusNotification(context.Context, *csms.Conn, messages.LogStatusNotificationRequest) (messages.LogStatusNotificationResponse, error)
 	OnNotifyCustomerInformation(context.Context, *csms.Conn, messages.NotifyCustomerInformationRequest) (messages.NotifyCustomerInformationResponse, error)
+	OnNotifyPeriodicEventStream(context.Context, *csms.Conn, messages.NotifyPeriodicEventStream) error
 	OnNotifyDisplayMessages(context.Context, *csms.Conn, messages.NotifyDisplayMessagesRequest) (messages.NotifyDisplayMessagesResponse, error)
 	OnFirmwareStatusNotification(context.Context, *csms.Conn, messages.FirmwareStatusNotificationRequest) (messages.FirmwareStatusNotificationResponse, error)
 	OnPublishFirmwareStatusNotification(context.Context, *csms.Conn, messages.PublishFirmwareStatusNotificationRequest) (messages.PublishFirmwareStatusNotificationResponse, error)
@@ -573,6 +574,10 @@ func (UnimplementedCSMSHandler) OnLogStatusNotification(context.Context, *csms.C
 
 func (UnimplementedCSMSHandler) OnNotifyCustomerInformation(context.Context, *csms.Conn, messages.NotifyCustomerInformationRequest) (messages.NotifyCustomerInformationResponse, error) {
 	return messages.NotifyCustomerInformationResponse{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, "NotifyCustomerInformation not implemented", nil)
+}
+
+func (UnimplementedCSMSHandler) OnNotifyPeriodicEventStream(context.Context, *csms.Conn, messages.NotifyPeriodicEventStream) error {
+	return nil
 }
 
 func (UnimplementedCSMSHandler) OnNotifyDisplayMessages(context.Context, *csms.Conn, messages.NotifyDisplayMessagesRequest) (messages.NotifyDisplayMessagesResponse, error) {
@@ -698,6 +703,9 @@ func RegisterCSMS(s *csms.Server, h CSMSHandler) error {
 		return err
 	}
 	if err := csms.On(s, profiles.NotifyCustomerInformation, h.OnNotifyCustomerInformation); err != nil {
+		return err
+	}
+	if err := csms.OnSend(s, profiles.NotifyPeriodicEventStream, h.OnNotifyPeriodicEventStream); err != nil {
 		return err
 	}
 	if err := csms.On(s, profiles.NotifyDisplayMessages, h.OnNotifyDisplayMessages); err != nil {

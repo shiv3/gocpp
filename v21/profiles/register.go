@@ -73,6 +73,7 @@ func RegisterSchemas(r *schema.Registry) error {
 		{"GetPeriodicEventStream", "response", "GetPeriodicEventStreamResponse.json"},
 		{"OpenPeriodicEventStream", "request", "OpenPeriodicEventStreamRequest.json"},
 		{"OpenPeriodicEventStream", "response", "OpenPeriodicEventStreamResponse.json"},
+		{"NotifyPeriodicEventStream", "request", "NotifyPeriodicEventStream.json"},
 		{"SetDisplayMessage", "request", "SetDisplayMessageRequest.json"},
 		{"SetDisplayMessage", "response", "SetDisplayMessageResponse.json"},
 		{"GetDisplayMessages", "request", "GetDisplayMessagesRequest.json"},
