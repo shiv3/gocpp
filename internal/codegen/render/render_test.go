@@ -113,6 +113,67 @@ func TestRenderClient(t *testing.T) {
 	}
 }
 
+func TestProfileRendersSendMessage(t *testing.T) {
+	f := ir.File{Version: "v21", Messages: []ir.Message{
+		{Action: "NotifyPeriodicEventStream", Direction: "SentByCP", Request: "NotifyPeriodicEventStream", IsSend: true},
+	}}
+	src, err := Profile(f, "Monitoring")
+	if err != nil {
+		t.Fatalf("Profile() error = %v", err)
+	}
+	assertContains(t, string(src), "var NotifyPeriodicEventStream = ocppj.SendMessage[messages.NotifyPeriodicEventStream]{Action: \"NotifyPeriodicEventStream\", Direction: ocppj.SentByCP}")
+}
+
+func TestHandlersRenderSendNoResponse(t *testing.T) {
+	msgs := []ir.Message{{Action: "NotifyPeriodicEventStream", Direction: "SentByCP", Request: "NotifyPeriodicEventStream", IsSend: true}}
+	src, err := HandlersFile("v21", msgs)
+	if err != nil {
+		t.Fatalf("HandlersFile() error = %v", err)
+	}
+	s := string(src)
+	assertContains(t, s, "OnNotifyPeriodicEventStream(context.Context, *csms.Conn, messages.NotifyPeriodicEventStream) error")
+	assertContains(t, s, "csms.OnSend(s, profiles.NotifyPeriodicEventStream, h.OnNotifyPeriodicEventStream)")
+}
+
+func TestCallsRendersSendNoResponse(t *testing.T) {
+	msgs := []ir.Message{{Action: "NotifyPeriodicEventStream", Direction: "SentByCP", Request: "NotifyPeriodicEventStream", IsSend: true}}
+	src, err := CallsFile("v21", msgs)
+	if err != nil {
+		t.Fatalf("CallsFile() error = %v", err)
+	}
+	s := string(src)
+	assertContains(t, s, "func CPNotifyPeriodicEventStream(ctx context.Context, c *cp.Client, req messages.NotifyPeriodicEventStream) error")
+	assertContains(t, s, "return cp.Send(ctx, c, profiles.NotifyPeriodicEventStream, req)")
+}
+
+func TestClientRendersSendNoResponse(t *testing.T) {
+	msgs := []ir.Message{{Action: "NotifyPeriodicEventStream", Direction: "SentByCP", Request: "NotifyPeriodicEventStream", IsSend: true}}
+	src, err := ClientFile("v21", msgs)
+	if err != nil {
+		t.Fatalf("ClientFile() error = %v", err)
+	}
+	s := string(src)
+	assertContains(t, s, "func (c CP) NotifyPeriodicEventStream(ctx context.Context, req messages.NotifyPeriodicEventStream) error")
+	assertContains(t, s, "return cp.Send(ctx, c.Client, profiles.NotifyPeriodicEventStream, req)")
+	// SEND has no Async variant.
+	if strings.Contains(s, "NotifyPeriodicEventStreamAsync") {
+		t.Fatalf("SEND must not generate an Async method:\n%s", s)
+	}
+}
+
+func TestRegisterRendersSendRequestOnly(t *testing.T) {
+	msgs := []ir.Message{{Action: "NotifyPeriodicEventStream", Direction: "SentByCP", Request: "NotifyPeriodicEventStream", RequestSchema: "NotifyPeriodicEventStream.json", IsSend: true}}
+	src, err := RegisterFile("v21", msgs)
+	if err != nil {
+		t.Fatalf("RegisterFile() error = %v", err)
+	}
+	s := string(src)
+	assertContains(t, s, `{"NotifyPeriodicEventStream", "request", "NotifyPeriodicEventStream.json"}`)
+	if strings.Contains(s, `"NotifyPeriodicEventStream", "response"`) {
+		t.Fatalf("SEND must not register a response schema:\n%s", s)
+	}
+}
+
 func assertContains(t *testing.T, s, substr string) {
 	t.Helper()
 	if !strings.Contains(s, substr) {

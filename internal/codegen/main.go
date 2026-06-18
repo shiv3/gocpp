@@ -174,21 +174,8 @@ func generate(cfg genConfig) error {
 		}
 	}
 
-	// filterCallReply returns only call/reply (non-SEND) messages; SEND-only
-	// render support is added in a later task.
-	filterCallReply := func(msgs []ir.Message) []ir.Message {
-		out := make([]ir.Message, 0, len(msgs))
-		for _, m := range msgs {
-			if !m.IsSend {
-				out = append(out, m)
-			}
-		}
-		return out
-	}
-
 	for _, pm := range profiles {
-		callReplyMsgs := filterCallReply(pm.msgs)
-		pf := ir.File{Version: cfg.version, Messages: callReplyMsgs}
+		pf := ir.File{Version: cfg.version, Messages: pm.msgs}
 		src, err := render.Profile(pf, pm.name)
 		if err != nil {
 			return fmt.Errorf("render profile %s: %w", pm.name, err)
@@ -198,29 +185,28 @@ func generate(cfg genConfig) error {
 			return err
 		}
 	}
-	callReplyMessages := filterCallReply(allMessages)
-	registerSrc, err := render.RegisterFile(cfg.version, callReplyMessages)
+	registerSrc, err := render.RegisterFile(cfg.version, allMessages)
 	if err != nil {
 		return fmt.Errorf("render schema registration: %w", err)
 	}
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "profiles", "register.go"), registerSrc); err != nil {
 		return err
 	}
-	handlersSrc, err := render.HandlersFile(cfg.version, callReplyMessages)
+	handlersSrc, err := render.HandlersFile(cfg.version, allMessages)
 	if err != nil {
 		return fmt.Errorf("render handlers: %w", err)
 	}
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "handlers", "handlers.go"), handlersSrc); err != nil {
 		return err
 	}
-	callsSrc, err := render.CallsFile(cfg.version, callReplyMessages)
+	callsSrc, err := render.CallsFile(cfg.version, allMessages)
 	if err != nil {
 		return fmt.Errorf("render calls: %w", err)
 	}
 	if err := writeFile(filepath.Join(cfg.outRoot, cfg.version, "calls", "calls.go"), callsSrc); err != nil {
 		return err
 	}
-	clientSrc, err := render.ClientFile(cfg.version, callReplyMessages)
+	clientSrc, err := render.ClientFile(cfg.version, allMessages)
 	if err != nil {
 		return fmt.Errorf("render client: %w", err)
 	}
