@@ -401,6 +401,39 @@ func TestConn_SendNoReply(t *testing.T) {
 	}
 }
 
+func TestConn_SendHandlerPanicRecoveredAndSurvives(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	reg := NewHandlerRegistry()
+	ok := make(chan struct{}, 1)
+	reg.RegisterSend("PanicSend", func(_ context.Context, _ *Conn, _ []byte) error {
+		panic("boom")
+	})
+	reg.RegisterSend("GoodSend", func(_ context.Context, _ *Conn, _ []byte) error {
+		ok <- struct{}{}
+		return nil
+	})
+	c := NewConn("CP_1", f, DefaultConfig(), reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	// A panicking SEND handler must not crash the process or reply.
+	f.Inject([]byte(`[6,"m1","PanicSend",{}]`))
+	// The connection must survive: a subsequent SEND is still dispatched.
+	f.Inject([]byte(`[6,"m2","GoodSend",{}]`))
+
+	select {
+	case <-ok:
+	case <-time.After(2 * time.Second):
+		t.Fatal("connection did not survive a panicking SEND handler")
+	}
+	select {
+	case b := <-f.Sent():
+		t.Fatalf("SEND must not reply, got %s", b)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
 func TestConn_SendMissingHandlerNoReply(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")

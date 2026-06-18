@@ -150,6 +150,15 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 // the receiver MUST NOT reply with a CallResult or CallError, so every outcome
 // (missing handler, schema-invalid, handler error) is logged and dropped.
 func (c *Conn) runSendHandler(frame ocppj.Frame) {
+	// A panic in a user SEND handler must not crash the peer/process. Unlike a
+	// Call, a SEND has no reply, so recover, log, and drop.
+	defer func() {
+		if r := recover(); r != nil {
+			c.cfg.Logger.ErrorContext(c.ctx, "SEND handler panic recovered",
+				"cp_id", c.id, "action", frame.Action, "panic", r)
+		}
+	}()
+
 	h, ok := c.reg.LookupSend(frame.Action)
 	if !ok {
 		c.cfg.Logger.DebugContext(c.ctx, "no SEND handler registered, dropping",
