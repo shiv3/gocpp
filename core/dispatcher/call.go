@@ -68,11 +68,11 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 		respCh: make(chan rawResult, 1),
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, c.cfg.CallTimeout)
-	defer cancel()
-	pc.cancel = context.AfterFunc(timeoutCtx, func() {
+	// One runtime timer is the call timeout; the final select below already
+	// watches the caller's ctx and the connection's.
+	pc.cancel = time.AfterFunc(c.cfg.CallTimeout, func() {
 		c.pending.resolve(msgID, rawResult{err: ocppj.ErrCallTimeout})
-	})
+	}).Stop
 
 	c.pending.add(msgID, pc)
 	c.cfg.Metrics.PendingDelta(1)

@@ -121,5 +121,8 @@ func (c *Conn) stopTimers() {
 	if c.pingTimer != nil {
 		c.pingTimer.Stop()
 	}
+	if t := c.wTimer.Load(); t != nil {
+		t.Stop()
+	}
 	c.tmu.Unlock()
 }

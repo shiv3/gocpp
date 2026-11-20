@@ -277,6 +277,19 @@ All notable changes to this project are documented here. The format is based on
   when the 4-slot queue was full). `transport.WS` documents that `Ping` and
   `Close` may run concurrently with `Write`, that `Write` calls are serialized
   by the dispatcher, and that the slice returned by `Read` belongs to the caller.
+- Dispatcher allocation diet (per message and per connection): the inbound
+  handler context is built from one per-connection base plus the message id (and
+  the `HandlerTimeout` deadline) instead of five nested contexts; the outbound
+  call timeout is one `time.AfterFunc` instead of a context plus a context
+  callback; the write timeout of a transport that implements the new optional
+  `transport.Aborter` (the built-in coder transport and `FakeWS` do) is one lazily
+  armed timer per connection instead of a context per write (other transports
+  keep a per-write context); trace span attributes are set only for recording
+  spans. Observable differences: a `DoCall` whose own context ends first now
+  always returns that context's error (before, it could randomly return
+  `ErrCallTimeout`), and a write that exceeds `WriteTimeout` aborts the socket
+  without a close frame, as before. `transport.StatusAbnormalClosure` (1006) is
+  added.
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.

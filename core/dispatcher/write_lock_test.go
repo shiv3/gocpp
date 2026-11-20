@@ -56,6 +56,11 @@ func (g *gateWS) Write(ctx context.Context, data []byte) error {
 	return g.FakeWS.Write(ctx, data)
 }
 
+func (g *gateWS) Abort() error {
+	g.once.Do(func() { close(g.closed) })
+	return g.FakeWS.Abort()
+}
+
 func (g *gateWS) Close(code transport.StatusCode, reason string) error {
 	g.once.Do(func() { close(g.closed) })
 	return g.FakeWS.Close(code, reason)

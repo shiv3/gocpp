@@ -48,6 +48,9 @@ func (w *coderWS) Close(code StatusCode, reason string) error {
 	return w.c.Close(websocket.StatusCode(code), reason)
 }
 
+// Abort drops the connection without a close handshake (coder's CloseNow).
+func (w *coderWS) Abort() error { return w.c.CloseNow() }
+
 func (w *coderWS) Subprotocol() string {
 	return w.c.Subprotocol()
 }

@@ -104,6 +104,10 @@ func (f *FakeWS) Close(code StatusCode, reason string) error {
 	return nil
 }
 
+// Abort closes the fake at once, recording an abnormal closure unless Close
+// already ran. It makes FakeWS a transport.Aborter.
+func (f *FakeWS) Abort() error { return f.Close(StatusAbnormalClosure, "aborted") }
+
 // CloseCode returns the code and reason of the first Close call; ok is false if
 // Close has not been called yet.
 func (f *FakeWS) CloseCode() (code StatusCode, reason string, ok bool) {
