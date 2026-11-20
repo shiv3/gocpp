@@ -11,23 +11,29 @@ import (
 // process — it validates the MessageRouter contract before real broker adapters.
 type InProcessHub struct {
 	mu       sync.RWMutex
-	bindings map[string]string // cpID -> instanceID
+	dir      *globalDirectory // cpID -> instanceID, shared with Registry()
 	handlers map[string]storage.RemoteHandler
 }
 
 // NewInProcessHub creates a hub.
 func NewInProcessHub() *InProcessHub {
 	return &InProcessHub{
-		bindings: make(map[string]string),
+		dir:      newGlobalDirectory(),
 		handlers: make(map[string]storage.RemoteHandler),
 	}
 }
 
 // Bind records which instance holds a charge point.
 func (h *InProcessHub) Bind(cpID, instanceID string) {
-	h.mu.Lock()
-	h.bindings[cpID] = instanceID
-	h.mu.Unlock()
+	h.dir.put(cpID, instanceID)
+}
+
+// Registry returns a ConnectionRegistry for one instance: its local connection
+// table is private, while the global route table is the hub's, shared by every
+// registry and router the hub hands out. Pair it with Router for the same
+// instance id.
+func (h *InProcessHub) Registry() storage.ConnectionRegistry {
+	return newRegistry(h.dir)
 }
 
 // Router returns a MessageRouter for the given instance.
@@ -45,8 +51,8 @@ func (r *hubRouter) CallLocal(context.Context, string, string, []byte) ([]byte, 
 }
 
 func (r *hubRouter) CallRemote(ctx context.Context, cpID, action string, req []byte) ([]byte, error) {
+	inst, ok := r.hub.dir.lookup(cpID)
 	r.hub.mu.RLock()
-	inst, ok := r.hub.bindings[cpID]
 	h := r.hub.handlers[inst]
 	r.hub.mu.RUnlock()
 	if !ok || h == nil {
@@ -60,5 +66,8 @@ func (r *hubRouter) ServeRemote(ctx context.Context, handler storage.RemoteHandl
 	r.hub.handlers[r.instanceID] = handler
 	r.hub.mu.Unlock()
 	<-ctx.Done()
+	r.hub.mu.Lock()
+	delete(r.hub.handlers, r.instanceID)
+	r.hub.mu.Unlock()
 	return ctx.Err()
 }

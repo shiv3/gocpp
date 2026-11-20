@@ -183,7 +183,12 @@ func WithOnDisconnect(fn func(*Conn, error)) Option {
 	return optionFunc(func(c *serverConfig) { c.onDisconnect = fn })
 }
 
-// WithInstanceID sets the CSMS instance identifier (multi-instance deployments).
+// WithInstanceID sets this CSMS instance's identifier and turns on multi-instance
+// routing: the instance registers every charge point it holds in the registry's
+// global table under this id, serves calls forwarded by other instances through
+// the message router (WithMessageRouter), and Server.Lookup can forward calls to
+// charge points held elsewhere. The id must be unique per running instance. See
+// docs/clustering.md.
 func WithInstanceID(id string) Option {
 	return optionFunc(func(c *serverConfig) { c.instanceID = id })
 }

@@ -115,7 +115,7 @@ CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithC
 `WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
 `WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
-`WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`.
+`WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`, `WithInstanceID` (see [clustering](clustering.md)).
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithBasicAuth`,

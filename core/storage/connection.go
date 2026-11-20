@@ -23,3 +23,19 @@ type ConnectionRegistry interface {
 	LookupGlobal(ctx context.Context, cpID string) (instanceID string, ok bool, err error)
 	DeleteGlobal(ctx context.Context, cpID string) error
 }
+
+// OwnedGlobalDeleter is an optional extension of ConnectionRegistry. A registry
+// that implements it lets the server delete a global route only while it still
+// names the caller, as one atomic compare-and-delete.
+//
+// Without it a disconnecting instance has to LookupGlobal and then DeleteGlobal,
+// which can erase the route of a newer connection that another instance
+// registered in between. The CSMS server uses DeleteGlobalIf when the registry
+// provides it and falls back to that check-then-delete otherwise, so existing
+// registry implementations keep working unchanged.
+type OwnedGlobalDeleter interface {
+	// DeleteGlobalIf removes the global route for cpID only if it currently
+	// names instanceID. It reports whether the route was removed; a route owned
+	// by another instance (or absent) is not an error.
+	DeleteGlobalIf(ctx context.Context, cpID, instanceID string) (deleted bool, err error)
+}

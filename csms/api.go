@@ -32,7 +32,26 @@ func On[Req, Resp any](s *Server, m ocppj.Message[Req, Resp], h func(ctx context
 // returns the raw response. Used by tools/tests that operate on untyped messages
 // (the typed Call is preferred for application code).
 func CallRaw(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error) {
+	return doCall(ctx, c, action, payload)
+}
+
+// doCall sends on the local connection, or forwards through the router when c is
+// a handle for a charge point held by another instance.
+func doCall(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error) {
+	if c.inner == nil {
+		return c.srv.callRemote(ctx, c.remoteID, action, payload)
+	}
 	return dispatcher.DoCall(ctx, c.inner, action, payload)
+}
+
+// doCallAsync is the asynchronous form of doCall. A remote call has no outbound
+// queue on this instance, so it simply runs in its own goroutine.
+func doCallAsync(ctx context.Context, c *Conn, action string, payload []byte, cb func([]byte, error)) error {
+	if c.inner == nil {
+		go func() { cb(c.srv.callRemote(ctx, c.remoteID, action, payload)) }()
+		return nil
+	}
+	return doCallAsync(ctx, c, action, payload, cb)
 }
 
 // Call sends a typed message to a connected charge point and returns the response.
@@ -45,7 +64,7 @@ func Call[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req, Resp
 	if err != nil {
 		return zero, fmt.Errorf("marshal request: %w", err)
 	}
-	respPayload, err := dispatcher.DoCall(ctx, c.inner, m.Action, reqPayload)
+	respPayload, err := doCall(ctx, c, m.Action, reqPayload)
 	if err != nil {
 		return zero, err
 	}
@@ -69,7 +88,7 @@ func CallAsync[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req,
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
 	}
-	return dispatcher.DoCallAsync(ctx, c.inner, m.Action, reqPayload, func(payload []byte, callErr error) {
+	return doCallAsync(ctx, c, m.Action, reqPayload, func(payload []byte, callErr error) {
 		var resp Resp
 		if callErr != nil {
 			cb(resp, callErr)
@@ -85,5 +104,5 @@ func CallAsync[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req,
 
 // CallRawAsync is the untyped form of CallAsync.
 func CallRawAsync(ctx context.Context, c *Conn, action string, payload []byte, cb func([]byte, error)) error {
-	return dispatcher.DoCallAsync(ctx, c.inner, action, payload, cb)
+	return doCallAsync(ctx, c, action, payload, cb)
 }
