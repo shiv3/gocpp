@@ -12,7 +12,7 @@ import (
 
 func TestReaderCallResultErrorResolvesPending(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	f := transport.NewFakeWS("ocpp1.6")
+	f := transport.NewFakeWS("ocpp2.1")
 	c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 	c.Start(context.Background())
 	defer func() { _ = c.Close(nil) }()
