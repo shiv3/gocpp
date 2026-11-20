@@ -128,3 +128,12 @@ func TestRuntimeSafetyOptions(t *testing.T) {
 	require.Equal(t, 7, s.cfg.maxConnections)
 	require.Zero(t, NewServer(WithMaxConnections(-3)).cfg.maxConnections)
 }
+
+func TestQueueSizeOptions(t *testing.T) {
+	srv := NewServer(WithInboundQueueSize(9), WithOutboundQueueSize(7))
+	require.Equal(t, 9, srv.cfg.dispatcher.InboundQueueSize)
+	require.Equal(t, 7, srv.cfg.dispatcher.OutboundQueueSize)
+	def := NewServer(WithInboundQueueSize(0), WithOutboundQueueSize(-1))
+	require.Equal(t, 4, def.cfg.dispatcher.InboundQueueSize)
+	require.Equal(t, 4, def.cfg.dispatcher.OutboundQueueSize)
+}

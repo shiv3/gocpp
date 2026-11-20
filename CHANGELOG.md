@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `InboundQueueSize` in `dispatcher.Config` plus `WithInboundQueueSize` and
+  `WithOutboundQueueSize` (csms and cp): the reader-to-dispatcher queue is now sized
+  independently of the writer queue.
 - Footprint benchmarks and guard (`benchmarks/footprint_test.go`):
   `BenchmarkIdleFootprint` (2,000 idle connections, heap/stack/goroutines per
   connection, idle and after one Heartbeat), `BenchmarkHeartbeatMessage[Parallel]`
@@ -196,6 +199,13 @@ All notable changes to this project are documented here. The format is based on
   details element, so pending calls resolve immediately instead of timing out.
 
 ### Changed
+- Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
+  `InboundQueueSize` defaults to 4 (the inbound queue used to share
+  `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.
+  The inbound queue only fills while all `MaxConcurrentHandlers` slots are busy,
+  and then stops the reader (CALLRESULTs included); handlers that block for long
+  on one connection may want `WithInboundQueueSize` raised. Migration: set the
+  two options to 64 to restore the old depths.
 - Strict schema mode now enforces the OCPP-J 36-character message id limit on
   inbound CALLs: an over-long id is answered with CALLERROR FormationViolation
   (FormatViolation on 2.x, id echoed) and an empty id is dropped. Lenient and

@@ -112,8 +112,20 @@ type Config struct {
 	// the connection drops (see Conn.HandlerContext).
 	HandlerTimeout time.Duration
 	// MaxMessageSize is the largest inbound WebSocket message accepted, in bytes.
-	MaxMessageSize    int64
+	MaxMessageSize int64
+	// OutboundQueueSize is the depth of the channel feeding the writer. The
+	// writer is synchronous per send (each send waits for its write result), so a
+	// deeper buffer only holds frames from concurrent senders; keep it small.
+	// Values below 1 are treated as 0 (unbuffered).
 	OutboundQueueSize int
+	// InboundQueueSize is the depth of the channel between the reader and the
+	// handler dispatcher. It matters only while all MaxConcurrentHandlers slots
+	// are busy: further inbound CALLs wait here, and once it is full the reader
+	// stops reading, so CALLRESULTs on that connection are not resolved either.
+	// Raise it if handlers on one connection routinely block for long (for
+	// example while waiting for a reply to a Call they sent back to the charge
+	// point). Values below 1 are treated as 0 (unbuffered).
+	InboundQueueSize int
 	// AsyncQueueSize bounds the per-connection queue of calls waiting for the
 	// outbound slot (sync and async) when SerializeOutboundCalls is set; waiting
 	// beyond it returns ocppj.ErrQueueFull.
@@ -175,7 +187,8 @@ func DefaultConfig() Config {
 		SerializeOutboundCalls: true,
 		HandlerTimeout:         60 * time.Second,
 		MaxMessageSize:         DefaultMaxMessageSize,
-		OutboundQueueSize:      64,
+		OutboundQueueSize:      4,
+		InboundQueueSize:       4,
 		AsyncQueueSize:         64,
 		MaxConcurrentHandlers:  16,
 		Logger:                 slog.Default(),
