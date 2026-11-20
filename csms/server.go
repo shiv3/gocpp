@@ -205,6 +205,14 @@ func (s *Server) addConn(id string, c *Conn) bool {
 	s.conns[id] = c
 	s.mu.Unlock()
 	if ok {
+		// The application must see the old connection go away before the new one
+		// comes up, and with a cause that tells it apart from a real drop; otherwise
+		// a handler that marks the charger offline on disconnect would mark the
+		// freshly connected one offline. Abort is non-blocking (the old socket gets
+		// a 1008 close frame from its closer goroutine); the rest of the teardown
+		// runs in the background. The caller fires connect(new) after we return.
+		old.inner.Abort(ocppj.ErrConnReplaced)
+		s.handleDisconnected(old, ocppj.ErrConnReplaced)
 		go func() { _ = old.inner.Close(nil) }()
 	}
 	return true
@@ -231,7 +239,7 @@ func (s *Server) handleDisconnected(c *Conn, err error) {
 		err = ocppj.ErrConnClosed
 	}
 	if s.cfg.onDisconnect != nil {
-		s.cfg.onDisconnect(c, err)
+		c.disconnectOnce.Do(func() { s.cfg.onDisconnect(c, err) })
 	}
 }
 
