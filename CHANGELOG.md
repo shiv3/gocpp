@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Footprint benchmarks and guard (`benchmarks/footprint_test.go`):
+  `BenchmarkIdleFootprint` (2,000 idle connections, heap/stack/goroutines per
+  connection, idle and after one Heartbeat), `BenchmarkHeartbeatMessage[Parallel]`
+  (per-message ns/op and allocs/op), and `TestIdleFootprintBounds` asserting upper
+  bounds. See docs/performance.md, "Measuring footprint".
 - `csms.WithOCPPGoCompat()` / `cp.WithOCPPGoCompat()`: one preset that reproduces
   ocpp-go's charger-visible behaviour for staged migrations (lenient schema,
   ocpp-go error codes, silent drop of bad message ids, UTC whole-second times, no
