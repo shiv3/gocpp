@@ -44,6 +44,9 @@ All notable changes to this project are documented here. The format is based on
   `decimal.NewFromFloat/NewFromInt/NewFromString(...)` with the same-named functions in
   `core/types`, or wrap an existing value with `types.New(d)`; the shopspring methods
   remain available through the embedded value and `d.Shopspring()` returns it.
+- `CallError.WireCode` now spells FormationViolation per version: `FormationViolation`
+  on 1.6, `FormatViolation` on 2.0.1/2.1. Handler decode/schema rejections on 2.x
+  connections previously used the 1.6 name.
 - Generated `validate` struct tags no longer emit `required` on boolean fields.
   go-playground's `required` rejects the zero value, which would have flagged a
   legitimate `false` (e.g. `ConfigurationKey.readonly: false`) for anyone running
