@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -26,6 +27,10 @@ type Server struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// stopping is set when Shutdown or Close begins; new upgrades are refused
+	// from then on.
+	stopping atomic.Bool
 }
 
 // NewServer creates a CSMS server.
@@ -78,6 +83,14 @@ func (s *Server) ListenAndServe(addr string) error {
 }
 
 func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
+	// Refuse before upgrading once the server is shutting down or closed, so a
+	// charge point sees a plain HTTP failure it can retry elsewhere instead of a
+	// connect that is closed immediately.
+	if s.stopping.Load() || s.ctx.Err() != nil {
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, "server shutting down", http.StatusServiceUnavailable)
+		return
+	}
 	cpID, ok := s.extractCPID(r)
 	if !ok {
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
@@ -145,7 +158,13 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		RequestHeader: r.Header,
 		TLS:           r.TLS,
 	})
-	conn := &Conn{inner: dconn}
+	conn := &Conn{inner: dconn, gone: make(chan struct{})}
+	defer close(conn.gone)
+
+	// Hold inbound CALL/SEND handling until the connection is published and
+	// onConnect has returned, so a handler can rely on Get(id) and on the connect
+	// callback having run.
+	dconn.HoldInbound()
 
 	// Start the connection (initializing its context and goroutines) BEFORE
 	// publishing it in the registry, so a concurrent Get + Call cannot observe
@@ -155,8 +174,14 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		_ = dconn.Close(nil)
 		return
 	}
+	if s.stopping.Load() {
+		// Shutdown began between the check above and registration; its snapshot
+		// of live connections may have missed this one.
+		dconn.Abort(ocppj.ErrConnClosed)
+	}
 	s.handleConnected(conn)
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
+	dconn.ReleaseInbound()
 	defer func() {
 		if s.removeConn(cpID, conn) {
 			_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
@@ -266,18 +291,32 @@ func (s *Server) Get(id string) (*Conn, bool) {
 	return c, ok
 }
 
+// Disconnect closes the connection of charge point id from the server side; see
+// Conn.Close for the semantics. It returns ocppj.ErrNotConnected when no such
+// charge point is connected.
+func (s *Server) Disconnect(ctx context.Context, id string) error {
+	c, ok := s.Get(id)
+	if !ok {
+		return ocppj.ErrNotConnected
+	}
+	return c.Close(ctx)
+}
+
 // Close shuts down the server and all connections immediately.
 func (s *Server) Close() {
+	s.stopping.Store(true)
 	s.cancel()
 }
 
 // Shutdown gracefully closes all live charge-point connections with a normal
 // WebSocket close and waits for them to drain, up to the deadline of ctx. If ctx
 // is cancelled or times out first, remaining connections are force-closed and
-// ctx.Err() is returned. New upgrade attempts during shutdown still go through
-// the normal accept path; stop accepting them by shutting down the HTTP server
-// hosting Handler() before calling Shutdown.
+// ctx.Err() is returned. From the moment Shutdown (or Close) is called, new
+// upgrade attempts are refused with HTTP 503 Service Unavailable before the
+// WebSocket handshake; the HTTP server hosting Handler() is still the caller's
+// to stop.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.stopping.Store(true)
 	s.mu.RLock()
 	conns := make([]*Conn, 0, len(s.conns))
 	for _, c := range s.conns {

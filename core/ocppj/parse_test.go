@@ -93,3 +93,11 @@ func TestParseUnknownMessageTypeIgnored(t *testing.T) {
 	_, err := Parse([]byte(`[7,"abc",{}]`))
 	require.ErrorIs(t, err, ErrIgnoredMessageType)
 }
+
+func TestParseUnknownMessageTypeCarriesID(t *testing.T) {
+	_, err := Parse([]byte(`[7,"abc",{}]`))
+	var ute *UnknownMessageTypeError
+	require.ErrorAs(t, err, &ute)
+	require.Equal(t, "abc", ute.MsgID)
+	require.Equal(t, 7, ute.MessageType)
+}

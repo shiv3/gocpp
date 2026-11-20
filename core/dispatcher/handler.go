@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/schema"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -107,14 +108,14 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		out, herr := c.lenientValidate(frame.Action, "request", frame.Payload)
 		if herr != nil {
 			status = "schema_invalid"
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, herr.Error(), nil))
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(SchemaErrorCode(herr), herr.Error(), nil))
 			return
 		}
 		reqPayload = out
 	} else if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
 		if c.cfg.SchemaMode == SchemaModeStrict {
 			status = "schema_invalid"
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, err.Error(), nil))
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(SchemaErrorCode(err), err.Error(), nil))
 			return
 		}
 	}
@@ -200,6 +201,50 @@ func (c *Conn) runSendHandler(frame ocppj.Frame) {
 		c.cfg.Logger.WarnContext(c.ctx, "SEND handler error",
 			"cp_id", c.id, "action", frame.Action, "err", err)
 	}
+}
+
+// SchemaErrorCode picks the CALLERROR code for a schema rejection of an inbound
+// request from the keyword of its first hard violation (OCPP 1.6J §4.2.3 and
+// OCPP 2.0.1 Part 4 §4.2.3 error code tables):
+//
+//   - required, min/maxItems, min/maxProperties: OccurrenceConstraintViolation
+//     (WireCode spells it OccurenceConstraintViolation on 1.6)
+//   - enum, const, min/maxLength, minimum/maximum (and exclusive variants),
+//     multipleOf, pattern, format: PropertyConstraintViolation
+//   - type below the root: TypeConstraintViolation
+//   - anything else (payload not an object, additionalProperties, composition
+//     keywords, undecodable JSON, a custom validator's plain error): the
+//     version's FormationViolation / FormatViolation.
+func SchemaErrorCode(err error) ocppj.ErrorCode {
+	var ve *schema.ViolationError
+	if !errors.As(err, &ve) {
+		return ocppj.ErrorCodeFormationViolation
+	}
+	switch ve.Keyword {
+	case "required", "minItems", "maxItems", "minProperties", "maxProperties":
+		return ocppj.ErrorCodeOccurrenceConstraintViolation
+	case "enum", "const", "minLength", "maxLength", "minimum", "maximum",
+		"exclusiveMinimum", "exclusiveMaximum", "multipleOf", "pattern", "format":
+		return ocppj.ErrorCodePropertyConstraintViolation
+	case "type":
+		if !ve.AtRoot {
+			return ocppj.ErrorCodeTypeConstraintViolation
+		}
+	}
+	return ocppj.ErrorCodeFormationViolation
+}
+
+// DecodeErrorCode picks the CALLERROR code for a failure to decode a request
+// payload into a typed struct: a JSON value of the wrong type inside the
+// payload is a TypeConstraintViolation, anything else a FormationViolation.
+func DecodeErrorCode(err error) ocppj.ErrorCode {
+	var ute *json.UnmarshalTypeError
+	// An empty Field means the payload itself is the wrong type (not an object),
+	// a structural failure rather than a property's type.
+	if errors.As(err, &ute) && ute.Field != "" {
+		return ocppj.ErrorCodeTypeConstraintViolation
+	}
+	return ocppj.ErrorCodeFormationViolation
 }
 
 // mapHandlerError converts a handler error into a CallError per spec §6.5.

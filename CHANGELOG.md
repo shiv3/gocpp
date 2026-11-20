@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `csms.Conn.Close(ctx)` and `csms.Server.Disconnect(ctx, id)`: close one charge
+  point's connection from the server side (WebSocket close 1000, reason "closed by
+  the server"), waiting for teardown up to ctx. The disconnect callback fires once
+  with the new cause `ocppj.ErrConnClosedByServer`; pending calls fail with it.
+- `schema.ViolationError` (carries the failing JSON-Schema keyword) and
+  `dispatcher.SchemaErrorCode` / `dispatcher.DecodeErrorCode`.
+- OCPP 2.0.1 / 2.1: a frame with an unknown MessageTypeId and a readable message
+  id is answered with CALLERROR `MessageTypeNotSupported` (Part 4 §4.2.3).
+  OCPP 1.6J keeps ignoring such frames (the code is not in its error table).
 - `csms.Server.Shutdown(ctx)`: gracefully closes live charge-point connections and
   waits for them to drain, up to the ctx deadline (force-closes on timeout).
   `Close()` remains the immediate teardown.
@@ -44,6 +53,11 @@ All notable changes to this project are documented here. The format is based on
   `decimal.NewFromFloat/NewFromInt/NewFromString(...)` with the same-named functions in
   `core/types`, or wrap an existing value with `types.New(d)`; the shopspring methods
   remain available through the embedded value and `d.Shopspring()` returns it.
+- `csms.Server` refuses new upgrades with HTTP 503 once `Shutdown` has begun or
+  `Close` was called, instead of accepting and immediately closing.
+- `csms`: inbound CALL/SEND handling is held until the connection is registered
+  (`Get(id)` works) and `OnConnect` has returned; previously a handler could run
+  first (flaky `Get` right after the first reply).
 - `CallError.WireCode` now spells FormationViolation per version: `FormationViolation`
   on 1.6, `FormatViolation` on 2.0.1/2.1. Handler decode/schema rejections on 2.x
   connections previously used the 1.6 name.
@@ -84,6 +98,15 @@ All notable changes to this project are documented here. The format is based on
   accepts extra trailing elements; CALLERROR / CALLRESULTERROR accept a missing
   details element, so pending calls resolve immediately instead of timing out.
 
+### Changed
+- Behaviour change: schema rejections of inbound CALLs are no longer always
+  `FormationViolation` / `FormatViolation`. The first violated keyword selects the
+  code: missing required fields / occurrence limits -> `OccurenceConstraintViolation`
+  (1.6 wire spelling) / `OccurrenceConstraintViolation`; enum, length, range,
+  pattern, format -> `PropertyConstraintViolation`; wrong JSON type of a property
+  (also typed-decode failures in `csms.On` / `cp.On`) -> `TypeConstraintViolation`.
+  A payload that is not an object stays `FormationViolation` / `FormatViolation`.
+
 ## [0.1.3] - 2026-06-16
 
 ### Added
@@ -116,6 +139,13 @@ All additions are opt-in and preserve prior default behavior.
   responses (previously inbound requests only).
 
 ### Changed
+- Behaviour change: schema rejections of inbound CALLs are no longer always
+  `FormationViolation` / `FormatViolation`. The first violated keyword selects the
+  code: missing required fields / occurrence limits -> `OccurenceConstraintViolation`
+  (1.6 wire spelling) / `OccurrenceConstraintViolation`; enum, length, range,
+  pattern, format -> `PropertyConstraintViolation`; wrong JSON type of a property
+  (also typed-decode failures in `csms.On` / `cp.On`) -> `TypeConstraintViolation`.
+  A payload that is not an object stays `FormationViolation` / `FormatViolation`.
 - **BREAKING:** remove `csms.WithHeartbeatInterval` — in OCPP the Charge Point emits
   Heartbeat, never the CSMS. Use `cp.WithHeartbeatInterval`.
 

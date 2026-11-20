@@ -22,8 +22,14 @@ func (e *ProtocolError) Error() string {
 }
 
 var (
-	ErrConnClosed  = errors.New("ocpp: connection closed")
-	ErrConnDropped = errors.New("ocpp: connection dropped")
+	ErrConnClosed = errors.New("ocpp: connection closed")
+	// ErrConnClosedByServer is the close cause of a connection the CSMS closed on
+	// purpose through csms.Conn.Close or csms.Server.Disconnect. It is what the
+	// disconnect callback receives and what pending calls fail with, so an
+	// application can tell an administrative close from a network drop
+	// (ErrConnDropped / a read error) or a replacement (ErrConnReplaced).
+	ErrConnClosedByServer = errors.New("ocpp: connection closed by the server")
+	ErrConnDropped        = errors.New("ocpp: connection dropped")
 	// ErrConnReplaced is the close cause of a connection that was superseded by a
 	// newer connection with the same charge point id.
 	ErrConnReplaced     = errors.New("ocpp: connection replaced by a newer connection with the same id")
@@ -48,3 +54,19 @@ var (
 	// §4.4 the payload is ignored; the reader drops it without warning.
 	ErrIgnoredMessageType = errors.New("ocpp: ignored message type")
 )
+
+// UnknownMessageTypeError is returned by Parse for a well-formed frame (a JSON
+// array with a readable message id) whose MessageTypeId is not one this
+// implementation handles. It matches ErrIgnoredMessageType under errors.Is.
+// OCPP 2.0.1 / 2.1 receivers answer it with a CALLERROR MessageTypeNotSupported
+// (Part 4 §4.2.3 error code table) using MsgID; OCPP 1.6J has no such code.
+type UnknownMessageTypeError struct {
+	MessageType int
+	MsgID       string
+}
+
+func (e *UnknownMessageTypeError) Error() string {
+	return fmt.Sprintf("%s: %d", ErrIgnoredMessageType.Error(), e.MessageType)
+}
+
+func (e *UnknownMessageTypeError) Unwrap() error { return ErrIgnoredMessageType }

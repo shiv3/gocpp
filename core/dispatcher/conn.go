@@ -46,6 +46,11 @@ type Conn struct {
 	asyncQ      chan asyncJob
 	asyncWG     sync.WaitGroup
 
+	// inboundGate, when non-nil, holds inbound CALL/SEND dispatch until closed
+	// (see HoldInbound). The reader keeps reading and resolving CALLRESULTs.
+	inboundGate     chan struct{}
+	inboundGateOnce sync.Once
+
 	cfg Config
 }
 
@@ -85,6 +90,20 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		cfg:      cfg,
 	}
 	return c
+}
+
+// HoldInbound makes the connection withhold inbound CALL and SEND handling until
+// ReleaseInbound is called. Call it before Start. The server side uses it so no
+// handler runs before the connection is registered and its connect callback has
+// returned. Connections that never call it dispatch immediately.
+func (c *Conn) HoldInbound() { c.inboundGate = make(chan struct{}) }
+
+// ReleaseInbound opens the gate armed by HoldInbound. Idempotent; a no-op when
+// the gate was never armed. Teardown also unblocks the waiting dispatcher.
+func (c *Conn) ReleaseInbound() {
+	if c.inboundGate != nil {
+		c.inboundGateOnce.Do(func() { close(c.inboundGate) })
+	}
 }
 
 // ID returns the charge point identifier.
@@ -141,6 +160,10 @@ func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 // was superseded by a newer one with the same id.
 const replacedCloseReason = "replaced by a new connection with the same ID"
 
+// closedByServerReason is the WebSocket close reason sent when the server
+// closes the connection on purpose.
+const closedByServerReason = "closed by the server"
+
 // closeWS closes the WebSocket with a close frame. The first call decides the
 // code; later calls are no-ops.
 func (c *Conn) closeWS(code transport.StatusCode, reason string) {
@@ -156,6 +179,10 @@ func (c *Conn) closer() {
 	<-c.ctx.Done()
 	if errors.Is(context.Cause(c.ctx), ocppj.ErrConnReplaced) {
 		c.closeWS(transport.StatusPolicyViolation, replacedCloseReason)
+		return
+	}
+	if errors.Is(context.Cause(c.ctx), ocppj.ErrConnClosedByServer) {
+		c.closeWS(transport.StatusNormalClosure, closedByServerReason)
 		return
 	}
 	c.closeWS(transport.StatusNormalClosure, "closed")
@@ -230,6 +257,17 @@ func (c *Conn) reader() {
 			if errors.Is(err, ocppj.ErrIgnoredMessageType) {
 				c.cfg.Logger.DebugContext(c.ctx, "ignored unknown message type",
 					"cp_id", c.id, "err", err)
+				// OCPP 2.0.1 / 2.1 Part 4 §4.2.3: a message with a MessageTypeId the
+				// receiver does not support is answered with CALLERROR
+				// MessageTypeNotSupported. OCPP 1.6J defines no such code, so a 1.6
+				// peer's unknown frame is deliberately dropped silently (ocpp-go
+				// answers it even on 1.6; we do not, because the code is not in the
+				// 1.6 error table).
+				var ute *ocppj.UnknownMessageTypeError
+				if c.version != ocppj.V16 && errors.As(err, &ute) && ute.MsgID != "" {
+					c.trySendCallError(ute.MsgID, ocppj.NewCallError(
+						ocppj.ErrorCodeMessageTypeNotSupported, ute.Error(), nil))
+				}
 				continue
 			}
 			c.cfg.Logger.WarnContext(c.ctx, "ocpp parse error",
@@ -293,6 +331,13 @@ func (c *Conn) writer() {
 
 func (c *Conn) dispatch() {
 	defer c.wg.Done()
+	if c.inboundGate != nil {
+		select {
+		case <-c.inboundGate:
+		case <-c.ctx.Done():
+			return
+		}
+	}
 	for {
 		select {
 		case <-c.ctx.Done():
