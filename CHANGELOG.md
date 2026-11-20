@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `docs/performance.md`: runtime guidance (GOMAXPROCS, GOMEMLIMIT, GOGC with measured tradeoffs), schema-mode and handler-pool cost, current per-connection footprint. `docs/architecture.md` and the README describe the one-reader-goroutine connection model.
 - `dispatcher.HandlerPool` / `NewHandlerPool(n)` with `Config.HandlerPool`, and
   `csms.WithHandlerPool` / `cp.WithHandlerPool` (off by default): inbound handlers
   run on resident workers with warm stacks when one is idle, and on a new goroutine
@@ -142,6 +143,7 @@ All notable changes to this project are documented here. The format is based on
   header — i.e. non-browser charge points — are always allowed).
 
 ### Fixed
+- Test hygiene: `TestTimeEncoding_ClientOutbound` closes its client, so `go test -race -count=N ./csms` no longer trips the goroutine-leak check in `TestServerLifecycle*` on later passes.
 - Message types 5 (CALLRESULTERROR) and 6 (SEND) are OCPP 2.1 only. On a 1.6 or
   2.0.1 connection they are now treated as unknown message types (2.0.1: CALLERROR
   `MessageTypeNotSupported`; 1.6: ignored, answered under the ocpp-go compat preset)

@@ -197,6 +197,9 @@ func TestTimeEncoding_ClientOutbound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	require.NoError(t, c.Connect(ctx))
+	// Close the client: its read loop and connection watcher would otherwise
+	// outlive the test and trip the goroutine-leak check of later tests.
+	t.Cleanup(c.Close)
 	_, err := cp.Call(ctx, c, profiles.StartTransaction, messages.StartTransactionRequest{
 		ConnectorID: 1, IDTag: "T", Timestamp: time.Date(2026, 1, 1, 9, 0, 0, 5, time.FixedZone("JST", 9*3600)),
 	})
