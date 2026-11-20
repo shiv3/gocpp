@@ -234,6 +234,17 @@ func (c *Conn) reader() {
 			}
 			c.cfg.Logger.WarnContext(c.ctx, "ocpp parse error",
 				"cp_id", c.id, "err", err)
+			// A CALL with a readable message id but a bad shape is answered so the
+			// peer does not wait out its own timeout and retry.
+			var perr *ocppj.ProtocolError
+			if errors.As(err, &perr) && perr.MessageType == int(ocppj.Call) && perr.MsgID != "" {
+				// 1.6 calls this FormationViolation; 2.x renamed it FormatViolation.
+				code := ocppj.ErrorCodeFormatViolation
+				if c.version == ocppj.V16 {
+					code = ocppj.ErrorCodeFormationViolation
+				}
+				c.trySendCallError(perr.MsgID, ocppj.NewCallError(code, perr.Message, nil))
+			}
 			continue
 		}
 		if !c.routeInbound(frame) {

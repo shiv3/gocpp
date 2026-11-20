@@ -10,6 +10,11 @@ type ProtocolError struct {
 	Stage   string // "parse", "type", "shape"
 	Raw     string
 	Message string
+	// MessageType and MsgID are filled when they could be decoded before the
+	// frame was found malformed (zero/empty otherwise). They let the receiver
+	// answer a malformed CALL with a CallError for the right message id.
+	MessageType int
+	MsgID       string
 }
 
 func (e *ProtocolError) Error() string {

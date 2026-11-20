@@ -35,6 +35,24 @@ func (c *Conn) sendCallResult(msgID string, payload []byte) {
 	_ = c.send(c.ctx, raw)
 }
 
+// trySendCallError enqueues a CallError without ever blocking the caller: it
+// is dropped if the outbound queue is full. The reader uses it to answer
+// malformed CALLs; blocking there would stall pong/close processing behind a
+// slow writer, and a goroutine per bad frame would be an unbounded fan-out.
+func (c *Conn) trySendCallError(msgID string, ce *ocppj.CallError) {
+	raw, err := ocppj.EncodeCallError(msgID, ce.WireCode(c.version), ce.Description, nil)
+	if err != nil {
+		c.cfg.Logger.ErrorContext(c.ctx, "encode call error", "err", err)
+		return
+	}
+	select {
+	case c.out <- outbound{payload: raw, sentCh: make(chan error, 1)}:
+	default:
+		c.cfg.Logger.WarnContext(c.ctx, "outbound queue full; dropping call error",
+			"cp_id", c.id, "msg_id", msgID)
+	}
+}
+
 func (c *Conn) sendCallError(msgID string, ce *ocppj.CallError) {
 	var details []byte
 	if ce.Details != nil {
