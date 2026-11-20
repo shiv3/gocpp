@@ -202,9 +202,9 @@ func BenchmarkIdleFootprint(b *testing.B) {
 // the implementation measures today and are meant to be ratcheted down as the
 // footprint shrinks; a failure means a per-connection cost was added.
 const (
-	maxIdleHeapPerConn   = 24 << 10
-	maxIdleStackPerConn  = 32 << 10
-	maxIdleGoroutinesPer = 6.5
+	maxIdleHeapPerConn   = 22 << 10
+	maxIdleStackPerConn  = 22 << 10
+	maxIdleGoroutinesPer = 4.5
 )
 
 // TestIdleFootprintBounds guards the idle footprint. The race detector inflates

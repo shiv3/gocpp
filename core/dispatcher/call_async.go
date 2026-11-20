@@ -42,45 +42,30 @@ func DoCallAsync(ctx context.Context, c *Conn, action string, payload []byte, cb
 	if c.cfg.SerializeOutboundCalls {
 		return c.enqueueAsync(asyncJob{ctx: ctx, action: action, payload: payload, cb: cb})
 	}
-	if !c.asyncTrackStart() {
-		return ocppj.ErrConnClosed
-	}
-	go func() {
-		defer c.asyncWG.Done()
+	if !c.goBG(func() {
 		resp, err := DoCall(ctx, c, action, payload)
 		c.runAsyncCallback(action, cb, resp, err)
-	}()
+	}) {
+		return ocppj.ErrConnClosed
+	}
 	return nil
 }
 
-// asyncTrackStart reserves an asyncWG slot unless the connection is closing.
-// Gating the Add behind asyncClosed (set under the same mutex in Close) ensures
-// asyncWG.Add can never run concurrently with asyncWG.Wait at a zero counter.
-func (c *Conn) asyncTrackStart() bool {
-	c.asyncMu.Lock()
-	defer c.asyncMu.Unlock()
-	if c.asyncClosed {
-		return false
-	}
-	c.asyncWG.Add(1)
-	return true
-}
-
 func (c *Conn) enqueueAsync(job asyncJob) error {
-	if !c.asyncTrackStart() {
+	if !c.enterBG() {
 		return ocppj.ErrConnClosed
 	}
 	s := &c.slot
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		c.asyncWG.Done()
+		c.leaveBG()
 		return context.Cause(c.ctx)
 	}
 	immediate := !s.busy && len(s.q) == 0
 	if !immediate && len(s.q) >= c.queueLimit() {
 		s.mu.Unlock()
-		c.asyncWG.Done()
+		c.leaveBG()
 		return ocppj.ErrQueueFull
 	}
 	prev, own := s.cbTail, make(chan struct{})
@@ -130,7 +115,7 @@ func (c *Conn) runAsyncJob(job asyncJob, prev, own chan struct{}) {
 
 // finishAsync delivers the callback after the previous job's callback.
 func (c *Conn) finishAsync(job asyncJob, prev, own chan struct{}, resp []byte, err error) {
-	defer c.asyncWG.Done()
+	defer c.leaveBG()
 	defer close(own)
 	if prev != nil {
 		<-prev

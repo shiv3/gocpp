@@ -8,17 +8,15 @@ import (
 
 const defaultPongWait = 60 * time.Second
 
-// StartKeepalive must be called immediately after Start, before any Close, so it
-// joins the connection WaitGroup while other goroutines are still live.
 // StartKeepalive runs fn every interval until the connection context is done.
 // interval <= 0 disables it. Used by csms/cp to send OCPP Heartbeat messages.
+// Call it after Start. The loop is a tracked background goroutine, so Close
+// waits for it; on a connection that is already closing it does nothing.
 func (c *Conn) StartKeepalive(interval time.Duration, fn func(context.Context)) {
 	if interval <= 0 {
 		return
 	}
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.goBG(func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
@@ -29,7 +27,7 @@ func (c *Conn) StartKeepalive(interval time.Duration, fn func(context.Context)) 
 				fn(c.ctx)
 			}
 		}
-	}()
+	})
 }
 
 // startReadWatchdog cancels the connection if no inbound frame (data, ping, or
@@ -77,15 +75,17 @@ func (c *Conn) startWebSocketPing() {
 	c.tmu.Lock()
 	defer c.tmu.Unlock()
 	c.pingTimer = time.AfterFunc(interval, func() {
-		// Register as in flight so teardown can wait for this callback.
-		c.tmu.Lock()
-		if c.timersStopped || c.ctx.Err() != nil {
-			c.tmu.Unlock()
+		// Register as in flight so Close can wait for this callback.
+		if !c.enterBG() {
 			return
 		}
-		c.timerWG.Add(1)
+		defer c.leaveBG()
+		c.tmu.Lock()
+		stopped := c.timersStopped || c.ctx.Err() != nil
 		c.tmu.Unlock()
-		defer c.timerWG.Done()
+		if stopped {
+			return
+		}
 
 		pctx, cancel := context.WithTimeout(c.ctx, pongWait)
 		pingStart := time.Now()
@@ -109,9 +109,9 @@ func (c *Conn) startWebSocketPing() {
 	})
 }
 
-// stopTimers stops the keepalive timers and waits for an in-flight ping callback
-// (which ends promptly: its context is the connection's). Called once the
-// connection goroutines have exited, before done is closed.
+// stopTimers stops the keepalive timers. A ping callback already running ends
+// promptly (its context is the connection's) and is awaited by Close through the
+// background tracker. Called first thing in teardown.
 func (c *Conn) stopTimers() {
 	c.tmu.Lock()
 	c.timersStopped = true
@@ -122,5 +122,4 @@ func (c *Conn) stopTimers() {
 		c.pingTimer.Stop()
 	}
 	c.tmu.Unlock()
-	c.timerWG.Wait()
 }

@@ -38,12 +38,12 @@ type Conn struct {
 	done        chan struct{}
 	wg          sync.WaitGroup
 
-	// Async outbound call machinery (DoCallAsync). asyncWG tracks the worker and
-	// any concurrent async goroutines; asyncClosed (under asyncMu) gates new ones
-	// so Add can never race Close's Wait.
-	asyncMu     sync.Mutex
-	asyncClosed bool
-	asyncWG     sync.WaitGroup
+	// Transient background goroutines (async calls and their callbacks, the
+	// OCPP keepalive loop, ping callbacks). bgWG tracks them; bgClosed (under
+	// bgMu) gates new ones so Add can never race Close's Wait. See goBG/enterBG.
+	bgMu     sync.Mutex
+	bgClosed bool
+	bgWG     sync.WaitGroup
 
 	// inboundGate, when non-nil, holds inbound CALL/SEND dispatch until closed
 	// (see HoldInbound). The reader keeps reading and resolving CALLRESULTs.
@@ -65,7 +65,6 @@ type Conn struct {
 	timersStopped bool
 	wdTimer       *time.Timer
 	pingTimer     *time.Timer
-	timerWG       sync.WaitGroup // in-flight ping callbacks
 
 	cfg Config
 }
@@ -222,22 +221,67 @@ func (c *Conn) closeWS(code transport.StatusCode, reason string) {
 	c.closeWSOnce.Do(func() { _ = c.ws.Close(code, reason) })
 }
 
-// closer waits for teardown and then closes the socket gracefully. The reader
-// and writer deliberately do not abort the socket on cancellation (the websocket
-// library drops the TCP connection without a close frame when an in-flight
-// operation's ctx is cancelled), so this goroutine is what tells the peer why.
-func (c *Conn) closer() {
-	defer c.wg.Done()
-	<-c.ctx.Done()
-	if errors.Is(context.Cause(c.ctx), ocppj.ErrConnReplaced) {
+// closeForCause closes the socket gracefully with the close code that matches
+// why the connection ended. The reader and writer deliberately do not abort the
+// socket on cancellation (the websocket library drops the TCP connection without
+// a close frame when an in-flight operation's ctx is cancelled), so teardown is
+// what tells the peer why.
+func (c *Conn) closeForCause() {
+	cause := context.Cause(c.ctx)
+	switch {
+	case errors.Is(cause, ocppj.ErrConnReplaced):
 		c.closeWS(transport.StatusPolicyViolation, replacedCloseReason)
-		return
-	}
-	if errors.Is(context.Cause(c.ctx), ocppj.ErrConnClosedByServer) {
+	case errors.Is(cause, ocppj.ErrConnClosedByServer):
 		c.closeWS(transport.StatusNormalClosure, closedByServerReason)
-		return
+	default:
+		c.closeWS(transport.StatusNormalClosure, "closed")
 	}
-	c.closeWS(transport.StatusNormalClosure, "closed")
+}
+
+// teardown runs exactly once, on its own goroutine, when the connection context
+// is done (context.AfterFunc). It replaces a closer goroutine and a goroutine
+// that waited for the others, so a healthy connection holds only its reader,
+// writer and dispatcher.
+//
+// Order: close the socket first (that is what unblocks the reader and tells the
+// peer why), then fail queued async calls (user callbacks run here, and a slow
+// one must not delay the close frame), then wait for the connection goroutines.
+// It takes no lock while waiting, and done closes only after the reader has
+// returned.
+func (c *Conn) teardown() {
+	c.stopTimers()
+	c.closeForCause()
+	c.failQueued()
+	c.wg.Wait()
+	close(c.done)
+}
+
+// enterBG registers a transient background goroutine (or timer callback) of the
+// connection. It returns false once Close has begun draining, in which case the
+// caller must not start. Every true must be paired with leaveBG.
+func (c *Conn) enterBG() bool {
+	c.bgMu.Lock()
+	defer c.bgMu.Unlock()
+	if c.bgClosed {
+		return false
+	}
+	c.bgWG.Add(1)
+	return true
+}
+
+func (c *Conn) leaveBG() { c.bgWG.Done() }
+
+// goBG runs f on a new goroutine tracked by Close. It reports false, without
+// starting f, when the connection is already draining.
+func (c *Conn) goBG(f func()) bool {
+	if !c.enterBG() {
+		return false
+	}
+	go func() {
+		defer c.leaveBG()
+		f()
+	}()
+	return true
 }
 
 // Start launches the connection goroutines bound to parent.
@@ -248,27 +292,22 @@ func (c *Conn) Start(parent context.Context) {
 	c.lastRecv.Store(now)
 	c.monoBase = time.Now()
 	c.cfg.Metrics.ConnectionOpened()
-	// Fail calls still queued for the outbound slot when the connection ends.
-	context.AfterFunc(c.ctx, c.failQueued)
 
-	c.wg.Add(4)
-	go c.closer()
+	c.wg.Add(3)
 	go c.reader()
 	go c.writer()
 	go c.dispatch()
 	c.startWebSocketPing()
 	c.startReadWatchdog()
 
-	go func() {
-		c.wg.Wait()
-		c.stopTimers()
-		close(c.done)
-	}()
+	// Registered last, after every wg.Add and timer exists: AfterFunc also fires
+	// immediately when parent is already cancelled.
+	context.AfterFunc(c.ctx, c.teardown)
 }
 
 // Abort cancels the connection with cause without waiting for teardown. The
 // socket is then closed in the background with a close frame matching cause
-// (see closer); call Close afterwards to wait for completion.
+// (see teardown); call Close afterwards to wait for completion.
 func (c *Conn) Abort(cause error) {
 	if cause == nil {
 		cause = ocppj.ErrConnClosed
@@ -289,12 +328,12 @@ func (c *Conn) Close(reason error) error {
 	<-c.done
 	c.closeWS(transport.StatusNormalClosure, "closed")
 	c.pending.failAll(context.Cause(c.ctx))
-	// Stop accepting new async calls, then wait for the worker + any in-flight
-	// async goroutines to drain (their DoCalls have already failed via ctx/pending).
-	c.asyncMu.Lock()
-	c.asyncClosed = true
-	c.asyncMu.Unlock()
-	c.asyncWG.Wait()
+	// Stop accepting new background work, then wait for in-flight async calls,
+	// the keepalive loop and timer callbacks to drain (their DoCalls have already failed via ctx/pending).
+	c.bgMu.Lock()
+	c.bgClosed = true
+	c.bgMu.Unlock()
+	c.bgWG.Wait()
 	c.cfg.Metrics.ConnectionClosed()
 	return nil
 }
@@ -304,7 +343,7 @@ func (c *Conn) reader() {
 	for {
 		// Read with a ctx that survives cancellation: cancelling an in-flight read
 		// makes the websocket library drop the TCP connection without a close
-		// frame. The closer goroutine closes the socket, which ends this read.
+		// frame. Teardown closes the socket, which ends this read.
 		msg, err := c.ws.Read(context.WithoutCancel(c.ctx))
 		if err != nil {
 			c.cancel(fmt.Errorf("read: %w", err))
