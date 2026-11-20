@@ -145,3 +145,37 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 - Always run load tests with `-race` off but pprof on; goroutine and heap
   profiles will show whether the baseline or handler fan-out dominates for your
   workload.
+
+## Per-message baselines
+
+Allocation per message is what drives GC-mark share and therefore tail latency at
+high request rates, so the per-message paths have their own benchmarks (no sockets,
+no client in the numbers):
+
+```sh
+# inbound CALL -> typed handler -> CALLRESULT on the in-memory transport
+go test -run '^$' -bench DispatchRoundTrip -benchmem ./benchmarks/
+# schema validation alone, lenient and strict
+go test -run '^$' -bench 'Validate(Lenient|Strict)' -benchmem ./core/schema/
+```
+
+Baseline before the per-message allocation work (Go 1.26, i5-13600K, one run;
+`schema=off` has no validation, `lenient` and `strict` validate both the request and
+the response):
+
+| benchmark | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| DispatchRoundTrip/Heartbeat/schema=off | 14,138 | 1,922 | 42 |
+| DispatchRoundTrip/Heartbeat/schema=lenient | 18,468 | 4,869 | 87 |
+| DispatchRoundTrip/Heartbeat/schema=strict | 17,566 | 4,402 | 78 |
+| DispatchRoundTrip/StatusNotification/schema=off | 15,293 | 2,040 | 42 |
+| DispatchRoundTrip/StatusNotification/schema=lenient | 25,414 | 6,229 | 122 |
+| DispatchRoundTrip/StatusNotification/schema=strict | 24,292 | 5,645 | 110 |
+| ValidateLenient/HeartbeatReq | 747 | 1,145 | 18 |
+| ValidateLenient/HeartbeatConf | 1,568 | 1,783 | 27 |
+| ValidateLenient/StatusNotificationReq | 3,492 | 3,015 | 62 |
+| ValidateLenient/MeterValuesReq | 10,614 | 9,407 | 179 |
+| ValidateStrict/HeartbeatReq | 936 | 929 | 14 |
+| ValidateStrict/HeartbeatConf | 1,296 | 1,533 | 22 |
+| ValidateStrict/StatusNotificationReq | 3,038 | 2,653 | 54 |
+| ValidateStrict/MeterValuesReq | 9,186 | 8,507 | 156 |
