@@ -48,6 +48,13 @@ handle supports `Call`, `CallRaw`, `CallAsync` and `CallRawAsync`; `Close` and
 * **Registration**: on connect the instance writes `cpID -> instanceID` to the
   global table (after the local table). **Last registration wins**: when a charge
   point reconnects to another instance, that instance's entry replaces the old one.
+  The write is synchronous in the connect path: the first inbound message is held
+  until `PutGlobal` has returned, so on one instance publish order follows
+  connection order. Ordering *between* instances is only as good as the registry:
+  if instance A's write for an older connection is delayed past instance B's write
+  for a newer one, A's entry wins until the next registration or removal. The
+  `PutGlobal` interface has no compare-and-set, so a shared-store registry that
+  needs stricter ordering must enforce it itself.
 * **Removal**: on disconnect an instance removes the route only if it still names
   that instance. A registry implementing `storage.OwnedGlobalDeleter` does this as
   one atomic compare-and-delete (the in-memory registries do). For other

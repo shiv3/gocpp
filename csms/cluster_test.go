@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 )
 
 type node struct {
+	id  string
 	srv *csms.Server
 	ts  *httptest.Server
 	reg storage.ConnectionRegistry
@@ -35,7 +37,7 @@ func newNode(t *testing.T, hub *memory.InProcessHub, id string) *node {
 	)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(func() { ts.Close(); srv.Close() })
-	return &node{srv: srv, ts: ts, reg: reg}
+	return &node{id: id, srv: srv, ts: ts, reg: reg}
 }
 
 // connect dials the charge point to this node. reply answers each CALL the CSMS
@@ -69,11 +71,14 @@ func (n *node) connect(ctx context.Context, t *testing.T, cpID string, reply fun
 		}
 	}()
 	// The global route is published just after the local connection becomes
-	// visible, so wait for both.
+	// visible, so wait for both. The route must name THIS node: when the charge
+	// point moves between nodes, the previous owner's entry is still present
+	// until this node's publish lands, and accepting it made callers race with
+	// that publish.
 	require.Eventually(t, func() bool {
 		_, local := n.srv.Get(cpID)
 		inst, global, _ := n.reg.LookupGlobal(ctx, cpID)
-		return local && global && inst != ""
+		return local && global && inst == n.id
 	}, 2*time.Second, 10*time.Millisecond)
 	return c
 }
@@ -224,7 +229,7 @@ func TestCluster_StaleDisconnectWithoutCompareAndDelete(t *testing.T) {
 		csms.WithConnectionRegistry(reg), csms.WithMessageRouter(hub.Router("A")))
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(func() { ts.Close(); srv.Close() })
-	a := &node{srv: srv, ts: ts, reg: reg}
+	a := &node{id: "A", srv: srv, ts: ts, reg: reg}
 	cp := a.connect(ctx, t, "CP_1", func(string) *ocppj.CallError { return nil })
 
 	hub.Bind("CP_1", "B") // another instance took over
@@ -241,4 +246,54 @@ func TestCluster_StaleDisconnectWithoutCompareAndDelete(t *testing.T) {
 	require.True(t, ok)
 	_ = cp2.Close(websocket.StatusNormalClosure, "")
 	require.Eventually(t, func() bool { _, ok := owner(t, a, "CP_2"); return !ok }, 2*time.Second, 10*time.Millisecond)
+}
+
+// gatedRegistry blocks PutGlobal until release is closed, to force a slow
+// registry write.
+type gatedRegistry struct {
+	storage.ConnectionRegistry
+	release chan struct{}
+}
+
+func (g gatedRegistry) PutGlobal(ctx context.Context, cpID, inst string) error {
+	select {
+	case <-g.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return g.ConnectionRegistry.PutGlobal(ctx, cpID, inst)
+}
+
+// The global route is published synchronously in the connect path: a slow
+// registry write delays the first inbound handler instead of letting it run
+// (and the connection look established) before the route exists. Publish order
+// therefore follows connection order on one instance.
+func TestCluster_GlobalRoutePublishedBeforeInboundHandled(t *testing.T) {
+	hub := memory.NewInProcessHub()
+	reg := gatedRegistry{hub.Registry(), make(chan struct{})}
+	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithInstanceID("A"),
+		csms.WithConnectionRegistry(reg), csms.WithMessageRouter(hub.Router("A")))
+	var routeAtHandler atomic.Value
+	msg := ocppj.Message[anyReqT, anyReqT]{Action: "Heartbeat", Direction: ocppj.SentByCP}
+	require.NoError(t, csms.On(srv, msg, func(ctx context.Context, c *csms.Conn, _ anyReqT) (anyReqT, error) {
+		inst, _, _ := reg.LookupGlobal(ctx, c.ID())
+		routeAtHandler.Store(inst)
+		return anyReqT{}, nil
+	}))
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(func() { ts.Close(); srv.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.CloseNow() })
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"1","Heartbeat",{}]`)))
+
+	time.Sleep(150 * time.Millisecond)
+	require.Nil(t, routeAtHandler.Load(), "inbound handled while the route publish was still pending")
+	close(reg.release)
+	_, reply, err := c.Read(ctx)
+	require.NoError(t, err)
+	require.Contains(t, string(reply), `[3,"1"`)
+	require.Equal(t, "A", routeAtHandler.Load())
 }
