@@ -227,16 +227,41 @@ func (c *Client) queueLen() int {
 
 // Run connects and maintains the connection with exponential backoff until ctx is
 // cancelled. In-flight calls fail on disconnect (OCPP has no idempotency guarantee).
+// It never gives up on its own unless WithReconnectBackoff set a finite
+// maxElapsed, in which case it returns the last connect error once that much
+// time has passed without a successful connection.
 func (c *Client) Run(ctx context.Context) error {
+	return c.run(ctx, c.newBackOff())
+}
+
+// newBackOff builds the reconnect schedule. The library default for
+// MaxElapsedTime is 15 minutes, which would silently end Run for a charge point
+// that has been up longer than that; we default to unlimited instead.
+func (c *Client) newBackOff() backoff.BackOff {
+	bo := backoff.NewExponentialBackOff()
+	if c.cfg.reconnectInitial > 0 {
+		bo.InitialInterval = c.cfg.reconnectInitial
+	}
+	if c.cfg.reconnectMax > 0 {
+		bo.MaxInterval = c.cfg.reconnectMax
+	}
+	bo.MaxElapsedTime = c.cfg.reconnectMaxElapsed // 0 = never stop
+	bo.Reset()
+	return bo
+}
+
+func (c *Client) run(ctx context.Context, bo backoff.BackOff) error {
 	if c.queue != nil {
 		defer c.queue.close(context.Canceled)
 	}
-	bo := backoff.NewExponentialBackOff()
 	reconnect := false
 	for {
 		connected, err := c.connectAndServe(ctx, reconnect)
 		if connected {
 			reconnect = true
+			// A successful connection restarts the schedule (and the elapsed
+			// budget) so the next drop begins again from the initial interval.
+			bo.Reset()
 		}
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			return nil

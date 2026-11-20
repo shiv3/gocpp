@@ -118,6 +118,20 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dcfg := s.cfg.dispatcher
+	if s.cfg.connConfig != nil {
+		t := ConnTimeouts{
+			CallTimeout:  dcfg.CallTimeout,
+			WriteTimeout: dcfg.WriteTimeout,
+			PingInterval: dcfg.PingInterval,
+			PongWait:     dcfg.PongWait,
+			ReadTimeout:  dcfg.ReadTimeout,
+		}
+		s.cfg.connConfig(r, cpID, &t)
+		dcfg.CallTimeout, dcfg.WriteTimeout = t.CallTimeout, t.WriteTimeout
+		dcfg.PingInterval, dcfg.PongWait, dcfg.ReadTimeout = t.PingInterval, t.PongWait, t.ReadTimeout
+	}
+
 	var dconn *dispatcher.Conn
 	acceptOpts := &websocket.AcceptOptions{
 		Subprotocols:   s.cfg.subProtocols,
@@ -149,7 +163,6 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	ws := transport.NewCoderWS(c)
 
 	// Per-connection dispatcher config: version-bound metrics + tracer.
-	dcfg := s.cfg.dispatcher
 	dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
 	dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
 
