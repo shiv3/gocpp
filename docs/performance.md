@@ -16,15 +16,22 @@ long-lived goroutines (`core/dispatcher/conn.go`):
   concurrency bounds below.
 - a small **teardown watcher** that waits on the worker `WaitGroup` and closes
   `done`.
+- a **closer** that waits for teardown and closes the socket with the right
+  close frame.
 
-So the baseline cost is roughly **4 goroutines per connection**, regardless of
-traffic. Enabling `WithWebSocketPingInterval` adds one more wg-joined goroutine
-per connection (the ping ticker), and on the CP side `WithHeartbeatInterval` adds
-one more — both opt-in and disabled by default. On top of that, each inbound Call
-is handled in its own short-lived goroutine (`go c.runHandler(frame)`), bounded as
+The read idle watchdog and the WebSocket ping are `time.AfterFunc` timers, not
+goroutines: an inbound frame only stores a timestamp, the watchdog timer
+re-arms itself for the remaining time when it fires early, and a goroutine
+exists for the ping only while it waits for the pong. Enabling
+`WithWebSocketPingInterval` therefore adds no resident goroutine; on the CP side
+`WithHeartbeatInterval` adds one (the keepalive ticker). Each inbound Call is
+handled in its own short-lived goroutine (`go c.runHandler(frame)`), bounded as
 described next.
 
-For `N` connections the fixed baseline is `~4·N` goroutines. Goroutines start
+So the baseline cost is **5 goroutines per connection plus the net/http serve
+goroutine, 6 in total**, regardless of traffic (see "Measuring footprint").
+
+For `N` connections the fixed baseline is `~6·N` goroutines. Goroutines start
 with a ~2 KB stack, so tens of thousands of mostly-idle connections cost on the
 order of tens to low-hundreds of MB — well within range for a single process.
 Typical CSMS traffic is bursty-but-light (Heartbeat / StatusNotification), so in

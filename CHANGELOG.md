@@ -199,6 +199,12 @@ All notable changes to this project are documented here. The format is based on
   details element, so pending calls resolve immediately instead of timing out.
 
 ### Changed
+- The read idle watchdog and the WebSocket ping loop are `time.AfterFunc` timers
+  instead of two goroutines per connection (8 -> 6 resident goroutines, ~2 KB less
+  stack and ~1.8 KB less heap per connection), and inbound frames no longer
+  signal a channel (two atomic stores). The idle deadline is measured on the
+  monotonic clock. Behaviour is unchanged, except that the ping interval now
+  counts from the end of the previous ping instead of a fixed ticker.
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.

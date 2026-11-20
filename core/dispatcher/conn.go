@@ -27,9 +27,6 @@ type Conn struct {
 	out chan outbound
 	in  chan ocppj.Frame
 
-	// activity signals inbound frames (data/ping/pong) to the read idle watchdog.
-	activity chan struct{}
-
 	pending *pendingStore
 	reg     *HandlerRegistry
 	sem     *semaphore.Weighted
@@ -58,6 +55,18 @@ type Conn struct {
 	lastRecv    atomic.Int64
 	lastSent    atomic.Int64
 
+	// Keepalive timers (see keepalive.go). recvMono is the last inbound activity
+	// as a monotonic offset from monoBase, so the read idle watchdog is immune to
+	// wall-clock steps (lastRecv is wall time, for Stats only).
+	monoBase time.Time
+	recvMono atomic.Int64
+	tmu      sync.Mutex // guards the fields below
+	// timersStopped is set at teardown; no timer callback may start after it.
+	timersStopped bool
+	wdTimer       *time.Timer
+	pingTimer     *time.Timer
+	timerWG       sync.WaitGroup // in-flight ping callbacks
+
 	cfg Config
 }
 
@@ -82,18 +91,17 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		m = cloneConnMetadata(meta[0])
 	}
 	c := &Conn{
-		id:       id,
-		ws:       ws,
-		version:  subprotocolToVersion(ws.Subprotocol()),
-		meta:     m,
-		out:      make(chan outbound, max(cfg.OutboundQueueSize, 0)),
-		in:       make(chan ocppj.Frame, max(cfg.InboundQueueSize, 0)),
-		activity: make(chan struct{}, 1),
-		pending:  newPendingStore(),
-		reg:      reg,
-		sem:      semaphore.NewWeighted(cfg.MaxConcurrentHandlers),
-		done:     make(chan struct{}),
-		cfg:      cfg,
+		id:      id,
+		ws:      ws,
+		version: subprotocolToVersion(ws.Subprotocol()),
+		meta:    m,
+		out:     make(chan outbound, max(cfg.OutboundQueueSize, 0)),
+		in:      make(chan ocppj.Frame, max(cfg.InboundQueueSize, 0)),
+		pending: newPendingStore(),
+		reg:     reg,
+		sem:     semaphore.NewWeighted(cfg.MaxConcurrentHandlers),
+		done:    make(chan struct{}),
+		cfg:     cfg,
 	}
 	return c
 }
@@ -182,13 +190,10 @@ func (c *Conn) Stats() ConnStats {
 
 // NoteActivity records inbound activity, resetting the read idle watchdog.
 // It is safe to call from the websocket read goroutine (e.g. ping/pong
-// callbacks), as the send is non-blocking.
+// callbacks): it only stores two timestamps and never blocks.
 func (c *Conn) NoteActivity() {
 	c.lastRecv.Store(time.Now().UnixNano())
-	select {
-	case c.activity <- struct{}{}:
-	default:
-	}
+	c.recvMono.Store(int64(time.Since(c.monoBase)))
 }
 
 func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
@@ -241,6 +246,7 @@ func (c *Conn) Start(parent context.Context) {
 	now := time.Now().UnixNano()
 	c.connectedAt.Store(now)
 	c.lastRecv.Store(now)
+	c.monoBase = time.Now()
 	c.cfg.Metrics.ConnectionOpened()
 	// Fail calls still queued for the outbound slot when the connection ends.
 	context.AfterFunc(c.ctx, c.failQueued)
@@ -255,6 +261,7 @@ func (c *Conn) Start(parent context.Context) {
 
 	go func() {
 		c.wg.Wait()
+		c.stopTimers()
 		close(c.done)
 	}()
 }
