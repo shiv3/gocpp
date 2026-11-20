@@ -13,8 +13,9 @@ A from-scratch alternative to `lorenzodonini/ocpp-go` with:
   schemas — no hand-written, drift-prone message structs.
 - **Generics-first API** — typed `On[Req,Resp]` handlers and `Call[Req,Resp]`, so
   request/response types are inferred from a single message value.
-- **Context-native concurrency** — every connection owns reader/writer/dispatch
-  goroutines bound to a `context`; teardown flows from one `cancel(cause)`. Race- and
+- **Context-native concurrency** — every connection owns one reader
+  goroutine (about 13 KB RSS idle) bound to a `context`; handlers run on short-lived
+  goroutines or an optional warm worker pool; teardown flows from one `cancel(cause)`. Race- and
   goroutine-leak-tested (`-race` + `goleak`).
 - **Two-layer validation** — JSON-Schema validation against the embedded official
   schemas (source of truth), plus generated `validate` struct tags.
