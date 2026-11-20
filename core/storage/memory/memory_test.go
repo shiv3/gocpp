@@ -26,9 +26,10 @@ func TestMemoryRegistry(t *testing.T) {
 	_, ok = r.GetLocal("CP_1")
 	require.False(t, ok)
 	require.NoError(t, r.PutGlobal(ctx, "CP_1", "inst-1"))
-	_, ok, err := r.LookupGlobal(ctx, "CP_1")
+	inst, ok, err := r.LookupGlobal(ctx, "CP_1")
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.True(t, ok)
+	require.Equal(t, "inst-1", inst)
 }
 
 func TestMemoryTransactionStore(t *testing.T) {
@@ -79,4 +80,39 @@ func TestInProcessRouter_ForwardsBetweenInstances(t *testing.T) {
 		resp, err := instA.CallRemote(ctx, "CP_1", "Reset", []byte(`{}`))
 		return err == nil && string(resp) == `{"status":"Accepted"}`
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestMemoryRegistry_DeleteGlobalIf(t *testing.T) {
+	r := memory.NewConnectionRegistry()
+	d, ok := r.(storage.OwnedGlobalDeleter)
+	require.True(t, ok)
+	ctx := context.Background()
+	require.NoError(t, r.PutGlobal(ctx, "CP_1", "B"))
+
+	deleted, err := d.DeleteGlobalIf(ctx, "CP_1", "A")
+	require.NoError(t, err)
+	require.False(t, deleted)
+	inst, found, _ := r.LookupGlobal(ctx, "CP_1")
+	require.True(t, found)
+	require.Equal(t, "B", inst)
+
+	deleted, err = d.DeleteGlobalIf(ctx, "CP_1", "B")
+	require.NoError(t, err)
+	require.True(t, deleted)
+	_, found, _ = r.LookupGlobal(ctx, "CP_1")
+	require.False(t, found)
+}
+
+func TestInProcessHub_RegistriesShareGlobalRoutes(t *testing.T) {
+	hub := memory.NewInProcessHub()
+	a, b := hub.Registry(), hub.Registry()
+	ctx := context.Background()
+	require.NoError(t, a.PutGlobal(ctx, "CP_1", "A"))
+	inst, ok, _ := b.LookupGlobal(ctx, "CP_1")
+	require.True(t, ok)
+	require.Equal(t, "A", inst)
+	// Local tables stay private to each instance.
+	require.NoError(t, a.PutLocal(ctx, "CP_1", fakeConn{"CP_1"}))
+	_, ok = b.GetLocal("CP_1")
+	require.False(t, ok)
 }

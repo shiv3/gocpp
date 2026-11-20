@@ -28,6 +28,9 @@ func Send[Req any](ctx context.Context, c *Conn, m ocppj.SendMessage[Req], req R
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpCall, m.Direction); err != nil {
 		return err
 	}
+	if c.inner == nil {
+		return ErrRemoteConn
+	}
 	payload, err := codec.Marshal(req)
 	if err != nil {
 		return err

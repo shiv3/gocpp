@@ -63,13 +63,19 @@ func NewServer(opts ...Option) *Server {
 		cfg.dispatcher.GlobalHandlerLimiter = semaphore.NewWeighted(int64(cfg.globalConcurrencyLimit))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{
+	s := &Server{
 		cfg:    cfg,
 		reg:    dispatcher.NewHandlerRegistry(),
 		conns:  make(map[string]*Conn),
 		ctx:    ctx,
 		cancel: cancel,
 	}
+	if s.clustered() {
+		// Serve calls other instances forward to the charge points connected here,
+		// until Shutdown or Close.
+		go s.serveRemote()
+	}
+	return s
 }
 
 // Handler returns the http.Handler that upgrades charge point connections.
@@ -194,10 +200,12 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 	s.handleConnected(conn)
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
+	s.publishGlobal(cpID)
 	dconn.ReleaseInbound()
 	defer func() {
 		if s.removeConn(cpID, conn) {
 			_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
+			s.retractGlobal(cpID)
 		}
 	}()
 

@@ -27,6 +27,19 @@ All notable changes to this project are documented here. The format is based on
 - `csms.WithConnConfig` / `csms.ConnTimeouts`: per-charge-point override of call
   timeout, write timeout, ping interval, pong wait and read-idle timeout, evaluated
   at upgrade. Defaults are unchanged.
+- Multi-instance routing in `csms`: with `WithInstanceID`, the server registers
+  each charge point globally (`PutGlobal`) on connect and removes the route on
+  disconnect only if it still names this instance, serves forwarded calls through
+  `WithMessageRouter` (`ServeRemote`, stopped by `Shutdown` / `Close`), and the new
+  `Server.Lookup(ctx, id)` returns a `*Conn` for a charge point held by another
+  instance, so `Call` / `CallRaw` / `CallAsync` are forwarded (`CallRemote`) and
+  return the remote typed result, `CallError` and ocppj sentinels transparently.
+  New `Conn.Remote()` and `csms.ErrRemoteConn`. See docs/clustering.md.
+- `storage.OwnedGlobalDeleter`: optional registry interface for an atomic
+  compare-and-delete of a global route (`DeleteGlobalIf`). Registries without it
+  get a non-atomic lookup-then-delete.
+- `memory.InProcessHub.Registry()`: per-instance registries sharing one global
+  route table, for in-process multi-instance tests.
 - `csms.Conn.Close(ctx)` and `csms.Server.Disconnect(ctx, id)`: close one charge
   point's connection from the server side (WebSocket close 1000, reason "closed by
   the server"), waiting for teardown up to ctx. The disconnect callback fires once
@@ -124,6 +137,9 @@ All notable changes to this project are documented here. The format is based on
   details element, so pending calls resolve immediately instead of timing out.
 
 ### Changed
+- `memory.NewConnectionRegistry` now stores global routes (`PutGlobal` /
+  `LookupGlobal` / `DeleteGlobal` were no-ops). Code relying on `LookupGlobal`
+  always reporting not-found must not rely on it any more.
 - Behaviour change: schema rejections of inbound CALLs are no longer always
   `FormationViolation` / `FormatViolation`. The first violated keyword selects the
   code: missing required fields / occurrence limits -> `OccurenceConstraintViolation`
