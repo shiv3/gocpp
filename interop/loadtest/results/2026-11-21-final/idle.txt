@@ -1,0 +1,15 @@
+[gocpp/base] rss_kb=15668 goroutine profile: total 4 :: # Sys = 13752584 # HeapAlloc = 1346112 # HeapInuse = 3293184 
+connected 10000
+[gocpp/idle] rss_kb=151396 goroutine profile: total 10004 :: # Sys = 165779752 # HeapAlloc = 76352448 # HeapInuse = 87007232 
+replies 10000
+[gocpp/hb] rss_kb=191012 goroutine profile: total 4 :: # Sys = 191805736 # HeapAlloc = 11925368 # HeapInuse = 22249472 
+[gocpp-pool/base] rss_kb=15672 goroutine profile: total 68 :: # Sys = 14006536 # HeapAlloc = 1394800 # HeapInuse = 3399680 
+connected 10000
+[gocpp-pool/idle] rss_kb=150804 goroutine profile: total 10068 :: # Sys = 166041896 # HeapAlloc = 76376176 # HeapInuse = 87023616 
+replies 10000
+[gocpp-pool/hb] rss_kb=162860 goroutine profile: total 10068 :: # Sys = 182892840 # HeapAlloc = 80486336 # HeapInuse = 93405184 
+[ocppgo/base] rss_kb=12640 goroutine profile: total 6 :: # Sys = 13474056 # HeapAlloc = 594808 # HeapInuse = 1810432 
+connected 10000
+[ocppgo/idle] rss_kb=239680 goroutine profile: total 20006 :: # Sys = 241801544 # HeapAlloc = 124359688 # HeapInuse = 132440064 
+replies 10000
+[ocppgo/hb] rss_kb=317264 goroutine profile: total 6 :: # Sys = 352446808 # HeapAlloc = 68118864 # HeapInuse = 83451904 

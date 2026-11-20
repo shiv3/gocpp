@@ -2,7 +2,6 @@
 package main
 
 import (
-	_ "net/http/pprof"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,11 +10,13 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"runtime/debug"
 	"strings"
 	"time"
 
+	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/csms"
@@ -34,6 +35,8 @@ func main() {
 	compat := flag.Bool("compat", false, "enable csms.WithOCPPGoCompat() (implies lenient schema)")
 	lite := flag.Bool("lite", false, "load-test mode: keep no event history, only counters (see /control/count)")
 	pprofAddr := flag.String("pprof", "", "serve net/http/pprof on this address, e.g. 127.0.0.1:6060")
+	handlerPool := flag.Int("handler-pool", 0, "run inbound handlers on N resident workers (csms.WithHandlerPool); 0 = goroutine per message")
+	outboundValidation := flag.Bool("outbound-validation", true, "validate payloads produced by local handlers (csms.WithOutboundValidation)")
 	flag.Parse()
 	if *pprofAddr != "" {
 		go func() { log.Println(http.ListenAndServe(*pprofAddr, nil)) }()
@@ -58,6 +61,12 @@ func main() {
 			cause, raw := disconnectCause(err)
 			rec.Disconnect(c.ID(), cause, raw)
 		}),
+	}
+	if *handlerPool > 0 {
+		opts = append(opts, csms.WithHandlerPool(dispatcher.NewHandlerPool(*handlerPool)))
+	}
+	if !*outboundValidation {
+		opts = append(opts, csms.WithOutboundValidation(false))
 	}
 	if *compat {
 		// The preset sets lenient schema, the ocpp-go error codes, message id drop,

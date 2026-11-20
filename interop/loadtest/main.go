@@ -134,11 +134,12 @@ func main() {
 	flag.Float64Var(&c.HotShare, "hot-share", 0.9, "share of CSMS calls aimed at the hot set")
 	flag.BoolVar(&c.Attach, "attach", false, "do not spawn the server")
 	flag.BoolVar(&c.GCTrace, "gctrace", false, "start the server with GODEBUG=gctrace=1 (needed for the in-mark share in report.py)")
-	knee := flag.Bool("knee", false, "preset: -steps 4000:50:150s:160,4000:50:150s:320 (about 30k then 60k requests/s; use with -gctrace)")
+	knee := flag.Bool("knee", false, "preset: -steps 4000:50:150s:160,4000:50:150s:320 (about 30k then 60k requests/s; implies -gctrace and -restarts 0)")
 	flag.Parse()
 	if *knee {
 		steps = "4000:50:150s:160,4000:50:150s:320"
 		c.GCTrace = true
+		c.Restarts = 0 // restarts inside the first step would dilute its message rate
 	}
 	var err error
 	if c.Steps, err = parseSteps(steps); err != nil || c.Out == "" || (c.ServerBin == "" && !c.Attach) {
