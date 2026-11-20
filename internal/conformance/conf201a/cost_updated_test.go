@@ -6,22 +6,16 @@ import (
 	"testing"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCostUpdated201_RequestValidation(t *testing.T) {
-	oldDecimalJSON := decimal.MarshalJSONWithoutQuotes
-	decimal.MarshalJSONWithoutQuotes = true
-	t.Cleanup(func() {
-		decimal.MarshalJSONWithoutQuotes = oldDecimalJSON
-	})
-
 	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "CostUpdated", "request")
 
@@ -29,7 +23,7 @@ func TestCostUpdated201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid minimal request",
 			Message: messages.CostUpdatedRequest{
-				TotalCost:     decimal.NewFromFloat(24.6),
+				TotalCost:     types.NewFromFloat(24.6),
 				TransactionID: "1234",
 			},
 			Valid: true,
@@ -38,7 +32,7 @@ func TestCostUpdated201_RequestValidation(t *testing.T) {
 			Name: "valid full request",
 			Message: messages.CostUpdatedRequest{
 				CustomData:    testCustomData(),
-				TotalCost:     decimal.NewFromFloat(24.6),
+				TotalCost:     types.NewFromFloat(24.6),
 				TransactionID: "1234",
 			},
 			Valid: true,
@@ -65,7 +59,7 @@ func TestCostUpdated201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid transactionId exceeds maxLength 36",
 			Message: messages.CostUpdatedRequest{
-				TotalCost:     decimal.NewFromFloat(24.6),
+				TotalCost:     types.NewFromFloat(24.6),
 				TransactionID: strings.Repeat("x", 37),
 			},
 			Valid: false,

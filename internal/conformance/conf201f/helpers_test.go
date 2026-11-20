@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,27 +56,17 @@ func testVariable201f() messages.VariableType {
 	}
 }
 
-func decimal201f(v string) decimal.Decimal {
-	d, err := decimal.NewFromString(v)
+func decimal201f(v string) types.Decimal {
+	d, err := types.NewFromString(v)
 	if err != nil {
 		panic(err)
 	}
 	return d
 }
 
-func decimalPtr201f() *decimal.Decimal {
+func decimalPtr201f() *types.Decimal {
 	d := decimal201f("8.42")
 	return &d
-}
-
-func useDecimalJSONWithoutQuotes201f(t *testing.T) {
-	t.Helper()
-
-	oldDecimalJSON := decimal.MarshalJSONWithoutQuotes
-	decimal.MarshalJSONWithoutQuotes = true
-	t.Cleanup(func() {
-		decimal.MarshalJSONWithoutQuotes = oldDecimalJSON
-	})
 }
 
 func requireCSMSHandlerInvalidDirection201f[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {

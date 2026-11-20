@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -31,67 +31,67 @@ type ChargingNeedsType struct {
 
 type ACChargingParametersType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EnergyAmount decimal.Decimal `json:"energyAmount" validate:"required"`
-	EVMaxCurrent decimal.Decimal `json:"evMaxCurrent" validate:"required"`
-	EVMaxVoltage decimal.Decimal `json:"evMaxVoltage" validate:"required"`
-	EVMinCurrent decimal.Decimal `json:"evMinCurrent" validate:"required"`
+	EnergyAmount types.Decimal   `json:"energyAmount" validate:"required"`
+	EVMaxCurrent types.Decimal   `json:"evMaxCurrent" validate:"required"`
+	EVMaxVoltage types.Decimal   `json:"evMaxVoltage" validate:"required"`
+	EVMinCurrent types.Decimal   `json:"evMinCurrent" validate:"required"`
 }
 
 type DCChargingParametersType struct {
-	BulkSoC          *int32           `json:"bulkSoC,omitempty" validate:"omitempty"`
-	CustomData       *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	EnergyAmount     *decimal.Decimal `json:"energyAmount,omitempty" validate:"omitempty"`
-	EVEnergyCapacity *decimal.Decimal `json:"evEnergyCapacity,omitempty" validate:"omitempty"`
-	EVMaxCurrent     decimal.Decimal  `json:"evMaxCurrent" validate:"required"`
-	EVMaxPower       *decimal.Decimal `json:"evMaxPower,omitempty" validate:"omitempty"`
-	EVMaxVoltage     decimal.Decimal  `json:"evMaxVoltage" validate:"required"`
-	FullSoC          *int32           `json:"fullSoC,omitempty" validate:"omitempty"`
-	StateOfCharge    *int32           `json:"stateOfCharge,omitempty" validate:"omitempty"`
+	BulkSoC          *int32          `json:"bulkSoC,omitempty" validate:"omitempty"`
+	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	EnergyAmount     *types.Decimal  `json:"energyAmount,omitempty" validate:"omitempty"`
+	EVEnergyCapacity *types.Decimal  `json:"evEnergyCapacity,omitempty" validate:"omitempty"`
+	EVMaxCurrent     types.Decimal   `json:"evMaxCurrent" validate:"required"`
+	EVMaxPower       *types.Decimal  `json:"evMaxPower,omitempty" validate:"omitempty"`
+	EVMaxVoltage     types.Decimal   `json:"evMaxVoltage" validate:"required"`
+	FullSoC          *int32          `json:"fullSoC,omitempty" validate:"omitempty"`
+	StateOfCharge    *int32          `json:"stateOfCharge,omitempty" validate:"omitempty"`
 }
 
 type DERChargingParametersType struct {
-	CustomData                             *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	EVDurationLevel1DCInjection            *decimal.Decimal `json:"evDurationLevel1DCInjection,omitempty" validate:"omitempty"`
-	EVDurationLevel2DCInjection            *decimal.Decimal `json:"evDurationLevel2DCInjection,omitempty" validate:"omitempty"`
-	EVInverterHwVersion                    *string          `json:"evInverterHwVersion,omitempty" validate:"omitempty,max=50"`
-	EVInverterManufacturer                 *string          `json:"evInverterManufacturer,omitempty" validate:"omitempty,max=50"`
-	EVInverterModel                        *string          `json:"evInverterModel,omitempty" validate:"omitempty,max=50"`
-	EVInverterSerialNumber                 *string          `json:"evInverterSerialNumber,omitempty" validate:"omitempty,max=50"`
-	EVInverterSwVersion                    *string          `json:"evInverterSwVersion,omitempty" validate:"omitempty,max=50"`
-	EVIslandingDetectionMethod             []string         `json:"evIslandingDetectionMethod,omitempty" validate:"omitempty"`
-	EVIslandingTripTime                    *decimal.Decimal `json:"evIslandingTripTime,omitempty" validate:"omitempty"`
-	EVMaximumLevel1DCInjection             *decimal.Decimal `json:"evMaximumLevel1DCInjection,omitempty" validate:"omitempty"`
-	EVMaximumLevel2DCInjection             *decimal.Decimal `json:"evMaximumLevel2DCInjection,omitempty" validate:"omitempty"`
-	EVOverExcitedMaxDischargePower         *decimal.Decimal `json:"evOverExcitedMaxDischargePower,omitempty" validate:"omitempty"`
-	EVOverExcitedPowerFactor               *decimal.Decimal `json:"evOverExcitedPowerFactor,omitempty" validate:"omitempty"`
-	EVReactiveSusceptance                  *decimal.Decimal `json:"evReactiveSusceptance,omitempty" validate:"omitempty"`
-	EVSessionTotalDischargeEnergyAvailable *decimal.Decimal `json:"evSessionTotalDischargeEnergyAvailable,omitempty" validate:"omitempty"`
-	EVSupportedDERControl                  []string         `json:"evSupportedDERControl,omitempty" validate:"omitempty"`
-	EVUnderExcitedMaxDischargePower        *decimal.Decimal `json:"evUnderExcitedMaxDischargePower,omitempty" validate:"omitempty"`
-	EVUnderExcitedPowerFactor              *decimal.Decimal `json:"evUnderExcitedPowerFactor,omitempty" validate:"omitempty"`
-	MaxApparentPower                       *decimal.Decimal `json:"maxApparentPower,omitempty" validate:"omitempty"`
-	MaxChargeApparentPower                 *decimal.Decimal `json:"maxChargeApparentPower,omitempty" validate:"omitempty"`
-	MaxChargeApparentPower_L2              *decimal.Decimal `json:"maxChargeApparentPower_L2,omitempty" validate:"omitempty"`
-	MaxChargeApparentPower_L3              *decimal.Decimal `json:"maxChargeApparentPower_L3,omitempty" validate:"omitempty"`
-	MaxChargeReactivePower                 *decimal.Decimal `json:"maxChargeReactivePower,omitempty" validate:"omitempty"`
-	MaxChargeReactivePower_L2              *decimal.Decimal `json:"maxChargeReactivePower_L2,omitempty" validate:"omitempty"`
-	MaxChargeReactivePower_L3              *decimal.Decimal `json:"maxChargeReactivePower_L3,omitempty" validate:"omitempty"`
-	MaxDischargeApparentPower              *decimal.Decimal `json:"maxDischargeApparentPower,omitempty" validate:"omitempty"`
-	MaxDischargeApparentPower_L2           *decimal.Decimal `json:"maxDischargeApparentPower_L2,omitempty" validate:"omitempty"`
-	MaxDischargeApparentPower_L3           *decimal.Decimal `json:"maxDischargeApparentPower_L3,omitempty" validate:"omitempty"`
-	MaxDischargeReactivePower              *decimal.Decimal `json:"maxDischargeReactivePower,omitempty" validate:"omitempty"`
-	MaxDischargeReactivePower_L2           *decimal.Decimal `json:"maxDischargeReactivePower_L2,omitempty" validate:"omitempty"`
-	MaxDischargeReactivePower_L3           *decimal.Decimal `json:"maxDischargeReactivePower_L3,omitempty" validate:"omitempty"`
-	MaxNominalVoltage                      *decimal.Decimal `json:"maxNominalVoltage,omitempty" validate:"omitempty"`
-	MinChargeReactivePower                 *decimal.Decimal `json:"minChargeReactivePower,omitempty" validate:"omitempty"`
-	MinChargeReactivePower_L2              *decimal.Decimal `json:"minChargeReactivePower_L2,omitempty" validate:"omitempty"`
-	MinChargeReactivePower_L3              *decimal.Decimal `json:"minChargeReactivePower_L3,omitempty" validate:"omitempty"`
-	MinDischargeReactivePower              *decimal.Decimal `json:"minDischargeReactivePower,omitempty" validate:"omitempty"`
-	MinDischargeReactivePower_L2           *decimal.Decimal `json:"minDischargeReactivePower_L2,omitempty" validate:"omitempty"`
-	MinDischargeReactivePower_L3           *decimal.Decimal `json:"minDischargeReactivePower_L3,omitempty" validate:"omitempty"`
-	MinNominalVoltage                      *decimal.Decimal `json:"minNominalVoltage,omitempty" validate:"omitempty"`
-	NominalVoltage                         *decimal.Decimal `json:"nominalVoltage,omitempty" validate:"omitempty"`
-	NominalVoltageOffset                   *decimal.Decimal `json:"nominalVoltageOffset,omitempty" validate:"omitempty"`
+	CustomData                             *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	EVDurationLevel1DCInjection            *types.Decimal  `json:"evDurationLevel1DCInjection,omitempty" validate:"omitempty"`
+	EVDurationLevel2DCInjection            *types.Decimal  `json:"evDurationLevel2DCInjection,omitempty" validate:"omitempty"`
+	EVInverterHwVersion                    *string         `json:"evInverterHwVersion,omitempty" validate:"omitempty,max=50"`
+	EVInverterManufacturer                 *string         `json:"evInverterManufacturer,omitempty" validate:"omitempty,max=50"`
+	EVInverterModel                        *string         `json:"evInverterModel,omitempty" validate:"omitempty,max=50"`
+	EVInverterSerialNumber                 *string         `json:"evInverterSerialNumber,omitempty" validate:"omitempty,max=50"`
+	EVInverterSwVersion                    *string         `json:"evInverterSwVersion,omitempty" validate:"omitempty,max=50"`
+	EVIslandingDetectionMethod             []string        `json:"evIslandingDetectionMethod,omitempty" validate:"omitempty"`
+	EVIslandingTripTime                    *types.Decimal  `json:"evIslandingTripTime,omitempty" validate:"omitempty"`
+	EVMaximumLevel1DCInjection             *types.Decimal  `json:"evMaximumLevel1DCInjection,omitempty" validate:"omitempty"`
+	EVMaximumLevel2DCInjection             *types.Decimal  `json:"evMaximumLevel2DCInjection,omitempty" validate:"omitempty"`
+	EVOverExcitedMaxDischargePower         *types.Decimal  `json:"evOverExcitedMaxDischargePower,omitempty" validate:"omitempty"`
+	EVOverExcitedPowerFactor               *types.Decimal  `json:"evOverExcitedPowerFactor,omitempty" validate:"omitempty"`
+	EVReactiveSusceptance                  *types.Decimal  `json:"evReactiveSusceptance,omitempty" validate:"omitempty"`
+	EVSessionTotalDischargeEnergyAvailable *types.Decimal  `json:"evSessionTotalDischargeEnergyAvailable,omitempty" validate:"omitempty"`
+	EVSupportedDERControl                  []string        `json:"evSupportedDERControl,omitempty" validate:"omitempty"`
+	EVUnderExcitedMaxDischargePower        *types.Decimal  `json:"evUnderExcitedMaxDischargePower,omitempty" validate:"omitempty"`
+	EVUnderExcitedPowerFactor              *types.Decimal  `json:"evUnderExcitedPowerFactor,omitempty" validate:"omitempty"`
+	MaxApparentPower                       *types.Decimal  `json:"maxApparentPower,omitempty" validate:"omitempty"`
+	MaxChargeApparentPower                 *types.Decimal  `json:"maxChargeApparentPower,omitempty" validate:"omitempty"`
+	MaxChargeApparentPower_L2              *types.Decimal  `json:"maxChargeApparentPower_L2,omitempty" validate:"omitempty"`
+	MaxChargeApparentPower_L3              *types.Decimal  `json:"maxChargeApparentPower_L3,omitempty" validate:"omitempty"`
+	MaxChargeReactivePower                 *types.Decimal  `json:"maxChargeReactivePower,omitempty" validate:"omitempty"`
+	MaxChargeReactivePower_L2              *types.Decimal  `json:"maxChargeReactivePower_L2,omitempty" validate:"omitempty"`
+	MaxChargeReactivePower_L3              *types.Decimal  `json:"maxChargeReactivePower_L3,omitempty" validate:"omitempty"`
+	MaxDischargeApparentPower              *types.Decimal  `json:"maxDischargeApparentPower,omitempty" validate:"omitempty"`
+	MaxDischargeApparentPower_L2           *types.Decimal  `json:"maxDischargeApparentPower_L2,omitempty" validate:"omitempty"`
+	MaxDischargeApparentPower_L3           *types.Decimal  `json:"maxDischargeApparentPower_L3,omitempty" validate:"omitempty"`
+	MaxDischargeReactivePower              *types.Decimal  `json:"maxDischargeReactivePower,omitempty" validate:"omitempty"`
+	MaxDischargeReactivePower_L2           *types.Decimal  `json:"maxDischargeReactivePower_L2,omitempty" validate:"omitempty"`
+	MaxDischargeReactivePower_L3           *types.Decimal  `json:"maxDischargeReactivePower_L3,omitempty" validate:"omitempty"`
+	MaxNominalVoltage                      *types.Decimal  `json:"maxNominalVoltage,omitempty" validate:"omitempty"`
+	MinChargeReactivePower                 *types.Decimal  `json:"minChargeReactivePower,omitempty" validate:"omitempty"`
+	MinChargeReactivePower_L2              *types.Decimal  `json:"minChargeReactivePower_L2,omitempty" validate:"omitempty"`
+	MinChargeReactivePower_L3              *types.Decimal  `json:"minChargeReactivePower_L3,omitempty" validate:"omitempty"`
+	MinDischargeReactivePower              *types.Decimal  `json:"minDischargeReactivePower,omitempty" validate:"omitempty"`
+	MinDischargeReactivePower_L2           *types.Decimal  `json:"minDischargeReactivePower_L2,omitempty" validate:"omitempty"`
+	MinDischargeReactivePower_L3           *types.Decimal  `json:"minDischargeReactivePower_L3,omitempty" validate:"omitempty"`
+	MinNominalVoltage                      *types.Decimal  `json:"minNominalVoltage,omitempty" validate:"omitempty"`
+	NominalVoltage                         *types.Decimal  `json:"nominalVoltage,omitempty" validate:"omitempty"`
+	NominalVoltageOffset                   *types.Decimal  `json:"nominalVoltageOffset,omitempty" validate:"omitempty"`
 }
 
 type EVEnergyOfferType struct {
@@ -116,8 +116,8 @@ type EVAbsolutePriceScheduleEntryType struct {
 
 type EVPriceRuleType struct {
 	CustomData      *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EnergyFee       decimal.Decimal `json:"energyFee" validate:"required"`
-	PowerRangeStart decimal.Decimal `json:"powerRangeStart" validate:"required"`
+	EnergyFee       types.Decimal   `json:"energyFee" validate:"required"`
+	PowerRangeStart types.Decimal   `json:"powerRangeStart" validate:"required"`
 }
 
 type EVPowerScheduleType struct {
@@ -129,35 +129,35 @@ type EVPowerScheduleType struct {
 type EVPowerScheduleEntryType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Duration   int32           `json:"duration" validate:"required"`
-	Power      decimal.Decimal `json:"power" validate:"required"`
+	Power      types.Decimal   `json:"power" validate:"required"`
 }
 
 type V2XChargingParametersType struct {
-	CustomData            *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	EVMaxEnergyRequest    *decimal.Decimal `json:"evMaxEnergyRequest,omitempty" validate:"omitempty"`
-	EVMaxV2XEnergyRequest *decimal.Decimal `json:"evMaxV2XEnergyRequest,omitempty" validate:"omitempty"`
-	EVMinEnergyRequest    *decimal.Decimal `json:"evMinEnergyRequest,omitempty" validate:"omitempty"`
-	EVMinV2XEnergyRequest *decimal.Decimal `json:"evMinV2XEnergyRequest,omitempty" validate:"omitempty"`
-	EVTargetEnergyRequest *decimal.Decimal `json:"evTargetEnergyRequest,omitempty" validate:"omitempty"`
-	MaxChargeCurrent      *decimal.Decimal `json:"maxChargeCurrent,omitempty" validate:"omitempty"`
-	MaxChargePower        *decimal.Decimal `json:"maxChargePower,omitempty" validate:"omitempty"`
-	MaxChargePower_L2     *decimal.Decimal `json:"maxChargePower_L2,omitempty" validate:"omitempty"`
-	MaxChargePower_L3     *decimal.Decimal `json:"maxChargePower_L3,omitempty" validate:"omitempty"`
-	MaxDischargeCurrent   *decimal.Decimal `json:"maxDischargeCurrent,omitempty" validate:"omitempty"`
-	MaxDischargePower     *decimal.Decimal `json:"maxDischargePower,omitempty" validate:"omitempty"`
-	MaxDischargePower_L2  *decimal.Decimal `json:"maxDischargePower_L2,omitempty" validate:"omitempty"`
-	MaxDischargePower_L3  *decimal.Decimal `json:"maxDischargePower_L3,omitempty" validate:"omitempty"`
-	MaxVoltage            *decimal.Decimal `json:"maxVoltage,omitempty" validate:"omitempty"`
-	MinChargeCurrent      *decimal.Decimal `json:"minChargeCurrent,omitempty" validate:"omitempty"`
-	MinChargePower        *decimal.Decimal `json:"minChargePower,omitempty" validate:"omitempty"`
-	MinChargePower_L2     *decimal.Decimal `json:"minChargePower_L2,omitempty" validate:"omitempty"`
-	MinChargePower_L3     *decimal.Decimal `json:"minChargePower_L3,omitempty" validate:"omitempty"`
-	MinDischargeCurrent   *decimal.Decimal `json:"minDischargeCurrent,omitempty" validate:"omitempty"`
-	MinDischargePower     *decimal.Decimal `json:"minDischargePower,omitempty" validate:"omitempty"`
-	MinDischargePower_L2  *decimal.Decimal `json:"minDischargePower_L2,omitempty" validate:"omitempty"`
-	MinDischargePower_L3  *decimal.Decimal `json:"minDischargePower_L3,omitempty" validate:"omitempty"`
-	MinVoltage            *decimal.Decimal `json:"minVoltage,omitempty" validate:"omitempty"`
-	TargetSoC             *int32           `json:"targetSoC,omitempty" validate:"omitempty"`
+	CustomData            *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	EVMaxEnergyRequest    *types.Decimal  `json:"evMaxEnergyRequest,omitempty" validate:"omitempty"`
+	EVMaxV2XEnergyRequest *types.Decimal  `json:"evMaxV2XEnergyRequest,omitempty" validate:"omitempty"`
+	EVMinEnergyRequest    *types.Decimal  `json:"evMinEnergyRequest,omitempty" validate:"omitempty"`
+	EVMinV2XEnergyRequest *types.Decimal  `json:"evMinV2XEnergyRequest,omitempty" validate:"omitempty"`
+	EVTargetEnergyRequest *types.Decimal  `json:"evTargetEnergyRequest,omitempty" validate:"omitempty"`
+	MaxChargeCurrent      *types.Decimal  `json:"maxChargeCurrent,omitempty" validate:"omitempty"`
+	MaxChargePower        *types.Decimal  `json:"maxChargePower,omitempty" validate:"omitempty"`
+	MaxChargePower_L2     *types.Decimal  `json:"maxChargePower_L2,omitempty" validate:"omitempty"`
+	MaxChargePower_L3     *types.Decimal  `json:"maxChargePower_L3,omitempty" validate:"omitempty"`
+	MaxDischargeCurrent   *types.Decimal  `json:"maxDischargeCurrent,omitempty" validate:"omitempty"`
+	MaxDischargePower     *types.Decimal  `json:"maxDischargePower,omitempty" validate:"omitempty"`
+	MaxDischargePower_L2  *types.Decimal  `json:"maxDischargePower_L2,omitempty" validate:"omitempty"`
+	MaxDischargePower_L3  *types.Decimal  `json:"maxDischargePower_L3,omitempty" validate:"omitempty"`
+	MaxVoltage            *types.Decimal  `json:"maxVoltage,omitempty" validate:"omitempty"`
+	MinChargeCurrent      *types.Decimal  `json:"minChargeCurrent,omitempty" validate:"omitempty"`
+	MinChargePower        *types.Decimal  `json:"minChargePower,omitempty" validate:"omitempty"`
+	MinChargePower_L2     *types.Decimal  `json:"minChargePower_L2,omitempty" validate:"omitempty"`
+	MinChargePower_L3     *types.Decimal  `json:"minChargePower_L3,omitempty" validate:"omitempty"`
+	MinDischargeCurrent   *types.Decimal  `json:"minDischargeCurrent,omitempty" validate:"omitempty"`
+	MinDischargePower     *types.Decimal  `json:"minDischargePower,omitempty" validate:"omitempty"`
+	MinDischargePower_L2  *types.Decimal  `json:"minDischargePower_L2,omitempty" validate:"omitempty"`
+	MinDischargePower_L3  *types.Decimal  `json:"minDischargePower_L3,omitempty" validate:"omitempty"`
+	MinVoltage            *types.Decimal  `json:"minVoltage,omitempty" validate:"omitempty"`
+	TargetSoC             *int32          `json:"targetSoC,omitempty" validate:"omitempty"`
 }
 
 type NotifyEVChargingNeedsResponse struct {

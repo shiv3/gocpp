@@ -3,10 +3,10 @@ package conf21d
 import (
 	"testing"
 
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/internal/conformance"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/shopspring/decimal"
 )
 
 func TestCostUpdated21_RequestValidation(t *testing.T) {
@@ -16,7 +16,7 @@ func TestCostUpdated21_RequestValidation(t *testing.T) {
 		{
 			Name: "valid",
 			Message: messages.CostUpdatedRequest{
-				TotalCost:     decimal.NewFromInt(42),
+				TotalCost:     types.NewFromInt(42),
 				TransactionID: "tx-1",
 			},
 			Valid: true,
@@ -31,7 +31,7 @@ func TestCostUpdated21_RequestValidation(t *testing.T) {
 		{
 			Name: "exceeds maxLength transactionId",
 			Message: messages.CostUpdatedRequest{
-				TotalCost:     decimal.NewFromInt(42),
+				TotalCost:     types.NewFromInt(42),
 				TransactionID: longString(37),
 			},
 			Valid: false,

@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	v21client "github.com/shiv3/gocpp/v21/client"
 	v21msg "github.com/shiv3/gocpp/v21/messages"
 	v21p "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,8 +46,8 @@ func TestE2E_21NotifyPeriodicEventStreamSend(t *testing.T) {
 		Pending:  0,
 		Basetime: time.Now().UTC(),
 		Data: []v21msg.StreamDataElementType{
-			{T: decimal.NewFromInt(0), V: "230.4"},
-			{T: decimal.NewFromInt(15), V: "230.2"},
+			{T: types.NewFromInt(0), V: "230.4"},
+			{T: types.NewFromInt(15), V: "230.2"},
 		},
 	}
 

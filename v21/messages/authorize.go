@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -92,35 +92,35 @@ type TariffTimeType struct {
 type TariffTimePriceType struct {
 	Conditions  *TariffConditionsType `json:"conditions,omitempty" validate:"omitempty"`
 	CustomData  *CustomDataType       `json:"customData,omitempty" validate:"omitempty"`
-	PriceMinute decimal.Decimal       `json:"priceMinute" validate:"required"`
+	PriceMinute types.Decimal         `json:"priceMinute" validate:"required"`
 }
 
 type TariffConditionsType struct {
-	CustomData      *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	DayOfWeek       []string         `json:"dayOfWeek,omitempty" validate:"omitempty"`
-	EndTimeOfDay    *string          `json:"endTimeOfDay,omitempty" validate:"omitempty"`
-	EVSEKind        *string          `json:"evseKind,omitempty" validate:"omitempty"`
-	MaxChargingTime *int32           `json:"maxChargingTime,omitempty" validate:"omitempty"`
-	MaxCurrent      *decimal.Decimal `json:"maxCurrent,omitempty" validate:"omitempty"`
-	MaxEnergy       *decimal.Decimal `json:"maxEnergy,omitempty" validate:"omitempty"`
-	MaxIdleTime     *int32           `json:"maxIdleTime,omitempty" validate:"omitempty"`
-	MaxPower        *decimal.Decimal `json:"maxPower,omitempty" validate:"omitempty"`
-	MaxTime         *int32           `json:"maxTime,omitempty" validate:"omitempty"`
-	MinChargingTime *int32           `json:"minChargingTime,omitempty" validate:"omitempty"`
-	MinCurrent      *decimal.Decimal `json:"minCurrent,omitempty" validate:"omitempty"`
-	MinEnergy       *decimal.Decimal `json:"minEnergy,omitempty" validate:"omitempty"`
-	MinIdleTime     *int32           `json:"minIdleTime,omitempty" validate:"omitempty"`
-	MinPower        *decimal.Decimal `json:"minPower,omitempty" validate:"omitempty"`
-	MinTime         *int32           `json:"minTime,omitempty" validate:"omitempty"`
-	StartTimeOfDay  *string          `json:"startTimeOfDay,omitempty" validate:"omitempty"`
-	ValidFromDate   *string          `json:"validFromDate,omitempty" validate:"omitempty"`
-	ValidToDate     *string          `json:"validToDate,omitempty" validate:"omitempty"`
+	CustomData      *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	DayOfWeek       []string        `json:"dayOfWeek,omitempty" validate:"omitempty"`
+	EndTimeOfDay    *string         `json:"endTimeOfDay,omitempty" validate:"omitempty"`
+	EVSEKind        *string         `json:"evseKind,omitempty" validate:"omitempty"`
+	MaxChargingTime *int32          `json:"maxChargingTime,omitempty" validate:"omitempty"`
+	MaxCurrent      *types.Decimal  `json:"maxCurrent,omitempty" validate:"omitempty"`
+	MaxEnergy       *types.Decimal  `json:"maxEnergy,omitempty" validate:"omitempty"`
+	MaxIdleTime     *int32          `json:"maxIdleTime,omitempty" validate:"omitempty"`
+	MaxPower        *types.Decimal  `json:"maxPower,omitempty" validate:"omitempty"`
+	MaxTime         *int32          `json:"maxTime,omitempty" validate:"omitempty"`
+	MinChargingTime *int32          `json:"minChargingTime,omitempty" validate:"omitempty"`
+	MinCurrent      *types.Decimal  `json:"minCurrent,omitempty" validate:"omitempty"`
+	MinEnergy       *types.Decimal  `json:"minEnergy,omitempty" validate:"omitempty"`
+	MinIdleTime     *int32          `json:"minIdleTime,omitempty" validate:"omitempty"`
+	MinPower        *types.Decimal  `json:"minPower,omitempty" validate:"omitempty"`
+	MinTime         *int32          `json:"minTime,omitempty" validate:"omitempty"`
+	StartTimeOfDay  *string         `json:"startTimeOfDay,omitempty" validate:"omitempty"`
+	ValidFromDate   *string         `json:"validFromDate,omitempty" validate:"omitempty"`
+	ValidToDate     *string         `json:"validToDate,omitempty" validate:"omitempty"`
 }
 
 type TaxRateType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Stack      *int32          `json:"stack,omitempty" validate:"omitempty"`
-	Tax        decimal.Decimal `json:"tax" validate:"required"`
+	Tax        types.Decimal   `json:"tax" validate:"required"`
 	Type       string          `json:"type" validate:"required,max=20"`
 }
 
@@ -133,7 +133,7 @@ type TariffEnergyType struct {
 type TariffEnergyPriceType struct {
 	Conditions *TariffConditionsType `json:"conditions,omitempty" validate:"omitempty"`
 	CustomData *CustomDataType       `json:"customData,omitempty" validate:"omitempty"`
-	PriceKwh   decimal.Decimal       `json:"priceKwh" validate:"required"`
+	PriceKwh   types.Decimal         `json:"priceKwh" validate:"required"`
 }
 
 type TariffFixedType struct {
@@ -145,7 +145,7 @@ type TariffFixedType struct {
 type TariffFixedPriceType struct {
 	Conditions *TariffConditionsFixedType `json:"conditions,omitempty" validate:"omitempty"`
 	CustomData *CustomDataType            `json:"customData,omitempty" validate:"omitempty"`
-	PriceFixed decimal.Decimal            `json:"priceFixed" validate:"required"`
+	PriceFixed types.Decimal              `json:"priceFixed" validate:"required"`
 }
 
 type TariffConditionsFixedType struct {
@@ -161,8 +161,8 @@ type TariffConditionsFixedType struct {
 }
 
 type PriceType struct {
-	CustomData *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	ExclTax    *decimal.Decimal `json:"exclTax,omitempty" validate:"omitempty"`
-	InclTax    *decimal.Decimal `json:"inclTax,omitempty" validate:"omitempty"`
-	TaxRates   []TaxRateType    `json:"taxRates,omitempty" validate:"omitempty"`
+	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	ExclTax    *types.Decimal  `json:"exclTax,omitempty" validate:"omitempty"`
+	InclTax    *types.Decimal  `json:"inclTax,omitempty" validate:"omitempty"`
+	TaxRates   []TaxRateType   `json:"taxRates,omitempty" validate:"omitempty"`
 }

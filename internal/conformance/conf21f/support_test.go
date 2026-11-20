@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,22 +22,12 @@ func int32Ptr21(v int32) *int32 {
 	return &v
 }
 
-func decimalPtr21(v decimal.Decimal) *decimal.Decimal {
+func decimalPtr21(v types.Decimal) *types.Decimal {
 	return &v
 }
 
 func fixedTime21() time.Time {
 	return time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
-}
-
-func useDecimalJSONWithoutQuotes21(t *testing.T) {
-	t.Helper()
-
-	oldDecimalJSON := decimal.MarshalJSONWithoutQuotes
-	decimal.MarshalJSONWithoutQuotes = true
-	t.Cleanup(func() {
-		decimal.MarshalJSONWithoutQuotes = oldDecimalJSON
-	})
 }
 
 func testComponent21() messages.ComponentType {
@@ -79,7 +69,7 @@ func testChargingProfile21() messages.ChargingProfileType {
 				ChargingSchedulePeriod: []messages.ChargingSchedulePeriodType{
 					{
 						StartPeriod: 0,
-						Limit:       decimalPtr21(decimal.NewFromInt(10)),
+						Limit:       decimalPtr21(types.NewFromInt(10)),
 					},
 				},
 			},
@@ -92,7 +82,7 @@ func testMeterValue21() messages.MeterValueType {
 		Timestamp: fixedTime21(),
 		SampledValue: []messages.SampledValueType{
 			{
-				Value: decimal.NewFromInt(42),
+				Value: types.NewFromInt(42),
 			},
 		},
 	}

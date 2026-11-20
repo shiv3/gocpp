@@ -417,7 +417,7 @@ func neededImports(f ir.File, forceTime, forceDecimal bool) []string {
 	}
 	var imps []string
 	if needDecimal {
-		imps = append(imps, "github.com/shopspring/decimal")
+		imps = append(imps, "github.com/shiv3/gocpp/core/types")
 	}
 	if needTime {
 		imps = append(imps, "time")

@@ -8,18 +8,14 @@ import (
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v16 "github.com/shiv3/gocpp/v16"
 	"github.com/shiv3/gocpp/v16/messages"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	decimal.MarshalJSONWithoutQuotes = true
-}
 
 func must16Validator(t *testing.T, action, kind string) *schema.Validator {
 	t.Helper()
@@ -36,7 +32,7 @@ func timePtr(t time.Time) *time.Time {
 	return &t
 }
 
-func decimalPtr(d decimal.Decimal) *decimal.Decimal {
+func decimalPtr(d types.Decimal) *types.Decimal {
 	return &d
 }
 
@@ -49,7 +45,7 @@ func testChargingSchedule() messages.ChargingSchedule {
 		ChargingRateUnit: messages.ChargingScheduleChargingRateUnitW,
 		ChargingSchedulePeriod: []messages.ChargingSchedulePeriod{
 			{
-				Limit:       decimal.NewFromInt(10),
+				Limit:       types.NewFromInt(10),
 				StartPeriod: 0,
 			},
 		},
@@ -61,13 +57,13 @@ func fullChargingSchedule() messages.ChargingSchedule {
 		ChargingRateUnit: messages.ChargingScheduleChargingRateUnitW,
 		ChargingSchedulePeriod: []messages.ChargingSchedulePeriod{
 			{
-				Limit:        decimal.NewFromInt(10),
+				Limit:        types.NewFromInt(10),
 				NumberPhases: int32Ptr(3),
 				StartPeriod:  0,
 			},
 		},
 		Duration:        int32Ptr(600),
-		MinChargingRate: decimalPtr(decimal.NewFromInt(1)),
+		MinChargingRate: decimalPtr(types.NewFromInt(1)),
 		StartSchedule:   timePtr(testTime()),
 	}
 }

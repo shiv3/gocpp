@@ -49,7 +49,6 @@ func testTransactionEventRequest201f() messages.TransactionEventRequest {
 }
 
 func TestTransactionEvent201_RequestValidation(t *testing.T) {
-	useDecimalJSONWithoutQuotes201f(t)
 
 	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "TransactionEvent", "request")
@@ -374,7 +373,6 @@ func TestTransactionEvent201_RequestValidation(t *testing.T) {
 }
 
 func TestTransactionEvent201_ResponseValidation(t *testing.T) {
-	useDecimalJSONWithoutQuotes201f(t)
 
 	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "TransactionEvent", "response")

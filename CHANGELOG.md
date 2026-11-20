@@ -32,6 +32,18 @@ All notable changes to this project are documented here. The format is based on
   header — i.e. non-browser charge points — are always allowed).
 
 ### Fixed
+- **Breaking type change:** JSON Schema `number` fields (for example v1.6
+  `ChargingSchedulePeriod.Limit` / `MinChargingRate`, and the v2.0.1/v2.1 `value`,
+  `totalCost`, `minChargingRate` fields) are now `types.Decimal`
+  (`github.com/shiv3/gocpp/core/types`) instead of `decimal.Decimal`. The old type
+  was marshalled as a quoted JSON string unless the application flipped the
+  process-global `decimal.MarshalJSONWithoutQuotes`, so gocpp sent numbers as strings
+  and its own strict outgoing schema validation rejected them. `types.Decimal` always
+  encodes as an unquoted JSON number and decodes both numbers and quoted numeric
+  strings; the global is no longer consulted. Migration: replace
+  `decimal.NewFromFloat/NewFromInt/NewFromString(...)` with the same-named functions in
+  `core/types`, or wrap an existing value with `types.New(d)`; the shopspring methods
+  remain available through the embedded value and `d.Shopspring()` returns it.
 - Generated `validate` struct tags no longer emit `required` on boolean fields.
   go-playground's `required` rejects the zero value, which would have flagged a
   legitimate `false` (e.g. `ConfigurationKey.readonly: false`) for anyone running

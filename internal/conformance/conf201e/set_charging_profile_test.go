@@ -10,7 +10,6 @@ import (
 )
 
 func TestSetChargingProfile201_RequestValidation(t *testing.T) {
-	useDecimalJSONWithoutQuotes201e(t)
 
 	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "SetChargingProfile", "request")

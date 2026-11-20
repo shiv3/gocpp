@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -43,8 +43,8 @@ type ChargingScheduleType struct {
 	Duration               *int32                       `json:"duration,omitempty" validate:"omitempty"`
 	ID                     int32                        `json:"id" validate:"required"`
 	LimitAtSoC             *LimitAtSoCType              `json:"limitAtSoC,omitempty" validate:"omitempty"`
-	MinChargingRate        *decimal.Decimal             `json:"minChargingRate,omitempty" validate:"omitempty"`
-	PowerTolerance         *decimal.Decimal             `json:"powerTolerance,omitempty" validate:"omitempty"`
+	MinChargingRate        *types.Decimal               `json:"minChargingRate,omitempty" validate:"omitempty"`
+	PowerTolerance         *types.Decimal               `json:"powerTolerance,omitempty" validate:"omitempty"`
 	PriceLevelSchedule     *PriceLevelScheduleType      `json:"priceLevelSchedule,omitempty" validate:"omitempty"`
 	RandomizedDelay        *int32                       `json:"randomizedDelay,omitempty" validate:"omitempty"`
 	SalesTariff            *SalesTariffType             `json:"salesTariff,omitempty" validate:"omitempty"`
@@ -126,44 +126,44 @@ type TaxRuleType struct {
 
 type ChargingSchedulePeriodType struct {
 	CustomData             *CustomDataType          `json:"customData,omitempty" validate:"omitempty"`
-	DischargeLimit         *decimal.Decimal         `json:"dischargeLimit,omitempty" validate:"omitempty"`
-	DischargeLimit_L2      *decimal.Decimal         `json:"dischargeLimit_L2,omitempty" validate:"omitempty"`
-	DischargeLimit_L3      *decimal.Decimal         `json:"dischargeLimit_L3,omitempty" validate:"omitempty"`
+	DischargeLimit         *types.Decimal           `json:"dischargeLimit,omitempty" validate:"omitempty"`
+	DischargeLimit_L2      *types.Decimal           `json:"dischargeLimit_L2,omitempty" validate:"omitempty"`
+	DischargeLimit_L3      *types.Decimal           `json:"dischargeLimit_L3,omitempty" validate:"omitempty"`
 	EVSESleep              *bool                    `json:"evseSleep,omitempty" validate:"omitempty"`
-	Limit                  *decimal.Decimal         `json:"limit,omitempty" validate:"omitempty"`
-	Limit_L2               *decimal.Decimal         `json:"limit_L2,omitempty" validate:"omitempty"`
-	Limit_L3               *decimal.Decimal         `json:"limit_L3,omitempty" validate:"omitempty"`
+	Limit                  *types.Decimal           `json:"limit,omitempty" validate:"omitempty"`
+	Limit_L2               *types.Decimal           `json:"limit_L2,omitempty" validate:"omitempty"`
+	Limit_L3               *types.Decimal           `json:"limit_L3,omitempty" validate:"omitempty"`
 	NumberPhases           *int32                   `json:"numberPhases,omitempty" validate:"omitempty"`
 	OperationMode          *string                  `json:"operationMode,omitempty" validate:"omitempty"`
 	PhaseToUse             *int32                   `json:"phaseToUse,omitempty" validate:"omitempty"`
 	PreconditioningRequest *bool                    `json:"preconditioningRequest,omitempty" validate:"omitempty"`
-	Setpoint               *decimal.Decimal         `json:"setpoint,omitempty" validate:"omitempty"`
-	SetpointReactive       *decimal.Decimal         `json:"setpointReactive,omitempty" validate:"omitempty"`
-	SetpointReactive_L2    *decimal.Decimal         `json:"setpointReactive_L2,omitempty" validate:"omitempty"`
-	SetpointReactive_L3    *decimal.Decimal         `json:"setpointReactive_L3,omitempty" validate:"omitempty"`
-	Setpoint_L2            *decimal.Decimal         `json:"setpoint_L2,omitempty" validate:"omitempty"`
-	Setpoint_L3            *decimal.Decimal         `json:"setpoint_L3,omitempty" validate:"omitempty"`
+	Setpoint               *types.Decimal           `json:"setpoint,omitempty" validate:"omitempty"`
+	SetpointReactive       *types.Decimal           `json:"setpointReactive,omitempty" validate:"omitempty"`
+	SetpointReactive_L2    *types.Decimal           `json:"setpointReactive_L2,omitempty" validate:"omitempty"`
+	SetpointReactive_L3    *types.Decimal           `json:"setpointReactive_L3,omitempty" validate:"omitempty"`
+	Setpoint_L2            *types.Decimal           `json:"setpoint_L2,omitempty" validate:"omitempty"`
+	Setpoint_L3            *types.Decimal           `json:"setpoint_L3,omitempty" validate:"omitempty"`
 	StartPeriod            int32                    `json:"startPeriod" validate:"required"`
-	V2xBaseline            *decimal.Decimal         `json:"v2xBaseline,omitempty" validate:"omitempty"`
+	V2xBaseline            *types.Decimal           `json:"v2xBaseline,omitempty" validate:"omitempty"`
 	V2xFreqWattCurve       []V2XFreqWattPointType   `json:"v2xFreqWattCurve,omitempty" validate:"omitempty"`
 	V2xSignalWattCurve     []V2XSignalWattPointType `json:"v2xSignalWattCurve,omitempty" validate:"omitempty"`
 }
 
 type V2XFreqWattPointType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Frequency  decimal.Decimal `json:"frequency" validate:"required"`
-	Power      decimal.Decimal `json:"power" validate:"required"`
+	Frequency  types.Decimal   `json:"frequency" validate:"required"`
+	Power      types.Decimal   `json:"power" validate:"required"`
 }
 
 type V2XSignalWattPointType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Power      decimal.Decimal `json:"power" validate:"required"`
+	Power      types.Decimal   `json:"power" validate:"required"`
 	Signal     int32           `json:"signal" validate:"required"`
 }
 
 type LimitAtSoCType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Limit      decimal.Decimal `json:"limit" validate:"required"`
+	Limit      types.Decimal   `json:"limit" validate:"required"`
 	SOC        int32           `json:"soc" validate:"required"`
 }
 
@@ -200,7 +200,7 @@ type SalesTariffEntryType struct {
 type ConsumptionCostType struct {
 	Cost       []CostType      `json:"cost" validate:"required"`
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	StartValue decimal.Decimal `json:"startValue" validate:"required"`
+	StartValue types.Decimal   `json:"startValue" validate:"required"`
 }
 
 type CostType struct {

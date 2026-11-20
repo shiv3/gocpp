@@ -4,15 +4,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/shopspring/decimal"
 )
 
 func TestTransactionEvent21_RequestValidation(t *testing.T) {
-	useDecimalJSONWithoutQuotes21(t)
 
 	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "TransactionEvent", "request")
@@ -69,7 +68,7 @@ func TestTransactionEvent21_RequestValidation(t *testing.T) {
 					},
 					TotalUsage: messages.TotalUsageType{
 						ChargingTime: 60,
-						Energy:       decimal.NewFromInt(42),
+						Energy:       types.NewFromInt(42),
 						IdleTime:     0,
 					},
 				},
@@ -170,7 +169,7 @@ func validTransactionEventRequest21() messages.TransactionEventRequest {
 			},
 			TotalUsage: messages.TotalUsageType{
 				ChargingTime: 60,
-				Energy:       decimal.NewFromInt(42),
+				Energy:       types.NewFromInt(42),
 				IdleTime:     0,
 			},
 		},

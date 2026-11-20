@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -36,6 +36,6 @@ type TransactionEventResponse struct {
 	ChargingPriority       *int32              `json:"chargingPriority,omitempty" validate:"omitempty"`
 	CustomData             *CustomDataType     `json:"customData,omitempty" validate:"omitempty"`
 	IDTokenInfo            *IdTokenInfoType    `json:"idTokenInfo,omitempty" validate:"omitempty"`
-	TotalCost              *decimal.Decimal    `json:"totalCost,omitempty" validate:"omitempty"`
+	TotalCost              *types.Decimal      `json:"totalCost,omitempty" validate:"omitempty"`
 	UpdatedPersonalMessage *MessageContentType `json:"updatedPersonalMessage,omitempty" validate:"omitempty"`
 }

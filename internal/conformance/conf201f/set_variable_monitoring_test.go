@@ -34,7 +34,6 @@ func testSetMonitoringResult201f(status, monitorType string) messages.SetMonitor
 }
 
 func TestSetVariableMonitoring201_RequestValidation(t *testing.T) {
-	useDecimalJSONWithoutQuotes201f(t)
 
 	reg := conformance.SchemaRegistry(v201.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.0.1", "SetVariableMonitoring", "request")

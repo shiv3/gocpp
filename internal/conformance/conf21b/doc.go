@@ -13,19 +13,15 @@ import (
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v21 "github.com/shiv3/gocpp/v21"
 	"github.com/shiv3/gocpp/v21/messages"
 	v21schemas "github.com/shiv3/gocpp/v21/schemas"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	decimal.MarshalJSONWithoutQuotes = true
-}
 
 func must21Validator(t *testing.T, action, kind string) *schema.Validator {
 	t.Helper()
@@ -77,8 +73,8 @@ func fixedTime21() time.Time {
 	return time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 }
 
-func dec21(v string) decimal.Decimal {
-	d, err := decimal.NewFromString(v)
+func dec21(v string) types.Decimal {
+	d, err := types.NewFromString(v)
 	if err != nil {
 		panic(err)
 	}

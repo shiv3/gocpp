@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 )
 
 type UpdateDynamicScheduleRequest struct {
@@ -13,19 +13,19 @@ type UpdateDynamicScheduleRequest struct {
 }
 
 type ChargingScheduleUpdateType struct {
-	CustomData          *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	DischargeLimit      *decimal.Decimal `json:"dischargeLimit,omitempty" validate:"omitempty"`
-	DischargeLimit_L2   *decimal.Decimal `json:"dischargeLimit_L2,omitempty" validate:"omitempty"`
-	DischargeLimit_L3   *decimal.Decimal `json:"dischargeLimit_L3,omitempty" validate:"omitempty"`
-	Limit               *decimal.Decimal `json:"limit,omitempty" validate:"omitempty"`
-	Limit_L2            *decimal.Decimal `json:"limit_L2,omitempty" validate:"omitempty"`
-	Limit_L3            *decimal.Decimal `json:"limit_L3,omitempty" validate:"omitempty"`
-	Setpoint            *decimal.Decimal `json:"setpoint,omitempty" validate:"omitempty"`
-	SetpointReactive    *decimal.Decimal `json:"setpointReactive,omitempty" validate:"omitempty"`
-	SetpointReactive_L2 *decimal.Decimal `json:"setpointReactive_L2,omitempty" validate:"omitempty"`
-	SetpointReactive_L3 *decimal.Decimal `json:"setpointReactive_L3,omitempty" validate:"omitempty"`
-	Setpoint_L2         *decimal.Decimal `json:"setpoint_L2,omitempty" validate:"omitempty"`
-	Setpoint_L3         *decimal.Decimal `json:"setpoint_L3,omitempty" validate:"omitempty"`
+	CustomData          *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	DischargeLimit      *types.Decimal  `json:"dischargeLimit,omitempty" validate:"omitempty"`
+	DischargeLimit_L2   *types.Decimal  `json:"dischargeLimit_L2,omitempty" validate:"omitempty"`
+	DischargeLimit_L3   *types.Decimal  `json:"dischargeLimit_L3,omitempty" validate:"omitempty"`
+	Limit               *types.Decimal  `json:"limit,omitempty" validate:"omitempty"`
+	Limit_L2            *types.Decimal  `json:"limit_L2,omitempty" validate:"omitempty"`
+	Limit_L3            *types.Decimal  `json:"limit_L3,omitempty" validate:"omitempty"`
+	Setpoint            *types.Decimal  `json:"setpoint,omitempty" validate:"omitempty"`
+	SetpointReactive    *types.Decimal  `json:"setpointReactive,omitempty" validate:"omitempty"`
+	SetpointReactive_L2 *types.Decimal  `json:"setpointReactive_L2,omitempty" validate:"omitempty"`
+	SetpointReactive_L3 *types.Decimal  `json:"setpointReactive_L3,omitempty" validate:"omitempty"`
+	Setpoint_L2         *types.Decimal  `json:"setpoint_L2,omitempty" validate:"omitempty"`
+	Setpoint_L3         *types.Decimal  `json:"setpoint_L3,omitempty" validate:"omitempty"`
 }
 
 type UpdateDynamicScheduleResponse struct {

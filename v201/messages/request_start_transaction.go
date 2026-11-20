@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -35,14 +35,14 @@ type ChargingScheduleType struct {
 	CustomData             *CustomDataType              `json:"customData,omitempty" validate:"omitempty"`
 	Duration               *int32                       `json:"duration,omitempty" validate:"omitempty"`
 	ID                     int32                        `json:"id" validate:"required"`
-	MinChargingRate        *decimal.Decimal             `json:"minChargingRate,omitempty" validate:"omitempty"`
+	MinChargingRate        *types.Decimal               `json:"minChargingRate,omitempty" validate:"omitempty"`
 	SalesTariff            *SalesTariffType             `json:"salesTariff,omitempty" validate:"omitempty"`
 	StartSchedule          *time.Time                   `json:"startSchedule,omitempty" validate:"omitempty"`
 }
 
 type ChargingSchedulePeriodType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Limit        decimal.Decimal `json:"limit" validate:"required"`
+	Limit        types.Decimal   `json:"limit" validate:"required"`
 	NumberPhases *int32          `json:"numberPhases,omitempty" validate:"omitempty"`
 	PhaseToUse   *int32          `json:"phaseToUse,omitempty" validate:"omitempty"`
 	StartPeriod  int32           `json:"startPeriod" validate:"required"`
@@ -66,7 +66,7 @@ type SalesTariffEntryType struct {
 type ConsumptionCostType struct {
 	Cost       []CostType      `json:"cost" validate:"required"`
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	StartValue decimal.Decimal `json:"startValue" validate:"required"`
+	StartValue types.Decimal   `json:"startValue" validate:"required"`
 }
 
 type CostType struct {

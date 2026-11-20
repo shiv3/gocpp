@@ -8,21 +8,17 @@ import (
 	"time"
 
 	ocppj "github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
 const subprotocol21 = "ocpp2.1"
-
-func init() {
-	decimal.MarshalJSONWithoutQuotes = true
-}
 
 func ptr[T any](v T) *T {
 	return &v
@@ -36,8 +32,8 @@ func fixedTime21() time.Time {
 	return time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 }
 
-func dec21(v string) decimal.Decimal {
-	d, err := decimal.NewFromString(v)
+func dec21(v string) types.Decimal {
+	d, err := types.NewFromString(v)
 	if err != nil {
 		panic(err)
 	}

@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -30,7 +30,7 @@ type VariableMonitoringType struct {
 	Severity              int32           `json:"severity" validate:"required"`
 	Transaction           bool            `json:"transaction"`
 	Type                  string          `json:"type" validate:"required"`
-	Value                 decimal.Decimal `json:"value" validate:"required"`
+	Value                 types.Decimal   `json:"value" validate:"required"`
 }
 
 type NotifyMonitoringReportResponse struct {
