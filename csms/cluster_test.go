@@ -68,7 +68,13 @@ func (n *node) connect(ctx context.Context, t *testing.T, cpID string, reply fun
 			_ = c.Write(ctx, websocket.MessageText, out)
 		}
 	}()
-	require.Eventually(t, func() bool { _, ok := n.srv.Get(cpID); return ok }, 2*time.Second, 10*time.Millisecond)
+	// The global route is published just after the local connection becomes
+	// visible, so wait for both.
+	require.Eventually(t, func() bool {
+		_, local := n.srv.Get(cpID)
+		inst, global, _ := n.reg.LookupGlobal(ctx, cpID)
+		return local && global && inst != ""
+	}, 2*time.Second, 10*time.Millisecond)
 	return c
 }
 
