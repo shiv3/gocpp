@@ -11,7 +11,17 @@ import (
 // DoCall sends an OCPP Call and waits for the matching CallResult or CallError.
 // It returns the raw response payload; typed encoding/decoding happens in the
 // csms/cp generic wrappers.
-func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ []byte, err error) {
+//
+// With SerializeOutboundCalls (the default) the call first waits its turn for the
+// connection's single outstanding-CALL slot; CallTimeout starts only once it
+// owns the slot, and the wait is bounded by ctx (and ocppj.ErrQueueFull when too
+// many calls already wait).
+func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) ([]byte, error) {
+	return c.call(ctx, action, reqPayload, true)
+}
+
+// call implements DoCall. With acquire false the caller already owns the slot.
+func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acquire bool) (_ []byte, err error) {
 	start := time.Now()
 	c.cfg.Metrics.CallStarted(action, "outbound")
 	defer func() {
@@ -53,11 +63,12 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 	if err != nil {
 		return nil, fmt.Errorf("encode call: %w", err)
 	}
-	release, err := c.acquireOutboundSlot(ctx)
-	if err != nil {
-		return nil, err
+	if acquire && c.cfg.SerializeOutboundCalls {
+		if err := c.acquireSlot(ctx); err != nil {
+			return nil, err
+		}
+		defer c.slot.release()
 	}
-	defer release()
 
 	pc := &pendingCall{
 		msgID:  msgID,
@@ -117,25 +128,4 @@ func (c *Conn) maybeSendResultError(msgID string, cause error) {
 		return
 	}
 	c.sendCallResultError(msgID, ocppj.WrapCallError(ocppj.ErrorCodeFormatViolation, cause, nil))
-}
-
-func (c *Conn) acquireOutboundSlot(ctx context.Context) (func(), error) {
-	if !c.cfg.SerializeOutboundCalls {
-		return func() {}, nil
-	}
-	waitCtx, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(c.ctx, cancel)
-	err := c.outSem.Acquire(waitCtx, 1)
-	stop()
-	cancel()
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if c.ctx.Err() != nil {
-			return nil, context.Cause(c.ctx)
-		}
-		return nil, err
-	}
-	return func() { c.outSem.Release(1) }, nil
 }

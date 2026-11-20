@@ -90,6 +90,9 @@ const (
 	MessageIDDrop
 )
 
+// DefaultMaxMessageSize is the default inbound message size limit (1 MiB).
+const DefaultMaxMessageSize int64 = 1 << 20
+
 // Config controls a single connection's behavior.
 type Config struct {
 	CallTimeout  time.Duration
@@ -98,11 +101,22 @@ type Config struct {
 	PongWait     time.Duration
 	// ReadTimeout cancels the connection if no inbound frame (data, ping, or
 	// pong) arrives within this duration. 0 disables the read idle watchdog.
-	ReadTimeout            time.Duration
+	ReadTimeout time.Duration
+	// SerializeOutboundCalls allows at most one outstanding outbound CALL per
+	// connection, as OCPP 1.6J §4.1.1 and 2.0.1 Part 4 §4.1 require. It is on in
+	// DefaultConfig; turning it off is non-compliant and only meant for peers or
+	// tests that need concurrent calls.
 	SerializeOutboundCalls bool
-	OutboundQueueSize      int
-	// AsyncQueueSize bounds the per-connection FIFO queue used by DoCallAsync when
-	// SerializeOutboundCalls is set; enqueuing beyond it returns ocppj.ErrQueueFull.
+	// HandlerTimeout bounds each inbound handler: its context carries this
+	// deadline. 0 disables the deadline. Handler contexts are NOT cancelled when
+	// the connection drops (see Conn.HandlerContext).
+	HandlerTimeout time.Duration
+	// MaxMessageSize is the largest inbound WebSocket message accepted, in bytes.
+	MaxMessageSize    int64
+	OutboundQueueSize int
+	// AsyncQueueSize bounds the per-connection queue of calls waiting for the
+	// outbound slot (sync and async) when SerializeOutboundCalls is set; waiting
+	// beyond it returns ocppj.ErrQueueFull.
 	AsyncQueueSize        int
 	MaxConcurrentHandlers int64
 	// GlobalHandlerLimiter, when non-nil, bounds the total number of inbound
@@ -153,16 +167,19 @@ type Config struct {
 // DefaultConfig returns production-sane defaults.
 func DefaultConfig() Config {
 	return Config{
-		CallTimeout:           30 * time.Second,
-		WriteTimeout:          10 * time.Second,
-		PingInterval:          54 * time.Second,
-		PongWait:              60 * time.Second,
-		ReadTimeout:           60 * time.Second,
-		OutboundQueueSize:     64,
-		AsyncQueueSize:        64,
-		MaxConcurrentHandlers: 16,
-		Logger:                slog.Default(),
-		Metrics:               NoopMetrics,
-		Tracer:                observability.NewTracer(nil),
+		CallTimeout:            30 * time.Second,
+		WriteTimeout:           10 * time.Second,
+		PingInterval:           54 * time.Second,
+		PongWait:               60 * time.Second,
+		ReadTimeout:            60 * time.Second,
+		SerializeOutboundCalls: true,
+		HandlerTimeout:         60 * time.Second,
+		MaxMessageSize:         DefaultMaxMessageSize,
+		OutboundQueueSize:      64,
+		AsyncQueueSize:         64,
+		MaxConcurrentHandlers:  16,
+		Logger:                 slog.Default(),
+		Metrics:                NoopMetrics,
+		Tracer:                 observability.NewTracer(nil),
 	}
 }

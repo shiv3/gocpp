@@ -102,7 +102,7 @@ func (c *Client) connect(ctx context.Context, reconnected, watch bool) error {
 		_ = wsConn.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return ocppj.ErrVersionMismatch
 	}
-	ws := transport.NewCoderWS(wsConn)
+	ws := transport.NewCoderWSWithLimit(wsConn, c.cfg.dispatcher.MaxMessageSize)
 	dconn = dispatcher.NewConn(c.id, ws, c.cfg.dispatcher, c.reg)
 	dconn.Start(context.Background())
 	c.startHeartbeat(dconn)

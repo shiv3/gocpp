@@ -63,8 +63,8 @@ func Call[Req, Resp any](ctx context.Context, c *Client, m ocppj.Message[Req, Re
 }
 
 // CallAsync sends a typed message to the CSMS without blocking and delivers the
-// typed response (or error) to cb. With WithSerializedCalls the calls are queued
-// FIFO and sent one outstanding at a time; otherwise they run concurrently. It
+// typed response (or error) to cb. Calls are queued FIFO and sent one
+// outstanding at a time (the default; see WithConcurrentCalls). It
 // returns synchronously only if the call could not be accepted (e.g. not
 // connected, ocppj.ErrQueueFull). Unlike Call, this does not use the offline
 // queue — it requires a live connection. See dispatcher.DoCallAsync.
@@ -101,4 +101,16 @@ func CallRawAsync(ctx context.Context, c *Client, action string, payload []byte,
 		return ocppj.ErrNotConnected
 	}
 	return dispatcher.DoCallAsync(ctx, conn, action, payload, cb)
+}
+
+// ConnDone returns, from an inbound handler's ctx, a channel closed when the
+// connection that delivered the request ends. Handler contexts are not
+// cancelled by a disconnect (so in-flight work can finish); a handler that
+// should stop when the link drops selects on it. nil outside a handler context.
+func ConnDone(ctx context.Context) <-chan struct{} {
+	cc, ok := dispatcher.ConnContext(ctx)
+	if !ok {
+		return nil
+	}
+	return cc.Done()
 }

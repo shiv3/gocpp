@@ -72,7 +72,7 @@ handle supports `Call`, `CallRaw`, `CallAsync` and `CallRawAsync`; `Close` and
   reconnects or the registry expires the entry. Use a registry with TTLs or
   heartbeats for crash recovery.
 * There is no ordering between calls issued from different instances, and a
-  forwarded call has no outbound queue on the caller (`WithSerializedCalls`
+  forwarded call has no outbound queue on the caller (call serialization
   applies on the owning instance).
 * Inbound messages (BootNotification, ...) are handled on the instance holding the
   socket only; they are not forwarded.

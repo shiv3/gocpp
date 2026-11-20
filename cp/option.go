@@ -111,14 +111,44 @@ func WithWebSocketReadTimeout(d time.Duration) Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.ReadTimeout = d })
 }
 
-// WithSerializedCalls limits outbound OCPP Calls to one outstanding request.
+// WithSerializedCalls limits outbound OCPP Calls to one outstanding request per
+// connection (OCPP 1.6J §4.1.1, 2.0.1 Part 4 §4.1). This is the default; the
+// option only re-enables it after WithConcurrentCalls.
 func WithSerializedCalls() Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.SerializeOutboundCalls = true })
 }
 
-// WithAsyncQueueSize bounds the per-connection FIFO queue used by CallAsync when
-// WithSerializedCalls is set (default 64). Enqueuing beyond it returns
-// ocppj.ErrQueueFull.
+// WithConcurrentCalls lifts the one-outstanding-CALL rule: every Call is written
+// at once. This violates OCPP's synchronicity requirement and some charge points
+// misbehave or drop requests; use it only for peers known to cope, or in tests.
+func WithConcurrentCalls() Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.SerializeOutboundCalls = false })
+}
+
+// WithHandlerTimeout bounds every inbound handler: its context gets this
+// deadline (default 60s, 0 = none). A handler that returns the context's
+// deadline error is answered with an InternalError CALLERROR. The deadline is
+// cooperative; the handler must honor ctx. Handler contexts are not cancelled
+// when the connection drops, so work in flight (e.g. a database write) can
+// finish; a handler that wants to stop on disconnect watches ConnDone(ctx).
+func WithHandlerTimeout(d time.Duration) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.HandlerTimeout = d })
+}
+
+// WithMaxMessageSize sets the largest inbound WebSocket message accepted, in
+// bytes (default 1 MiB); a larger message closes the connection with status
+// 1009. n <= 0 keeps the default.
+func WithMaxMessageSize(n int64) Option {
+	return optionFunc(func(c *clientConfig) {
+		if n > 0 {
+			c.dispatcher.MaxMessageSize = n
+		}
+	})
+}
+
+// WithAsyncQueueSize bounds the per-connection queue of Calls (sync and async)
+// waiting for the outstanding-call slot (default 64). Waiting beyond it fails at
+// once with ocppj.ErrQueueFull. Unused with WithConcurrentCalls.
 func WithAsyncQueueSize(n int) Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.AsyncQueueSize = n })
 }

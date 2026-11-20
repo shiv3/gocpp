@@ -51,7 +51,7 @@ func doCallAsync(ctx context.Context, c *Conn, action string, payload []byte, cb
 		go func() { cb(c.srv.callRemote(ctx, c.remoteID, action, payload)) }()
 		return nil
 	}
-	return doCallAsync(ctx, c, action, payload, cb)
+	return dispatcher.DoCallAsync(ctx, c.inner, action, payload, cb)
 }
 
 // Call sends a typed message to a connected charge point and returns the response.
@@ -76,9 +76,8 @@ func Call[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req, Resp
 }
 
 // CallAsync sends a typed message to a connected charge point without blocking and
-// delivers the typed response (or error) to cb. With WithSerializedCalls the calls
-// are queued FIFO and sent one outstanding at a time; otherwise they run
-// concurrently. It returns synchronously only if the call could not be accepted
+// delivers the typed response (or error) to cb. Calls are queued FIFO and sent one
+// outstanding at a time (the default; see WithConcurrentCalls). It returns synchronously only if the call could not be accepted
 // (e.g. ocppj.ErrQueueFull, ocppj.ErrConnClosed). See dispatcher.DoCallAsync.
 func CallAsync[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req, Resp], req Req, cb func(Resp, error)) error {
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpCall, m.Direction); err != nil {

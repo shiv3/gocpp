@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
+	"time"
 	"unicode/utf8"
 
 	"github.com/shiv3/gocpp/core/ocppj"
@@ -31,7 +33,7 @@ type Conn struct {
 	pending *pendingStore
 	reg     *HandlerRegistry
 	sem     *semaphore.Weighted
-	outSem  *semaphore.Weighted
+	slot    callSlot
 
 	ctx         context.Context
 	cancel      context.CancelCauseFunc
@@ -44,13 +46,17 @@ type Conn struct {
 	// so Add can never race Close's Wait.
 	asyncMu     sync.Mutex
 	asyncClosed bool
-	asyncQ      chan asyncJob
 	asyncWG     sync.WaitGroup
 
 	// inboundGate, when non-nil, holds inbound CALL/SEND dispatch until closed
 	// (see HoldInbound). The reader keeps reading and resolving CALLRESULTs.
 	inboundGate     chan struct{}
 	inboundGateOnce sync.Once
+
+	// Activity timestamps (UnixNano) behind Stats.
+	connectedAt atomic.Int64
+	lastRecv    atomic.Int64
+	lastSent    atomic.Int64
 
 	cfg Config
 }
@@ -86,7 +92,6 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		pending:  newPendingStore(),
 		reg:      reg,
 		sem:      semaphore.NewWeighted(cfg.MaxConcurrentHandlers),
-		outSem:   semaphore.NewWeighted(1),
 		done:     make(chan struct{}),
 		cfg:      cfg,
 	}
@@ -135,10 +140,51 @@ func (c *Conn) TLS() *tls.ConnectionState {
 // Context returns the connection lifecycle context.
 func (c *Conn) Context() context.Context { return c.ctx }
 
+// ConnStats is a snapshot of a connection's activity. Zero times mean the event
+// has not happened (LastSentAt before the first write).
+type ConnStats struct {
+	ConnectedAt time.Time
+	// LastReceivedAt is the last inbound activity of any kind: a data frame, a
+	// WebSocket ping or a pong. It starts at ConnectedAt.
+	LastReceivedAt time.Time
+	// LastSentAt is the last successful outbound write: an OCPP frame or a
+	// WebSocket ping.
+	LastSentAt time.Time
+	// PendingCalls is the number of outbound CALLs awaiting a response.
+	PendingCalls int
+	// QueuedCalls is the number of outbound CALLs waiting for the connection's
+	// single outstanding-call slot (always 0 when serialization is off).
+	QueuedCalls int
+}
+
+// Stats returns a snapshot of the connection's activity counters.
+func (c *Conn) Stats() ConnStats {
+	ts := func(v int64) time.Time {
+		if v == 0 {
+			return time.Time{}
+		}
+		return time.Unix(0, v)
+	}
+	c.pending.mu.RLock()
+	pending := len(c.pending.entries)
+	c.pending.mu.RUnlock()
+	c.slot.mu.Lock()
+	queued := len(c.slot.q)
+	c.slot.mu.Unlock()
+	return ConnStats{
+		ConnectedAt:    ts(c.connectedAt.Load()),
+		LastReceivedAt: ts(c.lastRecv.Load()),
+		LastSentAt:     ts(c.lastSent.Load()),
+		PendingCalls:   pending,
+		QueuedCalls:    queued,
+	}
+}
+
 // NoteActivity records inbound activity, resetting the read idle watchdog.
 // It is safe to call from the websocket read goroutine (e.g. ping/pong
 // callbacks), as the send is non-blocking.
 func (c *Conn) NoteActivity() {
+	c.lastRecv.Store(time.Now().UnixNano())
 	select {
 	case c.activity <- struct{}{}:
 	default:
@@ -192,7 +238,12 @@ func (c *Conn) closer() {
 // Start launches the connection goroutines bound to parent.
 func (c *Conn) Start(parent context.Context) {
 	c.ctx, c.cancel = context.WithCancelCause(parent)
+	now := time.Now().UnixNano()
+	c.connectedAt.Store(now)
+	c.lastRecv.Store(now)
 	c.cfg.Metrics.ConnectionOpened()
+	// Fail calls still queued for the outbound slot when the connection ends.
+	context.AfterFunc(c.ctx, c.failQueued)
 
 	c.wg.Add(4)
 	go c.closer()
@@ -329,6 +380,9 @@ func (c *Conn) writer() {
 			wctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), c.cfg.WriteTimeout)
 			err := c.ws.Write(wctx, ob.payload)
 			cancel()
+			if err == nil {
+				c.lastSent.Store(time.Now().UnixNano())
+			}
 			c.observeOutbound(ob.payload, err)
 			ob.sentCh <- err // 1-buffered
 			if err != nil {

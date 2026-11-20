@@ -1,6 +1,7 @@
 package cp
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"net/http"
@@ -124,4 +125,25 @@ func testSchemaRegistry(t *testing.T, action string) *schema.Registry {
 	}, "request.json")
 	require.NoError(t, err)
 	return reg
+}
+
+func TestRuntimeSafetyOptions(t *testing.T) {
+	def := NewClient("CP_1", "ws://example.invalid")
+	require.True(t, def.cfg.dispatcher.SerializeOutboundCalls, "serialized by default")
+	require.Equal(t, 60*time.Second, def.cfg.dispatcher.HandlerTimeout)
+	require.EqualValues(t, 1<<20, def.cfg.dispatcher.MaxMessageSize)
+
+	c := NewClient("CP_1", "ws://example.invalid",
+		WithConcurrentCalls(), WithHandlerTimeout(0), WithMaxMessageSize(4096))
+	require.False(t, c.cfg.dispatcher.SerializeOutboundCalls)
+	require.Zero(t, c.cfg.dispatcher.HandlerTimeout)
+	require.EqualValues(t, 4096, c.cfg.dispatcher.MaxMessageSize)
+
+	c = NewClient("CP_1", "ws://example.invalid", WithConcurrentCalls(), WithSerializedCalls(), WithMaxMessageSize(-1))
+	require.True(t, c.cfg.dispatcher.SerializeOutboundCalls)
+	require.EqualValues(t, 1<<20, c.cfg.dispatcher.MaxMessageSize)
+}
+
+func TestConnDoneOutsideHandler(t *testing.T) {
+	require.Nil(t, ConnDone(context.Background()))
 }

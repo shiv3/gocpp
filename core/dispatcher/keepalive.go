@@ -83,6 +83,7 @@ func (c *Conn) startWebSocketPing() {
 			case <-t.C:
 				pctx, cancel := context.WithTimeout(c.ctx, pongWait)
 				pingStart := time.Now()
+				c.lastSent.Store(pingStart.UnixNano())
 				err := c.ws.Ping(pctx)
 				cancel()
 				if err != nil {
