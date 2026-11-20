@@ -37,6 +37,7 @@ type serverConfig struct {
 	tracerProvider trace.TracerProvider
 	onConnect      func(*Conn)
 	onDisconnect   func(*Conn, error)
+	connConfig     func(r *http.Request, cpID string, t *ConnTimeouts)
 
 	originPatterns           []string
 	insecureSkipVerifyOrigin bool
@@ -81,6 +82,26 @@ const (
 	// existing connection.
 	DuplicatePolicyRejectNew
 )
+
+// ConnTimeouts are the timing parameters that can be overridden for a single
+// charge point connection. It is pre-filled with the server-wide values; a zero
+// PingInterval or ReadTimeout disables that check, as for the server options.
+type ConnTimeouts struct {
+	CallTimeout  time.Duration
+	WriteTimeout time.Duration
+	PingInterval time.Duration
+	PongWait     time.Duration
+	ReadTimeout  time.Duration
+}
+
+// WithConnConfig registers a hook evaluated for every accepted upgrade (after
+// authentication, before the WebSocket handshake) that may adjust the timeouts of
+// that one connection, e.g. a longer ping interval for a charger on a cellular
+// link. cpID is the authenticated charge point id. Without the option every
+// connection uses the server-wide settings.
+func WithConnConfig(fn func(r *http.Request, cpID string, t *ConnTimeouts)) Option {
+	return optionFunc(func(c *serverConfig) { c.connConfig = fn })
+}
 
 // WithCallTimeout sets the per-call timeout.
 func WithCallTimeout(d time.Duration) Option {

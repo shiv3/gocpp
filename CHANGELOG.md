@@ -22,6 +22,11 @@ All notable changes to this project are documented here. The format is based on
   ping round-trip latency), implemented by the prom (`gocpp_outbound_queue_depth`,
   `gocpp_ping_latency_seconds`) and otel adapters. Existing `Metrics`
   implementations keep working unchanged.
+- `cp.WithReconnectBackoff(initial, max, maxElapsed)`: tune the reconnect backoff
+  used by `Client.Run`.
+- `csms.WithConnConfig` / `csms.ConnTimeouts`: per-charge-point override of call
+  timeout, write timeout, ping interval, pong wait and read-idle timeout, evaluated
+  at upgrade. Defaults are unchanged.
 - `csms.Conn.Close(ctx)` and `csms.Server.Disconnect(ctx, id)`: close one charge
   point's connection from the server side (WebSocket close 1000, reason "closed by
   the server"), waiting for teardown up to ctx. The disconnect callback fires once
@@ -56,6 +61,11 @@ All notable changes to this project are documented here. The format is based on
   header — i.e. non-browser charge points — are always allowed).
 
 ### Fixed
+- `cp.Client.Run` no longer stops reconnecting after 15 minutes: the backoff
+  library's default `MaxElapsedTime` made `Run` return once a long-lived charge
+  point had been up that long and then dropped. It now retries until ctx is
+  cancelled (unless `WithReconnectBackoff` sets a finite `maxElapsed`), and the
+  schedule restarts from the initial interval after each successful connection.
 - **Breaking type change:** JSON Schema `number` fields (for example v1.6
   `ChargingSchedulePeriod.Limit` / `MinChargingRate`, and the v2.0.1/v2.1 `value`,
   `totalCost`, `minChargingRate` fields) are now `types.Decimal`

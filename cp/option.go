@@ -24,6 +24,9 @@ type clientConfig struct {
 	tlsConfig            *tls.Config
 	offlineQueueCapacity int
 	retryInFlight        bool
+	reconnectInitial     time.Duration
+	reconnectMax         time.Duration
+	reconnectMaxElapsed  time.Duration
 	onConnect            func()
 	onDisconnect         func(error)
 	onReconnect          func()
@@ -135,6 +138,20 @@ func WithOfflineQueue(capacity int) Option {
 // Only affects connections using WithOfflineQueue.
 func WithRetryInFlightCalls() Option {
 	return optionFunc(func(c *clientConfig) { c.retryInFlight = true })
+}
+
+// WithReconnectBackoff tunes the exponential backoff Run uses between connection
+// attempts: the first delay (initial), the cap on any delay (maxInterval), and how long
+// Run keeps failing to connect before it gives up and returns (maxElapsed).
+// A zero initial or maxInterval keeps the default (500ms / 60s); a zero maxElapsed, the
+// default, means Run retries until its context is cancelled. The schedule
+// restarts after every successful connection.
+func WithReconnectBackoff(initial, maxInterval, maxElapsed time.Duration) Option {
+	return optionFunc(func(c *clientConfig) {
+		c.reconnectInitial = initial
+		c.reconnectMax = maxInterval
+		c.reconnectMaxElapsed = maxElapsed
+	})
 }
 
 // WithOnConnect registers a callback fired after a successful connection.
