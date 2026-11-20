@@ -37,7 +37,7 @@ func (c *Conn) enqueueInbound(f ocppj.Frame) bool {
 		if c.gateOpen && len(c.inQ) == 0 && c.running < c.maxHandlers {
 			c.running++
 			c.inMu.Unlock()
-			go c.handlerLoop(f)
+			c.startHandler(f)
 			return true
 		}
 		if len(c.inQ) < c.cfg.InboundQueueSize {

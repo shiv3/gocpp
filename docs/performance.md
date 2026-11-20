@@ -5,37 +5,47 @@ bounds you can tune, and what to watch as connection counts grow.
 
 ## Goroutine model
 
-gocpp uses the standard Go *goroutine-per-connection* model. For each accepted
-charge-point connection, `dispatcher.Conn.Start` launches a fixed set of
-long-lived goroutines (`core/dispatcher/conn.go`):
+A server-side connection costs **one resident goroutine** (the reader,
+`core/dispatcher/conn.go`) and about 13 KB of RSS when idle. There is no writer,
+dispatcher, closer or watchdog goroutine:
 
-- **reader** — reads frames off the socket, routes CallResult/CallError to the
-  pending store, queues inbound Calls for dispatch.
-- **writer** — sole owner of the socket write side; serializes outbound frames.
-- **dispatch** — pulls inbound Calls and spawns handler goroutines under the
-  concurrency bounds below.
-- a small **teardown watcher** that waits on the worker `WaitGroup` and closes
-  `done`.
-- a **closer** that waits for teardown and closes the socket with the right
-  close frame.
+- the **reader** reads frames off the socket, resolves CallResult/CallError in
+  the pending store and hands inbound Calls to handlers. It never runs a handler
+  itself: it starts a handler goroutine when a slot is free and otherwise parks
+  the frame in a small bounded queue (`InboundQueueSize`) that finishing
+  handlers drain. It only stops reading when that queue is full.
+- **writes** happen on the goroutine that produced the frame (a handler, a
+  `DoCall` caller) under a per-connection FIFO write lock, so there is no writer
+  goroutine or queue; `WriteTimeout` is enforced by one lazily armed timer.
+- **teardown** (close frame, waiting for the reader, cleanup) is a
+  `context.AfterFunc` callback that runs once when the connection ends.
+- the read idle watchdog and the WebSocket ping are `time.AfterFunc` timers; a
+  goroutine exists for the ping only while it waits for the pong. On the CP side
+  `WithHeartbeatInterval` adds one goroutine (the keepalive ticker).
+- each inbound Call runs on its own short-lived goroutine, bounded as described
+  below, or on a resident worker when a `HandlerPool` is configured.
 
-The read idle watchdog and the WebSocket ping are `time.AfterFunc` timers, not
-goroutines: an inbound frame only stores a timestamp, the watchdog timer
-re-arms itself for the remaining time when it fires early, and a goroutine
-exists for the ping only while it waits for the pong. Enabling
-`WithWebSocketPingInterval` therefore adds no resident goroutine; on the CP side
-`WithHeartbeatInterval` adds one (the keepalive ticker). Each inbound Call is
-handled in its own short-lived goroutine (`go c.runHandler(frame)`), bounded as
-described next.
+Socket buffers are 1 KB + 1 KB per connection (`csms.WithIOBufferSizes`).
 
-So the baseline cost is **5 goroutines per connection plus the net/http serve
-goroutine, 6 in total**, regardless of traffic (see "Measuring footprint").
+Per-connection cost at 2,000 idle connections (`BenchmarkIdleFootprint`): about
+8 KB heap + 4 KB stack, 1 goroutine; RSS about 13 KB (15 KB after one
+Heartbeat). 10,000 idle connections therefore take well under 200 MB. Typical
+CSMS traffic is bursty-but-light (Heartbeat / StatusNotification), so the
+baseline dominates and handler goroutines are few.
 
-For `N` connections the fixed baseline is `~6·N` goroutines. Goroutines start
-with a ~2 KB stack, so tens of thousands of mostly-idle connections cost on the
-order of tens to low-hundreds of MB — well within range for a single process.
-Typical CSMS traffic is bursty-but-light (Heartbeat / StatusNotification), so in
-practice the baseline dominates and handler goroutines are few.
+### Handler worker pool (optional)
+
+Every inbound Call starts a goroutine whose stack grows from 2 KB as the
+handler (JSON decode, schema validation, your code) goes deeper; at tens of
+thousands of requests per second that growth (`runtime.copystack`) can be a
+double-digit share of server CPU. `dispatcher.NewHandlerPool(n)` with
+`csms.WithHandlerPool` (or `cp.WithHandlerPool`) keeps `n` resident workers with
+warm stacks. It is a hand-off, not a queue: a Call goes to a worker only if one
+is idle at that moment and otherwise gets a new goroutine as before, so a slow
+handler never delays another connection and the pool adds no concurrency limit.
+Size it around the number of handlers typically in flight (tens, not thousands:
+a pool far larger than that rotates through cold workers and is slower). Measure
+with your own handlers before enabling it; it is off by default.
 
 ## Measuring footprint
 
@@ -111,7 +121,7 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 
 ## What is *not* bounded
 
-- **Baseline goroutines** (`~4·N`) and **socket/file descriptors** scale with the
+- **Baseline goroutines** (`~N`) and **socket/file descriptors** scale with the
   number of connections, not with `WithGlobalConcurrencyLimit`. To bound those,
   limit the number of accepted connections at your load balancer or in front of
   `Server.Handler()` (e.g. reject/503 above a threshold). gocpp does not cap the
@@ -134,11 +144,13 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 | `WithOutboundValidation(bool)` | true | With false, payloads gocpp itself produces (handler replies, outbound Calls and Sends) skip schema validation and lenient repair. Inbound validation is unchanged. At high request rates it removes the response-side validation pass (about half of the lenient schema cost per request); keep it on while developing handlers that build raw payloads. |
 | `WithMaxMessageSize(n)` | 1 MiB | Largest inbound WebSocket message. |
 | `csms.WithMaxConnections(n)` | unlimited | Connection cap; over it, upgrades get HTTP 503 + Retry-After. |
-| `WithWebSocketPingInterval(d)` | disabled | Transport keepalive; adds one goroutine per connection and detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |
+| `WithWebSocketPingInterval(d)` | disabled | Transport keepalive (a timer, plus a goroutine only while a pong is awaited); detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |
+| `WithIOBufferSizes(read, write)` | 1024, 1024 | Per-connection socket buffers (net/http would use 4096 each). |
+| `WithHandlerPool(pool)` | off | Resident handler workers with warm stacks; see "Handler worker pool". |
 
 ## Rules of thumb
 
-- Mostly-idle fleets (Heartbeat-dominated): the `~4·N` baseline is the main cost;
+- Mostly-idle fleets (Heartbeat-dominated): the per-connection baseline (about 13 KB) is the main cost;
   default handler limits are fine. Watch process RSS and FD count as `N` grows.
 - High-throughput or heavy handlers (DB writes, downstream calls): set
   `WithGlobalConcurrencyLimit` to protect shared backends from `N`-proportional
