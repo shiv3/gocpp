@@ -237,6 +237,11 @@ func TestConnectionMetrics_QueueDepthAndPingLatency(t *testing.T) {
 		defer rm.mu.Unlock()
 		return len(rm.depths) >= 1 && rm.pings >= 1
 	}, 2*time.Second, time.Millisecond)
+	// The depth counts senders waiting for or holding the write lock: an
+	// uncontended send samples 1.
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	require.Equal(t, 1, rm.depths[0])
 }
 
 func TestMetricsBridge_ConnectionMetricsOptional(t *testing.T) {

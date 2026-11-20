@@ -26,8 +26,9 @@ func (NoOp) SchemaValidationFailure(string, string, string)              {}
 // also implements it receives per-connection health samples; implementations
 // of Metrics that do not are unaffected.
 type ConnectionMetrics interface {
-	// OutboundQueueDepth samples the number of frames waiting for the writer,
-	// taken each time a frame is queued.
+	// OutboundQueueDepth samples the number of senders that are waiting for, or
+	// holding, the connection's write lock (so 1 means an uncontended write),
+	// taken each time a frame is sent.
 	OutboundQueueDepth(version string, depth int)
 	// PingLatency reports one WebSocket ping round trip (ping sent until pong).
 	PingLatency(version string, d time.Duration)

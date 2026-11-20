@@ -33,7 +33,7 @@ func (c *Conn) observeInbound(raw []byte, parsed ocppj.Frame, perr error) {
 	c.callObserver(ev)
 }
 
-// observeOutbound reports a frame the writer just attempted to write.
+// observeOutbound reports a frame the sender just attempted to write.
 func (c *Conn) observeOutbound(raw []byte, werr error) {
 	if c.cfg.FrameObserver == nil {
 		return
@@ -59,8 +59,8 @@ func (c *Conn) callObserver(ev observability.FrameEvent) {
 	c.cfg.FrameObserver(c.ctx, ev)
 }
 
-func (c *Conn) sampleQueueDepth() {
+func (c *Conn) sampleQueueDepth(depth int) {
 	if m, ok := c.cfg.Metrics.(connectionMetricsHook); ok {
-		m.OutboundQueueDepth(string(c.version), len(c.out))
+		m.OutboundQueueDepth(string(c.version), depth)
 	}
 }

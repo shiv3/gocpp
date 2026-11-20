@@ -11,7 +11,7 @@ func TestDefaultConfig(t *testing.T) {
 	c := DefaultConfig()
 	require.Equal(t, 30*time.Second, c.CallTimeout)
 	require.Equal(t, 10*time.Second, c.WriteTimeout)
-	require.Equal(t, 4, c.OutboundQueueSize)
+	require.Equal(t, 4, c.OutboundQueueSize) // ignored, kept for compatibility
 	require.Equal(t, 4, c.InboundQueueSize)
 	require.Equal(t, int64(16), c.MaxConcurrentHandlers)
 	require.Equal(t, 54*time.Second, c.PingInterval)

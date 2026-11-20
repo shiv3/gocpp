@@ -253,6 +253,30 @@ All notable changes to this project are documented here. The format is based on
   `InboundQueueSize` frames in total (it used to hold that many plus one in the
   dispatcher). `Conn` gains no public API; the reader body is split out as
   `handleMessage`, the entry point a push-style transport can drive.
+- No writer goroutine per connection: whoever produced a frame (a handler, a
+  caller of `DoCall`/`DoSend`, the reader for protocol-error replies) writes it
+  under a per-connection write lock (a capacity-1 channel, FIFO, with
+  context-aware waiting). A server-side connection now holds exactly one
+  resident goroutine (the reader), about 2 KB less stack and 0.8 KB less heap, and a frame no
+  longer crosses two goroutine handoffs. Behaviour changes to be aware of:
+  1. A sender that already holds the write lock is not released by connection
+     cancel until its write returns, which is bounded by `WriteTimeout` or by
+     the transport closing during teardown (before, `send` returned as soon as the
+     connection context ended). Senders still waiting for the lock leave
+     immediately on their own context or the connection's.
+  2. The `OutboundQueueDepth` metric now samples the number of senders waiting
+     for or holding the write lock (1 = uncontended), not the length of a queue.
+  3. `OutboundQueueSize`, `WithOutboundQueueSize` (csms, cp) have no effect any
+     more and are deprecated; remove them.
+  4. The frame observer's outbound calls run on the sending goroutine while it
+     holds the write lock (still in wire order); an observer must not send on the
+     same connection synchronously (it could not before either), and a slow
+     observer delays that connection's writes only.
+  Also: protocol-error replies from the reader are sent from at most 4 tracked
+  background goroutines per connection and dropped beyond that (before: dropped
+  when the 4-slot queue was full). `transport.WS` documents that `Ping` and
+  `Close` may run concurrently with `Write`, that `Write` calls are serialized
+  by the dispatcher, and that the slice returned by `Read` belongs to the caller.
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.

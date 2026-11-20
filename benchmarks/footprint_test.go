@@ -202,9 +202,9 @@ func BenchmarkIdleFootprint(b *testing.B) {
 // the implementation measures today and are meant to be ratcheted down as the
 // footprint shrinks; a failure means a per-connection cost was added.
 const (
-	maxIdleHeapPerConn   = 16 << 10
-	maxIdleStackPerConn  = 12 << 10 // after-Heartbeat stack varies 20-25 KB with GC stack shrinking
-	maxIdleGoroutinesPer = 2.5
+	maxIdleHeapPerConn   = 17 << 10 // measured ~14.5 KB; headroom for runtime and CI variance
+	maxIdleStackPerConn  = 9 << 10  // measured ~4.3 KB (idle and after a Heartbeat); stack size classes jump by 4 KB // after-Heartbeat stack varies 20-25 KB with GC stack shrinking
+	maxIdleGoroutinesPer = 1.5
 )
 
 // TestIdleFootprintBounds guards the idle footprint. The race detector inflates

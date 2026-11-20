@@ -23,7 +23,14 @@ type Conn struct {
 	version ocppj.Version
 	meta    ConnMetadata
 
-	out chan outbound
+	// wlock is the write lock: a channel of capacity 1 so that waiting for it can
+	// honour a context and blocked senders are served FIFO. A sender holds it
+	// across ws.Write and the frame-observer call (wire order). wwait counts
+	// senders waiting for or holding it (the OutboundQueueDepth metric);
+	// errReplies bounds the reader's in-flight protocol-error replies. See send.go.
+	wlock      chan struct{}
+	wwait      atomic.Int32
+	errReplies atomic.Int32
 
 	pending *pendingStore
 	reg     *HandlerRegistry
@@ -69,11 +76,6 @@ type Conn struct {
 	cfg Config
 }
 
-type outbound struct {
-	payload []byte
-	sentCh  chan error // 1-buffered
-}
-
 // ConnMetadata contains HTTP upgrade metadata associated with a connection.
 // Fields are empty for connections that were not created from an inbound HTTP
 // upgrade request.
@@ -94,7 +96,7 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		ws:          ws,
 		version:     subprotocolToVersion(ws.Subprotocol()),
 		meta:        m,
-		out:         make(chan outbound, max(cfg.OutboundQueueSize, 0)),
+		wlock:       make(chan struct{}, 1),
 		pending:     newPendingStore(),
 		reg:         reg,
 		gateOpen:    true,
@@ -265,6 +267,10 @@ func (c *Conn) closeForCause() {
 func (c *Conn) teardown() {
 	c.stopTimers()
 	c.closeForCause()
+	// Take the write lock for good: waits for a write that is in flight (closing
+	// the socket has unblocked it, or WriteTimeout ends it) and guarantees no
+	// write or frame-observer call after done.
+	c.wlock <- struct{}{}
 	c.failQueued()
 	c.dropInbound()
 	c.wg.Wait()
@@ -308,9 +314,8 @@ func (c *Conn) Start(parent context.Context) {
 	c.monoBase = time.Now()
 	c.cfg.Metrics.ConnectionOpened()
 
-	c.wg.Add(2)
+	c.wg.Add(1)
 	go c.reader()
-	go c.writer()
 	c.startWebSocketPing()
 	c.startReadWatchdog()
 
@@ -449,30 +454,6 @@ func (c *Conn) routeInbound(frame ocppj.Frame) bool {
 		return c.enqueueInbound(frame)
 	}
 	return true
-}
-
-func (c *Conn) writer() {
-	defer c.wg.Done()
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case ob := <-c.out:
-			// Not cancelled with the connection, for the same reason as the reader.
-			wctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), c.cfg.WriteTimeout)
-			err := c.ws.Write(wctx, ob.payload)
-			cancel()
-			if err == nil {
-				c.lastSent.Store(time.Now().UnixNano())
-			}
-			c.observeOutbound(ob.payload, err)
-			ob.sentCh <- err // 1-buffered
-			if err != nil {
-				c.cancel(fmt.Errorf("write: %w", err))
-				return
-			}
-		}
-	}
 }
 
 func subprotocolToVersion(sub string) ocppj.Version {

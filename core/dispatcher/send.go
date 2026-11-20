@@ -8,23 +8,51 @@ import (
 	"github.com/shiv3/gocpp/core/ocppj"
 )
 
-// send enqueues a pre-framed payload to the writer and waits for the write result.
+// send writes a pre-framed payload on the calling goroutine and returns the
+// write result. There is no writer goroutine: the sender takes the connection's
+// write lock (FIFO, so frames of concurrent senders go out in lock order),
+// writes, runs the frame observer while still holding the lock (observer order
+// is wire order) and releases it.
+//
+// A sender that is still waiting for the lock leaves promptly when ctx or the
+// connection ends; one that holds it is bounded by WriteTimeout (and by the
+// transport closing on teardown). A failed or timed-out write cancels the
+// connection.
 func (c *Conn) send(ctx context.Context, payload []byte) error {
-	sent := make(chan error, 1)
-	select {
-	case c.out <- outbound{payload: payload, sentCh: sent}:
-		c.sampleQueueDepth()
-	case <-c.ctx.Done():
-		return context.Cause(c.ctx)
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	select {
-	case err := <-sent:
-		return err
-	case <-c.ctx.Done():
+	if c.ctx.Err() != nil {
 		return context.Cause(c.ctx)
 	}
+	c.sampleQueueDepth(int(c.wwait.Add(1)))
+	defer c.wwait.Add(-1)
+	select {
+	case c.wlock <- struct{}{}:
+	default:
+		select {
+		case c.wlock <- struct{}{}:
+		case <-c.ctx.Done():
+			return context.Cause(c.ctx)
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	defer func() { <-c.wlock }()
+	// Nothing is written once teardown has begun (it takes the lock after this
+	// check can no longer succeed), so no write or observer call follows done.
+	if c.ctx.Err() != nil {
+		return context.Cause(c.ctx)
+	}
+	// Not cancelled with the connection, for the same reason as the reader.
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), c.cfg.WriteTimeout)
+	err := c.ws.Write(wctx, payload)
+	cancel()
+	if err == nil {
+		c.lastSent.Store(time.Now().UnixNano())
+	}
+	c.observeOutbound(payload, err)
+	if err != nil {
+		c.cancel(fmt.Errorf("write: %w", err))
+	}
+	return err
 }
 
 func (c *Conn) sendCallResult(msgID string, payload []byte) {
@@ -36,23 +64,29 @@ func (c *Conn) sendCallResult(msgID string, payload []byte) {
 	_ = c.send(c.ctx, raw)
 }
 
-// trySendCallErrorWire enqueues a CallError without ever blocking the caller: it
-// is dropped if the outbound queue is full. The reader uses it to answer
-// malformed CALLs; blocking there would stall pong/close processing behind a
-// slow writer, and a goroutine per bad frame would be an unbounded fan-out.
+// maxErrReplies bounds the protocol-error replies in flight per connection.
+const maxErrReplies = 4
+
+// trySendCallErrorWire answers a malformed frame without ever blocking the
+// caller: the reader uses it, and blocking there would stall pong/close
+// processing behind a slow peer. The reply is sent from a tracked background
+// goroutine; at most maxErrReplies exist per connection and beyond that the
+// reply is dropped, so a flood of bad frames cannot fan out.
 func (c *Conn) trySendCallErrorWire(msgID, wire, desc string) {
 	raw, err := ocppj.EncodeCallError(msgID, wire, desc, nil)
 	if err != nil {
 		c.cfg.Logger.ErrorContext(c.ctx, "encode call error", "err", err)
 		return
 	}
-	select {
-	case c.out <- outbound{payload: raw, sentCh: make(chan error, 1)}:
-		c.sampleQueueDepth()
-	default:
-		c.cfg.Logger.WarnContext(c.ctx, "outbound queue full; dropping call error",
-			"cp_id", c.id, "msg_id", msgID)
+	if c.errReplies.Add(1) <= maxErrReplies && c.goBG(func() {
+		defer c.errReplies.Add(-1)
+		_ = c.send(c.ctx, raw)
+	}) {
+		return
 	}
+	c.errReplies.Add(-1)
+	c.cfg.Logger.WarnContext(c.ctx, "too many pending error replies; dropping call error",
+		"cp_id", c.id, "msg_id", msgID)
 }
 
 func (c *Conn) sendCallError(msgID string, ce *ocppj.CallError) {
