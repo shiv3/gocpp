@@ -29,7 +29,7 @@ func TestServer_ConnConfigOverridesPerChargePoint(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	dial := func(id string) *websocket.Conn {
+	dial := func(id string) {
 		h := http.Header{"X-Probe": {"yes"}}
 		c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/"+id,
 			&websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}, HTTPHeader: h})
@@ -37,7 +37,6 @@ func TestServer_ConnConfigOverridesPerChargePoint(t *testing.T) {
 		t.Cleanup(func() { _ = c.CloseNow() })
 		// Reading lets the client answer the server's close handshake.
 		go func() { _, _, _ = c.Read(ctx) }()
-		return c
 	}
 	dial("SHORT")
 	dial("LONG")
