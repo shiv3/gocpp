@@ -56,16 +56,14 @@ func (w *smallBufWriter) Flush() {
 // same segment) are copied and replayed ahead of the connection, and anything
 // still pending in the old writer is flushed first, so no byte is lost.
 func (w *smallBufWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hj, ok := w.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, http.ErrNotSupported
-	}
-	nc, brw, err := hj.Hijack()
+	// ResponseController follows Unwrap chains, so a user middleware writer that
+	// only exposes Unwrap still works (as it does for the websocket library).
+	nc, brw, err := http.NewResponseController(w.ResponseWriter).Hijack()
 	if err != nil {
 		return nil, nil, err
 	}
 	if brw.Writer.Buffered() > 0 {
-		if err := brw.Writer.Flush(); err != nil {
+		if err := brw.Flush(); err != nil {
 			_ = nc.Close()
 			return nil, nil, err
 		}
@@ -77,7 +75,7 @@ func (w *smallBufWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	var r io.Reader = nc
 	var pre []byte
 	if n := brw.Reader.Buffered(); n > 0 {
-		b, _ := brw.Reader.Peek(n)
+		b, _ := brw.Peek(n)
 		pre = append([]byte(nil), b...)
 		r = io.MultiReader(bytes.NewReader(pre), nc)
 		rsz = max(rsz, len(pre))

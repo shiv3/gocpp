@@ -17,13 +17,13 @@ import (
 )
 
 // echoServer registers a raw "Echo" action that returns its payload.
-func echoServer(t *testing.T, opts ...Option) (*Server, *httptest.Server) {
+func echoServer(t *testing.T, opts ...Option) *httptest.Server {
 	t.Helper()
 	srv := NewServer(append([]Option{WithSubProtocols("ocpp1.6")}, opts...)...)
 	srv.reg.Register("Echo", func(_ context.Context, _ *dispatcher.Conn, p []byte) ([]byte, error) { return p, nil })
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	return srv, ts
+	return ts
 }
 
 func TestIOBuf_DefaultsAndOption(t *testing.T) {
@@ -37,10 +37,10 @@ func TestIOBuf_DefaultsAndOption(t *testing.T) {
 // The first frame may arrive in the same TCP segment as the handshake: those
 // bytes sit in net/http's reader and must reach the websocket reader intact.
 func TestIOBuf_FirstFrameInHandshakeSegment(t *testing.T) {
-	_, ts := echoServer(t)
+	ts := echoServer(t)
 	nc, err := net.Dial("tcp", strings.TrimPrefix(ts.URL, "http://"))
 	require.NoError(t, err)
-	defer nc.Close()
+	defer func() { _ = nc.Close() }()
 
 	msg := []byte(`[2,"e1","Echo",{"a":1}]`)
 	// Masked client text frame (mask key 0).
@@ -75,7 +75,7 @@ func TestIOBuf_FirstFrameInHandshakeSegment(t *testing.T) {
 func TestIOBuf_LargeMessagesRoundTrip(t *testing.T) {
 	for name, mode := range map[string]transport.CompressionMode{"plain": transport.CompressionDisabled, "deflate": transport.CompressionNoContextTakeover} {
 		t.Run(name, func(t *testing.T) {
-			_, ts := echoServer(t, WithCompression(mode), WithMaxMessageSize(1<<20))
+			ts := echoServer(t, WithCompression(mode), WithMaxMessageSize(1<<20))
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CPBIG",
