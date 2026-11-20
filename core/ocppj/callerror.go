@@ -43,11 +43,21 @@ func (e *CallError) Error() string {
 
 func (e *CallError) Unwrap() error { return e.cause }
 
-// WireCode returns the on-the-wire error code string, applying the OCPP 1.6
-// spec's misspelled OccurenceConstraintViolation code for 1.6 connections. //nolint:misspell // OCPP 1.6 spec wire spelling
+// WireCode returns the on-the-wire error code string for version v. OCPP 1.6
+// spells two codes differently from 2.x: OccurenceConstraintViolation (sic) and
+// FormationViolation, which 2.x renamed FormatViolation. Either spelling is
+// mapped to the one the peer's version defines. //nolint:misspell // OCPP 1.6 spec wire spelling
 func (e *CallError) WireCode(v Version) string {
-	if e.Code == ErrorCodeOccurrenceConstraintViolation && v == V16 {
-		return string(ErrorCodeOccurenceConstraintViolation)
+	switch e.Code {
+	case ErrorCodeOccurrenceConstraintViolation:
+		if v == V16 {
+			return string(ErrorCodeOccurenceConstraintViolation)
+		}
+	case ErrorCodeFormationViolation, ErrorCodeFormatViolation:
+		if v == V16 {
+			return string(ErrorCodeFormationViolation)
+		}
+		return string(ErrorCodeFormatViolation)
 	}
 	return string(e.Code)
 }

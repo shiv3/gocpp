@@ -238,12 +238,8 @@ func (c *Conn) reader() {
 			// peer does not wait out its own timeout and retry.
 			var perr *ocppj.ProtocolError
 			if errors.As(err, &perr) && perr.MessageType == int(ocppj.Call) && perr.MsgID != "" {
-				// 1.6 calls this FormationViolation; 2.x renamed it FormatViolation.
-				code := ocppj.ErrorCodeFormatViolation
-				if c.version == ocppj.V16 {
-					code = ocppj.ErrorCodeFormationViolation
-				}
-				c.trySendCallError(perr.MsgID, ocppj.NewCallError(code, perr.Message, nil))
+				// WireCode spells it per version (FormationViolation / FormatViolation).
+				c.trySendCallError(perr.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, perr.Message, nil))
 			}
 			continue
 		}
