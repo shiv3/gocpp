@@ -87,7 +87,7 @@ type Conn struct {
 	wdTimer       *time.Timer
 	pingTimer     *time.Timer
 
-	cfg Config
+	cfg *Config
 }
 
 // ConnMetadata contains HTTP upgrade metadata associated with a connection.
@@ -101,6 +101,14 @@ type ConnMetadata struct {
 
 // NewConn creates a connection. Call Start to launch its goroutines.
 func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta ...ConnMetadata) *Conn {
+	return NewConnShared(id, ws, &cfg, reg, meta...)
+}
+
+// NewConnShared is NewConn for a Config shared by many connections (a server
+// builds one per negotiated version instead of copying it for every
+// connection). The Config is read concurrently by every connection that uses it
+// and must not be modified after this call.
+func NewConnShared(id string, ws transport.WS, cfg *Config, reg *HandlerRegistry, meta ...ConnMetadata) *Conn {
 	m := ConnMetadata{}
 	if len(meta) > 0 {
 		m = cloneConnMetadata(meta[0])
@@ -202,9 +210,7 @@ func (c *Conn) Stats() ConnStats {
 		}
 		return time.Unix(0, v)
 	}
-	c.pending.mu.RLock()
-	pending := len(c.pending.entries)
-	c.pending.mu.RUnlock()
+	pending := c.pending.len()
 	c.slot.mu.Lock()
 	queued := len(c.slot.q)
 	c.slot.mu.Unlock()

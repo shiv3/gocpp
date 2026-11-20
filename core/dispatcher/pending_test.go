@@ -37,3 +37,36 @@ func TestPendingStore_FailAll(t *testing.T) {
 }
 
 var errExample = errors.New("example")
+
+// The first pending call lives inline and the map appears only for a second
+// concurrent one; every entry resolves exactly once wherever it is stored.
+func TestPendingStore_InlineEntryAndLazyMap(t *testing.T) {
+	ps := newPendingStore()
+	chs := map[string]chan rawResult{}
+	add := func(id string) {
+		chs[id] = make(chan rawResult, 1)
+		ps.add(id, &pendingCall{msgID: id, respCh: chs[id]})
+	}
+	add("a")
+	require.Nil(t, ps.more, "a single pending call must not allocate the map")
+	require.Equal(t, 1, ps.len())
+	add("b")
+	add("c")
+	require.Equal(t, 3, ps.len())
+	require.NotNil(t, ps.more)
+
+	require.True(t, ps.resolve("b", rawResult{payload: []byte("b")}))
+	require.Equal(t, "b", string((<-chs["b"]).payload))
+	require.True(t, ps.resolve("a", rawResult{payload: []byte("a")})) // the inline slot
+	require.Equal(t, "a", string((<-chs["a"]).payload))
+	require.False(t, ps.resolve("a", rawResult{}))
+	require.Equal(t, 1, ps.len())
+
+	add("d") // the inline slot is free again
+	ps.remove("c")
+	ps.remove("zzz") // unknown id is a no-op
+	require.Equal(t, 1, ps.len())
+	ps.failAll(errExample)
+	require.ErrorIs(t, (<-chs["d"]).err, errExample)
+	require.Equal(t, 0, ps.len())
+}
