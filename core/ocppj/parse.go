@@ -48,7 +48,7 @@ func Parse(raw []byte) (Frame, error) {
 		return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "message id not a string"}
 	}
 
-	shapeErr := func(msg string) error {
+	shapeErr := func(msg string) *ProtocolError {
 		return &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: msg, MessageType: mt, MsgID: msgID, Elements: len(arr)}
 	}
 
@@ -59,7 +59,7 @@ func Parse(raw []byte) (Frame, error) {
 		}
 		var action string
 		if err := json.Unmarshal(arr[2], &action); err != nil {
-			pe := shapeErr("action not a string").(*ProtocolError)
+			pe := shapeErr("action not a string")
 			pe.BadField = "action"
 			return Frame{}, pe
 		}
@@ -90,7 +90,7 @@ func Parse(raw []byte) (Frame, error) {
 		}
 		var action string
 		if err := json.Unmarshal(arr[2], &action); err != nil {
-			pe := shapeErr("action not a string").(*ProtocolError)
+			pe := shapeErr("action not a string")
 			pe.BadField = "action"
 			return Frame{}, pe
 		}
