@@ -38,7 +38,7 @@ func newCloseRig(t *testing.T) *closeRig {
 	return r
 }
 
-func (r *closeRig) dial(t *testing.T, ctx context.Context) *websocket.Conn {
+func (r *closeRig) dial(ctx context.Context, t *testing.T) *websocket.Conn {
 	t.Helper()
 	c, _, err := websocket.Dial(ctx, r.url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestConn_CloseFromServer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	c1 := r.dial(t, ctx)
+	c1 := r.dial(ctx, t)
 	require.Eventually(t, func() bool { _, ok := r.srv.Get("cp1"); return ok }, 2*time.Second, 10*time.Millisecond)
 
 	// A pending server-initiated call must fail when the connection is closed.
@@ -91,7 +91,7 @@ func TestConn_CloseFromServer(t *testing.T) {
 	require.Len(t, r.snapshot(), 1)
 
 	// The charge point can reconnect.
-	c2 := r.dial(t, ctx)
+	c2 := r.dial(ctx, t)
 	defer func() { _ = c2.Close(websocket.StatusNormalClosure, "") }()
 	require.Eventually(t, func() bool { _, ok := r.srv.Get("cp1"); return ok }, 2*time.Second, 10*time.Millisecond)
 	require.Len(t, r.snapshot(), 1)
@@ -104,7 +104,7 @@ func TestServer_Disconnect(t *testing.T) {
 
 	require.ErrorIs(t, r.srv.Disconnect(ctx, "cp1"), ocppj.ErrNotConnected)
 
-	c1 := r.dial(t, ctx)
+	c1 := r.dial(ctx, t)
 	require.Eventually(t, func() bool { _, ok := r.srv.Get("cp1"); return ok }, 2*time.Second, 10*time.Millisecond)
 	require.NoError(t, r.srv.Disconnect(ctx, "cp1"))
 

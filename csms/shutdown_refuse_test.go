@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func requireRefusedWith503(t *testing.T, ctx context.Context, url string) {
+func requireRefusedWith503(ctx context.Context, t *testing.T, url string) {
 	t.Helper()
 	_, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 	require.Error(t, err)
@@ -45,7 +45,7 @@ func TestServer_ShutdownRefusesNewUpgrades(t *testing.T) {
 	require.Equal(t, websocket.StatusNormalClosure, ce.Code)
 
 	// A new charge point is refused with 503 before any upgrade.
-	requireRefusedWith503(t, ctx, base+"cp2")
+	requireRefusedWith503(ctx, t, base+"cp2")
 	select {
 	case <-connects:
 		t.Fatal("a connection was accepted after Shutdown")
@@ -76,11 +76,11 @@ func TestServer_RefusesUpgradesDuringShutdownAndAfterClose(t *testing.T) {
 		_, resp, err := websocket.Dial(ctx, base+"cp2", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 		return err != nil && resp != nil && resp.StatusCode == http.StatusServiceUnavailable
 	}, 2*time.Second, 10*time.Millisecond)
-	<-done
+	_ = <-done
 
 	srv2 := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	ts2 := httptest.NewServer(srv2.Handler())
 	defer ts2.Close()
 	srv2.Close()
-	requireRefusedWith503(t, ctx, "ws"+ts2.URL[len("http"):]+"/ocpp/cp3")
+	requireRefusedWith503(ctx, t, "ws"+ts2.URL[len("http"):]+"/ocpp/cp3")
 }
