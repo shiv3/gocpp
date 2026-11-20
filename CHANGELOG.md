@@ -205,6 +205,12 @@ All notable changes to this project are documented here. The format is based on
   signal a channel (two atomic stores). The idle deadline is measured on the
   monotonic clock. Behaviour is unchanged, except that the ping interval now
   counts from the end of the previous ping instead of a fixed ticker.
+- Connection teardown is one `context.AfterFunc` callback instead of a closer
+  goroutine plus a goroutine that waited for the others (6 -> 4 resident
+  goroutines per server-side connection, ~6 KB less stack). Behaviour is unchanged:
+  the same close frame per cause, `Close` still returns only after everything of the
+  connection has stopped. `Conn.StartKeepalive` is now tracked like async calls
+  (call it after `Start`; on a connection that is already closing it does nothing).
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.
