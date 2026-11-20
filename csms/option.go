@@ -32,6 +32,8 @@ type serverConfig struct {
 
 	globalConcurrencyLimit int
 	maxConnections         int
+	ioReadBuffer           int
+	ioWriteBuffer          int
 
 	auth           auth.Authenticator
 	connReg        storage.ConnectionRegistry
@@ -54,6 +56,8 @@ func defaultServerConfig() serverConfig {
 		dispatcher:      dispatcher.DefaultConfig(),
 		subProtocols:    []string{"ocpp1.6"},
 		compressionMode: transport.CompressionNoContextTakeover,
+		ioReadBuffer:    defaultIOReadBuffer,
+		ioWriteBuffer:   defaultIOWriteBuffer,
 		path:            "/ocpp/",
 		duplicatePolicy: DuplicatePolicyCloseExisting,
 		auth:            auth.None{},
@@ -128,6 +132,23 @@ func WithSubProtocols(p ...string) Option {
 // transport.CompressionDisabled to opt out.
 func WithCompression(m transport.CompressionMode) Option {
 	return optionFunc(func(c *serverConfig) { c.compressionMode = m })
+}
+
+// WithIOBufferSizes sets the size in bytes of each connection's socket read and
+// write buffers (default 1024 each; net/http would give 4096 each). Smaller
+// buffers cut the memory of idle connections by about 6 KB each; a frame larger
+// than the write buffer costs one extra write syscall, and reads of large frames
+// bypass the buffer. 0 keeps net/http's size for that side (4096); negative
+// values are ignored.
+func WithIOBufferSizes(read, write int) Option {
+	return optionFunc(func(c *serverConfig) {
+		if read >= 0 {
+			c.ioReadBuffer = read
+		}
+		if write >= 0 {
+			c.ioWriteBuffer = write
+		}
+	})
 }
 
 // WithSigner signs outbound CSMS->CP CALL/SEND messages (OCPP 2.1 Signed Messages).
