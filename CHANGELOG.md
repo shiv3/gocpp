@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `BenchmarkDispatchRoundTrip` (benchmarks/, in-memory transport, schema off/lenient/strict)
+  and `BenchmarkValidateLenient` / `BenchmarkValidateStrict` (core/schema); baselines in
+  docs/performance.md, "Per-message baselines".
 - `InboundQueueSize` in `dispatcher.Config` plus `WithInboundQueueSize` and
   `WithOutboundQueueSize` (csms and cp): the reader-to-dispatcher queue is now sized
   independently of the writer queue.
