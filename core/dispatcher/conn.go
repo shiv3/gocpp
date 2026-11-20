@@ -23,7 +23,6 @@ type Conn struct {
 	version ocppj.Version
 	meta    ConnMetadata
 
-
 	// wlock is the write lock: a channel of capacity 1 so that waiting for it can
 	// honour a context and blocked senders are served FIFO. A sender holds it
 	// across ws.Write and the frame-observer call (wire order). wwait counts
