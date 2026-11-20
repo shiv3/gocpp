@@ -223,6 +223,12 @@ All notable changes to this project are documented here. The format is based on
   the same close frame per cause, `Close` still returns only after everything of the
   connection has stopped. `Conn.StartKeepalive` is now tracked like async calls
   (call it after `Start`; on a connection that is already closing it does nothing).
+- `csms`: the HTTP handler that accepted a WebSocket upgrade returns right after
+  the connection is registered, and the disconnect cleanup (disconnect callback,
+  `Close`, registry removal) runs from a `context.AfterFunc`. A server-side
+  connection holds 3 goroutines instead of 4 and no longer keeps the upgrade
+  `*http.Request` alive (about 8 KB of stack and 3.5 KB of heap less per
+  connection). Callback order is unchanged.
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.

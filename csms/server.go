@@ -199,7 +199,14 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		TLS:           r.TLS,
 	})
 	conn := &Conn{inner: dconn, gone: make(chan struct{})}
-	defer close(conn.gone)
+	// gone is closed by connCleanup once the connection is registered; every
+	// earlier return closes it here.
+	registered := false
+	defer func() {
+		if !registered {
+			close(conn.gone)
+		}
+	}()
 
 	// Hold inbound CALL/SEND handling until the connection is published and
 	// onConnect has returned, so a handler can rely on Get(id) and on the connect
@@ -223,16 +230,30 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
 	s.publishGlobal(cpID)
 	dconn.ReleaseInbound()
-	defer func() {
-		if s.removeConn(cpID, conn) {
-			_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
-			s.retractGlobal(cpID)
-		}
-	}()
+	// From here the connection's lifetime is not tied to this HTTP handler:
+	// it returns now, releasing its goroutine and the *http.Request, and the
+	// teardown runs from a context.AfterFunc when the connection ends. Nothing in
+	// gocpp derives from r.Context() (connections hang off s.ctx), so the
+	// cancellation net/http applies on return is harmless. The cleanup closure
+	// must not capture r or w.
+	registered = true
+	context.AfterFunc(dconn.Context(), func() { s.connCleanup(cpID, conn) })
+}
 
-	<-dconn.Context().Done()
+// connCleanup runs once, on its own goroutine, when conn's context is done. The
+// order matters: the application hears about the disconnect, the connection is
+// closed (waits for its goroutines), the registries forget it, and only then
+// does gone release anyone waiting on the teardown (Conn.Close, Shutdown). The
+// admission slot needs no release here: addConn consumed it at registration.
+func (s *Server) connCleanup(cpID string, conn *Conn) {
+	defer close(conn.gone)
+	dconn := conn.inner
 	s.handleDisconnected(conn, context.Cause(dconn.Context()))
 	_ = dconn.Close(nil)
+	if s.removeConn(cpID, conn) {
+		_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
+		s.retractGlobal(cpID)
+	}
 }
 
 func (s *Server) extractCPID(r *http.Request) (string, bool) {
