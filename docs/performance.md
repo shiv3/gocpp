@@ -30,6 +30,34 @@ order of tens to low-hundreds of MB — well within range for a single process.
 Typical CSMS traffic is bursty-but-light (Heartbeat / StatusNotification), so in
 practice the baseline dominates and handler goroutines are few.
 
+## Measuring footprint
+
+Benchmarks live in `benchmarks/footprint_test.go`:
+
+```sh
+# Per-connection cost of 2,000 idle connections through the real csms server
+# (idle, and after one Heartbeat each). One iteration is enough.
+go test -run '^$' -bench IdleFootprint -benchtime=1x ./benchmarks/
+
+# Per-message cost of an inbound Heartbeat CALL -> CALLRESULT round trip,
+# on one connection and spread across 256 connections.
+go test -run '^$' -bench HeartbeatMessage -benchmem ./benchmarks/
+```
+
+`BenchmarkIdleFootprint` reports `idle-` and `hb-` prefixed `heap-B/conn`
+(`HeapAlloc` after a forced GC), `stack-B/conn` (`StackInuse`) and
+`goroutines/conn`. The client side is a raw TCP socket with a hand-written
+handshake, so it adds no goroutines and almost no heap: the numbers are the
+server's. RSS is typically 1.5-2x heap+stack because of GC headroom and
+runtime overhead. The per-message benchmarks use a `coder/websocket` client in
+the same process, so their allocations include the client side.
+
+`TestIdleFootprintBounds` fails if the per-connection heap, stack or goroutine
+count exceeds fixed upper bounds. The bounds are ratcheted down as the footprint
+shrinks. The race detector inflates heap and stack several-fold, so the test
+only logs under `-race`; CI runs it a second time without `-race`. Run it with
+`-short` for a 500-connection variant.
+
 ## Concurrency bounds
 
 Inbound handler concurrency is bounded at two levels. Both must be acquired
