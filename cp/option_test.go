@@ -147,3 +147,12 @@ func TestRuntimeSafetyOptions(t *testing.T) {
 func TestConnDoneOutsideHandler(t *testing.T) {
 	require.Nil(t, ConnDone(context.Background()))
 }
+
+func TestQueueSizeOptions(t *testing.T) {
+	c := NewClient("CP_1", "ws://example.invalid/ocpp/CP_1", WithInboundQueueSize(9), WithOutboundQueueSize(7))
+	require.Equal(t, 9, c.cfg.dispatcher.InboundQueueSize)
+	require.Equal(t, 7, c.cfg.dispatcher.OutboundQueueSize)
+	def := NewClient("CP_1", "ws://example.invalid/ocpp/CP_1", WithInboundQueueSize(0), WithOutboundQueueSize(-1))
+	require.Equal(t, 4, def.cfg.dispatcher.InboundQueueSize)
+	require.Equal(t, 4, def.cfg.dispatcher.OutboundQueueSize)
+}

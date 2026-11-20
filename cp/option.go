@@ -146,6 +146,31 @@ func WithMaxMessageSize(n int64) Option {
 	})
 }
 
+// WithInboundQueueSize sets the depth of the per-connection queue between the
+// socket reader and the handler dispatcher (default 4). The queue only fills
+// while all handler slots are busy; once it is full the reader stops, so replies
+// on that connection wait too. Raise it for handlers that block for long, for
+// example while awaiting a reply to a Call they sent to the peer. n <= 0 keeps
+// the default.
+func WithInboundQueueSize(n int) Option {
+	return optionFunc(func(c *clientConfig) {
+		if n > 0 {
+			c.dispatcher.InboundQueueSize = n
+		}
+	})
+}
+
+// WithOutboundQueueSize sets the depth of the channel feeding the connection's
+// writer (default 4). Every send waits for its own write result, so a larger
+// buffer only helps many goroutines sending at once. n <= 0 keeps the default.
+func WithOutboundQueueSize(n int) Option {
+	return optionFunc(func(c *clientConfig) {
+		if n > 0 {
+			c.dispatcher.OutboundQueueSize = n
+		}
+	})
+}
+
 // WithAsyncQueueSize bounds the per-connection queue of Calls (sync and async)
 // waiting for the outstanding-call slot (default 64). Waiting beyond it fails at
 // once with ocppj.ErrQueueFull. Unused with WithConcurrentCalls.
