@@ -134,6 +134,11 @@ func TestOCPPGoErrorCodeMapper(t *testing.T) {
 		arr := recvArr(t, f)
 		require.Equal(t, []any{float64(4), "b", "MessageTypeNotSupported"}, arr[:3])
 	})
+	t.Run("type 6 on 1.6 is answered like other unknown types", func(t *testing.T) {
+		f := echoRig(t, "ocpp1.6", mut)
+		f.Inject([]byte(`[6,"s","Heartbeat",{}]`))
+		require.Equal(t, []any{float64(4), "s", "MessageTypeNotSupported"}, recvArr(t, f)[:3])
+	})
 	t.Run("malformed CALLs", func(t *testing.T) {
 		f := echoRig(t, "ocpp1.6", mut)
 		f.Inject([]byte(`[2,"a"]`)) // too short: ocpp-go stays silent

@@ -374,7 +374,7 @@ func (m *schemaFailureMetrics) SchemaSoftViolation(version, action, kind, keywor
 
 func TestConn_SendNoReply(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	f := transport.NewFakeWS("ocpp1.6")
+	f := transport.NewFakeWS("ocpp2.1")
 	reg := NewHandlerRegistry()
 	got := make(chan []byte, 1)
 	reg.RegisterSend("NotifyPeriodicEventStream", func(_ context.Context, _ *Conn, payload []byte) error {
@@ -403,7 +403,7 @@ func TestConn_SendNoReply(t *testing.T) {
 
 func TestConn_SendHandlerPanicRecoveredAndSurvives(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	f := transport.NewFakeWS("ocpp1.6")
+	f := transport.NewFakeWS("ocpp2.1")
 	reg := NewHandlerRegistry()
 	ok := make(chan struct{}, 1)
 	reg.RegisterSend("PanicSend", func(_ context.Context, _ *Conn, _ []byte) error {
@@ -436,7 +436,7 @@ func TestConn_SendHandlerPanicRecoveredAndSurvives(t *testing.T) {
 
 func TestConn_SendMissingHandlerNoReply(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	f := transport.NewFakeWS("ocpp1.6")
+	f := transport.NewFakeWS("ocpp2.1")
 	c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
 	c.Start(context.Background())
 	defer func() { _ = c.Close(nil) }()

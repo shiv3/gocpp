@@ -305,6 +305,12 @@ func (c *Conn) reader() {
 		}
 		c.NoteActivity()
 		frame, err := ocppj.Parse(msg)
+		if err == nil && !c.supportsMessageType(frame.Type) {
+			// Parse is version-agnostic; types 5 and 6 are OCPP 2.1 only. Treat
+			// them as unknown on older links so they neither resolve a pending
+			// call nor reach a SEND handler.
+			frame, err = ocppj.Frame{}, &ocppj.UnknownMessageTypeError{MessageType: int(frame.Type), MsgID: frame.MsgID}
+		}
 		c.observeInbound(msg, frame, err)
 		if err != nil {
 			if errors.Is(err, ocppj.ErrIgnoredMessageType) {
@@ -345,6 +351,16 @@ func (c *Conn) reader() {
 			return
 		}
 	}
+}
+
+// supportsMessageType reports whether the negotiated version defines the
+// OCPP-J message type. CALLRESULTERROR (5) and SEND (6) exist only in 2.1.
+func (c *Conn) supportsMessageType(t ocppj.MessageType) bool {
+	switch t {
+	case ocppj.MessageTypeCallResultError, ocppj.Send:
+		return c.version == ocppj.V21
+	}
+	return true
 }
 
 // routeInbound dispatches a parsed frame. It returns false when the connection

@@ -121,6 +121,10 @@ All notable changes to this project are documented here. The format is based on
   header — i.e. non-browser charge points — are always allowed).
 
 ### Fixed
+- Message types 5 (CALLRESULTERROR) and 6 (SEND) are OCPP 2.1 only. On a 1.6 or
+  2.0.1 connection they are now treated as unknown message types (2.0.1: CALLERROR
+  `MessageTypeNotSupported`; 1.6: ignored, answered under the ocpp-go compat preset)
+  instead of resolving a pending call or reaching a SEND handler.
 - Flaky `TestCluster_StaleDisconnectKeepsNewerOwner`: the test helper accepted the previous owner's route as proof that the new instance had published. Test-only; docs/clustering.md now states the cross-instance publish-ordering guarantee precisely.
 - `csms.CallAsync` / `CallRawAsync` on a local connection called themselves instead of
   the dispatcher (unbounded recursion); they now dispatch the call.
