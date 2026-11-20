@@ -21,6 +21,8 @@ type metrics struct {
 	calls       metric.Int64Counter
 	callDur     metric.Float64Histogram
 	schemaFails metric.Int64Counter
+	queueDepth  metric.Int64Histogram
+	pingLatency metric.Float64Histogram
 }
 
 // New builds an observability.Metrics backed by OTel instruments from mp.
@@ -57,6 +59,17 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 	if err != nil {
 		return nil, err
 	}
+	queueDepth, err := m.Int64Histogram("gocpp.outbound_queue.depth",
+		metric.WithDescription("frames waiting for the writer, sampled at enqueue"))
+	if err != nil {
+		return nil, err
+	}
+	pingLatency, err := m.Float64Histogram("gocpp.ping.latency",
+		metric.WithDescription("WebSocket ping round-trip time"),
+		metric.WithUnit("s"))
+	if err != nil {
+		return nil, err
+	}
 
 	return &metrics{
 		connections: conns,
@@ -64,6 +77,8 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 		calls:       calls,
 		callDur:     callDur,
 		schemaFails: schemaFails,
+		queueDepth:  queueDepth,
+		pingLatency: pingLatency,
 	}, nil
 }
 
@@ -96,4 +111,14 @@ func (m *metrics) SchemaValidationFailure(version, action, direction string) {
 		attribute.String("action", action),
 		attribute.String("direction", direction),
 	))
+}
+
+func (m *metrics) OutboundQueueDepth(version string, depth int) {
+	m.queueDepth.Record(context.Background(), int64(depth),
+		metric.WithAttributes(attribute.String("version", version)))
+}
+
+func (m *metrics) PingLatency(version string, d time.Duration) {
+	m.pingLatency.Record(context.Background(), d.Seconds(),
+		metric.WithAttributes(attribute.String("version", version)))
 }

@@ -12,6 +12,13 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+// FrameEvent and FrameObserver are defined in core/observability so the slog
+// adapter can live there without an import cycle.
+type (
+	FrameEvent    = observability.FrameEvent
+	FrameObserver = observability.FrameObserver
+)
+
 // SchemaMode controls how inbound JSON Schema validation failures are handled.
 type SchemaMode int
 
@@ -46,6 +53,11 @@ type Config struct {
 	Logger               *slog.Logger
 	Metrics              MetricsHook
 	Tracer               observability.Tracer
+	// FrameObserver, when non-nil, sees every raw inbound frame (after read,
+	// including unparsable ones) and every outbound frame (after the write
+	// attempt, with the write error if any). It runs inline on the reader or
+	// writer goroutine and must be fast; panics are recovered.
+	FrameObserver FrameObserver
 	// SchemaValidate optionally validates a payload for the given version.
 	// nil disables validation. SchemaMode controls how returned errors are handled.
 	SchemaValidate func(version ocppj.Version, action, kind string, payload []byte) error

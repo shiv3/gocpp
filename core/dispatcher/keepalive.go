@@ -82,6 +82,7 @@ func (c *Conn) startWebSocketPing() {
 				return
 			case <-t.C:
 				pctx, cancel := context.WithTimeout(c.ctx, pongWait)
+				pingStart := time.Now()
 				err := c.ws.Ping(pctx)
 				cancel()
 				if err != nil {
@@ -90,6 +91,9 @@ func (c *Conn) startWebSocketPing() {
 					}
 					c.cancel(fmt.Errorf("ping: %w", err))
 					return
+				}
+				if m, ok := c.cfg.Metrics.(connectionMetricsHook); ok {
+					m.PingLatency(string(c.version), time.Since(pingStart))
 				}
 			}
 		}

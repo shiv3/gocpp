@@ -13,6 +13,7 @@ func (c *Conn) send(ctx context.Context, payload []byte) error {
 	sent := make(chan error, 1)
 	select {
 	case c.out <- outbound{payload: payload, sentCh: sent}:
+		c.sampleQueueDepth()
 	case <-c.ctx.Done():
 		return context.Cause(c.ctx)
 	case <-ctx.Done():
@@ -47,6 +48,7 @@ func (c *Conn) trySendCallError(msgID string, ce *ocppj.CallError) {
 	}
 	select {
 	case c.out <- outbound{payload: raw, sentCh: make(chan error, 1)}:
+		c.sampleQueueDepth()
 	default:
 		c.cfg.Logger.WarnContext(c.ctx, "outbound queue full; dropping call error",
 			"cp_id", c.id, "msg_id", msgID)
@@ -97,6 +99,7 @@ func DoSend(ctx context.Context, c *Conn, action string, reqPayload []byte) (err
 		}
 	}
 	msgID := ocppj.NewMsgID()
+	ocppj.NotifyMessageID(ctx, msgID)
 	var (
 		raw    []byte
 		encErr error

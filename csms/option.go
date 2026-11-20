@@ -291,3 +291,13 @@ func WithMetrics(m observability.Metrics) Option {
 func WithTracerProvider(tp trace.TracerProvider) Option {
 	return optionFunc(func(c *serverConfig) { c.tracerProvider = tp })
 }
+
+// WithFrameObserver installs a callback that sees every raw OCPP-J frame on
+// every connection, inbound (after read, including unparsable frames) and
+// outbound (after the write attempt, with the error if it failed). It runs
+// inline on the connection's reader/writer goroutine, so it must be fast and
+// must not block; panics are recovered. See observability.SlogFrameObserver for
+// a ready-made logger.
+func WithFrameObserver(fn observability.FrameObserver) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.FrameObserver = fn })
+}

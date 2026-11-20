@@ -29,3 +29,14 @@ func (b *metricsBridge) PendingDelta(delta int) { b.m.PendingCallCount(b.version
 func (b *metricsBridge) SchemaValidationFailure(version, action, direction string) {
 	b.m.SchemaValidationFailure(version, action, direction)
 }
+
+func (b *metricsBridge) OutboundQueueDepth(version string, depth int) {
+	if m, ok := b.m.(observability.ConnectionMetrics); ok {
+		m.OutboundQueueDepth(version, depth)
+	}
+}
+func (b *metricsBridge) PingLatency(version string, d time.Duration) {
+	if m, ok := b.m.(observability.ConnectionMetrics); ok {
+		m.PingLatency(version, d)
+	}
+}

@@ -253,6 +253,7 @@ func (c *Conn) reader() {
 		}
 		c.NoteActivity()
 		frame, err := ocppj.Parse(msg)
+		c.observeInbound(msg, frame, err)
 		if err != nil {
 			if errors.Is(err, ocppj.ErrIgnoredMessageType) {
 				c.cfg.Logger.DebugContext(c.ctx, "ignored unknown message type",
@@ -320,6 +321,7 @@ func (c *Conn) writer() {
 			wctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), c.cfg.WriteTimeout)
 			err := c.ws.Write(wctx, ob.payload)
 			cancel()
+			c.observeOutbound(ob.payload, err)
 			ob.sentCh <- err // 1-buffered
 			if err != nil {
 				c.cancel(fmt.Errorf("write: %w", err))

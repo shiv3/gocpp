@@ -21,3 +21,14 @@ func (NoOp) CallStarted(string, string, string)                          {}
 func (NoOp) CallCompleted(string, string, string, time.Duration, string) {}
 func (NoOp) PendingCallCount(string, int)                                {}
 func (NoOp) SchemaValidationFailure(string, string, string)              {}
+
+// ConnectionMetrics is an optional extension of Metrics. A Metrics value that
+// also implements it receives per-connection health samples; implementations
+// of Metrics that do not are unaffected.
+type ConnectionMetrics interface {
+	// OutboundQueueDepth samples the number of frames waiting for the writer,
+	// taken each time a frame is queued.
+	OutboundQueueDepth(version string, depth int)
+	// PingLatency reports one WebSocket ping round trip (ping sent until pong).
+	PingLatency(version string, d time.Duration)
+}
