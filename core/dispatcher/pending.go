@@ -12,7 +12,7 @@ type pendingCall struct {
 	msgID  string
 	action string
 	respCh chan rawResult // always 1-buffered
-	cancel func() bool    // context.AfterFunc stop; may be nil in tests
+	cancel func() bool    // stops the call timeout timer; may be nil in tests
 }
 
 // pendingStore tracks in-flight calls. Locks guard map mutation only; channel

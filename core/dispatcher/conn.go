@@ -32,12 +32,26 @@ type Conn struct {
 	wwait      atomic.Int32
 	errReplies atomic.Int32
 
+	// Write watchdog (see writeWatchdog in send.go); used only when ws is a
+	// transport.Aborter. wStart is the mono offset (+1) at which the write in
+	// flight began, 0 between writes; wArmed says wTimer is running.
+	aborter transport.Aborter
+	wStart  atomic.Int64
+	wArmed  atomic.Bool
+	wTimer  atomic.Pointer[time.Timer]
+
 	pending *pendingStore
 	reg     *HandlerRegistry
 	slot    callSlot
 
-	ctx         context.Context
-	cancel      context.CancelCauseFunc
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+	// noCancel is c.ctx without its cancellation (values only); reads and writes
+	// use it so cancelling the connection never aborts a socket operation without
+	// a close frame. handlerBase is noCancel plus the *Conn value handler
+	// contexts are built on.
+	noCancel    context.Context
+	handlerBase context.Context
 	closeWSOnce sync.Once
 	done        chan struct{}
 	wg          sync.WaitGroup
@@ -309,6 +323,9 @@ func (c *Conn) goBG(f func()) bool {
 func (c *Conn) Start(parent context.Context) {
 	c.ctx, c.cancel = context.WithCancelCause(parent)
 	now := time.Now().UnixNano()
+	c.aborter, _ = c.ws.(transport.Aborter)
+	c.noCancel = context.WithoutCancel(c.ctx)
+	c.handlerBase = context.WithValue(c.noCancel, connKey{}, c)
 	c.connectedAt.Store(now)
 	c.lastRecv.Store(now)
 	c.monoBase = time.Now()
@@ -363,7 +380,7 @@ func (c *Conn) reader() {
 		// Read with a ctx that survives cancellation: cancelling an in-flight read
 		// makes the websocket library drop the TCP connection without a close
 		// frame. Teardown closes the socket, which ends this read.
-		msg, err := c.ws.Read(context.WithoutCancel(c.ctx))
+		msg, err := c.ws.Read(c.noCancel)
 		if err != nil {
 			c.cancel(fmt.Errorf("read: %w", err))
 			return

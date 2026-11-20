@@ -3,6 +3,7 @@ package dispatcher
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
@@ -41,10 +42,7 @@ func (c *Conn) send(ctx context.Context, payload []byte) error {
 	if c.ctx.Err() != nil {
 		return context.Cause(c.ctx)
 	}
-	// Not cancelled with the connection, for the same reason as the reader.
-	wctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), c.cfg.WriteTimeout)
-	err := c.ws.Write(wctx, payload)
-	cancel()
+	err := c.write(payload)
 	if err == nil {
 		c.lastSent.Store(time.Now().UnixNano())
 	}
@@ -62,6 +60,82 @@ func (c *Conn) sendCallResult(msgID string, payload []byte) {
 		return
 	}
 	_ = c.send(c.ctx, raw)
+}
+
+// write performs one socket write under WriteTimeout. The write ctx is never
+// cancelled with the connection (cancelling an in-flight write makes the
+// websocket library drop the TCP connection without a close frame; teardown
+// closes the socket properly instead).
+//
+// With a transport.Aborter the timeout is enforced by a lazily armed
+// per-connection timer (see writeWatchdog) and the write runs on the
+// non-cancellable noCancel ctx, which also lets the library skip its own
+// per-write cancellation hook. Otherwise each write gets a WithTimeout ctx.
+func (c *Conn) write(payload []byte) error {
+	if c.aborter == nil {
+		wctx, cancel := context.WithTimeout(c.noCancel, c.cfg.WriteTimeout)
+		defer cancel()
+		return c.ws.Write(wctx, payload)
+	}
+	// Store, then arm: the watchdog callback does the mirror image (clear, then
+	// re-check), so a write that starts while the timer is winding down is never
+	// left unwatched. Writes are serialized by wlock, so wStart has one writer.
+	c.wStart.Store(int64(time.Since(c.monoBase)) + 1)
+	if c.wArmed.CompareAndSwap(false, true) {
+		c.armWriteTimer(c.cfg.WriteTimeout)
+	}
+	err := c.ws.Write(c.noCancel, payload)
+	c.wStart.Store(0)
+	return err
+}
+
+// armWriteTimer starts (first use) or resets the write watchdog timer. Only the
+// holder of the wArmed false->true transition calls it.
+func (c *Conn) armWriteTimer(d time.Duration) {
+	if t := c.wTimer.Load(); t != nil {
+		t.Reset(d)
+		return
+	}
+	c.wTimer.Store(time.AfterFunc(d, c.writeWatchdog))
+}
+
+// writeWatchdog runs when the write timer fires. Between writes it disarms;
+// while a write is in flight it either enforces WriteTimeout (cancel the
+// connection with a write cause, then abort the transport so the blocked write
+// returns) or re-arms for the time that is left, so the timeout is exact for a
+// write that started late in an armed period.
+func (c *Conn) writeWatchdog() {
+	if !c.enterBG() {
+		return
+	}
+	defer c.leaveBG()
+	if c.ctx.Err() != nil {
+		return
+	}
+	wt := c.cfg.WriteTimeout
+	for {
+		s := c.wStart.Load()
+		if s == 0 {
+			c.wArmed.Store(false)
+			if c.wStart.Load() == 0 || !c.wArmed.CompareAndSwap(false, true) {
+				return // idle, or the writer re-armed it
+			}
+			continue // a write began meanwhile: watch it
+		}
+		elapsed := time.Since(c.monoBase) - time.Duration(s-1)
+		if elapsed >= wt {
+			c.cancel(fmt.Errorf("write: %w", context.DeadlineExceeded))
+			_ = c.aborter.Abort()
+			return
+		}
+		t := c.wTimer.Load()
+		for t == nil { // the arming write has not stored the timer yet
+			runtime.Gosched()
+			t = c.wTimer.Load()
+		}
+		t.Reset(wt - elapsed)
+		return
+	}
 }
 
 // maxErrReplies bounds the protocol-error replies in flight per connection.

@@ -24,6 +24,15 @@ type WS interface {
 	Subprotocol() string
 }
 
+// Aborter is an optional interface of a WS: Abort closes the underlying
+// connection at once, without a close handshake, and unblocks any Read or Write
+// in flight. When a transport implements it the dispatcher enforces WriteTimeout
+// with one lazily armed timer per connection instead of a context per write.
+// Abort may be called concurrently with Write and more than once.
+type Aborter interface {
+	Abort() error
+}
+
 // StatusCode mirrors RFC 6455 close codes (subset used by OCPP).
 type StatusCode int
 
@@ -31,6 +40,7 @@ const (
 	StatusNormalClosure   StatusCode = 1000
 	StatusGoingAway       StatusCode = 1001
 	StatusProtocolError   StatusCode = 1002
+	StatusAbnormalClosure StatusCode = 1006
 	StatusPolicyViolation StatusCode = 1008
 	StatusInternalError   StatusCode = 1011
 )

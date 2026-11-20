@@ -58,14 +58,19 @@ func (r *HandlerRegistry) LookupSend(action string) (SendHandlerFunc, bool) {
 	return h, ok
 }
 
-type connCtxKey struct{}
+// connKey is the context key under which handler contexts carry their *Conn
+// (the connection context is c.ctx).
+type connKey struct{}
 
 // ConnContext returns the connection lifecycle context of the connection that
 // is serving the handler ctx: it is cancelled when the connection goes away,
 // unlike ctx itself. ok is false outside a handler context.
 func ConnContext(ctx context.Context) (context.Context, bool) {
-	cc, ok := ctx.Value(connCtxKey{}).(context.Context)
-	return cc, ok
+	c, ok := ctx.Value(connKey{}).(*Conn)
+	if !ok {
+		return nil, false
+	}
+	return c.ctx, true
 }
 
 // ConnFromContext returns the connection serving the handler ctx.
@@ -74,19 +79,17 @@ func ConnFromContext(ctx context.Context) (*Conn, bool) {
 	return c, ok
 }
 
-type connKey struct{}
-
 // handlerContext builds the context handed to inbound handlers. It keeps the
 // connection context's values (cp id, tracing, ...) but not its cancellation: a
 // dropped connection must not abort work such as a database write the handler is
 // halfway through (the CALLRESULT is then dropped, the work is not lost).
 // Handlers that want to stop on disconnect watch ConnContext(ctx).Done(). The
 // per-handler deadline (HandlerTimeout) is what bounds a stuck handler.
+//
+// The detached base context (c.handlerBase) is built once per connection; each
+// message adds only its message id and, with HandlerTimeout, the deadline.
 func (c *Conn) handlerContext(msgID string) (context.Context, context.CancelFunc) {
-	ctx := context.WithoutCancel(c.ctx)
-	ctx = context.WithValue(ctx, connCtxKey{}, c.ctx)
-	ctx = context.WithValue(ctx, connKey{}, c)
-	ctx = ocppj.ContextWithMessageID(ctx, msgID)
+	ctx := ocppj.ContextWithMessageID(c.handlerBase, msgID)
 	if c.cfg.HandlerTimeout > 0 {
 		return context.WithTimeout(ctx, c.cfg.HandlerTimeout)
 	}
@@ -162,11 +165,13 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	baseCtx, cancelHandler := c.handlerContext(frame.MsgID)
 	defer cancelHandler()
 	hctx, span := c.cfg.Tracer.Start(baseCtx, "ocpp.handler")
-	span.SetAttributes(
-		attribute.String("ocpp.action", frame.Action),
-		attribute.String("ocpp.cp_id", c.id),
-		attribute.String("ocpp.direction", "inbound"),
-	)
+	if span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("ocpp.action", frame.Action),
+			attribute.String("ocpp.cp_id", c.id),
+			attribute.String("ocpp.direction", "inbound"),
+		)
+	}
 	resp, err := h(hctx, c, reqPayload)
 	span.End()
 	if err != nil {
