@@ -17,6 +17,10 @@ type FakeWS struct {
 	inbound   chan []byte
 	sent      chan []byte
 	closeOnce sync.Once
+	closeMu   sync.Mutex
+	closed    bool
+	closeCode StatusCode
+	closeText string
 	done      chan struct{}
 	pingMu    sync.Mutex
 	pingFunc  func(context.Context) error
@@ -89,9 +93,23 @@ func (f *FakeWS) Ping(ctx context.Context) error {
 	}
 }
 
-func (f *FakeWS) Close(StatusCode, string) error {
-	f.closeOnce.Do(func() { close(f.done) })
+// Close records the code and reason of the first call and unblocks Read/Write.
+func (f *FakeWS) Close(code StatusCode, reason string) error {
+	f.closeOnce.Do(func() {
+		f.closeMu.Lock()
+		f.closed, f.closeCode, f.closeText = true, code, reason
+		f.closeMu.Unlock()
+		close(f.done)
+	})
 	return nil
+}
+
+// CloseCode returns the code and reason of the first Close call; ok is false if
+// Close has not been called yet.
+func (f *FakeWS) CloseCode() (code StatusCode, reason string, ok bool) {
+	f.closeMu.Lock()
+	defer f.closeMu.Unlock()
+	return f.closeCode, f.closeText, f.closed
 }
 
 func (f *FakeWS) Subprotocol() string { return f.sub }

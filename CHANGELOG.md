@@ -44,6 +44,9 @@ All notable changes to this project are documented here. The format is based on
   `decimal.NewFromFloat/NewFromInt/NewFromString(...)` with the same-named functions in
   `core/types`, or wrap an existing value with `types.New(d)`; the shopspring methods
   remain available through the embedded value and `d.Shopspring()` returns it.
+- `CallError.WireCode` now spells FormationViolation per version: `FormationViolation`
+  on 1.6, `FormatViolation` on 2.0.1/2.1. Handler decode/schema rejections on 2.x
+  connections previously used the 1.6 name.
 - Generated `validate` struct tags no longer emit `required` on boolean fields.
   go-playground's `required` rejects the zero value, which would have flagged a
   legitimate `false` (e.g. `ConfigurationKey.readonly: false`) for anyone running
@@ -65,6 +68,21 @@ All notable changes to this project are documented here. The format is based on
   soft-violation metrics (`SchemaSoftViolation`) surface what real fleets send, for
   data-driven tuning. Avoids dropping transactions when stations send slightly
   non-compliant messages that ocpp-go's looser unmarshal would have accepted.
+- A replaced connection (`DuplicatePolicyCloseExisting`) now reports
+  `onDisconnect(old, ocppj.ErrConnReplaced)` exactly once and before
+  `onConnect(new)`; previously the disconnect arrived after the new connect with
+  the generic `ErrConnClosed` cause. The replaced peer gets close code 1008.
+- Locally initiated teardown (`Conn.Close`, `Server.Shutdown`, replacement, idle
+  watchdog) now sends a WebSocket close frame (1000, or 1008 when replaced)
+  instead of dropping the TCP connection (peer saw 1006). `Server.Shutdown`
+  closes connections in parallel.
+- Panics in `DoCallAsync` callbacks and in the `WithOnConnect` /
+  `WithOnDisconnect` hooks are recovered and logged instead of crashing the
+  process.
+- A CALL with a readable message id but a malformed shape is answered with a
+  `FormationViolation` (1.6) / `FormatViolation` (2.x) CallError. CALLRESULT
+  accepts extra trailing elements; CALLERROR / CALLRESULTERROR accept a missing
+  details element, so pending calls resolve immediately instead of timing out.
 
 ## [0.1.3] - 2026-06-16
 

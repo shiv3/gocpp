@@ -46,48 +46,63 @@ func Parse(raw []byte) (Frame, error) {
 		return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "message id not a string"}
 	}
 
+	shapeErr := func(msg string) error {
+		return &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: msg, MessageType: mt, MsgID: msgID}
+	}
+
 	switch MessageType(mt) {
 	case Call:
 		if len(arr) != 4 {
-			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "call must have 4 elements"}
+			return Frame{}, shapeErr("call must have 4 elements")
 		}
 		var action string
 		if err := json.Unmarshal(arr[2], &action); err != nil {
-			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "action not a string"}
+			return Frame{}, shapeErr("action not a string")
 		}
 		base, signed := splitSignedAction(action)
 		return Frame{Type: Call, Signed: signed, MsgID: msgID, Action: base, Payload: arr[3]}, nil
 	case CallResult:
-		if len(arr) != 3 {
-			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "call result must have 3 elements"}
+		// Extra trailing elements are ignored.
+		if len(arr) < 3 {
+			return Frame{}, shapeErr("call result must have at least 3 elements")
 		}
 		return Frame{Type: CallResult, MsgID: msgID, Payload: arr[2]}, nil
 	case MessageTypeCallError:
-		if len(arr) != 5 {
-			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "call error must have 5 elements"}
+		// Details are optional; a non-string code or description reads as "".
+		if len(arr) < 4 {
+			return Frame{}, shapeErr("call error must have at least 4 elements")
 		}
 		var code, desc string
 		_ = json.Unmarshal(arr[2], &code)
 		_ = json.Unmarshal(arr[3], &desc)
-		return Frame{Type: MessageTypeCallError, MsgID: msgID, ErrCode: code, ErrDesc: desc, ErrData: arr[4]}, nil
+		var data []byte
+		if len(arr) > 4 {
+			data = arr[4]
+		}
+		return Frame{Type: MessageTypeCallError, MsgID: msgID, ErrCode: code, ErrDesc: desc, ErrData: data}, nil
 	case Send:
 		if len(arr) != 4 {
-			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "send must have 4 elements"}
+			return Frame{}, shapeErr("send must have 4 elements")
 		}
 		var action string
 		if err := json.Unmarshal(arr[2], &action); err != nil {
-			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "action not a string"}
+			return Frame{}, shapeErr("action not a string")
 		}
 		base, signed := splitSignedAction(action)
 		return Frame{Type: Send, Signed: signed, MsgID: msgID, Action: base, Payload: arr[3]}, nil
 	case MessageTypeCallResultError:
-		if len(arr) != 5 {
-			return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "call result error must have 5 elements"}
+		// Details are optional; a non-string code or description reads as "".
+		if len(arr) < 4 {
+			return Frame{}, shapeErr("call result error must have at least 4 elements")
 		}
 		var code, desc string
 		_ = json.Unmarshal(arr[2], &code)
 		_ = json.Unmarshal(arr[3], &desc)
-		return Frame{Type: MessageTypeCallResultError, MsgID: msgID, ErrCode: code, ErrDesc: desc, ErrData: arr[4]}, nil
+		var data []byte
+		if len(arr) > 4 {
+			data = arr[4]
+		}
+		return Frame{Type: MessageTypeCallResultError, MsgID: msgID, ErrCode: code, ErrDesc: desc, ErrData: data}, nil
 	default:
 		return Frame{}, fmt.Errorf("%w: %d", ErrIgnoredMessageType, mt)
 	}

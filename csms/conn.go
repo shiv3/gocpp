@@ -3,6 +3,7 @@ package csms
 import (
 	"crypto/tls"
 	"net/http"
+	"sync"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
@@ -11,6 +12,12 @@ import (
 // Conn is a CSMS-side connection to a charge point.
 type Conn struct {
 	inner *dispatcher.Conn
+
+	// disconnectOnce makes the disconnect notification fire exactly once, whether
+	// it comes from a replacement or from the connection's own teardown. Do blocks
+	// concurrent callers until the first call returns, which orders the
+	// replacement's connect notification after the old disconnect.
+	disconnectOnce sync.Once
 }
 
 // ID returns the charge point identifier.

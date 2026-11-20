@@ -29,3 +29,27 @@ func TestServer_AcceptsConnection(t *testing.T) {
 		return ok
 	}, 2*time.Second, 20*time.Millisecond)
 }
+
+func TestServer_ShutdownSendsNormalClosure(t *testing.T) {
+	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	url := "ws" + ts.URL[len("http"):] + "/ocpp/CP_1"
+	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		_, ok := srv.Get("CP_1")
+		return ok
+	}, 2*time.Second, 20*time.Millisecond)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.Shutdown(ctx) }()
+
+	// Without a close frame the peer would see an abnormal 1006 here.
+	_, _, err = c.Read(ctx)
+	require.Equal(t, websocket.StatusNormalClosure, websocket.CloseStatus(err), "got %v", err)
+	require.NoError(t, <-errCh)
+}

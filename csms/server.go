@@ -205,6 +205,14 @@ func (s *Server) addConn(id string, c *Conn) bool {
 	s.conns[id] = c
 	s.mu.Unlock()
 	if ok {
+		// The application must see the old connection go away before the new one
+		// comes up, and with a cause that tells it apart from a real drop; otherwise
+		// a handler that marks the charger offline on disconnect would mark the
+		// freshly connected one offline. Abort is non-blocking (the old socket gets
+		// a 1008 close frame from its closer goroutine); the rest of the teardown
+		// runs in the background. The caller fires connect(new) after we return.
+		old.inner.Abort(ocppj.ErrConnReplaced)
+		s.handleDisconnected(old, ocppj.ErrConnReplaced)
 		go func() { _ = old.inner.Close(nil) }()
 	}
 	return true
@@ -222,7 +230,7 @@ func (s *Server) removeConn(id string, c *Conn) bool {
 
 func (s *Server) handleConnected(c *Conn) {
 	if s.cfg.onConnect != nil {
-		s.cfg.onConnect(c)
+		s.callHook("onConnect", c, func() { s.cfg.onConnect(c) })
 	}
 }
 
@@ -231,8 +239,23 @@ func (s *Server) handleDisconnected(c *Conn, err error) {
 		err = ocppj.ErrConnClosed
 	}
 	if s.cfg.onDisconnect != nil {
-		s.cfg.onDisconnect(c, err)
+		c.disconnectOnce.Do(func() {
+			s.callHook("onDisconnect", c, func() { s.cfg.onDisconnect(c, err) })
+		})
 	}
+}
+
+// callHook runs an application lifecycle callback, recovering from a panic so a
+// faulty hook cannot crash the process or skip the rest of the connection
+// lifecycle (registry cleanup, close).
+func (s *Server) callHook(name string, c *Conn, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.cfg.dispatcher.Logger.Error("csms lifecycle callback panic recovered",
+				"cp_id", c.ID(), "callback", name, "panic", r)
+		}
+	}()
+	fn()
 }
 
 // Get returns the live connection for a charge point, if connected.
@@ -261,8 +284,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		conns = append(conns, c)
 	}
 	s.mu.RUnlock()
+	// Each Close may wait out a close handshake with an unresponsive peer, so
+	// close in parallel rather than one after another.
 	for _, c := range conns {
-		_ = c.inner.Close(nil)
+		go func() { _ = c.inner.Close(nil) }()
 	}
 
 	ticker := time.NewTicker(20 * time.Millisecond)

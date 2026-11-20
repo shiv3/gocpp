@@ -22,3 +22,12 @@ func TestCallError_WireCode_V16Typo(t *testing.T) {
 	require.Equal(t, "OccurenceConstraintViolation", ce.WireCode(V16))
 	require.Equal(t, "OccurrenceConstraintViolation", ce.WireCode(V201))
 }
+
+func TestCallError_WireCode_FormatViolationPerVersion(t *testing.T) {
+	for _, code := range []ErrorCode{ErrorCodeFormationViolation, ErrorCodeFormatViolation} {
+		ce := NewCallError(code, "bad", nil)
+		require.Equal(t, "FormationViolation", ce.WireCode(V16))
+		require.Equal(t, "FormatViolation", ce.WireCode(V201))
+		require.Equal(t, "FormatViolation", ce.WireCode(V21))
+	}
+}
