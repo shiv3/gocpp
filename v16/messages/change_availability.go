@@ -3,7 +3,7 @@
 package messages
 
 type ChangeAvailabilityRequest struct {
-	ConnectorID int32                         `json:"connectorId" validate:"required"`
+	ConnectorID int64                         `json:"connectorId" validate:"required"`
 	Type        ChangeAvailabilityRequestType `json:"type" validate:"required"`
 }
 

@@ -7,9 +7,9 @@ import (
 )
 
 type MeterValuesRequest struct {
-	ConnectorID   int32        `json:"connectorId" validate:"required"`
+	ConnectorID   int64        `json:"connectorId" validate:"required"`
 	MeterValue    []MeterValue `json:"meterValue" validate:"required"`
-	TransactionID *int32       `json:"transactionId,omitempty" validate:"omitempty"`
+	TransactionID *int64       `json:"transactionId,omitempty" validate:"omitempty"`
 }
 
 type MeterValue struct {

@@ -16,7 +16,7 @@ func TestPublishFirmwareStatusNotification21_RequestValidation(t *testing.T) {
 			Name: "valid",
 			Message: messages.PublishFirmwareStatusNotificationRequest{
 				Location:  []string{"https://example.com/firmware.bin"},
-				RequestID: int32Ptr(1),
+				RequestID: int64Ptr(1),
 				Status:    "Downloaded",
 			},
 			Valid: true,

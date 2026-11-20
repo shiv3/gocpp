@@ -5,7 +5,7 @@ package messages
 type RequestBatterySwapRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	IDToken    IdTokenType     `json:"idToken" validate:"required"`
-	RequestID  int32           `json:"requestId" validate:"required"`
+	RequestID  int64           `json:"requestId" validate:"required"`
 }
 
 type RequestBatterySwapResponse struct {

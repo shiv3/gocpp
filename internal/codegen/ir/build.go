@@ -21,7 +21,7 @@ func BuildStruct(goName string, schema map[string]any) (Struct, []Enum, error) {
 		}
 	}
 
-	s := Struct{GoName: goName}
+	s := Struct{GoName: goName, AdditionalProperties: allowsAdditionalProperties(schema)}
 	var enums []Enum
 
 	// Deterministic field order: sort property names.
@@ -76,7 +76,7 @@ func (b *treeBuilder) build(goName string, schema map[string]any) error {
 
 	props, _ := schema["properties"].(map[string]any)
 	requiredSet := requiredSet(schema)
-	s := Struct{GoName: goName}
+	s := Struct{GoName: goName, AdditionalProperties: allowsAdditionalProperties(schema)}
 	children := make([]childSchema, 0)
 
 	for _, name := range sortedKeys(props) {
@@ -190,7 +190,9 @@ func (b *treeBuilder) assignTreeType(parentName, fieldName string, f *Field, pro
 			f.StructRef = childName
 			return childSchema{goName: childName, schema: prop}, nil
 		}
-		f.Type = TypeString
+		// No "type": the schema accepts any JSON value (e.g. DataTransfer data
+		// in OCPP 2.x). Keep it verbatim instead of forcing a string.
+		f.Type = TypeRaw
 	}
 	return childSchema{}, nil
 }
@@ -243,11 +245,10 @@ func assignScalar(f *Field, prop map[string]any) {
 		}
 		f.Type = TypeString
 	case "integer":
-		if format, _ := prop["format"].(string); format == "int64" {
-			f.Type = TypeInt64
-			return
-		}
-		f.Type = TypeInt32
+		// Every OCPP "integer" is 64-bit: the schemas carry no bounds, and real
+		// stations send vendor values (e.g. a transactionId of 2^63-1) that
+		// overflow int32.
+		f.Type = TypeInt64
 	case "number":
 		f.Type = TypeNumber
 	case "boolean":
@@ -264,6 +265,19 @@ func scalarKind(typ string, prop map[string]any) Kind {
 	}
 	assignScalar(&f, prop)
 	return f.Type
+}
+
+// allowsAdditionalProperties reports whether an object schema leaves unknown
+// properties open. The OCA schemas close every object with
+// "additionalProperties": false except CustomDataType, which is meant to be
+// extended with arbitrary vendor properties.
+func allowsAdditionalProperties(schema map[string]any) bool {
+	v, ok := schema["additionalProperties"]
+	if !ok {
+		return true
+	}
+	b, isBool := v.(bool)
+	return !isBool || b
 }
 
 func requiredSet(schema map[string]any) map[string]bool {

@@ -13,7 +13,7 @@ func TestFirmwareStatusNotification201_RequestValidation(t *testing.T) {
 			Name: "valid with requestId",
 			Message: messages.FirmwareStatusNotificationRequest{
 				Status:    "Downloaded",
-				RequestID: ptr(int32(42)),
+				RequestID: ptr(int64(42)),
 			},
 			Valid: true,
 		},

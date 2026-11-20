@@ -17,17 +17,17 @@ func TestClearChargingProfile16_RequestValidation(t *testing.T) {
 			Name: "valid full request",
 			Message: messages.ClearChargingProfileRequest{
 				ChargingProfilePurpose: &purpose,
-				ConnectorID:            int32Ptr(1),
-				ID:                     int32Ptr(1),
-				StackLevel:             int32Ptr(1),
+				ConnectorID:            int64Ptr(1),
+				ID:                     int64Ptr(1),
+				StackLevel:             int64Ptr(1),
 			},
 			Valid: true,
 		},
 		{
 			Name: "valid id and connector request",
 			Message: messages.ClearChargingProfileRequest{
-				ConnectorID: int32Ptr(1),
-				ID:          int32Ptr(1),
+				ConnectorID: int64Ptr(1),
+				ID:          int64Ptr(1),
 			},
 			Valid: true,
 		},
@@ -204,7 +204,7 @@ func TestGetCompositeSchedule16_ResponseValidation(t *testing.T) {
 			Name: "valid accepted full response",
 			Message: messages.GetCompositeScheduleResponse{
 				ChargingSchedule: &[]messages.ChargingSchedule{testChargingSchedule()}[0],
-				ConnectorID:      int32Ptr(1),
+				ConnectorID:      int64Ptr(1),
 				ScheduleStart:    timePtr(testTime()),
 				Status:           messages.GetCompositeScheduleResponseStatusAccepted,
 			},
@@ -227,7 +227,7 @@ func TestGetCompositeSchedule16_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid connectorId zero",
 			Message: messages.GetCompositeScheduleResponse{
-				ConnectorID: int32Ptr(0),
+				ConnectorID: int64Ptr(0),
 				Status:      messages.GetCompositeScheduleResponseStatusAccepted,
 			},
 			Valid: true,

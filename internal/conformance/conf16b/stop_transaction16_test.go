@@ -95,7 +95,7 @@ func TestStopTransaction16_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing timestamp",
 			Message: map[string]any{
-				"meterStop": int32(100),
+				"meterStop": int64(100),
 			},
 			Valid: false,
 		},
@@ -123,9 +123,9 @@ func TestStopTransaction16_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid transactionData empty sampledValue",
 			Message: map[string]any{
-				"meterStop":     int32(100),
+				"meterStop":     int64(100),
 				"timestamp":     now,
-				"transactionId": int32(1),
+				"transactionId": int64(1),
 				"transactionData": []map[string]any{
 					{
 						"timestamp":    now,

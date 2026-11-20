@@ -3,7 +3,7 @@
 package messages
 
 type UnlockConnectorRequest struct {
-	ConnectorID int32 `json:"connectorId" validate:"required"`
+	ConnectorID int64 `json:"connectorId" validate:"required"`
 }
 
 type UnlockConnectorResponse struct {

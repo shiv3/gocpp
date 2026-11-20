@@ -9,7 +9,7 @@ import (
 
 type MeterValuesRequest struct {
 	CustomData *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     int32            `json:"evseId" validate:"required"`
+	EVSEID     int64            `json:"evseId" validate:"required"`
 	MeterValue []MeterValueType `json:"meterValue" validate:"required"`
 }
 
@@ -40,7 +40,7 @@ type SignedMeterValueType struct {
 
 type UnitOfMeasureType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Multiplier *int32          `json:"multiplier,omitempty" validate:"omitempty"`
+	Multiplier *int64          `json:"multiplier,omitempty" validate:"omitempty"`
 	Unit       *string         `json:"unit,omitempty" validate:"omitempty,max=20"`
 }
 

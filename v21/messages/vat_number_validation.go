@@ -4,14 +4,14 @@ package messages
 
 type VatNumberValidationRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     *int32          `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID     *int64          `json:"evseId,omitempty" validate:"omitempty"`
 	VatNumber  string          `json:"vatNumber" validate:"required,max=20"`
 }
 
 type VatNumberValidationResponse struct {
 	Company    *AddressType    `json:"company,omitempty" validate:"omitempty"`
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     *int32          `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID     *int64          `json:"evseId,omitempty" validate:"omitempty"`
 	Status     string          `json:"status" validate:"required"`
 	StatusInfo *StatusInfoType `json:"statusInfo,omitempty" validate:"omitempty"`
 	VatNumber  string          `json:"vatNumber" validate:"required,max=20"`

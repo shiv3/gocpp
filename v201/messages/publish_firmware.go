@@ -6,9 +6,9 @@ type PublishFirmwareRequest struct {
 	Checksum      string          `json:"checksum" validate:"required,max=32"`
 	CustomData    *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Location      string          `json:"location" validate:"required,max=512"`
-	RequestID     int32           `json:"requestId" validate:"required"`
-	Retries       *int32          `json:"retries,omitempty" validate:"omitempty"`
-	RetryInterval *int32          `json:"retryInterval,omitempty" validate:"omitempty"`
+	RequestID     int64           `json:"requestId" validate:"required"`
+	Retries       *int64          `json:"retries,omitempty" validate:"omitempty"`
+	RetryInterval *int64          `json:"retryInterval,omitempty" validate:"omitempty"`
 }
 
 type PublishFirmwareResponse struct {

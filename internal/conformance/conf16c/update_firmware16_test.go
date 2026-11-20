@@ -20,10 +20,10 @@ func TestUpdateFirmware16_RequestValidation(t *testing.T) {
 	validator := conformance.MustValidator(t, reg, "1.6", "UpdateFirmware", "request")
 
 	retrieveDate := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
-	retries := int32(10)
-	retryInterval := int32(10)
-	zeroRetries := int32(0)
-	zeroRetryInterval := int32(0)
+	retries := int64(10)
+	retryInterval := int64(10)
+	zeroRetries := int64(0)
+	zeroRetryInterval := int64(0)
 	cases := []conformance.ValidationCase{
 		{
 			Name: "valid full request",

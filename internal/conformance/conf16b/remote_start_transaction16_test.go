@@ -42,7 +42,7 @@ func TestRemoteStartTransaction16_RequestValidation(t *testing.T) {
 			Name: "valid full request",
 			Message: messages.RemoteStartTransactionRequest{
 				IDTag:           "12345",
-				ConnectorID:     ptr(int32(1)),
+				ConnectorID:     ptr(int64(1)),
 				ChargingProfile: validChargingProfile16(),
 			},
 			Valid: true,
@@ -51,7 +51,7 @@ func TestRemoteStartTransaction16_RequestValidation(t *testing.T) {
 			Name: "valid request with connectorId",
 			Message: messages.RemoteStartTransactionRequest{
 				IDTag:       "12345",
-				ConnectorID: ptr(int32(1)),
+				ConnectorID: ptr(int64(1)),
 			},
 			Valid: true,
 		},
@@ -79,7 +79,7 @@ func TestRemoteStartTransaction16_RequestValidation(t *testing.T) {
 			Name: "invalid idTag exceeds maxLength 20",
 			Message: messages.RemoteStartTransactionRequest{
 				IDTag:       ">20..................",
-				ConnectorID: ptr(int32(1)),
+				ConnectorID: ptr(int64(1)),
 			},
 			Valid: false,
 		},

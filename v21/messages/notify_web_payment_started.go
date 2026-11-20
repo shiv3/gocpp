@@ -4,8 +4,8 @@ package messages
 
 type NotifyWebPaymentStartedRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     int32           `json:"evseId" validate:"required"`
-	Timeout    int32           `json:"timeout" validate:"required"`
+	EVSEID     int64           `json:"evseId" validate:"required"`
+	Timeout    int64           `json:"timeout" validate:"required"`
 }
 
 type NotifyWebPaymentStartedResponse struct {

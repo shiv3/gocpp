@@ -18,7 +18,7 @@ func strPtr201f(v string) *string {
 	return &v
 }
 
-func int32Ptr201f(v int32) *int32 {
+func int64Ptr201f(v int64) *int64 {
 	return &v
 }
 
@@ -44,7 +44,7 @@ func testComponent201f() messages.ComponentType {
 		Instance: strPtr201f("instance1"),
 		EVSE: &messages.EVSEType{
 			ID:          2,
-			ConnectorID: int32Ptr201f(2),
+			ConnectorID: int64Ptr201f(2),
 		},
 	}
 }

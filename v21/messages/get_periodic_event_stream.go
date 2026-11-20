@@ -13,7 +13,7 @@ type GetPeriodicEventStreamResponse struct {
 
 type ConstantStreamDataType struct {
 	CustomData           *CustomDataType               `json:"customData,omitempty" validate:"omitempty"`
-	ID                   int32                         `json:"id" validate:"required"`
+	ID                   int64                         `json:"id" validate:"required"`
 	Params               PeriodicEventStreamParamsType `json:"params" validate:"required"`
-	VariableMonitoringID int32                         `json:"variableMonitoringId" validate:"required"`
+	VariableMonitoringID int64                         `json:"variableMonitoringId" validate:"required"`
 }

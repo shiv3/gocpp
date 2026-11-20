@@ -30,7 +30,7 @@ type ModemType struct {
 type BootNotificationResponse struct {
 	CurrentTime time.Time       `json:"currentTime" validate:"required"`
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Interval    int32           `json:"interval" validate:"required"`
+	Interval    int64           `json:"interval" validate:"required"`
 	Status      string          `json:"status" validate:"required"`
 	StatusInfo  *StatusInfoType `json:"statusInfo,omitempty" validate:"omitempty"`
 }

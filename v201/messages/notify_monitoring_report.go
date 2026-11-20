@@ -11,8 +11,8 @@ type NotifyMonitoringReportRequest struct {
 	CustomData  *CustomDataType      `json:"customData,omitempty" validate:"omitempty"`
 	GeneratedAt time.Time            `json:"generatedAt" validate:"required"`
 	Monitor     []MonitoringDataType `json:"monitor,omitempty" validate:"omitempty"`
-	RequestID   int32                `json:"requestId" validate:"required"`
-	SeqNo       int32                `json:"seqNo" validate:"required"`
+	RequestID   int64                `json:"requestId" validate:"required"`
+	SeqNo       int64                `json:"seqNo" validate:"required"`
 	Tbc         *bool                `json:"tbc,omitempty" validate:"omitempty"`
 }
 
@@ -25,8 +25,8 @@ type MonitoringDataType struct {
 
 type VariableMonitoringType struct {
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID          int32           `json:"id" validate:"required"`
-	Severity    int32           `json:"severity" validate:"required"`
+	ID          int64           `json:"id" validate:"required"`
+	Severity    int64           `json:"severity" validate:"required"`
 	Transaction bool            `json:"transaction"`
 	Type        string          `json:"type" validate:"required"`
 	Value       types.Decimal   `json:"value" validate:"required"`

@@ -60,7 +60,7 @@ func TestE2E_ChargingSessionGoldenPath(t *testing.T) {
 
 	start, err := cpc.StartTransaction(ctx, v16msg.StartTransactionRequest{ConnectorID: 1, IDTag: "TAG1", MeterStart: 0, Timestamp: time.Now()})
 	require.NoError(t, err)
-	require.Equal(t, int32(1), start.TransactionID)
+	require.Equal(t, int64(1), start.TransactionID)
 
 	_, err = cpc.MeterValues(ctx, v16msg.MeterValuesRequest{ConnectorID: 1, MeterValue: []v16msg.MeterValue{{Timestamp: time.Now(), SampledValue: []v16msg.SampledValue{{Value: "100"}}}}})
 	require.NoError(t, err)

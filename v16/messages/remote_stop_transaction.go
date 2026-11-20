@@ -3,7 +3,7 @@
 package messages
 
 type RemoteStopTransactionRequest struct {
-	TransactionID int32 `json:"transactionId" validate:"required"`
+	TransactionID int64 `json:"transactionId" validate:"required"`
 }
 
 type RemoteStopTransactionResponse struct {

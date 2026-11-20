@@ -6,7 +6,7 @@ type CertificateSignedRequest struct {
 	CertificateChain string          `json:"certificateChain" validate:"required,max=10000"`
 	CertificateType  *string         `json:"certificateType,omitempty" validate:"omitempty"`
 	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	RequestID        *int32          `json:"requestId,omitempty" validate:"omitempty"`
+	RequestID        *int64          `json:"requestId,omitempty" validate:"omitempty"`
 }
 
 type CertificateSignedResponse struct {

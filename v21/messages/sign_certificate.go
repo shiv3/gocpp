@@ -7,7 +7,7 @@ type SignCertificateRequest struct {
 	Csr                 string                   `json:"csr" validate:"required,max=5500"`
 	CustomData          *CustomDataType          `json:"customData,omitempty" validate:"omitempty"`
 	HashRootCertificate *CertificateHashDataType `json:"hashRootCertificate,omitempty" validate:"omitempty"`
-	RequestID           *int32                   `json:"requestId,omitempty" validate:"omitempty"`
+	RequestID           *int64                   `json:"requestId,omitempty" validate:"omitempty"`
 }
 
 type SignCertificateResponse struct {

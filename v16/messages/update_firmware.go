@@ -8,9 +8,9 @@ import (
 
 type UpdateFirmwareRequest struct {
 	Location      string    `json:"location" validate:"required"`
-	Retries       *int32    `json:"retries,omitempty" validate:"omitempty"`
+	Retries       *int64    `json:"retries,omitempty" validate:"omitempty"`
 	RetrieveDate  time.Time `json:"retrieveDate" validate:"required"`
-	RetryInterval *int32    `json:"retryInterval,omitempty" validate:"omitempty"`
+	RetryInterval *int64    `json:"retryInterval,omitempty" validate:"omitempty"`
 }
 
 type UpdateFirmwareResponse struct {

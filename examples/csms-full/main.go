@@ -205,7 +205,7 @@ type app struct {
 	cfgStore        storage.ConfigStore
 	connReg         storage.ConnectionRegistry
 	autoRemoteStart bool
-	txCounter       atomic.Int32
+	txCounter       atomic.Int64
 }
 
 // idTagAccepted/idTagInvalid are the canned authorization results shared by the
@@ -309,7 +309,7 @@ func (a *app) driveRemoteStart(c *csms.Conn) {
 	time.Sleep(3 * time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	connector := int32(1)
+	connector := int64(1)
 	resp, err := v16client.NewCSMS(c).RemoteStartTransaction(ctx, v16msg.RemoteStartTransactionRequest{
 		IDTag:       "TAG001",
 		ConnectorID: &connector,
@@ -334,7 +334,7 @@ func envOr(k, def string) string {
 	return def
 }
 
-func itoa(i int32) string {
+func itoa(i int64) string {
 	if i == 0 {
 		return "0"
 	}

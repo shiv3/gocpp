@@ -12,12 +12,12 @@ type BatterySwapRequest struct {
 	CustomData  *CustomDataType   `json:"customData,omitempty" validate:"omitempty"`
 	EventType   string            `json:"eventType" validate:"required"`
 	IDToken     IdTokenType       `json:"idToken" validate:"required"`
-	RequestID   int32             `json:"requestId" validate:"required"`
+	RequestID   int64             `json:"requestId" validate:"required"`
 }
 
 type BatteryDataType struct {
 	CustomData     *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID         int32           `json:"evseId" validate:"required"`
+	EVSEID         int64           `json:"evseId" validate:"required"`
 	ProductionDate *time.Time      `json:"productionDate,omitempty" validate:"omitempty"`
 	SerialNumber   string          `json:"serialNumber" validate:"required,max=50"`
 	SoC            types.Decimal   `json:"soC" validate:"required"`

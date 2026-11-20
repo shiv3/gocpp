@@ -29,8 +29,8 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid full request",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:       int32Ptr201f(5),
-				RetryInterval: int32Ptr201f(300),
+				Retries:       int64Ptr201f(5),
+				RetryInterval: int64Ptr201f(300),
 				RequestID:     42,
 				Firmware:      testFirmware201f(),
 			},
@@ -39,7 +39,7 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid without retryInterval",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:   int32Ptr201f(5),
+				Retries:   int64Ptr201f(5),
 				RequestID: 42,
 				Firmware:  testFirmware201f(),
 			},
@@ -63,8 +63,8 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid required firmware fields",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:       int32Ptr201f(5),
-				RetryInterval: int32Ptr201f(300),
+				Retries:       int64Ptr201f(5),
+				RetryInterval: int64Ptr201f(300),
 				RequestID:     42,
 				Firmware: messages.FirmwareType{
 					Location:         "https://someurl",
@@ -128,8 +128,8 @@ func TestUpdateFirmware201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid firmware.location exceeds maxLength 512",
 			Message: messages.UpdateFirmwareRequest{
-				Retries:       int32Ptr201f(5),
-				RetryInterval: int32Ptr201f(300),
+				Retries:       int64Ptr201f(5),
+				RetryInterval: int64Ptr201f(300),
 				RequestID:     42,
 				Firmware: func() messages.FirmwareType {
 					fw := testFirmware201f()

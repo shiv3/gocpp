@@ -1,6 +1,7 @@
 package conf21f
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestDataTransfer21_RequestValidation(t *testing.T) {
 		{
 			Name: "valid",
 			Message: messages.DataTransferRequest{
-				Data:      stringPtr21("payload"),
+				Data:      json.RawMessage(`"payload"`),
 				MessageID: stringPtr21("message"),
 				VendorID:  "vendor",
 			},
@@ -52,7 +53,7 @@ func TestDataTransfer21_ResponseValidation(t *testing.T) {
 		{
 			Name: "valid",
 			Message: messages.DataTransferResponse{
-				Data:   stringPtr21("payload"),
+				Data:   json.RawMessage(`"payload"`),
 				Status: "Accepted",
 			},
 			Valid: true,

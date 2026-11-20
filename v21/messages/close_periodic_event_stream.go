@@ -4,7 +4,7 @@ package messages
 
 type ClosePeriodicEventStreamRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID         int32           `json:"id" validate:"required"`
+	ID         int64           `json:"id" validate:"required"`
 }
 
 type ClosePeriodicEventStreamResponse struct {

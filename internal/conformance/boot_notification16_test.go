@@ -257,7 +257,7 @@ func TestBootNotification16_RoundTrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, messages.RegistrationStatusAccepted, resp.Status)
-	require.Equal(t, int32(300), resp.Interval)
+	require.Equal(t, int64(300), resp.Interval)
 }
 
 func TestBootNotification16_Direction(t *testing.T) {

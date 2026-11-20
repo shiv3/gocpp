@@ -7,7 +7,7 @@ type GetDERControlRequest struct {
 	ControlType *string         `json:"controlType,omitempty" validate:"omitempty"`
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	IsDefault   *bool           `json:"isDefault,omitempty" validate:"omitempty"`
-	RequestID   int32           `json:"requestId" validate:"required"`
+	RequestID   int64           `json:"requestId" validate:"required"`
 }
 
 type GetDERControlResponse struct {

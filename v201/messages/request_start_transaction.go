@@ -10,10 +10,10 @@ import (
 type RequestStartTransactionRequest struct {
 	ChargingProfile *ChargingProfileType `json:"chargingProfile,omitempty" validate:"omitempty"`
 	CustomData      *CustomDataType      `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID          *int32               `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID          *int64               `json:"evseId,omitempty" validate:"omitempty"`
 	GroupIDToken    *IdTokenType         `json:"groupIdToken,omitempty" validate:"omitempty"`
 	IDToken         IdTokenType          `json:"idToken" validate:"required"`
-	RemoteStartID   int32                `json:"remoteStartId" validate:"required"`
+	RemoteStartID   int64                `json:"remoteStartId" validate:"required"`
 }
 
 type ChargingProfileType struct {
@@ -21,9 +21,9 @@ type ChargingProfileType struct {
 	ChargingProfilePurpose string                 `json:"chargingProfilePurpose" validate:"required"`
 	ChargingSchedule       []ChargingScheduleType `json:"chargingSchedule" validate:"required"`
 	CustomData             *CustomDataType        `json:"customData,omitempty" validate:"omitempty"`
-	ID                     int32                  `json:"id" validate:"required"`
+	ID                     int64                  `json:"id" validate:"required"`
 	RecurrencyKind         *string                `json:"recurrencyKind,omitempty" validate:"omitempty"`
-	StackLevel             int32                  `json:"stackLevel" validate:"required"`
+	StackLevel             int64                  `json:"stackLevel" validate:"required"`
 	TransactionID          *string                `json:"transactionId,omitempty" validate:"omitempty,max=36"`
 	ValidFrom              *time.Time             `json:"validFrom,omitempty" validate:"omitempty"`
 	ValidTo                *time.Time             `json:"validTo,omitempty" validate:"omitempty"`
@@ -33,8 +33,8 @@ type ChargingScheduleType struct {
 	ChargingRateUnit       string                       `json:"chargingRateUnit" validate:"required"`
 	ChargingSchedulePeriod []ChargingSchedulePeriodType `json:"chargingSchedulePeriod" validate:"required"`
 	CustomData             *CustomDataType              `json:"customData,omitempty" validate:"omitempty"`
-	Duration               *int32                       `json:"duration,omitempty" validate:"omitempty"`
-	ID                     int32                        `json:"id" validate:"required"`
+	Duration               *int64                       `json:"duration,omitempty" validate:"omitempty"`
+	ID                     int64                        `json:"id" validate:"required"`
 	MinChargingRate        *types.Decimal               `json:"minChargingRate,omitempty" validate:"omitempty"`
 	SalesTariff            *SalesTariffType             `json:"salesTariff,omitempty" validate:"omitempty"`
 	StartSchedule          *time.Time                   `json:"startSchedule,omitempty" validate:"omitempty"`
@@ -43,15 +43,15 @@ type ChargingScheduleType struct {
 type ChargingSchedulePeriodType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Limit        types.Decimal   `json:"limit" validate:"required"`
-	NumberPhases *int32          `json:"numberPhases,omitempty" validate:"omitempty"`
-	PhaseToUse   *int32          `json:"phaseToUse,omitempty" validate:"omitempty"`
-	StartPeriod  int32           `json:"startPeriod" validate:"required"`
+	NumberPhases *int64          `json:"numberPhases,omitempty" validate:"omitempty"`
+	PhaseToUse   *int64          `json:"phaseToUse,omitempty" validate:"omitempty"`
+	StartPeriod  int64           `json:"startPeriod" validate:"required"`
 }
 
 type SalesTariffType struct {
 	CustomData             *CustomDataType        `json:"customData,omitempty" validate:"omitempty"`
-	ID                     int32                  `json:"id" validate:"required"`
-	NumEPriceLevels        *int32                 `json:"numEPriceLevels,omitempty" validate:"omitempty"`
+	ID                     int64                  `json:"id" validate:"required"`
+	NumEPriceLevels        *int64                 `json:"numEPriceLevels,omitempty" validate:"omitempty"`
 	SalesTariffDescription *string                `json:"salesTariffDescription,omitempty" validate:"omitempty,max=32"`
 	SalesTariffEntry       []SalesTariffEntryType `json:"salesTariffEntry" validate:"required"`
 }
@@ -59,7 +59,7 @@ type SalesTariffType struct {
 type SalesTariffEntryType struct {
 	ConsumptionCost      []ConsumptionCostType    `json:"consumptionCost,omitempty" validate:"omitempty"`
 	CustomData           *CustomDataType          `json:"customData,omitempty" validate:"omitempty"`
-	EPriceLevel          *int32                   `json:"ePriceLevel,omitempty" validate:"omitempty"`
+	EPriceLevel          *int64                   `json:"ePriceLevel,omitempty" validate:"omitempty"`
 	RelativeTimeInterval RelativeTimeIntervalType `json:"relativeTimeInterval" validate:"required"`
 }
 
@@ -70,16 +70,16 @@ type ConsumptionCostType struct {
 }
 
 type CostType struct {
-	Amount           int32           `json:"amount" validate:"required"`
-	AmountMultiplier *int32          `json:"amountMultiplier,omitempty" validate:"omitempty"`
+	Amount           int64           `json:"amount" validate:"required"`
+	AmountMultiplier *int64          `json:"amountMultiplier,omitempty" validate:"omitempty"`
 	CostKind         string          `json:"costKind" validate:"required"`
 	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 }
 
 type RelativeTimeIntervalType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Duration   *int32          `json:"duration,omitempty" validate:"omitempty"`
-	Start      int32           `json:"start" validate:"required"`
+	Duration   *int64          `json:"duration,omitempty" validate:"omitempty"`
+	Start      int64           `json:"start" validate:"required"`
 }
 
 type RequestStartTransactionResponse struct {

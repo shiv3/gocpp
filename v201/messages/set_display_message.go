@@ -15,7 +15,7 @@ type MessageInfoType struct {
 	CustomData    *CustomDataType    `json:"customData,omitempty" validate:"omitempty"`
 	Display       *ComponentType     `json:"display,omitempty" validate:"omitempty"`
 	EndDateTime   *time.Time         `json:"endDateTime,omitempty" validate:"omitempty"`
-	ID            int32              `json:"id" validate:"required"`
+	ID            int64              `json:"id" validate:"required"`
 	Message       MessageContentType `json:"message" validate:"required"`
 	Priority      string             `json:"priority" validate:"required"`
 	StartDateTime *time.Time         `json:"startDateTime,omitempty" validate:"omitempty"`

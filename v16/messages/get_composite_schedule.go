@@ -8,13 +8,13 @@ import (
 
 type GetCompositeScheduleRequest struct {
 	ChargingRateUnit *GetCompositeScheduleRequestChargingRateUnit `json:"chargingRateUnit,omitempty" validate:"omitempty"`
-	ConnectorID      int32                                        `json:"connectorId" validate:"required"`
-	Duration         int32                                        `json:"duration" validate:"required"`
+	ConnectorID      int64                                        `json:"connectorId" validate:"required"`
+	Duration         int64                                        `json:"duration" validate:"required"`
 }
 
 type GetCompositeScheduleResponse struct {
 	ChargingSchedule *ChargingSchedule                  `json:"chargingSchedule,omitempty" validate:"omitempty"`
-	ConnectorID      *int32                             `json:"connectorId,omitempty" validate:"omitempty"`
+	ConnectorID      *int64                             `json:"connectorId,omitempty" validate:"omitempty"`
 	ScheduleStart    *time.Time                         `json:"scheduleStart,omitempty" validate:"omitempty"`
 	Status           GetCompositeScheduleResponseStatus `json:"status" validate:"required"`
 }

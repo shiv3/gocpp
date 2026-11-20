@@ -19,7 +19,7 @@ func TestLogStatusNotification21_RequestValidation(t *testing.T) {
 			Name: "valid request",
 			Message: messages.LogStatusNotificationRequest{
 				CustomData: customData21(),
-				RequestID:  int32Ptr21(1),
+				RequestID:  int64Ptr21(1),
 				Status:     "Uploading",
 				StatusInfo: statusInfo21(),
 			},

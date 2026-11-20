@@ -399,14 +399,47 @@ func writeStructs(b *strings.Builder, structs []ir.Struct) {
 				fmt.Fprintf(b, "\t%s %s `json:%q`\n", fld.GoName, fld.GoType(), jsonTag)
 			}
 		}
+		if s.AdditionalProperties {
+			b.WriteString("\t// Extra holds the properties the schema does not define, verbatim, so they\n")
+			b.WriteString("\t// round-trip. Keys that clash with a defined field are ignored on encode.\n")
+			b.WriteString("\tExtra map[string]json.RawMessage `json:\"-\"`\n")
+		}
 		b.WriteString("}\n\n")
+		if s.AdditionalProperties {
+			writeExtraMethods(b, s)
+		}
 	}
+}
+
+// writeExtraMethods emits the JSON methods of a struct that keeps unknown
+// properties in Extra. The shared logic lives in core/types.
+func writeExtraMethods(b *strings.Builder, s ir.Struct) {
+	known := make([]string, 0, len(s.Fields))
+	for _, fld := range s.Fields {
+		known = append(known, fmt.Sprintf("%q", fld.JSONName))
+	}
+	fmt.Fprintf(b, "// MarshalJSON encodes the defined fields followed by Extra.\n")
+	fmt.Fprintf(b, "func (v %s) MarshalJSON() ([]byte, error) {\n", s.GoName)
+	fmt.Fprintf(b, "\ttype plain %s\n", s.GoName)
+	b.WriteString("\treturn types.MarshalWithExtra(plain(v), v.Extra)\n}\n\n")
+	fmt.Fprintf(b, "// UnmarshalJSON decodes the defined fields and collects the rest into Extra.\n")
+	fmt.Fprintf(b, "func (v *%s) UnmarshalJSON(data []byte) error {\n", s.GoName)
+	fmt.Fprintf(b, "\ttype plain %s\n", s.GoName)
+	fmt.Fprintf(b, "\textra, err := types.UnmarshalWithExtra(data, (*plain)(v), %s)\n", strings.Join(known, ", "))
+	b.WriteString("\tif err != nil {\n\t\treturn err\n\t}\n\tv.Extra = extra\n\treturn nil\n}\n\n")
 }
 
 func neededImports(f ir.File, forceTime, forceDecimal bool) []string {
 	needTime, needDecimal := forceTime, forceDecimal
+	var needJSON bool
 	for _, s := range f.Structs {
+		if s.AdditionalProperties {
+			needJSON, needDecimal = true, true // Extra + types.*WithExtra
+		}
 		for _, fld := range s.Fields {
+			if fld.Type == ir.TypeRaw {
+				needJSON = true
+			}
 			switch fld.Type {
 			case ir.TypeDateTime:
 				needTime = true
@@ -416,6 +449,9 @@ func neededImports(f ir.File, forceTime, forceDecimal bool) []string {
 		}
 	}
 	var imps []string
+	if needJSON {
+		imps = append(imps, "encoding/json")
+	}
 	if needDecimal {
 		imps = append(imps, "github.com/shiv3/gocpp/core/types")
 	}

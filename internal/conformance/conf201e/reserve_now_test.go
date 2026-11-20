@@ -21,7 +21,7 @@ func TestReserveNow201_RequestValidation(t *testing.T) {
 			Message: messages.ReserveNowRequest{
 				ConnectorType:  &connectorType,
 				CustomData:     testCustomData201e(),
-				EVSEID:         int32Ptr201e(1),
+				EVSEID:         int64Ptr201e(1),
 				ExpiryDateTime: expiry,
 				GroupIDToken:   &messages.IdTokenType{IDToken: "1234", Type: "ISO15693"},
 				ID:             42,
@@ -33,7 +33,7 @@ func TestReserveNow201_RequestValidation(t *testing.T) {
 			Name: "valid request without groupIdToken",
 			Message: messages.ReserveNowRequest{
 				ConnectorType:  &connectorType,
-				EVSEID:         int32Ptr201e(1),
+				EVSEID:         int64Ptr201e(1),
 				ExpiryDateTime: expiry,
 				ID:             42,
 				IDToken:        testIDToken201e("1234", "KeyCode"),
@@ -109,7 +109,7 @@ func TestReserveNow201_RequestValidation(t *testing.T) {
 			Name: "invalid connectorType enum",
 			Message: messages.ReserveNowRequest{
 				ConnectorType:  strPtr201e("invalidConnectorType"),
-				EVSEID:         int32Ptr201e(1),
+				EVSEID:         int64Ptr201e(1),
 				ExpiryDateTime: expiry,
 				GroupIDToken:   &messages.IdTokenType{IDToken: "1234", Type: "ISO15693"},
 				ID:             42,
@@ -131,7 +131,7 @@ func TestReserveNow201_RequestValidation(t *testing.T) {
 			Name: "invalid idToken type enum",
 			Message: messages.ReserveNowRequest{
 				ConnectorType:  &connectorType,
-				EVSEID:         int32Ptr201e(1),
+				EVSEID:         int64Ptr201e(1),
 				ExpiryDateTime: expiry,
 				GroupIDToken:   &messages.IdTokenType{IDToken: "1234", Type: "ISO15693"},
 				ID:             42,
@@ -143,7 +143,7 @@ func TestReserveNow201_RequestValidation(t *testing.T) {
 			Name: "invalid groupIdToken type enum",
 			Message: messages.ReserveNowRequest{
 				ConnectorType:  &connectorType,
-				EVSEID:         int32Ptr201e(1),
+				EVSEID:         int64Ptr201e(1),
 				ExpiryDateTime: expiry,
 				GroupIDToken:   &messages.IdTokenType{IDToken: "1234", Type: "invalidIdToken"},
 				ID:             42,

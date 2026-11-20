@@ -22,7 +22,7 @@ func TestClearedChargingLimit201_RequestValidation(t *testing.T) {
 			Name: "valid with evseId",
 			Message: messages.ClearedChargingLimitRequest{
 				ChargingLimitSource: "EMS",
-				EVSEID:              int32Ptr(0),
+				EVSEID:              int64Ptr(0),
 			},
 			Valid: true,
 		},
@@ -38,7 +38,7 @@ func TestClearedChargingLimit201_RequestValidation(t *testing.T) {
 			Message: messages.ClearedChargingLimitRequest{
 				ChargingLimitSource: "CSO",
 				CustomData:          testCustomData(),
-				EVSEID:              int32Ptr(1),
+				EVSEID:              int64Ptr(1),
 			},
 			Valid: true,
 		},

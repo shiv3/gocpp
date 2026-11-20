@@ -21,11 +21,11 @@ func TestGetChargingProfiles21_RequestValidation(t *testing.T) {
 			Message: messages.GetChargingProfilesRequest{
 				ChargingProfile: messages.ChargingProfileCriterionType{
 					ChargingLimitSource:    []string{"CSMS"},
-					ChargingProfileID:      []int32{1},
+					ChargingProfileID:      []int64{1},
 					ChargingProfilePurpose: &purpose,
-					StackLevel:             int32Ptr21(0),
+					StackLevel:             int64Ptr21(0),
 				},
-				EVSEID:    int32Ptr21(1),
+				EVSEID:    int64Ptr21(1),
 				RequestID: 1,
 			},
 			Valid: true,

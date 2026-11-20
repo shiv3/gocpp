@@ -9,18 +9,18 @@ import (
 
 type RemoteStartTransactionRequest struct {
 	ChargingProfile *ChargingProfile `json:"chargingProfile,omitempty" validate:"omitempty"`
-	ConnectorID     *int32           `json:"connectorId,omitempty" validate:"omitempty"`
+	ConnectorID     *int64           `json:"connectorId,omitempty" validate:"omitempty"`
 	IDTag           string           `json:"idTag" validate:"required,max=20"`
 }
 
 type ChargingProfile struct {
-	ChargingProfileID      int32                                 `json:"chargingProfileId" validate:"required"`
+	ChargingProfileID      int64                                 `json:"chargingProfileId" validate:"required"`
 	ChargingProfileKind    ChargingProfileChargingProfileKind    `json:"chargingProfileKind" validate:"required"`
 	ChargingProfilePurpose ChargingProfileChargingProfilePurpose `json:"chargingProfilePurpose" validate:"required"`
 	ChargingSchedule       ChargingSchedule                      `json:"chargingSchedule" validate:"required"`
 	RecurrencyKind         *ChargingProfileRecurrencyKind        `json:"recurrencyKind,omitempty" validate:"omitempty"`
-	StackLevel             int32                                 `json:"stackLevel" validate:"required"`
-	TransactionID          *int32                                `json:"transactionId,omitempty" validate:"omitempty"`
+	StackLevel             int64                                 `json:"stackLevel" validate:"required"`
+	TransactionID          *int64                                `json:"transactionId,omitempty" validate:"omitempty"`
 	ValidFrom              *time.Time                            `json:"validFrom,omitempty" validate:"omitempty"`
 	ValidTo                *time.Time                            `json:"validTo,omitempty" validate:"omitempty"`
 }
@@ -28,15 +28,15 @@ type ChargingProfile struct {
 type ChargingSchedule struct {
 	ChargingRateUnit       ChargingScheduleChargingRateUnit `json:"chargingRateUnit" validate:"required"`
 	ChargingSchedulePeriod []ChargingSchedulePeriod         `json:"chargingSchedulePeriod" validate:"required"`
-	Duration               *int32                           `json:"duration,omitempty" validate:"omitempty"`
+	Duration               *int64                           `json:"duration,omitempty" validate:"omitempty"`
 	MinChargingRate        *types.Decimal                   `json:"minChargingRate,omitempty" validate:"omitempty"`
 	StartSchedule          *time.Time                       `json:"startSchedule,omitempty" validate:"omitempty"`
 }
 
 type ChargingSchedulePeriod struct {
 	Limit        types.Decimal `json:"limit" validate:"required"`
-	NumberPhases *int32        `json:"numberPhases,omitempty" validate:"omitempty"`
-	StartPeriod  int32         `json:"startPeriod" validate:"required"`
+	NumberPhases *int64        `json:"numberPhases,omitempty" validate:"omitempty"`
+	StartPeriod  int64         `json:"startPeriod" validate:"required"`
 }
 
 type RemoteStartTransactionResponse struct {

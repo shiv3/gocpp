@@ -3,7 +3,7 @@
 package messages
 
 type TriggerMessageRequest struct {
-	ConnectorID      *int32                                `json:"connectorId,omitempty" validate:"omitempty"`
+	ConnectorID      *int64                                `json:"connectorId,omitempty" validate:"omitempty"`
 	RequestedMessage TriggerMessageRequestRequestedMessage `json:"requestedMessage" validate:"required"`
 }
 

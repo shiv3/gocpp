@@ -3,9 +3,9 @@
 package messages
 
 type UnlockConnectorRequest struct {
-	ConnectorID int32           `json:"connectorId" validate:"required"`
+	ConnectorID int64           `json:"connectorId" validate:"required"`
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID      int32           `json:"evseId" validate:"required"`
+	EVSEID      int64           `json:"evseId" validate:"required"`
 }
 
 type UnlockConnectorResponse struct {

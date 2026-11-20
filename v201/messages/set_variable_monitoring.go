@@ -14,8 +14,8 @@ type SetVariableMonitoringRequest struct {
 type SetMonitoringDataType struct {
 	Component   ComponentType   `json:"component" validate:"required"`
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID          *int32          `json:"id,omitempty" validate:"omitempty"`
-	Severity    int32           `json:"severity" validate:"required"`
+	ID          *int64          `json:"id,omitempty" validate:"omitempty"`
+	Severity    int64           `json:"severity" validate:"required"`
 	Transaction *bool           `json:"transaction,omitempty" validate:"omitempty"`
 	Type        string          `json:"type" validate:"required"`
 	Value       types.Decimal   `json:"value" validate:"required"`
@@ -30,8 +30,8 @@ type SetVariableMonitoringResponse struct {
 type SetMonitoringResultType struct {
 	Component  ComponentType   `json:"component" validate:"required"`
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID         *int32          `json:"id,omitempty" validate:"omitempty"`
-	Severity   int32           `json:"severity" validate:"required"`
+	ID         *int64          `json:"id,omitempty" validate:"omitempty"`
+	Severity   int64           `json:"severity" validate:"required"`
 	Status     string          `json:"status" validate:"required"`
 	StatusInfo *StatusInfoType `json:"statusInfo,omitempty" validate:"omitempty"`
 	Type       string          `json:"type" validate:"required"`

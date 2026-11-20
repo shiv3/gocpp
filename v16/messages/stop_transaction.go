@@ -8,11 +8,11 @@ import (
 
 type StopTransactionRequest struct {
 	IDTag           *string                       `json:"idTag,omitempty" validate:"omitempty,max=20"`
-	MeterStop       int32                         `json:"meterStop" validate:"required"`
+	MeterStop       int64                         `json:"meterStop" validate:"required"`
 	Reason          *StopTransactionRequestReason `json:"reason,omitempty" validate:"omitempty"`
 	Timestamp       time.Time                     `json:"timestamp" validate:"required"`
 	TransactionData []TransactionData             `json:"transactionData,omitempty" validate:"omitempty"`
-	TransactionID   int32                         `json:"transactionId" validate:"required"`
+	TransactionID   int64                         `json:"transactionId" validate:"required"`
 }
 
 type TransactionData struct {

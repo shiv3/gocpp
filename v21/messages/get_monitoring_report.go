@@ -6,7 +6,7 @@ type GetMonitoringReportRequest struct {
 	ComponentVariable  []ComponentVariableType `json:"componentVariable,omitempty" validate:"omitempty"`
 	CustomData         *CustomDataType         `json:"customData,omitempty" validate:"omitempty"`
 	MonitoringCriteria []string                `json:"monitoringCriteria,omitempty" validate:"omitempty"`
-	RequestID          int32                   `json:"requestId" validate:"required"`
+	RequestID          int64                   `json:"requestId" validate:"required"`
 }
 
 type ComponentVariableType struct {

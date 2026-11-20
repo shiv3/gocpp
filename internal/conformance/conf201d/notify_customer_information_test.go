@@ -50,7 +50,7 @@ func component201() messages.ComponentType {
 		Instance: ptr("instance1"),
 		EVSE: &messages.EVSEType{
 			ID:          2,
-			ConnectorID: ptr(int32(2)),
+			ConnectorID: ptr(int64(2)),
 		},
 	}
 }
@@ -90,7 +90,7 @@ func chargingSchedule201() messages.ChargingScheduleType {
 	return messages.ChargingScheduleType{
 		ID:                     1,
 		StartSchedule:          ptr(fixedTime201()),
-		Duration:               ptr(int32(600)),
+		Duration:               ptr(int64(600)),
 		ChargingRateUnit:       "W",
 		MinChargingRate:        ptr(dec("6.0")),
 		ChargingSchedulePeriod: []messages.ChargingSchedulePeriodType{chargingSchedulePeriod201()},

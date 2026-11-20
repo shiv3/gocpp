@@ -7,11 +7,11 @@ import (
 )
 
 type ReserveNowRequest struct {
-	ConnectorID   int32     `json:"connectorId" validate:"required"`
+	ConnectorID   int64     `json:"connectorId" validate:"required"`
 	ExpiryDate    time.Time `json:"expiryDate" validate:"required"`
 	IDTag         string    `json:"idTag" validate:"required,max=20"`
 	ParentIDTag   *string   `json:"parentIdTag,omitempty" validate:"omitempty,max=20"`
-	ReservationID int32     `json:"reservationId" validate:"required"`
+	ReservationID int64     `json:"reservationId" validate:"required"`
 }
 
 type ReserveNowResponse struct {

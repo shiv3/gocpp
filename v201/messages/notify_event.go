@@ -10,17 +10,17 @@ type NotifyEventRequest struct {
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	EventData   []EventDataType `json:"eventData" validate:"required"`
 	GeneratedAt time.Time       `json:"generatedAt" validate:"required"`
-	SeqNo       int32           `json:"seqNo" validate:"required"`
+	SeqNo       int64           `json:"seqNo" validate:"required"`
 	Tbc         *bool           `json:"tbc,omitempty" validate:"omitempty"`
 }
 
 type EventDataType struct {
 	ActualValue           string          `json:"actualValue" validate:"required,max=2500"`
-	Cause                 *int32          `json:"cause,omitempty" validate:"omitempty"`
+	Cause                 *int64          `json:"cause,omitempty" validate:"omitempty"`
 	Cleared               *bool           `json:"cleared,omitempty" validate:"omitempty"`
 	Component             ComponentType   `json:"component" validate:"required"`
 	CustomData            *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EventID               int32           `json:"eventId" validate:"required"`
+	EventID               int64           `json:"eventId" validate:"required"`
 	EventNotificationType string          `json:"eventNotificationType" validate:"required"`
 	TechCode              *string         `json:"techCode,omitempty" validate:"omitempty,max=50"`
 	TechInfo              *string         `json:"techInfo,omitempty" validate:"omitempty,max=500"`
@@ -28,7 +28,7 @@ type EventDataType struct {
 	TransactionID         *string         `json:"transactionId,omitempty" validate:"omitempty,max=36"`
 	Trigger               string          `json:"trigger" validate:"required"`
 	Variable              VariableType    `json:"variable" validate:"required"`
-	VariableMonitoringID  *int32          `json:"variableMonitoringId,omitempty" validate:"omitempty"`
+	VariableMonitoringID  *int64          `json:"variableMonitoringId,omitempty" validate:"omitempty"`
 }
 
 type ComponentType struct {

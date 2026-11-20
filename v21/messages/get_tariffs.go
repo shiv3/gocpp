@@ -8,7 +8,7 @@ import (
 
 type GetTariffsRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     int32           `json:"evseId" validate:"required"`
+	EVSEID     int64           `json:"evseId" validate:"required"`
 }
 
 type GetTariffsResponse struct {
@@ -20,7 +20,7 @@ type GetTariffsResponse struct {
 
 type TariffAssignmentType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEIds    []int32         `json:"evseIds,omitempty" validate:"omitempty"`
+	EVSEIds    []int64         `json:"evseIds,omitempty" validate:"omitempty"`
 	IDTokens   []string        `json:"idTokens,omitempty" validate:"omitempty"`
 	TariffID   string          `json:"tariffId" validate:"required,max=60"`
 	TariffKind string          `json:"tariffKind" validate:"required"`

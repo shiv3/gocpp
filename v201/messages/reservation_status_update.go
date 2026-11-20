@@ -4,7 +4,7 @@ package messages
 
 type ReservationStatusUpdateRequest struct {
 	CustomData              *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ReservationID           int32           `json:"reservationId" validate:"required"`
+	ReservationID           int64           `json:"reservationId" validate:"required"`
 	ReservationUpdateStatus string          `json:"reservationUpdateStatus" validate:"required"`
 }
 

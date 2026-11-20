@@ -5,16 +5,16 @@ package messages
 type GetChargingProfilesRequest struct {
 	ChargingProfile ChargingProfileCriterionType `json:"chargingProfile" validate:"required"`
 	CustomData      *CustomDataType              `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID          *int32                       `json:"evseId,omitempty" validate:"omitempty"`
-	RequestID       int32                        `json:"requestId" validate:"required"`
+	EVSEID          *int64                       `json:"evseId,omitempty" validate:"omitempty"`
+	RequestID       int64                        `json:"requestId" validate:"required"`
 }
 
 type ChargingProfileCriterionType struct {
 	ChargingLimitSource    []string        `json:"chargingLimitSource,omitempty" validate:"omitempty"`
-	ChargingProfileID      []int32         `json:"chargingProfileId,omitempty" validate:"omitempty"`
+	ChargingProfileID      []int64         `json:"chargingProfileId,omitempty" validate:"omitempty"`
 	ChargingProfilePurpose *string         `json:"chargingProfilePurpose,omitempty" validate:"omitempty"`
 	CustomData             *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	StackLevel             *int32          `json:"stackLevel,omitempty" validate:"omitempty"`
+	StackLevel             *int64          `json:"stackLevel,omitempty" validate:"omitempty"`
 }
 
 type GetChargingProfilesResponse struct {

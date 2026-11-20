@@ -7,18 +7,18 @@ import (
 )
 
 type SetChargingProfileRequest struct {
-	ConnectorID        int32              `json:"connectorId" validate:"required"`
+	ConnectorID        int64              `json:"connectorId" validate:"required"`
 	CsChargingProfiles CsChargingProfiles `json:"csChargingProfiles" validate:"required"`
 }
 
 type CsChargingProfiles struct {
-	ChargingProfileID      int32                                    `json:"chargingProfileId" validate:"required"`
+	ChargingProfileID      int64                                    `json:"chargingProfileId" validate:"required"`
 	ChargingProfileKind    CsChargingProfilesChargingProfileKind    `json:"chargingProfileKind" validate:"required"`
 	ChargingProfilePurpose CsChargingProfilesChargingProfilePurpose `json:"chargingProfilePurpose" validate:"required"`
 	ChargingSchedule       ChargingSchedule                         `json:"chargingSchedule" validate:"required"`
 	RecurrencyKind         *CsChargingProfilesRecurrencyKind        `json:"recurrencyKind,omitempty" validate:"omitempty"`
-	StackLevel             int32                                    `json:"stackLevel" validate:"required"`
-	TransactionID          *int32                                   `json:"transactionId,omitempty" validate:"omitempty"`
+	StackLevel             int64                                    `json:"stackLevel" validate:"required"`
+	TransactionID          *int64                                   `json:"transactionId,omitempty" validate:"omitempty"`
 	ValidFrom              *time.Time                               `json:"validFrom,omitempty" validate:"omitempty"`
 	ValidTo                *time.Time                               `json:"validTo,omitempty" validate:"omitempty"`
 }

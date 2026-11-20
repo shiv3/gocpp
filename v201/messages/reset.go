@@ -4,7 +4,7 @@ package messages
 
 type ResetRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     *int32          `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID     *int64          `json:"evseId,omitempty" validate:"omitempty"`
 	Type       string          `json:"type" validate:"required"`
 }
 

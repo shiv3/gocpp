@@ -28,7 +28,7 @@ func TestStartTransaction16_RequestValidation(t *testing.T) {
 				ConnectorID:   1,
 				IDTag:         "12345",
 				MeterStart:    100,
-				ReservationID: ptr(int32(42)),
+				ReservationID: ptr(int64(42)),
 				Timestamp:     now,
 			},
 			Valid: true,
@@ -57,7 +57,7 @@ func TestStartTransaction16_RequestValidation(t *testing.T) {
 			Message: map[string]any{
 				"connectorId": 0,
 				"idTag":       "12345",
-				"meterStart":  int32(100),
+				"meterStart":  int64(100),
 				"timestamp":   now,
 			},
 			Valid: false,
@@ -76,7 +76,7 @@ func TestStartTransaction16_RequestValidation(t *testing.T) {
 			Name: "invalid missing connectorId",
 			Message: map[string]any{
 				"idTag":      "12345",
-				"meterStart": int32(100),
+				"meterStart": int64(100),
 				"timestamp":  now,
 			},
 			Valid: false,
@@ -84,8 +84,8 @@ func TestStartTransaction16_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing idTag",
 			Message: map[string]any{
-				"connectorId": int32(1),
-				"meterStart":  int32(100),
+				"connectorId": int64(1),
+				"meterStart":  int64(100),
 				"timestamp":   now,
 			},
 			Valid: false,
@@ -93,9 +93,9 @@ func TestStartTransaction16_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing timestamp",
 			Message: map[string]any{
-				"connectorId": int32(1),
+				"connectorId": int64(1),
 				"idTag":       "12345",
-				"meterStart":  int32(100),
+				"meterStart":  int64(100),
 			},
 			Valid: false,
 		},
@@ -146,7 +146,7 @@ func TestStartTransaction16_ResponseValidation(t *testing.T) {
 		{
 			Name: "invalid missing idTagInfo",
 			Message: map[string]any{
-				"transactionId": int32(10),
+				"transactionId": int64(10),
 			},
 			Valid: false,
 		},

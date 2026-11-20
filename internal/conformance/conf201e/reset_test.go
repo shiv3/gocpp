@@ -17,7 +17,7 @@ func TestReset201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid immediate request with evseId",
 			Message: messages.ResetRequest{
-				EVSEID: int32Ptr201e(42),
+				EVSEID: int64Ptr201e(42),
 				Type:   "Immediate",
 			},
 			Valid: true,
@@ -25,7 +25,7 @@ func TestReset201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid on idle request with evseId",
 			Message: messages.ResetRequest{
-				EVSEID: int32Ptr201e(42),
+				EVSEID: int64Ptr201e(42),
 				Type:   "OnIdle",
 			},
 			Valid: true,
@@ -41,7 +41,7 @@ func TestReset201_RequestValidation(t *testing.T) {
 			Name: "valid full request",
 			Message: messages.ResetRequest{
 				CustomData: testCustomData201e(),
-				EVSEID:     int32Ptr201e(42),
+				EVSEID:     int64Ptr201e(42),
 				Type:       "Immediate",
 			},
 			Valid: true,
@@ -62,7 +62,7 @@ func TestReset201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid type enum",
 			Message: messages.ResetRequest{
-				EVSEID: int32Ptr201e(42),
+				EVSEID: int64Ptr201e(42),
 				Type:   "invalidResetType",
 			},
 			Valid: false,

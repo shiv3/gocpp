@@ -6,5 +6,5 @@ type GetLocalListVersionRequest struct {
 }
 
 type GetLocalListVersionResponse struct {
-	ListVersion int32 `json:"listVersion" validate:"required"`
+	ListVersion int64 `json:"listVersion" validate:"required"`
 }

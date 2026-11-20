@@ -3,6 +3,8 @@
 package messages
 
 import (
+	"encoding/json"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -15,6 +17,26 @@ type AuthorizeRequest struct {
 
 type CustomDataType struct {
 	VendorID string `json:"vendorId" validate:"required,max=255"`
+	// Extra holds the properties the schema does not define, verbatim, so they
+	// round-trip. Keys that clash with a defined field are ignored on encode.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// MarshalJSON encodes the defined fields followed by Extra.
+func (v CustomDataType) MarshalJSON() ([]byte, error) {
+	type plain CustomDataType
+	return types.MarshalWithExtra(plain(v), v.Extra)
+}
+
+// UnmarshalJSON decodes the defined fields and collects the rest into Extra.
+func (v *CustomDataType) UnmarshalJSON(data []byte) error {
+	type plain CustomDataType
+	extra, err := types.UnmarshalWithExtra(data, (*plain)(v), "vendorId")
+	if err != nil {
+		return err
+	}
+	v.Extra = extra
+	return nil
 }
 
 type IdTokenType struct {
@@ -47,9 +69,9 @@ type AuthorizeResponse struct {
 
 type IdTokenInfoType struct {
 	CacheExpiryDateTime *time.Time          `json:"cacheExpiryDateTime,omitempty" validate:"omitempty"`
-	ChargingPriority    *int32              `json:"chargingPriority,omitempty" validate:"omitempty"`
+	ChargingPriority    *int64              `json:"chargingPriority,omitempty" validate:"omitempty"`
 	CustomData          *CustomDataType     `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID              []int32             `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID              []int64             `json:"evseId,omitempty" validate:"omitempty"`
 	GroupIDToken        *IdTokenType        `json:"groupIdToken,omitempty" validate:"omitempty"`
 	Language1           *string             `json:"language1,omitempty" validate:"omitempty,max=8"`
 	Language2           *string             `json:"language2,omitempty" validate:"omitempty,max=8"`

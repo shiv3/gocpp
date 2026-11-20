@@ -4,7 +4,7 @@ package messages
 
 type SetMonitoringLevelRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Severity   int32           `json:"severity" validate:"required"`
+	Severity   int64           `json:"severity" validate:"required"`
 }
 
 type SetMonitoringLevelResponse struct {

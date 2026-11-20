@@ -4,9 +4,9 @@ package messages
 
 type GetDisplayMessagesRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID         []int32         `json:"id,omitempty" validate:"omitempty"`
+	ID         []int64         `json:"id,omitempty" validate:"omitempty"`
 	Priority   *string         `json:"priority,omitempty" validate:"omitempty"`
-	RequestID  int32           `json:"requestId" validate:"required"`
+	RequestID  int64           `json:"requestId" validate:"required"`
 	State      *string         `json:"state,omitempty" validate:"omitempty"`
 }
 

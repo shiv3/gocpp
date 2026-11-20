@@ -3,7 +3,7 @@
 package messages
 
 type SignedFirmwareStatusNotificationRequest struct {
-	RequestID *int32 `json:"requestId,omitempty" validate:"omitempty"`
+	RequestID *int64 `json:"requestId,omitempty" validate:"omitempty"`
 	Status    string `json:"status" validate:"required"`
 }
 

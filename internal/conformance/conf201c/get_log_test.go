@@ -26,8 +26,8 @@ func TestGetLog201_RequestValidation(t *testing.T) {
 			Message: messages.GetLogRequest{
 				LogType:       "DiagnosticsLog",
 				RequestID:     1,
-				Retries:       int32Ptr(5),
-				RetryInterval: int32Ptr(120),
+				Retries:       int64Ptr(5),
+				RetryInterval: int64Ptr(120),
 				Log:           logParameters,
 			},
 			Valid: true,
@@ -37,7 +37,7 @@ func TestGetLog201_RequestValidation(t *testing.T) {
 			Message: messages.GetLogRequest{
 				LogType:   "DiagnosticsLog",
 				RequestID: 1,
-				Retries:   int32Ptr(5),
+				Retries:   int64Ptr(5),
 				Log:       logParameters,
 			},
 			Valid: true,
@@ -102,8 +102,8 @@ func TestGetLog201_RequestValidation(t *testing.T) {
 			Message: messages.GetLogRequest{
 				LogType:       "invalidLogType",
 				RequestID:     1,
-				Retries:       int32Ptr(5),
-				RetryInterval: int32Ptr(120),
+				Retries:       int64Ptr(5),
+				RetryInterval: int64Ptr(120),
 				Log:           logParameters,
 			},
 			Valid: false,

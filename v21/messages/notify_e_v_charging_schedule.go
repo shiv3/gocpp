@@ -9,9 +9,9 @@ import (
 type NotifyEVChargingScheduleRequest struct {
 	ChargingSchedule           ChargingScheduleType `json:"chargingSchedule" validate:"required"`
 	CustomData                 *CustomDataType      `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID                     int32                `json:"evseId" validate:"required"`
+	EVSEID                     int64                `json:"evseId" validate:"required"`
 	PowerToleranceAcceptance   *bool                `json:"powerToleranceAcceptance,omitempty" validate:"omitempty"`
-	SelectedChargingScheduleID *int32               `json:"selectedChargingScheduleId,omitempty" validate:"omitempty"`
+	SelectedChargingScheduleID *int64               `json:"selectedChargingScheduleId,omitempty" validate:"omitempty"`
 	TimeBase                   time.Time            `json:"timeBase" validate:"required"`
 }
 

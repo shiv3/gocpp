@@ -19,10 +19,10 @@ func TestClearChargingProfile21_RequestValidation(t *testing.T) {
 			Message: messages.ClearChargingProfileRequest{
 				ChargingProfileCriteria: &messages.ClearChargingProfileType{
 					ChargingProfilePurpose: &purpose,
-					EVSEID:                 int32Ptr(1),
-					StackLevel:             int32Ptr(1),
+					EVSEID:                 int64Ptr(1),
+					StackLevel:             int64Ptr(1),
 				},
-				ChargingProfileID: int32Ptr(1),
+				ChargingProfileID: int64Ptr(1),
 			},
 			Valid: true,
 		},

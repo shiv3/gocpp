@@ -63,7 +63,7 @@ func TestStatusNotification16_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing errorCode",
 			Message: map[string]any{
-				"connectorId": int32(0),
+				"connectorId": int64(0),
 				"status":      messages.StatusNotificationRequestStatusAvailable,
 			},
 			Valid: false,
@@ -71,7 +71,7 @@ func TestStatusNotification16_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing status",
 			Message: map[string]any{
-				"connectorId": int32(0),
+				"connectorId": int64(0),
 				"errorCode":   messages.StatusNotificationRequestErrorCodeNoError,
 			},
 			Valid: false,

@@ -9,8 +9,8 @@ import (
 type GetCompositeScheduleRequest struct {
 	ChargingRateUnit *string         `json:"chargingRateUnit,omitempty" validate:"omitempty"`
 	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Duration         int32           `json:"duration" validate:"required"`
-	EVSEID           int32           `json:"evseId" validate:"required"`
+	Duration         int64           `json:"duration" validate:"required"`
+	EVSEID           int64           `json:"evseId" validate:"required"`
 }
 
 type GetCompositeScheduleResponse struct {
@@ -24,7 +24,7 @@ type CompositeScheduleType struct {
 	ChargingRateUnit       string                       `json:"chargingRateUnit" validate:"required"`
 	ChargingSchedulePeriod []ChargingSchedulePeriodType `json:"chargingSchedulePeriod" validate:"required"`
 	CustomData             *CustomDataType              `json:"customData,omitempty" validate:"omitempty"`
-	Duration               int32                        `json:"duration" validate:"required"`
-	EVSEID                 int32                        `json:"evseId" validate:"required"`
+	Duration               int64                        `json:"duration" validate:"required"`
+	EVSEID                 int64                        `json:"evseId" validate:"required"`
 	ScheduleStart          time.Time                    `json:"scheduleStart" validate:"required"`
 }

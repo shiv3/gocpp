@@ -10,8 +10,8 @@ import (
 type NotifyEVChargingNeedsRequest struct {
 	ChargingNeeds     ChargingNeedsType `json:"chargingNeeds" validate:"required"`
 	CustomData        *CustomDataType   `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID            int32             `json:"evseId" validate:"required"`
-	MaxScheduleTuples *int32            `json:"maxScheduleTuples,omitempty" validate:"omitempty"`
+	EVSEID            int64             `json:"evseId" validate:"required"`
+	MaxScheduleTuples *int64            `json:"maxScheduleTuples,omitempty" validate:"omitempty"`
 	Timestamp         *time.Time        `json:"timestamp,omitempty" validate:"omitempty"`
 }
 
@@ -38,15 +38,15 @@ type ACChargingParametersType struct {
 }
 
 type DCChargingParametersType struct {
-	BulkSoC          *int32          `json:"bulkSoC,omitempty" validate:"omitempty"`
+	BulkSoC          *int64          `json:"bulkSoC,omitempty" validate:"omitempty"`
 	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	EnergyAmount     *types.Decimal  `json:"energyAmount,omitempty" validate:"omitempty"`
 	EVEnergyCapacity *types.Decimal  `json:"evEnergyCapacity,omitempty" validate:"omitempty"`
 	EVMaxCurrent     types.Decimal   `json:"evMaxCurrent" validate:"required"`
 	EVMaxPower       *types.Decimal  `json:"evMaxPower,omitempty" validate:"omitempty"`
 	EVMaxVoltage     types.Decimal   `json:"evMaxVoltage" validate:"required"`
-	FullSoC          *int32          `json:"fullSoC,omitempty" validate:"omitempty"`
-	StateOfCharge    *int32          `json:"stateOfCharge,omitempty" validate:"omitempty"`
+	FullSoC          *int64          `json:"fullSoC,omitempty" validate:"omitempty"`
+	StateOfCharge    *int64          `json:"stateOfCharge,omitempty" validate:"omitempty"`
 }
 
 type DERChargingParametersType struct {
@@ -110,7 +110,7 @@ type EVAbsolutePriceScheduleType struct {
 
 type EVAbsolutePriceScheduleEntryType struct {
 	CustomData  *CustomDataType   `json:"customData,omitempty" validate:"omitempty"`
-	Duration    int32             `json:"duration" validate:"required"`
+	Duration    int64             `json:"duration" validate:"required"`
 	EVPriceRule []EVPriceRuleType `json:"evPriceRule" validate:"required"`
 }
 
@@ -128,7 +128,7 @@ type EVPowerScheduleType struct {
 
 type EVPowerScheduleEntryType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Duration   int32           `json:"duration" validate:"required"`
+	Duration   int64           `json:"duration" validate:"required"`
 	Power      types.Decimal   `json:"power" validate:"required"`
 }
 
@@ -157,7 +157,7 @@ type V2XChargingParametersType struct {
 	MinDischargePower_L2  *types.Decimal  `json:"minDischargePower_L2,omitempty" validate:"omitempty"`
 	MinDischargePower_L3  *types.Decimal  `json:"minDischargePower_L3,omitempty" validate:"omitempty"`
 	MinVoltage            *types.Decimal  `json:"minVoltage,omitempty" validate:"omitempty"`
-	TargetSoC             *int32          `json:"targetSoC,omitempty" validate:"omitempty"`
+	TargetSoC             *int64          `json:"targetSoC,omitempty" validate:"omitempty"`
 }
 
 type NotifyEVChargingNeedsResponse struct {

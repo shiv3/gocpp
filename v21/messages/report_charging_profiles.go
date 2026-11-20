@@ -6,8 +6,8 @@ type ReportChargingProfilesRequest struct {
 	ChargingLimitSource string                `json:"chargingLimitSource" validate:"required,max=20"`
 	ChargingProfile     []ChargingProfileType `json:"chargingProfile" validate:"required"`
 	CustomData          *CustomDataType       `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID              int32                 `json:"evseId" validate:"required"`
-	RequestID           int32                 `json:"requestId" validate:"required"`
+	EVSEID              int64                 `json:"evseId" validate:"required"`
+	RequestID           int64                 `json:"requestId" validate:"required"`
 	Tbc                 *bool                 `json:"tbc,omitempty" validate:"omitempty"`
 }
 

@@ -26,7 +26,7 @@ func testAPN201f() *messages.APNType {
 		Apn:                     "internet.t-mobile",
 		ApnUserName:             strPtr201f("user1"),
 		ApnPassword:             strPtr201f("deadc0de"),
-		SimPin:                  int32Ptr201f(1234),
+		SimPin:                  int64Ptr201f(1234),
 		PreferredNetwork:        strPtr201f("26201"),
 		UseOnlyPreferredNetwork: boolPtr201f(true),
 		ApnAuthentication:       "AUTO",
@@ -607,7 +607,7 @@ func TestSetNetworkProfile201_RequestValidation(t *testing.T) {
 			Name: "invalid apn.simPin below minimum",
 			Message: testSetNetworkProfileRequest201f(func() messages.NetworkConnectionProfileType {
 				data := testNetworkConnectionProfile201f()
-				data.Apn.SimPin = int32Ptr201f(-1)
+				data.Apn.SimPin = int64Ptr201f(-1)
 				return data
 			}()),
 			Valid: false,
