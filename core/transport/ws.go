@@ -23,8 +23,9 @@ type WS interface {
 type StatusCode int
 
 const (
-	StatusNormalClosure StatusCode = 1000
-	StatusGoingAway     StatusCode = 1001
-	StatusProtocolError StatusCode = 1002
-	StatusInternalError StatusCode = 1011
+	StatusNormalClosure   StatusCode = 1000
+	StatusGoingAway       StatusCode = 1001
+	StatusProtocolError   StatusCode = 1002
+	StatusPolicyViolation StatusCode = 1008
+	StatusInternalError   StatusCode = 1011
 )

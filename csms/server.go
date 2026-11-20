@@ -261,8 +261,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		conns = append(conns, c)
 	}
 	s.mu.RUnlock()
+	// Each Close may wait out a close handshake with an unresponsive peer, so
+	// close in parallel rather than one after another.
 	for _, c := range conns {
-		_ = c.inner.Close(nil)
+		go func() { _ = c.inner.Close(nil) }()
 	}
 
 	ticker := time.NewTicker(20 * time.Millisecond)

@@ -32,11 +32,11 @@ type Conn struct {
 	sem     *semaphore.Weighted
 	outSem  *semaphore.Weighted
 
-	ctx     context.Context
-	cancel  context.CancelCauseFunc
-	closeWS func()
-	done    chan struct{}
-	wg      sync.WaitGroup
+	ctx         context.Context
+	cancel      context.CancelCauseFunc
+	closeWSOnce sync.Once
+	done        chan struct{}
+	wg          sync.WaitGroup
 
 	// Async outbound call machinery (DoCallAsync). asyncWG tracks the worker and
 	// any concurrent async goroutines; asyncClosed (under asyncMu) gates new ones
@@ -84,7 +84,6 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		done:     make(chan struct{}),
 		cfg:      cfg,
 	}
-	c.closeWS = sync.OnceFunc(func() { _ = ws.Close(transport.StatusNormalClosure, "closed") })
 	return c
 }
 
@@ -138,12 +137,37 @@ func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 	return cloned
 }
 
+// replacedCloseReason is the WebSocket close reason sent to a connection that
+// was superseded by a newer one with the same id.
+const replacedCloseReason = "replaced by a new connection with the same ID"
+
+// closeWS closes the WebSocket with a close frame. The first call decides the
+// code; later calls are no-ops.
+func (c *Conn) closeWS(code transport.StatusCode, reason string) {
+	c.closeWSOnce.Do(func() { _ = c.ws.Close(code, reason) })
+}
+
+// closer waits for teardown and then closes the socket gracefully. The reader
+// and writer deliberately do not abort the socket on cancellation (the websocket
+// library drops the TCP connection without a close frame when an in-flight
+// operation's ctx is cancelled), so this goroutine is what tells the peer why.
+func (c *Conn) closer() {
+	defer c.wg.Done()
+	<-c.ctx.Done()
+	if errors.Is(context.Cause(c.ctx), ocppj.ErrConnReplaced) {
+		c.closeWS(transport.StatusPolicyViolation, replacedCloseReason)
+		return
+	}
+	c.closeWS(transport.StatusNormalClosure, "closed")
+}
+
 // Start launches the connection goroutines bound to parent.
 func (c *Conn) Start(parent context.Context) {
 	c.ctx, c.cancel = context.WithCancelCause(parent)
 	c.cfg.Metrics.ConnectionOpened()
 
-	c.wg.Add(3)
+	c.wg.Add(4)
+	go c.closer()
 	go c.reader()
 	go c.writer()
 	go c.dispatch()
@@ -156,6 +180,18 @@ func (c *Conn) Start(parent context.Context) {
 	}()
 }
 
+// Abort cancels the connection with cause without waiting for teardown. The
+// socket is then closed in the background with a close frame matching cause
+// (see closer); call Close afterwards to wait for completion.
+func (c *Conn) Abort(cause error) {
+	if cause == nil {
+		cause = ocppj.ErrConnClosed
+	}
+	if c.cancel != nil {
+		c.cancel(cause)
+	}
+}
+
 // Close tears down the connection. Safe to call multiple times.
 func (c *Conn) Close(reason error) error {
 	if reason == nil {
@@ -165,7 +201,7 @@ func (c *Conn) Close(reason error) error {
 		c.cancel(reason)
 	}
 	<-c.done
-	c.closeWS()
+	c.closeWS(transport.StatusNormalClosure, "closed")
 	c.pending.failAll(context.Cause(c.ctx))
 	// Stop accepting new async calls, then wait for the worker + any in-flight
 	// async goroutines to drain (their DoCalls have already failed via ctx/pending).
@@ -180,7 +216,10 @@ func (c *Conn) Close(reason error) error {
 func (c *Conn) reader() {
 	defer c.wg.Done()
 	for {
-		msg, err := c.ws.Read(c.ctx)
+		// Read with a ctx that survives cancellation: cancelling an in-flight read
+		// makes the websocket library drop the TCP connection without a close
+		// frame. The closer goroutine closes the socket, which ends this read.
+		msg, err := c.ws.Read(context.WithoutCancel(c.ctx))
 		if err != nil {
 			c.cancel(fmt.Errorf("read: %w", err))
 			return
@@ -232,7 +271,8 @@ func (c *Conn) writer() {
 		case <-c.ctx.Done():
 			return
 		case ob := <-c.out:
-			wctx, cancel := context.WithTimeout(c.ctx, c.cfg.WriteTimeout)
+			// Not cancelled with the connection, for the same reason as the reader.
+			wctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), c.cfg.WriteTimeout)
 			err := c.ws.Write(wctx, ob.payload)
 			cancel()
 			ob.sentCh <- err // 1-buffered

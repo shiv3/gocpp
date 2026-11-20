@@ -17,8 +17,11 @@ func (e *ProtocolError) Error() string {
 }
 
 var (
-	ErrConnClosed       = errors.New("ocpp: connection closed")
-	ErrConnDropped      = errors.New("ocpp: connection dropped")
+	ErrConnClosed  = errors.New("ocpp: connection closed")
+	ErrConnDropped = errors.New("ocpp: connection dropped")
+	// ErrConnReplaced is the close cause of a connection that was superseded by a
+	// newer connection with the same charge point id.
+	ErrConnReplaced     = errors.New("ocpp: connection replaced by a newer connection with the same id")
 	ErrNotConnected     = errors.New("ocpp: not connected")
 	ErrAlreadyConnected = errors.New("ocpp: already connected")
 
