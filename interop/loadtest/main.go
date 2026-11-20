@@ -41,6 +41,7 @@ type config struct {
 	HBJitter, Mute, TxFrac                                  float64
 	Flappers, Dups, Restarts, Connectors, MinAvailMB        int
 	Attach                                                  bool
+	GCTrace                                                 bool
 	Hot                                                     int
 	HotShare                                                float64
 }
@@ -132,7 +133,13 @@ func main() {
 	flag.IntVar(&c.Hot, "hot", 0, "number of hot mute chargers that receive most CSMS calls (0 = uniform)")
 	flag.Float64Var(&c.HotShare, "hot-share", 0.9, "share of CSMS calls aimed at the hot set")
 	flag.BoolVar(&c.Attach, "attach", false, "do not spawn the server")
+	flag.BoolVar(&c.GCTrace, "gctrace", false, "start the server with GODEBUG=gctrace=1 (needed for the in-mark share in report.py)")
+	knee := flag.Bool("knee", false, "preset: -steps 4000:50:150s:160,4000:50:150s:320 (about 30k then 60k requests/s; use with -gctrace)")
 	flag.Parse()
+	if *knee {
+		steps = "4000:50:150s:160,4000:50:150s:320"
+		c.GCTrace = true
+	}
 	var err error
 	if c.Steps, err = parseSteps(steps); err != nil || c.Out == "" || (c.ServerBin == "" && !c.Attach) {
 		log.Fatalf("usage: -server-bin B -out DIR [-steps ...]: %v", err)

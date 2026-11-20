@@ -31,3 +31,16 @@ The harness then saves a goroutine dump from the server's pprof endpoint to
 The parity servers take `-lite` (keep no event history, counters only, see
 `/control/count`) and `-pprof ADDR` for this harness. Raw CSV/logs are
 git-ignored; `summary.json` and `report.md` are committed.
+
+## High-rate runs (allocation, GC, scheduler)
+
+Both parity servers expose `GET /control/runtime` (runtime/metrics: heap allocs,
+GC cycles, GC assist/total CPU, heap objects, stacks, scheduler-latency histogram).
+The sampler turns it into timeline columns `alloc_mb_s`, `alloc_kb_req` (heap
+allocation per completed charger request), `gc_cycles_s`, `gc_cpu_cores`,
+`gc_assist_cores`, `sched_p99_ms`, `heap_obj_mb`, `stacks_mb` (-1 when unavailable).
+`-gctrace` starts the server with `GODEBUG=gctrace=1`; `report.py` then prints the
+GC mark-phase share of wall time per step ("High-rate columns"). `-knee` is the
+preset `-steps 4000:50:150s:160,4000:50:150s:320` (about 30k, then 60k requests/s)
+with `-gctrace`. Pin server and generator to disjoint cores, for example
+`-taskset 14-16 -server-procs 3` for the server and `taskset -c 17-19` for the harness.

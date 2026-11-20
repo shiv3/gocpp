@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"runtime/metrics"
 	"strings"
 	"time"
 )
@@ -86,6 +87,8 @@ func (c *control) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/control/count":
 		cnt, n := c.rec.Counts()
 		writeJSON(w, 200, obj{"ok": true, "connected": n, "counts": cnt})
+	case "/control/runtime":
+		writeJSON(w, 200, runtimeSnapshot())
 	case "/control/connections":
 		writeJSON(w, 200, c.rec.Connections())
 	case "/control/events":
@@ -207,4 +210,54 @@ func (c *control) disconnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, obj{"ok": true})
+}
+
+// runtimeSample names the runtime/metrics the load-test harness samples. The
+// JSON key is what the harness and report.py read.
+var runtimeSample = []struct{ key, name string }{
+	{"alloc_bytes", "/gc/heap/allocs:bytes"},
+	{"gc_cycles", "/gc/cycles/total:gc-cycles"},
+	{"gc_assist_cpu_s", "/cpu/classes/gc/mark/assist:cpu-seconds"},
+	{"gc_total_cpu_s", "/cpu/classes/gc/total:cpu-seconds"},
+	{"heap_objects_bytes", "/memory/classes/heap/objects:bytes"},
+	{"heap_stacks_bytes", "/memory/classes/heap/stacks:bytes"},
+}
+
+// runtimeSnapshot reads runtime/metrics: cumulative counters (the harness takes
+// deltas between samples), gauges, and the cumulative scheduler-latency
+// histogram (bucket boundaries in seconds plus counts) from which the harness
+// derives a per-interval p99.
+func runtimeSnapshot() obj {
+	samples := make([]metrics.Sample, 0, len(runtimeSample)+1)
+	for _, m := range runtimeSample {
+		samples = append(samples, metrics.Sample{Name: m.name})
+	}
+	samples = append(samples, metrics.Sample{Name: "/sched/latencies:seconds"})
+	metrics.Read(samples)
+	out := obj{"ok": true}
+	for i, m := range runtimeSample {
+		switch v := samples[i].Value; v.Kind() {
+		case metrics.KindUint64:
+			out[m.key] = v.Uint64()
+		case metrics.KindFloat64:
+			out[m.key] = v.Float64()
+		}
+	}
+	if v := samples[len(samples)-1].Value; v.Kind() == metrics.KindFloat64Histogram {
+		h := v.Float64Histogram()
+		// The first and last boundaries may be +-Inf, which JSON cannot carry.
+		b := make([]float64, len(h.Buckets))
+		for i, x := range h.Buckets {
+			switch {
+			case x > 1e9:
+				x = 1e9
+			case x < -1e9:
+				x = -1e9
+			}
+			b[i] = x
+		}
+		out["sched_buckets"] = b
+		out["sched_counts"] = h.Counts
+	}
+	return out
 }

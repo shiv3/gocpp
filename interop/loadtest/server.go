@@ -69,6 +69,10 @@ func (s *server) start() error {
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("GOMAXPROCS=%d", c.ServerProcs))
+	if c.GCTrace {
+		// report.py derives the GC mark-phase time share from these lines.
+		cmd.Env = append(cmd.Env, "GODEBUG=gctrace=1")
+	}
 	cmd.Stdout, cmd.Stderr = s.logf, s.logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	fmt.Fprintf(s.logf, "=== start %s %v at %s\n", bin, args, time.Now().Format(time.RFC3339))

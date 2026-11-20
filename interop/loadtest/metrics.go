@@ -56,13 +56,14 @@ type metrics struct {
 	prevT         time.Time
 	prevTicks     uint64
 	prevGenTicks  uint64
+	prevRT        *runtimeSnap
 }
 
 func newMetrics(g *gen) *metrics {
 	m := &metrics{g: g, wins: map[int]*window{}, connErrs: map[string]int{}, reqErrTotal: map[string]int{}}
 	f, _ := os.Create(filepath.Join(g.cfg.Out, "timeline.csv"))
 	m.tl = f
-	fmt.Fprintln(f, "t_s,step,target_started,chargers_up,server_connected,health_ms,server_pid,srv_rss_mb,srv_cpu_cores,srv_threads,srv_fds,srv_goroutines,gen_rss_mb,gen_goroutines,mem_avail_mb,canary_max_rtt_ms,canary_up,calls_inflight,msgs_per_s,restart_active,gen_cpu_cores")
+	fmt.Fprintln(f, "t_s,step,target_started,chargers_up,server_connected,health_ms,server_pid,srv_rss_mb,srv_cpu_cores,srv_threads,srv_fds,srv_goroutines,gen_rss_mb,gen_goroutines,mem_avail_mb,canary_max_rtt_ms,canary_up,calls_inflight,msgs_per_s,restart_active,gen_cpu_cores,alloc_mb_s,alloc_kb_req,gc_cycles_s,gc_cpu_cores,gc_assist_cores,sched_p99_ms,heap_obj_mb,stacks_mb")
 	return m
 }
 
@@ -307,9 +308,10 @@ func (g *gen) sampler() {
 		mps := float64(msgs-m.prevMsgs) / g.cfg.Sample.Seconds()
 		m.prevMsgs = msgs
 		sgo := g.srvGoroutines()
-		fmt.Fprintf(m.tl, "%.0f,%d,%d,%d,%d,%.1f,%d,%.1f,%.2f,%d,%d,%d,%.1f,%d,%.0f,%.1f,%d,%d,%.0f,%v,%.2f\n",
+		rt := m.runtimeDelta(g, now, msgs)
+		fmt.Fprintf(m.tl, "%.0f,%d,%d,%d,%d,%.1f,%d,%.1f,%.2f,%d,%d,%d,%.1f,%d,%.0f,%.1f,%d,%d,%.0f,%v,%.2f,%s\n",
 			g.since(), g.curStep.Load(), g.started.Load(), g.up.Load(), g.srvConnected(), hms, pid, rss, cores, thr, fds, sgo,
-			genRSS, runtime.NumGoroutine(), avail, float64(cmax)/1e6, cup, m.inflight.Load(), mps, m.restartActive.Load(), genCores)
+			genRSS, runtime.NumGoroutine(), avail, float64(cmax)/1e6, cup, m.inflight.Load(), mps, m.restartActive.Load(), genCores, rt)
 		if avail >= 0 && avail < float64(g.cfg.MinAvailMB) {
 			g.abort(fmt.Sprintf("system MemAvailable %.0f MB below %d MB", avail, g.cfg.MinAvailMB))
 		}
@@ -512,4 +514,97 @@ func (g *gen) finish() {
 		g.srv.stop(15) // SIGTERM
 	}
 	m.tl.Close()
+}
+
+// ---------------------------------------------------------------- server runtime metrics
+
+// runtimeSnap is one /control/runtime reading.
+type runtimeSnap struct {
+	t                            time.Time
+	msgs                         int64
+	alloc, cycles, assist, gcCPU float64
+	heapObj, stacks              float64
+	schedBuckets                 []float64
+	schedCounts                  []uint64
+}
+
+func (g *gen) srvRuntime() *runtimeSnap {
+	cl := &http.Client{Timeout: 3 * time.Second}
+	resp, err := cl.Get("http://" + g.cfg.Addr + "/control/runtime")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Alloc        float64   `json:"alloc_bytes"`
+		Cycles       float64   `json:"gc_cycles"`
+		Assist       float64   `json:"gc_assist_cpu_s"`
+		GCCPU        float64   `json:"gc_total_cpu_s"`
+		HeapObj      float64   `json:"heap_objects_bytes"`
+		Stacks       float64   `json:"heap_stacks_bytes"`
+		SchedBuckets []float64 `json:"sched_buckets"`
+		SchedCounts  []uint64  `json:"sched_counts"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&v) != nil || v.Alloc == 0 {
+		return nil // older server without the endpoint, or an error body
+	}
+	return &runtimeSnap{t: time.Now(), alloc: v.Alloc, cycles: v.Cycles, assist: v.Assist, gcCPU: v.GCCPU,
+		heapObj: v.HeapObj, stacks: v.Stacks, schedBuckets: v.SchedBuckets, schedCounts: v.SchedCounts}
+}
+
+// schedP99 returns the p99 (bucket upper bound, ms) of the scheduler latencies
+// observed between two cumulative histograms; -1 when there are none.
+func schedP99(prev, cur *runtimeSnap) float64 {
+	if len(cur.schedCounts) == 0 || len(cur.schedCounts) != len(prev.schedCounts) {
+		return -1
+	}
+	var total uint64
+	d := make([]uint64, len(cur.schedCounts))
+	for i := range d {
+		if cur.schedCounts[i] >= prev.schedCounts[i] {
+			d[i] = cur.schedCounts[i] - prev.schedCounts[i]
+		}
+		total += d[i]
+	}
+	if total == 0 {
+		return -1
+	}
+	want := uint64(float64(total)*0.99 + 0.999)
+	var acc uint64
+	for i, n := range d {
+		acc += n
+		if acc >= want {
+			return cur.schedBuckets[i+1] * 1000
+		}
+	}
+	return -1
+}
+
+// runtimeDelta samples the server and returns the new CSV columns
+// (alloc_mb_s,alloc_kb_req,gc_cycles_s,gc_cpu_cores,gc_assist_cores,sched_p99_ms,
+// heap_obj_mb,stacks_mb); -1 everywhere when unavailable (first sample, server
+// restarted, no endpoint).
+func (m *metrics) runtimeDelta(g *gen, now time.Time, msgs int64) string {
+	const none = "-1,-1,-1,-1,-1,-1,-1,-1"
+	cur := g.srvRuntime()
+	prev := m.prevRT
+	m.prevRT = nil
+	if cur == nil {
+		return none
+	}
+	cur.msgs = msgs
+	m.prevRT = cur
+	if prev == nil || cur.alloc < prev.alloc { // restarted server: counters reset
+		return none
+	}
+	dt := cur.t.Sub(prev.t).Seconds()
+	dm := float64(cur.msgs - prev.msgs)
+	kbReq := -1.0
+	if dm > 0 {
+		kbReq = (cur.alloc - prev.alloc) / 1024 / dm
+	}
+	return fmt.Sprintf("%.1f,%.2f,%.2f,%.3f,%.3f,%.3f,%.1f,%.1f",
+		(cur.alloc-prev.alloc)/1048576/dt, kbReq, (cur.cycles-prev.cycles)/dt,
+		(cur.gcCPU-prev.gcCPU)/dt, (cur.assist-prev.assist)/dt, schedP99(prev, cur),
+		cur.heapObj/1048576, cur.stacks/1048576)
 }

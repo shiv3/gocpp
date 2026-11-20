@@ -38,6 +38,42 @@ def lat_row(name, s):
         out.append(f"{fmt(p,'P50')} / {fmt(p,'P95')} / {fmt(p,'P99')}")
     return out
 
+GC_RE = re.compile(r"gc \d+ @([\d.]+)s \d+%: [\d.]+\+([\d.]+)\+[\d.]+ ms clock, [\d.]+\+([\d.]+)/([\d.]+)/([\d.]+)\+[\d.]+ ms cpu, (\d+)->(\d+)->(\d+) MB.* (\d+) MB stacks")
+
+def gc_lines(d):
+    """GODEBUG=gctrace=1 lines of server.log: [t, mark_wall_ms, assist_ms, bg_ms, idle_ms, heap_before, heap_after, live, stacks]."""
+    p = os.path.join(d, "server.log")
+    out = []
+    if os.path.exists(p):
+        for line in open(p, errors="replace"):
+            m = GC_RE.match(line)
+            if m: out.append([float(x) for x in m.groups()])
+    return out
+
+def highrate_rows(d, s):
+    """One row per step: allocation, GC and scheduler columns for the second half of the step."""
+    rows = s["_rows"]
+    if not rows or "alloc_kb_req" not in rows[0]: return []
+    gcs = gc_lines(d)
+    out = []
+    for i, sp in enumerate(s["config"]["Steps"]):
+        pts = [r for r in rows if r["step"] == i and r["srv_rss_mb"] > 0 and r["alloc_kb_req"] >= 0]
+        tail = pts[len(pts) // 2:]
+        if len(tail) < 2: continue
+        t0, t1 = tail[0]["t_s"], tail[-1]["t_s"]
+        g = [x for x in gcs if t0 <= x[0] <= t1]
+        mark = f"{100 * sum(x[1] for x in g) / max(t1 - t0, 1) / 1000:.1f}%" if len(g) > 1 else "-"
+        lat = s["latency_by_step_steady_ms"].get(str(i), {}).get("Heartbeat")
+        m = lambda k: st.mean(r[k] for r in tail)
+        out.append([sp["N"], sp.get("Speed", 1), f"{m('msgs_per_s'):.0f}", f"{m('srv_cpu_cores'):.2f}", f"{max(r['srv_rss_mb'] for r in pts):.0f}",
+            f"{m('alloc_mb_s'):.0f}", f"{m('alloc_kb_req'):.2f}", f"{m('gc_cycles_s'):.2f}", mark, f"{m('gc_cpu_cores'):.2f}", f"{m('gc_assist_cores'):.2f}",
+            f"{max(r['sched_p99_ms'] for r in tail):.2f}", f"{m('heap_obj_mb'):.0f} + {m('stacks_mb'):.0f}",
+            f"{fmt(lat,'P50')} / {fmt(lat,'P95')} / {fmt(lat,'P99')}"])
+    return out
+
+HIGHRATE_HEAD = ["N", "msg speed x", "msgs/s", "CPU cores", "max RSS MB", "alloc MB/s", "alloc KB/req", "GC cycles/s", "in-mark share (gctrace)",
+                 "GC CPU cores", "GC assist cores", "sched latency p99 ms (max window)", "heap objects + stacks MB", "Heartbeat p50 / p95 / p99 ms"]
+
 def table(head, rows):
     o = ["| " + " | ".join(head) + " |", "|" + "|".join("---" for _ in head) + "|"]
     o += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
@@ -167,6 +203,15 @@ def main():
         out.append(table(["N", "call rate/s", "msg speed x", "median up (2nd half)", "max RSS MB", "mean CPU cores", "max goroutines", "canary max RTT ms", "health max ms", "Heartbeat p50/p99 ms", "MeterValues p50/p99 ms", "msgs/s"], tr))
         out.append(f"\nFreeze: {'YES' if v['freezes'] else 'no'}; aborted: {v['aborted']} {v['abort_reason']}; calls: {v['calls']}\n")
         out.append("```\nup         " + spark([r["chargers_up"] for r in rows]) + "\nrss MB     " + spark([r["srv_rss_mb"] for r in rows]) + "\ncpu cores  " + spark([r["srv_cpu_cores"] for r in rows]) + "\ncanary ms  " + spark([r["canary_max_rtt_ms"] for r in rows]) + "\n```\n")
+    hr = []
+    for d in sorted(glob.glob(os.path.join(root, "*"))):
+        if not os.path.exists(os.path.join(d, "summary.json")): continue
+        for r in highrate_rows(d, analyse(d)): hr.append([os.path.basename(d)] + r)
+    if hr:
+        out.append("## High-rate columns (second half of every step)\n")
+        out.append("alloc KB/req divides the server's heap allocation by completed charger requests (each is one CALL and one CALLRESULT). The in-mark share is the wall time inside GC mark phases from `GODEBUG=gctrace=1` (run the harness with `-gctrace` or `-knee`). Scheduler latency is the p99 bucket of `/sched/latencies:seconds` per 5 s sample.\n")
+        out.append(table(["run"] + HIGHRATE_HEAD, hr))
+        out.append("")
     open(os.path.join(root, "report.md"), "w").write("\n".join(out))
 
 def statistics_mean(x): return st.mean(x) if x else 0
