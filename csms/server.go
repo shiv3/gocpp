@@ -25,6 +25,9 @@ type Server struct {
 
 	mu    sync.RWMutex
 	conns map[string]*Conn
+	// reserved counts upgrades admitted under WithMaxConnections that have not
+	// yet registered; guarded by mu together with conns.
+	reserved int
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -148,6 +151,14 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		dcfg.PingInterval, dcfg.PongWait, dcfg.ReadTimeout = t.PingInterval, t.PongWait, t.ReadTimeout
 	}
 
+	res, release, ok := s.reserveSlot(cpID)
+	if !ok {
+		w.Header().Set("Retry-After", "30")
+		http.Error(w, "too many connections", http.StatusServiceUnavailable)
+		return
+	}
+	defer release()
+
 	var dconn *dispatcher.Conn
 	acceptOpts := &websocket.AcceptOptions{
 		Subprotocols:   s.cfg.subProtocols,
@@ -176,7 +187,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws := transport.NewCoderWS(c)
+	ws := transport.NewCoderWSWithLimit(c, dcfg.MaxMessageSize)
 
 	// Per-connection dispatcher config: version-bound metrics + tracer.
 	dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
@@ -199,7 +210,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// publishing it in the registry, so a concurrent Get + Call cannot observe
 	// a half-initialized Conn (data race on c.ctx).
 	dconn.Start(s.ctx)
-	if !s.addConn(cpID, conn) {
+	if !s.addConn(cpID, conn, res) {
 		_ = dconn.Close(nil)
 		return
 	}
@@ -247,7 +258,48 @@ func (s *Server) hasConn(id string) bool {
 	return ok
 }
 
-func (s *Server) addConn(id string, c *Conn) bool {
+// slotReservation is a connection slot held between admission and registration.
+// held is guarded by Server.mu.
+type slotReservation struct{ held bool }
+
+// reserveSlot admits an upgrade under WithMaxConnections. The check and the
+// reservation happen under one lock, so concurrent upgrades cannot overshoot. An
+// id that is already connected is a replacement and takes no slot: the old
+// connection leaves as the new one arrives. addConn consumes the reservation
+// under the same lock that registers the connection; release returns it if the
+// upgrade fails earlier, and is idempotent.
+func (s *Server) reserveSlot(id string) (res *slotReservation, release func(), ok bool) {
+	res = &slotReservation{}
+	release = func() {
+		s.mu.Lock()
+		if res.held {
+			res.held = false
+			s.reserved--
+		}
+		s.mu.Unlock()
+	}
+	if s.cfg.maxConnections <= 0 {
+		return res, release, true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, replacing := s.conns[id]; replacing {
+		return res, release, true
+	}
+	if len(s.conns)+s.reserved >= s.cfg.maxConnections {
+		return nil, nil, false
+	}
+	s.reserved++
+	res.held = true
+	return res, release, true
+}
+
+// addConn registers c. res is the admission reservation (nil in unit tests).
+func (s *Server) addConn(id string, c *Conn, res ...*slotReservation) bool {
+	var held *slotReservation
+	if len(res) > 0 {
+		held = res[0]
+	}
 	policy := s.cfg.duplicatePolicy
 	if policy != DuplicatePolicyRejectNew && policy != DuplicatePolicyCloseExisting {
 		policy = DuplicatePolicyCloseExisting
@@ -258,7 +310,19 @@ func (s *Server) addConn(id string, c *Conn) bool {
 		s.mu.Unlock()
 		return false
 	}
+	hasSlot := held != nil && held.held
+	if !ok && s.cfg.maxConnections > 0 && held != nil && !hasSlot &&
+		len(s.conns)+s.reserved >= s.cfg.maxConnections {
+		// Admitted as a replacement, but the old connection is gone and the
+		// server filled up meanwhile.
+		s.mu.Unlock()
+		return false
+	}
 	s.conns[id] = c
+	if hasSlot {
+		held.held = false
+		s.reserved--
+	}
 	s.mu.Unlock()
 	if ok {
 		// The application must see the old connection go away before the new one
@@ -320,6 +384,18 @@ func (s *Server) Get(id string) (*Conn, bool) {
 	defer s.mu.RUnlock()
 	c, ok := s.conns[id]
 	return c, ok
+}
+
+// Connections returns the ids of the charge points currently connected to this
+// instance, in no particular order.
+func (s *Server) Connections() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ids := make([]string, 0, len(s.conns))
+	for id := range s.conns {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // Disconnect closes the connection of charge point id from the server side; see

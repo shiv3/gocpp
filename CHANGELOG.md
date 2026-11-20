@@ -26,6 +26,17 @@ All notable changes to this project are documented here. The format is based on
 - Lenient mode now reads a `null` payload as `{}` (`[2,"id","Heartbeat",null]`)
   and coerces a non-string 1.6 `DataTransfer.data` (object, array, number,
   boolean) to its compact JSON text, as ocpp-go accepts both.
+- `csms.WithMaxConnections(n)`: cap simultaneous connections; over the cap the
+  upgrade is refused with HTTP 503 + `Retry-After` before the handshake. The
+  check-and-reserve is atomic and a same-id reconnect (replacement) is never refused.
+- `WithMaxMessageSize(n)` for csms and cp: configurable inbound message size limit
+  (default 1 MiB, as before); `transport.NewCoderWSWithLimit`.
+- `csms.Conn.Stats()` / `LastActivity()` / `Done()` (`ConnectedAt`, `LastReceivedAt`
+  including ping/pong, `LastSentAt`, `PendingCalls`, `QueuedCalls`),
+  `csms.Server.Connections()`, `csms.ConnFromContext(ctx)` and `cp.ConnDone(ctx)`.
+- `WithHandlerTimeout(d)` for csms and cp (see Changed).
+- `WithConcurrentCalls()` for csms and cp: explicit, non-compliant opt-out of call
+  serialization.
 - Frame observer: `csms.WithFrameObserver` / `cp.WithFrameObserver`
   (`dispatcher.Config.FrameObserver`) receive an `observability.FrameEvent`
   (cp id, version, direction, raw bytes, type, message id, action, time, write
@@ -110,6 +121,8 @@ All notable changes to this project are documented here. The format is based on
   header — i.e. non-browser charge points — are always allowed).
 
 ### Fixed
+- `csms.CallAsync` / `CallRawAsync` on a local connection called themselves instead of
+  the dispatcher (unbounded recursion); they now dispatch the call.
 - `cp.Client.Run` no longer stops reconnecting after 15 minutes: the backoff
   library's default `MaxElapsedTime` made `Run` return once a long-lived charge
   point had been up that long and then dropped. It now retries until ctx is
@@ -178,6 +191,25 @@ All notable changes to this project are documented here. The format is based on
   (FormatViolation on 2.x, id echoed) and an empty id is dropped. Lenient and
   tolerant modes accept both and log a warning. Restore the old behaviour with
   `WithMessageIDPolicy(dispatcher.MessageIDAccept)`.
+- **Behaviour change: outbound CALLs are serialized by default** (OCPP 1.6J §4.1.1,
+  2.0.1 Part 4 §4.1: no new CALL while one is outstanding), on csms and cp, all
+  versions. Calls wait in one bounded per-connection FIFO shared by `Call` and
+  `CallAsync` (`WithAsyncQueueSize`, default 64; beyond it `ocppj.ErrQueueFull`);
+  `CallTimeout` starts when the CALL is written; a call cancelled while queued is
+  never sent; replies and SEND bypass the queue; connections do not affect each
+  other. Migration: code that relied on several in-flight Calls per charger now sees
+  them sent one after another (latency adds up; a slow charger delays its own later
+  calls, not other chargers'). `WithSerializedCalls()` is now the default and a
+  no-op; `WithConcurrentCalls()` restores the old behaviour. `dispatcher.DefaultConfig()`
+  now sets `SerializeOutboundCalls: true`.
+- **Behaviour change: inbound handler contexts are no longer cancelled when the
+  connection drops.** They keep the connection context's values but are cancelled only
+  by a per-handler deadline (`WithHandlerTimeout`, default 60s, `0` = none). A handler
+  that exceeds it and returns the context error is answered with `InternalError`; the
+  CALLRESULT of a handler finishing after a disconnect is dropped silently. Migration:
+  handlers that relied on `ctx.Done()` to notice a disconnect must select on
+  `csms.ConnFromContext(ctx)` -> `Done()` (CSMS) or `cp.ConnDone(ctx)` (charge point).
+
 - `memory.NewConnectionRegistry` now stores global routes (`PutGlobal` /
   `LookupGlobal` / `DeleteGlobal` were no-ops). Code relying on `LookupGlobal`
   always reporting not-found must not rely on it any more.

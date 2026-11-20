@@ -58,6 +58,41 @@ func (r *HandlerRegistry) LookupSend(action string) (SendHandlerFunc, bool) {
 	return h, ok
 }
 
+type connCtxKey struct{}
+
+// ConnContext returns the connection lifecycle context of the connection that
+// is serving the handler ctx: it is cancelled when the connection goes away,
+// unlike ctx itself. ok is false outside a handler context.
+func ConnContext(ctx context.Context) (context.Context, bool) {
+	cc, ok := ctx.Value(connCtxKey{}).(context.Context)
+	return cc, ok
+}
+
+// ConnFromContext returns the connection serving the handler ctx.
+func ConnFromContext(ctx context.Context) (*Conn, bool) {
+	c, ok := ctx.Value(connKey{}).(*Conn)
+	return c, ok
+}
+
+type connKey struct{}
+
+// handlerContext builds the context handed to inbound handlers. It keeps the
+// connection context's values (cp id, tracing, ...) but not its cancellation: a
+// dropped connection must not abort work such as a database write the handler is
+// halfway through (the CALLRESULT is then dropped, the work is not lost).
+// Handlers that want to stop on disconnect watch ConnContext(ctx).Done(). The
+// per-handler deadline (HandlerTimeout) is what bounds a stuck handler.
+func (c *Conn) handlerContext(msgID string) (context.Context, context.CancelFunc) {
+	ctx := context.WithoutCancel(c.ctx)
+	ctx = context.WithValue(ctx, connCtxKey{}, c.ctx)
+	ctx = context.WithValue(ctx, connKey{}, c)
+	ctx = ocppj.ContextWithMessageID(ctx, msgID)
+	if c.cfg.HandlerTimeout > 0 {
+		return context.WithTimeout(ctx, c.cfg.HandlerTimeout)
+	}
+	return ctx, func() {}
+}
+
 func (c *Conn) runHandler(frame ocppj.Frame) {
 	defer c.sem.Release(1)
 	if c.cfg.GlobalHandlerLimiter != nil {
@@ -119,7 +154,9 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			return
 		}
 	}
-	hctx, span := c.cfg.Tracer.Start(ocppj.ContextWithMessageID(c.ctx, frame.MsgID), "ocpp.handler")
+	baseCtx, cancelHandler := c.handlerContext(frame.MsgID)
+	defer cancelHandler()
+	hctx, span := c.cfg.Tracer.Start(baseCtx, "ocpp.handler")
 	span.SetAttributes(
 		attribute.String("ocpp.action", frame.Action),
 		attribute.String("ocpp.cp_id", c.id),
@@ -129,6 +166,14 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	span.End()
 	if err != nil {
 		status = "error"
+		if hctx.Err() != nil && errors.Is(err, context.DeadlineExceeded) {
+			status = "timeout"
+			c.cfg.Logger.WarnContext(c.ctx, "handler exceeded its timeout",
+				"cp_id", c.id, "action", frame.Action, "timeout", c.cfg.HandlerTimeout)
+			c.sendCallError(frame.MsgID, ocppj.NewCallError(
+				ocppj.ErrorCodeInternalError, "handler timed out", nil))
+			return
+		}
 		ce := mapHandlerError(err)
 		var de *decodeError
 		if errors.As(err, &de) {
@@ -209,7 +254,9 @@ func (c *Conn) runSendHandler(frame ocppj.Frame) {
 			return
 		}
 	}
-	if err := h(ocppj.ContextWithMessageID(c.ctx, frame.MsgID), c, reqPayload); err != nil {
+	hctx, cancelHandler := c.handlerContext(frame.MsgID)
+	defer cancelHandler()
+	if err := h(hctx, c, reqPayload); err != nil {
 		c.cfg.Logger.WarnContext(c.ctx, "SEND handler error",
 			"cp_id", c.id, "action", frame.Action, "err", err)
 	}

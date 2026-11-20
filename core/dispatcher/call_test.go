@@ -253,10 +253,12 @@ func TestDoCall_SerializeOutboundCallsEnabled(t *testing.T) {
 	require.NoError(t, <-secondErr)
 }
 
-func TestDoCall_SerializeOutboundCallsDisabled(t *testing.T) {
+func TestDoCall_ConcurrentWhenSerializationOff(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")
-	c := NewConn("CP_1", f, DefaultConfig(), NewHandlerRegistry())
+	cfg := DefaultConfig()
+	cfg.SerializeOutboundCalls = false // non-compliant opt-out: calls run concurrently
+	c := NewConn("CP_1", f, cfg, NewHandlerRegistry())
 	c.Start(context.Background())
 	defer func() { _ = c.Close(nil) }()
 

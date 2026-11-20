@@ -113,3 +113,18 @@ func testSchemaRegistry(t *testing.T, action string) *schema.Registry {
 	require.NoError(t, err)
 	return reg
 }
+
+func TestRuntimeSafetyOptions(t *testing.T) {
+	def := NewServer()
+	require.True(t, def.cfg.dispatcher.SerializeOutboundCalls, "serialized by default")
+	require.Equal(t, 60*time.Second, def.cfg.dispatcher.HandlerTimeout)
+	require.EqualValues(t, 1<<20, def.cfg.dispatcher.MaxMessageSize)
+	require.Zero(t, def.cfg.maxConnections)
+
+	s := NewServer(WithConcurrentCalls(), WithHandlerTimeout(0), WithMaxMessageSize(4096), WithMaxConnections(7))
+	require.False(t, s.cfg.dispatcher.SerializeOutboundCalls)
+	require.Zero(t, s.cfg.dispatcher.HandlerTimeout)
+	require.EqualValues(t, 4096, s.cfg.dispatcher.MaxMessageSize)
+	require.Equal(t, 7, s.cfg.maxConnections)
+	require.Zero(t, NewServer(WithMaxConnections(-3)).cfg.maxConnections)
+}

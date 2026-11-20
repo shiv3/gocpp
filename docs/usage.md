@@ -114,14 +114,16 @@ CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithC
 (+ `WithLenientTimeLocation`), `WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
 `WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
-`WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
+`WithSerializedCalls` / `WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`,
+`WithMaxConnections`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
 `WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`, `WithInstanceID` (see [clustering](clustering.md)).
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`
 (+ `WithLenientTimeLocation`), `WithBasicAuth`,
 `WithHTTPHeader`, `WithTLSConfig`, `WithHeartbeatInterval`,
-`WithWebSocketPingInterval` + `WithWebSocketPongWait`, `WithSerializedCalls`,
+`WithWebSocketPingInterval` + `WithWebSocketPongWait`, `WithSerializedCalls` /
+`WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`,
 `WithOfflineQueue` + `WithRetryInFlightCalls`, `WithOnConnect`, `WithOnDisconnect`,
 `WithOnReconnect`.
 
@@ -159,13 +161,36 @@ v16client.NewCSMS(conn).GetConfigurationAsync(ctx, req, func(resp v16msg.GetConf
 })
 ```
 
-- Without `WithSerializedCalls`, each `CallAsync` runs concurrently and the callback fires
-  as responses arrive.
-- With `WithSerializedCalls`, calls are queued on a per-connection FIFO and sent one
-  outstanding at a time; callbacks fire in submission order. Bound the queue with
-  `WithAsyncQueueSize(n)` (default 64) — enqueuing beyond it returns `ocppj.ErrQueueFull`.
+- By default, calls are queued on a per-connection FIFO (shared with synchronous `Call`)
+  and sent one outstanding at a time; callbacks fire in submission order. Bound the queue
+  with `WithAsyncQueueSize(n)` (default 64) — waiting beyond it returns `ocppj.ErrQueueFull`.
+  A call whose ctx is cancelled while queued is dropped without being sent.
+- With `WithConcurrentCalls()` (non-compliant, see below) each `CallAsync` runs
+  concurrently and the callback fires as responses arrive.
 - `CallAsync` returns an error synchronously only if the call can't be accepted (not
   connected, nil callback, or queue full); per-call failures go to the callback.
+
+### Handler context and limits
+
+- **Handler context.** An inbound handler's `ctx` keeps the connection's values (charge
+  point id, message id via `ocppj.MessageIDFromContext`, tracing) but is *not* cancelled
+  when the connection drops, so work in flight (e.g. persisting a StopTransaction) can
+  finish; the CALLRESULT of a handler that finishes after the disconnect is dropped
+  silently. Instead each handler is bounded by `WithHandlerTimeout(d)` (default 60s,
+  0 = none): the ctx carries that deadline and a handler that returns the deadline error
+  is answered with an `InternalError` CALLERROR. The deadline is cooperative — honor `ctx`.
+  A handler that wants to stop on disconnect selects on `csms.ConnFromContext(ctx)` →
+  `conn.Done()` (CSMS) or `cp.ConnDone(ctx)` (charge point).
+- `WithMaxMessageSize(n)` (CSMS and CP) sets the largest inbound WebSocket message, default
+  1 MiB; a larger message closes the connection with 1009.
+- `csms.WithMaxConnections(n)` caps simultaneous charge points (0 = unlimited). Over the
+  cap the upgrade is refused with HTTP 503 + `Retry-After` before the handshake. A charge
+  point reconnecting under an id that is already connected replaces its old connection and
+  is not refused.
+- `Conn.Stats()` returns `ConnectedAt`, `LastReceivedAt` (any inbound frame, ping and pong
+  included), `LastSentAt` (last write), `PendingCalls` (awaiting a response) and
+  `QueuedCalls` (waiting for the call slot); `Conn.LastActivity()` is `LastReceivedAt`.
+  `srv.Connections()` lists the connected ids; `srv.Get(id)` returns the `*Conn`.
 
 ### Client auth & TLS
 
@@ -182,8 +207,14 @@ v16client.NewCSMS(conn).GetConfigurationAsync(ctx, req, func(resp v16msg.GetConf
   transport-level ping/pong on either side; a missed pong tears the connection down so dead
   peers are detected. Disabled when interval is 0.
 - `cp.WithHeartbeatInterval(d)` makes the charge point auto-send OCPP `Heartbeat` every `d`.
-- `WithSerializedCalls()` enforces at most one outstanding outbound CALL per connection
-  (some charge points cannot handle concurrent requests). Off by default.
+- Outbound CALLs are serialized per connection by default: OCPP 1.6J §4.1.1 and 2.0.1
+  Part 4 forbid sending a new CALL while one is outstanding. Calls wait in one bounded
+  FIFO per connection (sync `Call` and `CallAsync` share it; replies to inbound requests
+  and 2.1 SEND bypass it; connections never block each other). `CallTimeout` starts when
+  the CALL is written, so an unresponsive charger frees the slot after one timeout; the
+  wait in the queue is bounded by the caller's ctx. `WithSerializedCalls()` is kept as an
+  explicit no-op; `WithConcurrentCalls()` opts out (non-compliant, many chargers drop
+  or mis-handle concurrent requests).
 - `cp.WithOfflineQueue(capacity)` queues CP-originated calls while disconnected and flushes
   them FIFO on reconnect; a full queue returns `ocppj.ErrQueueFull`. Disabled (fail-fast with
   `ocppj.ErrNotConnected`) when capacity ≤ 0. By default a CALL that was already in flight

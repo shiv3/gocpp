@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
@@ -115,4 +116,43 @@ func (c *Conn) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// ConnStats is a snapshot of a connection's activity; see Conn.Stats.
+type ConnStats = dispatcher.ConnStats
+
+// Stats returns a snapshot of the connection's activity: when it connected, the
+// last inbound activity (any frame, WebSocket ping and pong included), the last
+// outbound write, and the number of CALLs awaiting a response. It is the zero
+// value for a remote handle (see Remote).
+func (c *Conn) Stats() ConnStats {
+	if c.inner == nil {
+		return ConnStats{}
+	}
+	return c.inner.Stats()
+}
+
+// LastActivity returns the time of the last inbound activity on the connection
+// (a data frame, WebSocket ping or pong), for idle detection beyond the built-in
+// read timeout. The zero time for a remote handle.
+func (c *Conn) LastActivity() time.Time { return c.Stats().LastReceivedAt }
+
+// Done returns a channel closed when the connection ends (a remote handle's is
+// never closed). Handler contexts are not cancelled by a disconnect; a handler
+// that should stop when the charge point goes away selects on it.
+func (c *Conn) Done() <-chan struct{} {
+	if c.inner == nil || c.inner.Context() == nil {
+		return nil
+	}
+	return c.inner.Context().Done()
+}
+
+// ConnFromContext returns the connection serving an inbound handler from the
+// handler's ctx. ok is false outside a handler context.
+func ConnFromContext(ctx context.Context) (*Conn, bool) {
+	dc, ok := dispatcher.ConnFromContext(ctx)
+	if !ok {
+		return nil, false
+	}
+	return &Conn{inner: dc}, true
 }

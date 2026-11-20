@@ -10,10 +10,24 @@ type coderWS struct {
 	c *websocket.Conn
 }
 
-// NewCoderWS wraps a coder/websocket connection as a WS.
+// DefaultMaxMessageSize is the default inbound message size limit (1 MiB).
+const DefaultMaxMessageSize int64 = 1 << 20
+
+// NewCoderWS wraps a coder/websocket connection as a WS with the default
+// inbound message size limit.
 func NewCoderWS(c *websocket.Conn) WS {
-	// OCPP-J messages can be large (firmware, certificates). Lift the read limit.
-	c.SetReadLimit(1 << 20) // 1 MiB
+	return NewCoderWSWithLimit(c, DefaultMaxMessageSize)
+}
+
+// NewCoderWSWithLimit is NewCoderWS with an explicit inbound message size limit
+// in bytes; a message larger than that closes the connection with status 1009.
+// limit <= 0 selects DefaultMaxMessageSize. OCPP-J messages can be large
+// (firmware, certificates), so the default is above coder's own 32 KiB.
+func NewCoderWSWithLimit(c *websocket.Conn, limit int64) WS {
+	if limit <= 0 {
+		limit = DefaultMaxMessageSize
+	}
+	c.SetReadLimit(limit)
 	return &coderWS{c: c}
 }
 

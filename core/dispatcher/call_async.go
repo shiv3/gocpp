@@ -21,14 +21,17 @@ type asyncJob struct {
 
 // DoCallAsync sends an OCPP Call without blocking and delivers the result to cb.
 //
-// When SerializeOutboundCalls is set, calls are appended to a per-connection FIFO
-// queue and sent one at a time by a single worker goroutine (at most one
-// outstanding request); cb fires in submission order. Otherwise each call runs in
-// its own goroutine and cb fires as responses arrive.
+// When SerializeOutboundCalls is set (the default), calls wait in the same
+// per-connection FIFO as synchronous DoCall (at most one outstanding request);
+// cb fires in submission order, after the call's slot has been released, so a
+// callback may itself issue calls. Otherwise each call runs in its own goroutine
+// and cb fires as responses arrive.
 //
 // It returns an error synchronously only if the call could not be accepted: a nil
 // callback, a connection that is closed/not started, or (serialized mode) a full
-// queue (ocppj.ErrQueueFull). Per-call failures are delivered to cb, not returned.
+// queue (ocppj.ErrQueueFull). Per-call failures, including ctx being cancelled
+// while the call still waits in the queue (it is then never sent), are
+// delivered to cb, not returned.
 func DoCallAsync(ctx context.Context, c *Conn, action string, payload []byte, cb AsyncCallback) error {
 	if cb == nil {
 		return errors.New("dispatcher: nil async callback")
@@ -64,58 +67,75 @@ func (c *Conn) asyncTrackStart() bool {
 }
 
 func (c *Conn) enqueueAsync(job asyncJob) error {
-	c.asyncMu.Lock()
-	if c.asyncClosed {
-		c.asyncMu.Unlock()
+	if !c.asyncTrackStart() {
 		return ocppj.ErrConnClosed
 	}
-	if c.asyncQ == nil {
-		size := c.cfg.AsyncQueueSize
-		if size <= 0 {
-			size = 64
-		}
-		c.asyncQ = make(chan asyncJob, size)
-		c.asyncWG.Add(1)
-		go c.asyncWorker()
-	}
-	q := c.asyncQ
-	c.asyncMu.Unlock()
-
-	select {
-	case q <- job:
-		return nil
-	case <-c.ctx.Done():
+	s := &c.slot
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		c.asyncWG.Done()
 		return context.Cause(c.ctx)
-	default:
+	}
+	immediate := !s.busy && len(s.q) == 0
+	if !immediate && len(s.q) >= c.queueLimit() {
+		s.mu.Unlock()
+		c.asyncWG.Done()
 		return ocppj.ErrQueueFull
 	}
+	prev, own := s.cbTail, make(chan struct{})
+	s.cbTail = own
+	if immediate {
+		s.busy = true
+		s.mu.Unlock()
+		go c.runAsyncJob(job, prev, own)
+		return nil
+	}
+	w := &slotWaiter{
+		start: func() { c.runAsyncJob(job, prev, own) },
+		fail: func(err error) {
+			c.finishAsync(job, prev, own, nil, err)
+		},
+	}
+	s.q = append(s.q, w)
+	s.mu.Unlock()
+
+	if job.ctx.Done() != nil {
+		stop := context.AfterFunc(job.ctx, func() {
+			s.mu.Lock()
+			removed := !w.granted && s.remove(w)
+			s.mu.Unlock()
+			if removed {
+				w.fail(job.ctx.Err())
+			}
+		})
+		s.mu.Lock()
+		if w.granted {
+			s.mu.Unlock()
+			stop()
+		} else {
+			w.stop = stop
+			s.mu.Unlock()
+		}
+	}
+	return nil
 }
 
-func (c *Conn) asyncWorker() {
+// runAsyncJob runs a job that owns the call slot.
+func (c *Conn) runAsyncJob(job asyncJob, prev, own chan struct{}) {
+	resp, err := c.call(job.ctx, job.action, job.payload, false)
+	c.slot.release()
+	c.finishAsync(job, prev, own, resp, err)
+}
+
+// finishAsync delivers the callback after the previous job's callback.
+func (c *Conn) finishAsync(job asyncJob, prev, own chan struct{}, resp []byte, err error) {
 	defer c.asyncWG.Done()
-	for {
-		select {
-		case <-c.ctx.Done():
-			c.drainAsync()
-			return
-		case job := <-c.asyncQ:
-			resp, err := DoCall(job.ctx, c, job.action, job.payload)
-			c.runAsyncCallback(job.action, job.cb, resp, err)
-		}
+	defer close(own)
+	if prev != nil {
+		<-prev
 	}
-}
-
-// drainAsync fails any still-queued jobs once the connection is closing.
-func (c *Conn) drainAsync() {
-	cause := context.Cause(c.ctx)
-	for {
-		select {
-		case job := <-c.asyncQ:
-			c.runAsyncCallback(job.action, job.cb, nil, cause)
-		default:
-			return
-		}
-	}
+	c.runAsyncCallback(job.action, job.cb, resp, err)
 }
 
 // runAsyncCallback invokes an application callback and recovers from a panic.
