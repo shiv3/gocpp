@@ -94,9 +94,14 @@ func (c *Conn) handlerContext(msgID string) (context.Context, context.CancelFunc
 }
 
 func (c *Conn) runHandler(frame ocppj.Frame) {
-	defer c.sem.Release(1)
-	if c.cfg.GlobalHandlerLimiter != nil {
-		defer c.cfg.GlobalHandlerLimiter.Release(1)
+	if lim := c.cfg.GlobalHandlerLimiter; lim != nil {
+		// Wait for a server-wide slot on this (handler) goroutine, never on the
+		// reader: it parks at most MaxConcurrentHandlers goroutines per
+		// connection and backs up through the inbound queue.
+		if err := lim.Acquire(c.ctx, 1); err != nil {
+			return // connection ended while waiting; the frame is dropped
+		}
+		defer lim.Release(1)
 	}
 
 	// SEND (type 6) is unconfirmed: dispatch and never reply.

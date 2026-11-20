@@ -118,13 +118,15 @@ type Config struct {
 	// deeper buffer only holds frames from concurrent senders; keep it small.
 	// Values below 1 are treated as 0 (unbuffered).
 	OutboundQueueSize int
-	// InboundQueueSize is the depth of the channel between the reader and the
-	// handler dispatcher. It matters only while all MaxConcurrentHandlers slots
-	// are busy: further inbound CALLs wait here, and once it is full the reader
-	// stops reading, so CALLRESULTs on that connection are not resolved either.
-	// Raise it if handlers on one connection routinely block for long (for
-	// example while waiting for a reply to a Call they sent back to the charge
-	// point). Values below 1 are treated as 0 (unbuffered).
+	// InboundQueueSize bounds the per-connection queue of inbound CALL/SEND
+	// frames that wait for a free handler slot (or for ReleaseInbound). It matters
+	// only while all MaxConcurrentHandlers slots are busy: further inbound CALLs
+	// wait here, and once it is full the reader stops reading, so CALLRESULTs on
+	// that connection are not resolved either. Raise it if handlers on one
+	// connection routinely block for long (for example while waiting for a reply
+	// to a Call they sent back to the charge point). The queue is allocated only
+	// while frames wait. Values below 1 mean nothing is queued: the reader waits
+	// for a free slot.
 	InboundQueueSize int
 	// AsyncQueueSize bounds the per-connection queue of calls waiting for the
 	// outbound slot (sync and async) when SerializeOutboundCalls is set; waiting

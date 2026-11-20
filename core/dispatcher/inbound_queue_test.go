@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -35,9 +36,8 @@ func TestInboundQueue_ResultsResolveWhileHandlersSaturated(t *testing.T) {
 	f.Inject([]byte(`[2,"s2","Slow",{}]`))
 	<-started
 	<-started // both slots busy
-	// One frame waits in the dispatcher and one in the queue: not yet full.
+	// One frame waits in the queue: not yet full (size 2).
 	f.Inject([]byte(`[2,"s3","Slow",{}]`))
-	f.Inject([]byte(`[2,"s4","Slow",{}]`))
 
 	ch := make(chan rawResult, 1)
 	c.pending.add("m1", &pendingCall{msgID: "m1", respCh: ch})
@@ -51,20 +51,46 @@ func TestInboundQueue_ResultsResolveWhileHandlersSaturated(t *testing.T) {
 
 	// Queued CALLs are not dropped: they run once slots free up.
 	close(release)
-	for i := 0; i < 2; i++ {
-		select {
-		case <-started:
-		case <-time.After(2 * time.Second):
-			t.Fatal("queued CALL never ran")
-		}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("queued CALL never ran")
 	}
 }
 
-// A zero or negative queue size must not panic (unbuffered channel).
-func TestInboundQueue_NonPositiveSizeIsUnbuffered(t *testing.T) {
+// A zero or negative queue size must not panic: nothing is ever queued, and the
+// reader waits for a free handler slot instead.
+func TestInboundQueue_NonPositiveSizeNeverQueues(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
 	cfg := DefaultConfig()
-	cfg.InboundQueueSize, cfg.OutboundQueueSize = -1, 0
-	c := NewConn("CP_1", transport.NewFakeWS("ocpp1.6"), cfg, NewHandlerRegistry())
-	require.Equal(t, 0, cap(c.in))
-	require.Equal(t, 0, cap(c.out))
+	cfg.InboundQueueSize = -1
+	cfg.MaxConcurrentHandlers = 1
+	started := make(chan string, 4)
+	release := make(chan struct{})
+	reg := NewHandlerRegistry()
+	reg.Register("Slow", func(ctx context.Context, c *Conn, p []byte) ([]byte, error) {
+		id, _ := ocppj.MessageIDFromContext(ctx)
+		started <- id
+		<-release
+		return []byte(`{}`), nil
+	})
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	f.Inject([]byte(`[2,"s1","Slow",{}]`))
+	require.Equal(t, "s1", <-started)
+	f.Inject([]byte(`[2,"s2","Slow",{}]`)) // reader now waits for a slot
+	select {
+	case id := <-started:
+		t.Fatalf("%s started above MaxConcurrentHandlers", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+	c.inMu.Lock()
+	require.Empty(t, c.inQ)
+	c.inMu.Unlock()
+	release <- struct{}{}
+	require.Equal(t, "s2", <-started)
+	close(release)
 }

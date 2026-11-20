@@ -229,6 +229,19 @@ All notable changes to this project are documented here. The format is based on
   connection holds 3 goroutines instead of 4 and no longer keeps the upgrade
   `*http.Request` alive (about 8 KB of stack and 3.5 KB of heap less per
   connection). Callback order is unchanged.
+- No dispatcher goroutine per connection: the reader starts a handler goroutine
+  itself when a slot is free, and parks further CALLs/SENDs in a bounded queue
+  (`InboundQueueSize`, allocated only while frames wait) that finishing handlers
+  drain. A server-side connection holds 2 goroutines (reader, writer) and about
+  4 KB less stack and 0.8 KB less heap. Ordering and limits are unchanged
+  (arrival-order starts, at most `MaxConcurrentHandlers` per connection,
+  `HoldInbound` holds CALL/SEND only), and the reader still only stops when the
+  queue is full. Differences: a handler waiting for `GlobalHandlerLimiter` now
+  waits on its own goroutine (at most `MaxConcurrentHandlers` of them per
+  connection) rather than on the dispatcher, and the queue now holds
+  `InboundQueueSize` frames in total (it used to hold that many plus one in the
+  dispatcher). `Conn` gains no public API; the reader body is split out as
+  `handleMessage`, the entry point a push-style transport can drive.
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.

@@ -47,7 +47,7 @@ func TestHandlerCtx_NotCancelledByDisconnect(t *testing.T) {
 	close(release)
 	require.NoError(t, <-result, "handler ctx must survive the disconnect")
 	require.Equal(t, "s1", seenID)
-	require.Eventually(t, func() bool { return c.sem.TryAcquire(c.cfg.MaxConcurrentHandlers) }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return handlersIdle(c) }, time.Second, time.Millisecond)
 	select {
 	case m := <-f.Sent():
 		t.Fatalf("result after disconnect must be dropped, got %s", m)
@@ -125,4 +125,12 @@ func TestHandlerCtx_ConnFromContextAndDefaultDeadline(t *testing.T) {
 	require.True(t, s.ok)
 	require.Same(t, c, s.conn)
 	require.True(t, s.dl, "default handler timeout applies")
+}
+
+// handlersIdle reports that no handler goroutine of c is running and nothing is
+// queued.
+func handlersIdle(c *Conn) bool {
+	c.inMu.Lock()
+	defer c.inMu.Unlock()
+	return c.running == 0 && len(c.inQ) == 0
 }
