@@ -47,7 +47,7 @@ func TestHandlerCtx_NotCancelledByDisconnect(t *testing.T) {
 	close(release)
 	require.NoError(t, <-result, "handler ctx must survive the disconnect")
 	require.Equal(t, "s1", seenID)
-	require.Eventually(t, func() bool { return c.sem.TryAcquire(int64(c.cfg.MaxConcurrentHandlers)) }, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return c.sem.TryAcquire(c.cfg.MaxConcurrentHandlers) }, time.Second, time.Millisecond)
 	select {
 	case m := <-f.Sent():
 		t.Fatalf("result after disconnect must be dropped, got %s", m)
