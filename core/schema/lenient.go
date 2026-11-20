@@ -35,10 +35,16 @@ var softKeywords = map[string]bool{
 // ValidateLenient validates raw and applies the lenient policy:
 //   - err != nil means a hard-class violation is present; the caller rejects.
 //   - err == nil means out is the payload (enum case normalized to canonical
-//     values when an enum drifted only by case), and soft lists the soft
-//     violation keywords seen. out == raw when no enum rewrite was needed,
-//     preserving byte order and numeric formatting.
+//     values, non-RFC3339 date-times and wrong-typed primitives repaired), and
+//     soft lists the soft violation keywords seen ("format" and "type" for
+//     coercions). out == raw when nothing was rewritten, preserving byte order
+//     and numeric formatting.
 func (v *Validator) ValidateLenient(raw []byte) (out []byte, soft []string, err error) {
+	return v.ValidateLenientWith(raw, LenientOptions{})
+}
+
+// ValidateLenientWith is ValidateLenient with explicit options.
+func (v *Validator) ValidateLenientWith(raw []byte, opts LenientOptions) (out []byte, soft []string, err error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var inst any
@@ -46,9 +52,20 @@ func (v *Validator) ValidateLenient(raw []byte) (out []byte, soft []string, err 
 		return nil, nil, fmt.Errorf("decode instance: %w", err)
 	}
 
+	// Schema-guided coercion runs first so that the validation below (and the
+	// typed decode after it) sees the repaired values.
+	coerced := coerceInstance(v.doc, inst, opts, &soft)
+
 	verr := v.schema.Validate(inst)
 	if verr == nil {
-		return raw, nil, nil
+		if !coerced {
+			return raw, soft, nil
+		}
+		out, mErr := json.Marshal(inst)
+		if mErr != nil {
+			return nil, nil, fmt.Errorf("re-marshal lenient payload: %w", mErr)
+		}
+		return out, soft, nil
 	}
 	var ve *jsonschema.ValidationError
 	if !errors.As(verr, &ve) {
@@ -82,7 +99,7 @@ func (v *Validator) ValidateLenient(raw []byte) (out []byte, soft []string, err 
 		return nil, nil, hardViolation(v.name, verr, leaf)
 	}
 
-	if len(rewrites) == 0 {
+	if len(rewrites) == 0 && !coerced {
 		return raw, soft, nil
 	}
 	for _, rw := range rewrites {

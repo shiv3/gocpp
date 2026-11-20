@@ -14,6 +14,8 @@ import (
 )
 
 type clientConfig struct {
+	// lenientTimeLocation interprets zone-less date-times in lenient mode (nil = UTC).
+	lenientTimeLocation  *time.Location
 	dispatcher           dispatcher.Config
 	subProtocols         []string
 	compressionMode      transport.CompressionMode
@@ -236,4 +238,11 @@ func WithLenientSchema() Option {
 // panics are recovered. See observability.SlogFrameObserver.
 func WithFrameObserver(fn observability.FrameObserver) Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.FrameObserver = fn })
+}
+
+// WithLenientTimeLocation sets the location in which lenient mode interprets
+// date-times that carry no zone designator ("2023-10-19T15:28:07"). Default UTC.
+// It has no effect outside lenient mode.
+func WithLenientTimeLocation(loc *time.Location) Option {
+	return optionFunc(func(c *clientConfig) { c.lenientTimeLocation = loc })
 }
