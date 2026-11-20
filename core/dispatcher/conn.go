@@ -13,10 +13,9 @@ import (
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
-	"golang.org/x/sync/semaphore"
 )
 
-// Conn is one OCPP connection. It owns reader, writer, and dispatcher goroutines
+// Conn is one OCPP connection. It owns reader, reader and writer goroutines
 // whose lifetime is bound to ctx. All teardown flows from cancel(cause).
 type Conn struct {
 	id      string
@@ -25,11 +24,9 @@ type Conn struct {
 	meta    ConnMetadata
 
 	out chan outbound
-	in  chan ocppj.Frame
 
 	pending *pendingStore
 	reg     *HandlerRegistry
-	sem     *semaphore.Weighted
 	slot    callSlot
 
 	ctx         context.Context
@@ -45,10 +42,13 @@ type Conn struct {
 	bgClosed bool
 	bgWG     sync.WaitGroup
 
-	// inboundGate, when non-nil, holds inbound CALL/SEND dispatch until closed
-	// (see HoldInbound). The reader keeps reading and resolving CALLRESULTs.
-	inboundGate     chan struct{}
-	inboundGateOnce sync.Once
+	// Inbound CALL/SEND scheduling, see inbound.go.
+	inMu        sync.Mutex
+	inQ         []ocppj.Frame
+	running     int
+	gateOpen    bool
+	inSpace     chan struct{}
+	maxHandlers int
 
 	// Activity timestamps (UnixNano) behind Stats.
 	connectedAt atomic.Int64
@@ -90,17 +90,17 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 		m = cloneConnMetadata(meta[0])
 	}
 	c := &Conn{
-		id:      id,
-		ws:      ws,
-		version: subprotocolToVersion(ws.Subprotocol()),
-		meta:    m,
-		out:     make(chan outbound, max(cfg.OutboundQueueSize, 0)),
-		in:      make(chan ocppj.Frame, max(cfg.InboundQueueSize, 0)),
-		pending: newPendingStore(),
-		reg:     reg,
-		sem:     semaphore.NewWeighted(cfg.MaxConcurrentHandlers),
-		done:    make(chan struct{}),
-		cfg:     cfg,
+		id:          id,
+		ws:          ws,
+		version:     subprotocolToVersion(ws.Subprotocol()),
+		meta:        m,
+		out:         make(chan outbound, max(cfg.OutboundQueueSize, 0)),
+		pending:     newPendingStore(),
+		reg:         reg,
+		gateOpen:    true,
+		maxHandlers: int(max(cfg.MaxConcurrentHandlers, 1)),
+		done:        make(chan struct{}),
+		cfg:         cfg,
 	}
 	return c
 }
@@ -108,15 +108,29 @@ func NewConn(id string, ws transport.WS, cfg Config, reg *HandlerRegistry, meta 
 // HoldInbound makes the connection withhold inbound CALL and SEND handling until
 // ReleaseInbound is called. Call it before Start. The server side uses it so no
 // handler runs before the connection is registered and its connect callback has
-// returned. Connections that never call it dispatch immediately.
-func (c *Conn) HoldInbound() { c.inboundGate = make(chan struct{}) }
+// returned. Connections that never call it dispatch immediately. Held frames wait
+// in the inbound queue (InboundQueueSize); the reader keeps resolving
+// CALLRESULTs until that queue is full.
+func (c *Conn) HoldInbound() {
+	c.inMu.Lock()
+	c.gateOpen = false
+	c.inMu.Unlock()
+}
 
-// ReleaseInbound opens the gate armed by HoldInbound. Idempotent; a no-op when
-// the gate was never armed. Teardown also unblocks the waiting dispatcher.
+// ReleaseInbound opens the gate armed by HoldInbound and starts handling frames
+// that arrived meanwhile. Idempotent; a no-op when the gate was never armed.
 func (c *Conn) ReleaseInbound() {
-	if c.inboundGate != nil {
-		c.inboundGateOnce.Do(func() { close(c.inboundGate) })
+	c.inMu.Lock()
+	defer c.inMu.Unlock()
+	if c.gateOpen {
+		return
 	}
+	c.gateOpen = true
+	for len(c.inQ) > 0 && c.running < c.maxHandlers && c.ctx.Err() == nil {
+		c.running++
+		go c.handlerLoop(c.popLocked())
+	}
+	c.wakeReaderLocked()
 }
 
 // ID returns the charge point identifier.
@@ -241,7 +255,7 @@ func (c *Conn) closeForCause() {
 // teardown runs exactly once, on its own goroutine, when the connection context
 // is done (context.AfterFunc). It replaces a closer goroutine and a goroutine
 // that waited for the others, so a healthy connection holds only its reader,
-// writer and dispatcher.
+// writer.
 //
 // Order: close the socket first (that is what unblocks the reader and tells the
 // peer why), then fail queued async calls (user callbacks run here, and a slow
@@ -252,6 +266,7 @@ func (c *Conn) teardown() {
 	c.stopTimers()
 	c.closeForCause()
 	c.failQueued()
+	c.dropInbound()
 	c.wg.Wait()
 	close(c.done)
 }
@@ -293,10 +308,9 @@ func (c *Conn) Start(parent context.Context) {
 	c.monoBase = time.Now()
 	c.cfg.Metrics.ConnectionOpened()
 
-	c.wg.Add(3)
+	c.wg.Add(2)
 	go c.reader()
 	go c.writer()
-	go c.dispatch()
 	c.startWebSocketPing()
 	c.startReadWatchdog()
 
@@ -349,54 +363,64 @@ func (c *Conn) reader() {
 			c.cancel(fmt.Errorf("read: %w", err))
 			return
 		}
-		c.NoteActivity()
-		frame, err := ocppj.Parse(msg)
-		if err == nil && !c.supportsMessageType(frame.Type) {
-			// Parse is version-agnostic; types 5 and 6 are OCPP 2.1 only. Treat
-			// them as unknown on older links so they neither resolve a pending
-			// call nor reach a SEND handler.
-			frame, err = ocppj.Frame{}, &ocppj.UnknownMessageTypeError{MessageType: int(frame.Type), MsgID: frame.MsgID}
-		}
-		c.observeInbound(msg, frame, err)
-		if err != nil {
-			if errors.Is(err, ocppj.ErrIgnoredMessageType) {
-				c.cfg.Logger.DebugContext(c.ctx, "ignored unknown message type",
-					"cp_id", c.id, "err", err)
-				// OCPP 2.0.1 / 2.1 Part 4 §4.2.3: a message with a MessageTypeId the
-				// receiver does not support is answered with CALLERROR
-				// MessageTypeNotSupported. OCPP 1.6J defines no such code, so by
-				// default a 1.6 peer's unknown frame is dropped silently (ocpp-go
-				// answers it even on 1.6; an ErrorCodeMapper can do the same).
-				var ute *ocppj.UnknownMessageTypeError
-				if errors.As(err, &ute) && ute.MsgID != "" {
-					def := ocppj.NewCallError(ocppj.ErrorCodeMessageTypeNotSupported, ute.Error(), nil)
-					if wire, reply := c.mapBuiltinError(ErrorSourceUnknownMessageType, "", ute, def, c.version != ocppj.V16); reply {
-						c.trySendCallErrorWire(ute.MsgID, wire, def.Description)
-					}
-				}
-				continue
-			}
-			c.cfg.Logger.WarnContext(c.ctx, "ocpp parse error",
-				"cp_id", c.id, "err", err)
-			// A CALL with a readable message id but a bad shape is answered so the
-			// peer does not wait out its own timeout and retry.
-			var perr *ocppj.ProtocolError
-			if errors.As(err, &perr) && perr.MessageType == int(ocppj.Call) && perr.MsgID != "" {
-				// WireCode spells it per version (FormationViolation / FormatViolation).
-				def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, perr.Message, nil)
-				if wire, reply := c.mapBuiltinError(ErrorSourceMalformedFrame, "", perr, def, true); reply {
-					c.trySendCallErrorWire(perr.MsgID, wire, def.Description)
-				}
-			}
-			continue
-		}
-		if !c.checkMessageID(frame) {
-			continue
-		}
-		if !c.routeInbound(frame) {
+		if !c.handleMessage(msg) {
 			return
 		}
 	}
+}
+
+// handleMessage processes one inbound data frame: parse, observe, answer
+// protocol errors, resolve a pending call or hand a CALL/SEND to the handler
+// queue. It returns false when the connection context is done and the reader
+// must stop. It never runs a handler and never waits for one except when the
+// inbound queue is full (see enqueueInbound). A transport that pushes frames
+// instead of blocking in Read can drive the dispatcher by calling it.
+func (c *Conn) handleMessage(msg []byte) bool {
+	c.NoteActivity()
+	frame, err := ocppj.Parse(msg)
+	if err == nil && !c.supportsMessageType(frame.Type) {
+		// Parse is version-agnostic; types 5 and 6 are OCPP 2.1 only. Treat
+		// them as unknown on older links so they neither resolve a pending
+		// call nor reach a SEND handler.
+		frame, err = ocppj.Frame{}, &ocppj.UnknownMessageTypeError{MessageType: int(frame.Type), MsgID: frame.MsgID}
+	}
+	c.observeInbound(msg, frame, err)
+	if err != nil {
+		if errors.Is(err, ocppj.ErrIgnoredMessageType) {
+			c.cfg.Logger.DebugContext(c.ctx, "ignored unknown message type",
+				"cp_id", c.id, "err", err)
+			// OCPP 2.0.1 / 2.1 Part 4 §4.2.3: a message with a MessageTypeId the
+			// receiver does not support is answered with CALLERROR
+			// MessageTypeNotSupported. OCPP 1.6J defines no such code, so by
+			// default a 1.6 peer's unknown frame is dropped silently (ocpp-go
+			// answers it even on 1.6; an ErrorCodeMapper can do the same).
+			var ute *ocppj.UnknownMessageTypeError
+			if errors.As(err, &ute) && ute.MsgID != "" {
+				def := ocppj.NewCallError(ocppj.ErrorCodeMessageTypeNotSupported, ute.Error(), nil)
+				if wire, reply := c.mapBuiltinError(ErrorSourceUnknownMessageType, "", ute, def, c.version != ocppj.V16); reply {
+					c.trySendCallErrorWire(ute.MsgID, wire, def.Description)
+				}
+			}
+			return true
+		}
+		c.cfg.Logger.WarnContext(c.ctx, "ocpp parse error",
+			"cp_id", c.id, "err", err)
+		// A CALL with a readable message id but a bad shape is answered so the
+		// peer does not wait out its own timeout and retry.
+		var perr *ocppj.ProtocolError
+		if errors.As(err, &perr) && perr.MessageType == int(ocppj.Call) && perr.MsgID != "" {
+			// WireCode spells it per version (FormationViolation / FormatViolation).
+			def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, perr.Message, nil)
+			if wire, reply := c.mapBuiltinError(ErrorSourceMalformedFrame, "", perr, def, true); reply {
+				c.trySendCallErrorWire(perr.MsgID, wire, def.Description)
+			}
+		}
+		return true
+	}
+	if !c.checkMessageID(frame) {
+		return true
+	}
+	return c.routeInbound(frame)
 }
 
 // supportsMessageType reports whether the negotiated version defines the
@@ -422,11 +446,7 @@ func (c *Conn) routeInbound(frame ocppj.Frame) bool {
 		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, IsResultError: true}
 		c.pending.resolve(frame.MsgID, rawResult{err: ce})
 	case ocppj.Call, ocppj.Send:
-		select {
-		case c.in <- frame:
-		case <-c.ctx.Done():
-			return false
-		}
+		return c.enqueueInbound(frame)
 	}
 	return true
 }
@@ -451,34 +471,6 @@ func (c *Conn) writer() {
 				c.cancel(fmt.Errorf("write: %w", err))
 				return
 			}
-		}
-	}
-}
-
-func (c *Conn) dispatch() {
-	defer c.wg.Done()
-	if c.inboundGate != nil {
-		select {
-		case <-c.inboundGate:
-		case <-c.ctx.Done():
-			return
-		}
-	}
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case frame := <-c.in:
-			if err := c.sem.Acquire(c.ctx, 1); err != nil {
-				return
-			}
-			if c.cfg.GlobalHandlerLimiter != nil {
-				if err := c.cfg.GlobalHandlerLimiter.Acquire(c.ctx, 1); err != nil {
-					c.sem.Release(1)
-					return
-				}
-			}
-			go c.runHandler(frame)
 		}
 	}
 }

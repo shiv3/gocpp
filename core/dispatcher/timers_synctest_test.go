@@ -95,8 +95,8 @@ func TestPing_FailureCancelsAndSuccessRearms(t *testing.T) {
 	})
 }
 
-// Keepalive and teardown add no resident goroutines: only reader, writer and
-// dispatch exist per connection, with ping and watchdog on.
+// Keepalive and teardown add no resident goroutines: only reader and writer
+// exist per connection, with ping and watchdog on.
 func TestTimers_NoResidentGoroutines(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		synctest.Wait()
@@ -105,7 +105,7 @@ func TestTimers_NoResidentGoroutines(t *testing.T) {
 		c := NewConn("CP_1", transport.NewFakeWS("ocpp1.6"), cfg, NewHandlerRegistry())
 		c.Start(context.Background())
 		synctest.Wait()
-		require.Equal(t, 3, runtime.NumGoroutine()-base)
+		require.Equal(t, 2, runtime.NumGoroutine()-base)
 		_ = c.Close(nil)
 	})
 }
