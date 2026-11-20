@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -68,9 +69,13 @@ func dialRaw(addr, id string) (rawConn, error) {
 		buf = append(buf, tmp[:n]...)
 	}
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(buf)), nil)
-	if err != nil || resp.StatusCode != http.StatusSwitchingProtocols {
+	if err != nil {
 		_ = c.Close()
-		return rawConn{}, fmt.Errorf("handshake failed: %v %v", resp, err)
+		return rawConn{}, fmt.Errorf("handshake response: %w", err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		_ = c.Close()
+		return rawConn{}, fmt.Errorf("handshake failed: status %d", resp.StatusCode)
 	}
 	return rawConn{c}, nil
 }
@@ -84,27 +89,19 @@ func (c rawConn) heartbeat() error {
 	}
 	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var hdr [2]byte
-	if _, err := readFull(c, hdr[:]); err != nil {
+	if err := readFull(c, hdr[:]); err != nil {
 		return err
 	}
 	rest := make([]byte, int(hdr[1]&0x7f))
 	if hdr[1]&0x7f >= 126 {
 		return fmt.Errorf("unexpected long reply")
 	}
-	_, err := readFull(c, rest)
-	return err
+	return readFull(c, rest)
 }
 
-func readFull(c net.Conn, b []byte) (int, error) {
-	n := 0
-	for n < len(b) {
-		m, err := c.Read(b[n:])
-		n += m
-		if err != nil {
-			return n, err
-		}
-	}
-	return n, nil
+func readFull(c net.Conn, b []byte) error {
+	_, err := io.ReadFull(c, b)
+	return err
 }
 
 type memSnap struct {
