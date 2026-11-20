@@ -295,6 +295,13 @@ All notable changes to this project are documented here. The format is based on
   negotiated version instead of copying it for every connection (a server with
   `WithConnConfig` still builds one per connection); the pending-call table keeps
   its first entry inline and allocates a map only for a second concurrent call.
+- Socket buffers per connection shrink from net/http's 4 KB + 4 KB to 1 KB + 1 KB
+  (about 6 KB less heap per connection, 14.0 -> 8.2 KB), via a `Hijack` wrapper
+  around the ResponseWriter handed to the WebSocket library. New
+  `csms.WithIOBufferSizes(read, write)` changes it (0 keeps net/http's 4096 for
+  that side). Frames larger than the buffer bypass it; a frame over the write
+  buffer size costs one extra write syscall. Bytes the client sends in the same
+  segment as the handshake are preserved.
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.
