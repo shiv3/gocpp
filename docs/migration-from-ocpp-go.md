@@ -79,3 +79,23 @@ Replies that stay different on purpose, with or without the preset:
 | `WithMessageIDPolicy(p)` | `MessageIDAuto` (default: reject when strict, accept and log otherwise), `MessageIDAccept`, `MessageIDReject`, `MessageIDDrop`. |
 | `WithTimeEncoding(schema.TimeEncoding{UTC, Precision})` | Rewrites every `"format": "date-time"` field of every outbound CALL, CALLRESULT and SEND. `Precision` is `TimePrecisionAuto` (default), `Seconds`, `Millis`, `Micros` or `Nanos`; fixed width, fractions truncated, never rounded. Works through the schema registry (`WithSchemaRegistry`), on 1.6, 2.0.1 and 2.1, with no global state. |
 | `WithWebSocketPingInterval` / `WithWebSocketPongWait` / `WithWebSocketReadTimeout` | Existing keepalive knobs; `0` disables pings or the idle check. |
+
+## Verification
+
+The differential harness (`interop/parity` on the `test/ocppgo-parity` branch)
+replays 67 raw-frame, fault and connection cases (groups A, B and C) against both
+libraries. gocpp without the preset differed from ocpp-go in 24 of them; with
+`WithOCPPGoCompat()` 13 remain, all deliberate:
+
+- `A-status-connid-string`, `A-status-enum-case`, `A-authorize-idtag-21`,
+  `A-start-ts-space`, `A-start-ts-no-zone`, `A-meter-value-number`: lenient mode
+  accepts (and repairs) what ocpp-go rejects.
+- `A-start-ts-offset-frac`, `A-start-ts-nanos`: the wire is identical; only the
+  timestamp the handler records differs (gocpp keeps the offset and fraction).
+- `A-datatransfer-data-object`: both accept; a handler that echoes `data` back
+  sends it as a JSON string under gocpp (the 1.6 type) and as an object under
+  ocpp-go.
+- `B-datatransfer-panic`, `B-datatransfer-panic-raw`: gocpp recovers the panic.
+- `C-shutdown-then-reconnect`: gocpp refuses upgrades while shutting down.
+- `C-idle-silence-75s`: both close at 60 s; gocpp closes with a normal close frame
+  (1000), ocpp-go drops the TCP connection (1006).
