@@ -4,6 +4,7 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 
@@ -44,7 +45,40 @@ func (v *Validator) Validate(raw []byte) error {
 		return fmt.Errorf("decode instance: %w", err)
 	}
 	if err := v.schema.Validate(inst); err != nil {
-		return fmt.Errorf("schema %s: %w", v.name, err)
+		return newViolation(fmt.Errorf("schema %s: %w", v.name, err), err)
 	}
 	return nil
+}
+
+// ViolationError is a schema rejection that records the JSON-Schema keyword of
+// the first violation, so callers can pick the matching OCPP-J CALLERROR code.
+// Its message is the underlying validator message; errors.As still reaches the
+// validator's own error through Unwrap.
+type ViolationError struct {
+	// Keyword is the failing keyword of the first leaf violation ("required",
+	// "type", "enum", "maxLength", ...); empty when it could not be determined.
+	Keyword string
+	// AtRoot reports that the violation is on the payload itself rather than on
+	// one of its properties (for example a payload that is not a JSON object).
+	AtRoot bool
+	err    error
+}
+
+func (e *ViolationError) Error() string { return e.err.Error() }
+func (e *ViolationError) Unwrap() error { return e.err }
+
+// newViolation wraps wrapped in a ViolationError carrying the keyword of the
+// first leaf of verr (when verr is a validator error).
+func newViolation(wrapped, verr error) error {
+	ve := &ViolationError{err: wrapped}
+	var jve *jsonschema.ValidationError
+	if errors.As(verr, &jve) {
+		var leaves []*jsonschema.ValidationError
+		collectLeaves(jve, &leaves)
+		if len(leaves) > 0 {
+			ve.Keyword = keywordOf(leaves[0])
+			ve.AtRoot = len(leaves[0].InstanceLocation) == 0
+		}
+	}
+	return ve
 }

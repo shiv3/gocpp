@@ -16,7 +16,7 @@ func OnSend[Req any](s *Server, m ocppj.SendMessage[Req], h func(ctx context.Con
 	s.reg.RegisterSend(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) error {
 		var req Req
 		if err := codec.Unmarshal(payload, &req); err != nil {
-			return ocppj.WrapCallError(ocppj.ErrorCodeFormationViolation, err, nil)
+			return ocppj.WrapCallError(dispatcher.DecodeErrorCode(err), err, nil)
 		}
 		return h(ctx, &Conn{inner: dc}, req)
 	})

@@ -69,7 +69,7 @@ func (v *Validator) ValidateLenient(raw []byte) (out []byte, soft []string, err 
 			ek, _ := leaf.ErrorKind.(*kind.Enum)
 			canon, ok := caseInsensitiveEnumMatch(inst, leaf.InstanceLocation, ek)
 			if !ok {
-				return nil, nil, fmt.Errorf("schema %s: %w", v.name, verr)
+				return nil, nil, hardViolation(v.name, verr, leaf)
 			}
 			rewrites = append(rewrites, rewrite{path: leaf.InstanceLocation, val: canon})
 			soft = append(soft, "enum")
@@ -79,7 +79,7 @@ func (v *Validator) ValidateLenient(raw []byte) (out []byte, soft []string, err 
 			soft = append(soft, kw)
 			continue
 		}
-		return nil, nil, fmt.Errorf("schema %s: %w", v.name, verr)
+		return nil, nil, hardViolation(v.name, verr, leaf)
 	}
 
 	if len(rewrites) == 0 {
@@ -93,6 +93,15 @@ func (v *Validator) ValidateLenient(raw []byte) (out []byte, soft []string, err 
 		return nil, nil, fmt.Errorf("re-marshal lenient payload: %w", mErr)
 	}
 	return out, soft, nil
+}
+
+// hardViolation builds the rejection error for the first hard leaf.
+func hardViolation(name string, verr error, leaf *jsonschema.ValidationError) error {
+	return &ViolationError{
+		Keyword: keywordOf(leaf),
+		AtRoot:  len(leaf.InstanceLocation) == 0,
+		err:     fmt.Errorf("schema %s: %w", name, verr),
+	}
 }
 
 func collectLeaves(ve *jsonschema.ValidationError, acc *[]*jsonschema.ValidationError) {
