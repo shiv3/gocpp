@@ -181,7 +181,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 			dconn.NoteActivity()
 		}
 	}
-	c, err := websocket.Accept(w, r, acceptOpts)
+	c, err := websocket.Accept(newSmallBufWriter(w, s.cfg.ioReadBuffer, s.cfg.ioWriteBuffer), r, acceptOpts)
 	if err != nil {
 		return
 	}
