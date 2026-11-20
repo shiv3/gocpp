@@ -17,14 +17,16 @@ import (
 )
 
 type serverConfig struct {
-	dispatcher      dispatcher.Config
-	subProtocols    []string
-	compressionMode transport.CompressionMode
-	path            string
-	cpIDExtractor   CPIDExtractor
-	instanceID      string
-	registry        *schema.Registry
-	duplicatePolicy DuplicatePolicy
+	// lenientTimeLocation interprets zone-less date-times in lenient mode (nil = UTC).
+	lenientTimeLocation *time.Location
+	dispatcher          dispatcher.Config
+	subProtocols        []string
+	compressionMode     transport.CompressionMode
+	path                string
+	cpIDExtractor       CPIDExtractor
+	instanceID          string
+	registry            *schema.Registry
+	duplicatePolicy     DuplicatePolicy
 
 	globalConcurrencyLimit int
 
@@ -281,6 +283,13 @@ func WithLenientSchema() Option {
 	return optionFunc(func(c *serverConfig) {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
 	})
+}
+
+// WithLenientTimeLocation sets the location in which lenient mode interprets
+// date-times that carry no zone designator ("2023-10-19T15:28:07"). Default UTC.
+// It has no effect outside lenient mode.
+func WithLenientTimeLocation(loc *time.Location) Option {
+	return optionFunc(func(c *serverConfig) { c.lenientTimeLocation = loc })
 }
 
 // WithAuthenticator sets the connection authenticator (default auth.None).

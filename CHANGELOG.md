@@ -40,6 +40,16 @@ All notable changes to this project are documented here. The format is based on
   get a non-atomic lookup-then-delete.
 - `memory.InProcessHub.Registry()`: per-instance registries sharing one global
   route table, for in-process multi-instance tests.
+- Lenient schema mode now repairs common charger drift before the typed decode, for
+  inbound requests and responses (lorenzodonini/ocpp-go#34, #190, #237, #240, #407):
+  near-RFC3339 `date-time` strings (zone-less, space separator, lowercase `t`/`z`,
+  `+0900` offsets, any fraction length) are rewritten to RFC3339, and wrong-typed
+  primitives (`"1"` for integers, `"32.5"` for numbers, `"true"` for booleans, numbers
+  for strings) are converted when lossless. Rewrites are reported as soft violations
+  with keywords `format` and `type`. New `csms.WithLenientTimeLocation` /
+  `cp.WithLenientTimeLocation` (zone-less default: UTC) and
+  `schema.Validator.ValidateLenientWith` / `schema.LenientOptions`. Strict, tolerant
+  and off modes are unchanged.
 - `csms.Conn.Close(ctx)` and `csms.Server.Disconnect(ctx, id)`: close one charge
   point's connection from the server side (WebSocket close 1000, reason "closed by
   the server"), waiting for teardown up to ctx. The disconnect callback fires once

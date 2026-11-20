@@ -139,6 +139,11 @@ Schema handling is three-state. With a registry set:
 - `WithStrictSchema(true)` — reject invalid messages with `FormationViolation`.
 - `WithTolerantSchema()` — log a warning and process anyway (for real chargers that send
   undefined enums or extra fields).
+- `WithLenientSchema()` — reject structurally broken messages, log and pass benign
+  violations, and repair values real chargers commonly get wrong before decoding: enum
+  case, near-RFC3339 timestamps (zone-less, space separator, `+0900`, lowercase `t`/`z`;
+  zone-less values use UTC or `WithLenientTimeLocation`), and quoted numbers/booleans or
+  numbers where a string is expected (only when the conversion is lossless).
 - `WithStrictSchema(false)` (default) — validation off.
 
 `cp.WithTolerantSchema()` / `cp.WithStrictSchema()` do the same on the charge-point side.

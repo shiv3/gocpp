@@ -15,6 +15,9 @@ import (
 type Validator struct {
 	schema *jsonschema.Schema
 	name   string
+	// doc is the raw schema document; the lenient coercion pass walks it to
+	// learn each field's declared type and format.
+	doc any
 }
 
 // New compiles the named schema file from the given filesystem.
@@ -35,7 +38,7 @@ func New(fsys fs.FS, name string) (*Validator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compile schema %s: %w", name, err)
 	}
-	return &Validator{schema: s, name: name}, nil
+	return &Validator{schema: s, name: name, doc: doc}, nil
 }
 
 // Validate checks raw JSON against the schema.

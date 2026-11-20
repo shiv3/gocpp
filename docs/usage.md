@@ -110,15 +110,16 @@ Two lower-level alternatives exist if you don't want the wrapper:
 ## Options
 
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,
-`WithWriteTimeout`, `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`,
-`WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
+`WithWriteTimeout`, `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`
+(+ `WithLenientTimeLocation`), `WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
 `WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
 `WithSerializedCalls`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
 `WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`, `WithInstanceID` (see [clustering](clustering.md)).
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
-`WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema`, `WithBasicAuth`,
+`WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`
+(+ `WithLenientTimeLocation`), `WithBasicAuth`,
 `WithHTTPHeader`, `WithTLSConfig`, `WithHeartbeatInterval`,
 `WithWebSocketPingInterval` + `WithWebSocketPongWait`, `WithSerializedCalls`,
 `WithOfflineQueue` + `WithRetryInFlightCalls`, `WithOnConnect`, `WithOnDisconnect`,
@@ -204,7 +205,25 @@ Two layers (spec §4.4):
 1. **JSON Schema** (source of truth) — embedded official schemas, validated on the wire
    when a registry is set. Mode is three-state: `WithStrictSchema(true)` rejects invalid
    messages, `WithTolerantSchema()` logs a warning and passes (vendor quirks), and
-   `WithStrictSchema(false)` (default) turns validation off.
+   `WithStrictSchema(false)` (default) turns validation off. `WithLenientSchema()` is
+   described below.
+   **Lenient mode** (`csms.WithLenientSchema()` / `cp.WithLenientSchema()`) rejects
+   structurally broken messages (missing required fields, wrong shapes) but repairs
+   benign drift in inbound requests *and* responses before the typed decode, guided by
+   the schema. Each repair is logged and counted as a soft violation:
+   - enum values that differ only by case are rewritten to the canonical value
+     (keyword `enum`);
+   - `date-time` strings are rewritten to RFC3339 (keyword `format`): space instead of
+     `T`, lowercase `t`/`z`, `,` as the fraction separator, offsets such as `+0900` or
+     `+09`, and values with no zone at all. Zone-less values are read as UTC unless
+     `csms.WithLenientTimeLocation(loc)` / `cp.WithLenientTimeLocation(loc)` is set;
+   - primitives of the wrong JSON type are converted when lossless (keyword `type`):
+     `"1"` for an integer, `"32.5"` for a number, `"true"`/`"false"` for a boolean, and
+     a number where a string is expected (its JSON text). Values such as `"1.5"` for an
+     integer, `"abc"` or `"1e999"` are left as sent and rejected.
+
+   Strict, tolerant and off modes never rewrite payloads, and outbound encoding always
+   stays RFC3339.
 2. **Struct tags** — generated `validate:"required,max=…,oneof=…"` tags for app-side
    checks of structs you build yourself.
 
