@@ -47,7 +47,7 @@ func (d Decimal) Shopspring() decimal.Decimal { return d.Decimal }
 
 // MarshalJSON encodes the value as an unquoted JSON number.
 func (d Decimal) MarshalJSON() ([]byte, error) {
-	return []byte(d.Decimal.String()), nil
+	return []byte(d.String()), nil
 }
 
 // UnmarshalJSON decodes a JSON number or a quoted numeric string.
@@ -68,7 +68,7 @@ func (d *Decimal) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalText keeps the text form consistent with MarshalJSON.
-func (d Decimal) MarshalText() ([]byte, error) { return []byte(d.Decimal.String()), nil }
+func (d Decimal) MarshalText() ([]byte, error) { return []byte(d.String()), nil }
 
 // UnmarshalText parses a numeric string.
 func (d *Decimal) UnmarshalText(b []byte) error {
