@@ -10,3 +10,4 @@
 /docs/superpowers/
 # local Claude Code config (skills, etc.)
 /.claude/
+/interop/parity/bin/
