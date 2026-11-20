@@ -50,6 +50,13 @@ All notable changes to this project are documented here. The format is based on
   `cp.WithLenientTimeLocation` (zone-less default: UTC) and
   `schema.Validator.ValidateLenientWith` / `schema.LenientOptions`. Strict, tolerant
   and off modes are unchanged.
+- OCPP 2.x `CustomDataType` keeps unknown properties: the new `Extra
+  map[string]json.RawMessage` field round-trips everything beyond `vendorId`
+  (the schema leaves it open for vendor extensions). Backed by
+  `types.MarshalWithExtra` / `types.UnmarshalWithExtra` in `core/types`. A defined
+  field wins over an `Extra` key of the same name on encode.
+- `datatransfer.MarshalString` / `datatransfer.UnmarshalString`: the former
+  `Marshal` / `Unmarshal` behaviour for the OCPP 1.6 string `data`.
 - `csms.Conn.Close(ctx)` and `csms.Server.Disconnect(ctx, id)`: close one charge
   point's connection from the server side (WebSocket close 1000, reason "closed by
   the server"), waiting for teardown up to ctx. The disconnect callback fires once
@@ -65,7 +72,7 @@ All notable changes to this project are documented here. The format is based on
 - `csms.WithCheckOrigin(func(*http.Request) bool)`: custom WebSocket origin
   predicate for logic that `WithOriginPatterns` can't express.
 - `core/datatransfer` package: generic `Marshal[T]` / `Unmarshal[T]` helpers for
-  the free-form `DataTransfer` `Data` payload (an optional JSON string).
+  the free-form `DataTransfer` `Data` payload.
 - Generated typed handler interfaces and one-call registrars per version
   (`<version>/handlers`): `CPHandler` / `CSMSHandler` interfaces, embeddable
   `UnimplementedCPHandler` / `UnimplementedCSMSHandler` defaults (return a
@@ -150,6 +157,28 @@ All notable changes to this project are documented here. The format is based on
 - `memory.NewConnectionRegistry` now stores global routes (`PutGlobal` /
   `LookupGlobal` / `DeleteGlobal` were no-ops). Code relying on `LookupGlobal`
   always reporting not-found must not rely on it any more.
+- **Breaking (generated types):** every OCPP JSON-Schema `integer` is now `int64`
+  (was `int32`) in v16, v201 and v21, so vendor values such as a 1.6
+  `transactionId` of 9223372036854775807 decode instead of overflowing
+  (lorenzodonini/ocpp-go#188). Migration: change `int32` variables, pointers and
+  slices that feed message fields to `int64` (`*int32` -> `*int64`, `[]int32` ->
+  `[]int64`).
+- **Breaking (OCPP 2.0.1 / 2.1):** `DataTransferRequest.Data` and
+  `DataTransferResponse.Data` are `json.RawMessage` (was `*string`). The OCA
+  schemas declare `data` without a type, so any JSON value is valid on the wire;
+  a JSON object used to pass schema validation and then fail typed decoding
+  (lorenzodonini/ocpp-go#257). Generally, any schema property with no `type` is
+  now generated as `json.RawMessage`; DataTransfer `data` is the only one in the
+  v201 and v21 schemas. OCPP 1.6 keeps `*string` (its schema says string).
+  Migration: wrap the payload in `json.RawMessage` (or call `datatransfer.Marshal`);
+  read it with `datatransfer.Unmarshal` or `json.Unmarshal`. A plain string must now be
+  a JSON string literal (quotes included).
+- **Breaking:** `datatransfer.Marshal` returns `json.RawMessage` and
+  `datatransfer.Unmarshal` takes `json.RawMessage` (OCPP 2.x). For OCPP 1.6 use
+  `MarshalString` / `UnmarshalString`.
+- `CustomDataType` (2.x) now has custom `MarshalJSON` / `UnmarshalJSON` and an
+  `Extra` field (lorenzodonini/ocpp-go#384); composite literals using field names
+  are unaffected.
 - Behaviour change: schema rejections of inbound CALLs are no longer always
   `FormationViolation` / `FormatViolation`. The first violated keyword selects the
   code: missing required fields / occurrence limits -> `OccurenceConstraintViolation`

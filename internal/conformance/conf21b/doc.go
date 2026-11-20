@@ -83,8 +83,8 @@ func dec21(v string) types.Decimal {
 
 func periodicEventStreamParams21() messages.PeriodicEventStreamParamsType {
 	return messages.PeriodicEventStreamParamsType{
-		Interval: ptr21(int32(60)),
-		Values:   ptr21(int32(1)),
+		Interval: ptr21(int64(60)),
+		Values:   ptr21(int64(1)),
 	}
 }
 

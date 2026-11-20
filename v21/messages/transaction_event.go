@@ -8,7 +8,7 @@ import (
 )
 
 type TransactionEventRequest struct {
-	CableMaxCurrent       *int32           `json:"cableMaxCurrent,omitempty" validate:"omitempty"`
+	CableMaxCurrent       *int64           `json:"cableMaxCurrent,omitempty" validate:"omitempty"`
 	CostDetails           *CostDetailsType `json:"costDetails,omitempty" validate:"omitempty"`
 	CustomData            *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
 	EventType             string           `json:"eventType" validate:"required"`
@@ -16,11 +16,11 @@ type TransactionEventRequest struct {
 	EVSESleep             *bool            `json:"evseSleep,omitempty" validate:"omitempty"`
 	IDToken               *IdTokenType     `json:"idToken,omitempty" validate:"omitempty"`
 	MeterValue            []MeterValueType `json:"meterValue,omitempty" validate:"omitempty"`
-	NumberOfPhasesUsed    *int32           `json:"numberOfPhasesUsed,omitempty" validate:"omitempty"`
+	NumberOfPhasesUsed    *int64           `json:"numberOfPhasesUsed,omitempty" validate:"omitempty"`
 	Offline               *bool            `json:"offline,omitempty" validate:"omitempty"`
 	PreconditioningStatus *string          `json:"preconditioningStatus,omitempty" validate:"omitempty"`
-	ReservationID         *int32           `json:"reservationId,omitempty" validate:"omitempty"`
-	SeqNo                 int32            `json:"seqNo" validate:"required"`
+	ReservationID         *int64           `json:"reservationId,omitempty" validate:"omitempty"`
+	SeqNo                 int64            `json:"seqNo" validate:"required"`
 	Timestamp             time.Time        `json:"timestamp" validate:"required"`
 	TransactionInfo       TransactionType  `json:"transactionInfo" validate:"required"`
 	TriggerReason         string           `json:"triggerReason" validate:"required"`
@@ -68,21 +68,21 @@ type TotalPriceType struct {
 }
 
 type TotalUsageType struct {
-	ChargingTime    int32           `json:"chargingTime" validate:"required"`
+	ChargingTime    int64           `json:"chargingTime" validate:"required"`
 	CustomData      *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Energy          types.Decimal   `json:"energy" validate:"required"`
-	IdleTime        int32           `json:"idleTime" validate:"required"`
-	ReservationTime *int32          `json:"reservationTime,omitempty" validate:"omitempty"`
+	IdleTime        int64           `json:"idleTime" validate:"required"`
+	ReservationTime *int64          `json:"reservationTime,omitempty" validate:"omitempty"`
 }
 
 type TransactionType struct {
 	ChargingState     *string               `json:"chargingState,omitempty" validate:"omitempty"`
 	CustomData        *CustomDataType       `json:"customData,omitempty" validate:"omitempty"`
 	OperationMode     *string               `json:"operationMode,omitempty" validate:"omitempty"`
-	RemoteStartID     *int32                `json:"remoteStartId,omitempty" validate:"omitempty"`
+	RemoteStartID     *int64                `json:"remoteStartId,omitempty" validate:"omitempty"`
 	StoppedReason     *string               `json:"stoppedReason,omitempty" validate:"omitempty"`
 	TariffID          *string               `json:"tariffId,omitempty" validate:"omitempty,max=60"`
-	TimeSpentCharging *int32                `json:"timeSpentCharging,omitempty" validate:"omitempty"`
+	TimeSpentCharging *int64                `json:"timeSpentCharging,omitempty" validate:"omitempty"`
 	TransactionID     string                `json:"transactionId" validate:"required,max=36"`
 	TransactionLimit  *TransactionLimitType `json:"transactionLimit,omitempty" validate:"omitempty"`
 }
@@ -91,12 +91,12 @@ type TransactionLimitType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	MaxCost    *types.Decimal  `json:"maxCost,omitempty" validate:"omitempty"`
 	MaxEnergy  *types.Decimal  `json:"maxEnergy,omitempty" validate:"omitempty"`
-	MaxSoC     *int32          `json:"maxSoC,omitempty" validate:"omitempty"`
-	MaxTime    *int32          `json:"maxTime,omitempty" validate:"omitempty"`
+	MaxSoC     *int64          `json:"maxSoC,omitempty" validate:"omitempty"`
+	MaxTime    *int64          `json:"maxTime,omitempty" validate:"omitempty"`
 }
 
 type TransactionEventResponse struct {
-	ChargingPriority            *int32                `json:"chargingPriority,omitempty" validate:"omitempty"`
+	ChargingPriority            *int64                `json:"chargingPriority,omitempty" validate:"omitempty"`
 	CustomData                  *CustomDataType       `json:"customData,omitempty" validate:"omitempty"`
 	IDTokenInfo                 *IdTokenInfoType      `json:"idTokenInfo,omitempty" validate:"omitempty"`
 	TotalCost                   *types.Decimal        `json:"totalCost,omitempty" validate:"omitempty"`

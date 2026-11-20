@@ -7,14 +7,14 @@ import (
 )
 
 type StartTransactionRequest struct {
-	ConnectorID   int32     `json:"connectorId" validate:"required"`
+	ConnectorID   int64     `json:"connectorId" validate:"required"`
 	IDTag         string    `json:"idTag" validate:"required,max=20"`
-	MeterStart    int32     `json:"meterStart" validate:"required"`
-	ReservationID *int32    `json:"reservationId,omitempty" validate:"omitempty"`
+	MeterStart    int64     `json:"meterStart" validate:"required"`
+	ReservationID *int64    `json:"reservationId,omitempty" validate:"omitempty"`
 	Timestamp     time.Time `json:"timestamp" validate:"required"`
 }
 
 type StartTransactionResponse struct {
 	IDTagInfo     IDTagInfo `json:"idTagInfo" validate:"required"`
-	TransactionID int32     `json:"transactionId" validate:"required"`
+	TransactionID int64     `json:"transactionId" validate:"required"`
 }

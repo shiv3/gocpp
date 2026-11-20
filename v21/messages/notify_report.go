@@ -11,8 +11,8 @@ type NotifyReportRequest struct {
 	CustomData  *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
 	GeneratedAt time.Time        `json:"generatedAt" validate:"required"`
 	ReportData  []ReportDataType `json:"reportData,omitempty" validate:"omitempty"`
-	RequestID   int32            `json:"requestId" validate:"required"`
-	SeqNo       int32            `json:"seqNo" validate:"required"`
+	RequestID   int64            `json:"requestId" validate:"required"`
+	SeqNo       int64            `json:"seqNo" validate:"required"`
 	Tbc         *bool            `json:"tbc,omitempty" validate:"omitempty"`
 }
 
@@ -36,7 +36,7 @@ type VariableAttributeType struct {
 type VariableCharacteristicsType struct {
 	CustomData         *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	DataType           string          `json:"dataType" validate:"required"`
-	MaxElements        *int32          `json:"maxElements,omitempty" validate:"omitempty"`
+	MaxElements        *int64          `json:"maxElements,omitempty" validate:"omitempty"`
 	MaxLimit           *types.Decimal  `json:"maxLimit,omitempty" validate:"omitempty"`
 	MinLimit           *types.Decimal  `json:"minLimit,omitempty" validate:"omitempty"`
 	SupportsMonitoring bool            `json:"supportsMonitoring"`

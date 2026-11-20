@@ -9,8 +9,8 @@ import (
 type NotifyEVChargingNeedsRequest struct {
 	ChargingNeeds     ChargingNeedsType `json:"chargingNeeds" validate:"required"`
 	CustomData        *CustomDataType   `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID            int32             `json:"evseId" validate:"required"`
-	MaxScheduleTuples *int32            `json:"maxScheduleTuples,omitempty" validate:"omitempty"`
+	EVSEID            int64             `json:"evseId" validate:"required"`
+	MaxScheduleTuples *int64            `json:"maxScheduleTuples,omitempty" validate:"omitempty"`
 }
 
 type ChargingNeedsType struct {
@@ -23,22 +23,22 @@ type ChargingNeedsType struct {
 
 type ACChargingParametersType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EnergyAmount int32           `json:"energyAmount" validate:"required"`
-	EVMaxCurrent int32           `json:"evMaxCurrent" validate:"required"`
-	EVMaxVoltage int32           `json:"evMaxVoltage" validate:"required"`
-	EVMinCurrent int32           `json:"evMinCurrent" validate:"required"`
+	EnergyAmount int64           `json:"energyAmount" validate:"required"`
+	EVMaxCurrent int64           `json:"evMaxCurrent" validate:"required"`
+	EVMaxVoltage int64           `json:"evMaxVoltage" validate:"required"`
+	EVMinCurrent int64           `json:"evMinCurrent" validate:"required"`
 }
 
 type DCChargingParametersType struct {
-	BulkSoC          *int32          `json:"bulkSoC,omitempty" validate:"omitempty"`
+	BulkSoC          *int64          `json:"bulkSoC,omitempty" validate:"omitempty"`
 	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EnergyAmount     *int32          `json:"energyAmount,omitempty" validate:"omitempty"`
-	EVEnergyCapacity *int32          `json:"evEnergyCapacity,omitempty" validate:"omitempty"`
-	EVMaxCurrent     int32           `json:"evMaxCurrent" validate:"required"`
-	EVMaxPower       *int32          `json:"evMaxPower,omitempty" validate:"omitempty"`
-	EVMaxVoltage     int32           `json:"evMaxVoltage" validate:"required"`
-	FullSoC          *int32          `json:"fullSoC,omitempty" validate:"omitempty"`
-	StateOfCharge    *int32          `json:"stateOfCharge,omitempty" validate:"omitempty"`
+	EnergyAmount     *int64          `json:"energyAmount,omitempty" validate:"omitempty"`
+	EVEnergyCapacity *int64          `json:"evEnergyCapacity,omitempty" validate:"omitempty"`
+	EVMaxCurrent     int64           `json:"evMaxCurrent" validate:"required"`
+	EVMaxPower       *int64          `json:"evMaxPower,omitempty" validate:"omitempty"`
+	EVMaxVoltage     int64           `json:"evMaxVoltage" validate:"required"`
+	FullSoC          *int64          `json:"fullSoC,omitempty" validate:"omitempty"`
+	StateOfCharge    *int64          `json:"stateOfCharge,omitempty" validate:"omitempty"`
 }
 
 type NotifyEVChargingNeedsResponse struct {

@@ -9,10 +9,10 @@ import (
 type ReserveNowRequest struct {
 	ConnectorType  *string         `json:"connectorType,omitempty" validate:"omitempty,max=20"`
 	CustomData     *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID         *int32          `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID         *int64          `json:"evseId,omitempty" validate:"omitempty"`
 	ExpiryDateTime time.Time       `json:"expiryDateTime" validate:"required"`
 	GroupIDToken   *IdTokenType    `json:"groupIdToken,omitempty" validate:"omitempty"`
-	ID             int32           `json:"id" validate:"required"`
+	ID             int64           `json:"id" validate:"required"`
 	IDToken        IdTokenType     `json:"idToken" validate:"required"`
 }
 

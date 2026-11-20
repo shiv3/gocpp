@@ -2,16 +2,20 @@
 
 package messages
 
+import (
+	"encoding/json"
+)
+
 type DataTransferRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Data       *string         `json:"data,omitempty" validate:"omitempty"`
+	Data       json.RawMessage `json:"data,omitempty" validate:"omitempty"`
 	MessageID  *string         `json:"messageId,omitempty" validate:"omitempty,max=50"`
 	VendorID   string          `json:"vendorId" validate:"required,max=255"`
 }
 
 type DataTransferResponse struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Data       *string         `json:"data,omitempty" validate:"omitempty"`
+	Data       json.RawMessage `json:"data,omitempty" validate:"omitempty"`
 	Status     string          `json:"status" validate:"required"`
 	StatusInfo *StatusInfoType `json:"statusInfo,omitempty" validate:"omitempty"`
 }

@@ -1,6 +1,7 @@
 package conf201b
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/shiv3/gocpp/v201/messages"
@@ -29,7 +30,7 @@ func TestDataTransfer201_RequestValidation(t *testing.T) {
 			Message: messages.DataTransferRequest{
 				VendorID:  "12345",
 				MessageID: ptr("6789"),
-				Data:      ptr("mockData"),
+				Data:      json.RawMessage(`"mockData"`),
 			},
 			Valid: true,
 		},
@@ -99,7 +100,7 @@ func TestDataTransfer201_ResponseValidation(t *testing.T) {
 			Name: "valid with data",
 			Message: messages.DataTransferResponse{
 				Status: "Accepted",
-				Data:   ptr("mockData"),
+				Data:   json.RawMessage(`"mockData"`),
 			},
 			Valid: true,
 		},

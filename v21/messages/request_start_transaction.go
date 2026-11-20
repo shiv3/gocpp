@@ -10,10 +10,10 @@ import (
 type RequestStartTransactionRequest struct {
 	ChargingProfile *ChargingProfileType `json:"chargingProfile,omitempty" validate:"omitempty"`
 	CustomData      *CustomDataType      `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID          *int32               `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID          *int64               `json:"evseId,omitempty" validate:"omitempty"`
 	GroupIDToken    *IdTokenType         `json:"groupIdToken,omitempty" validate:"omitempty"`
 	IDToken         IdTokenType          `json:"idToken" validate:"required"`
-	RemoteStartID   int32                `json:"remoteStartId" validate:"required"`
+	RemoteStartID   int64                `json:"remoteStartId" validate:"required"`
 }
 
 type ChargingProfileType struct {
@@ -21,14 +21,14 @@ type ChargingProfileType struct {
 	ChargingProfilePurpose      string                 `json:"chargingProfilePurpose" validate:"required"`
 	ChargingSchedule            []ChargingScheduleType `json:"chargingSchedule" validate:"required"`
 	CustomData                  *CustomDataType        `json:"customData,omitempty" validate:"omitempty"`
-	DynUpdateInterval           *int32                 `json:"dynUpdateInterval,omitempty" validate:"omitempty"`
+	DynUpdateInterval           *int64                 `json:"dynUpdateInterval,omitempty" validate:"omitempty"`
 	DynUpdateTime               *time.Time             `json:"dynUpdateTime,omitempty" validate:"omitempty"`
-	ID                          int32                  `json:"id" validate:"required"`
+	ID                          int64                  `json:"id" validate:"required"`
 	InvalidAfterOfflineDuration *bool                  `json:"invalidAfterOfflineDuration,omitempty" validate:"omitempty"`
-	MaxOfflineDuration          *int32                 `json:"maxOfflineDuration,omitempty" validate:"omitempty"`
+	MaxOfflineDuration          *int64                 `json:"maxOfflineDuration,omitempty" validate:"omitempty"`
 	PriceScheduleSignature      *string                `json:"priceScheduleSignature,omitempty" validate:"omitempty,max=256"`
 	RecurrencyKind              *string                `json:"recurrencyKind,omitempty" validate:"omitempty"`
-	StackLevel                  int32                  `json:"stackLevel" validate:"required"`
+	StackLevel                  int64                  `json:"stackLevel" validate:"required"`
 	TransactionID               *string                `json:"transactionId,omitempty" validate:"omitempty,max=36"`
 	ValidFrom                   *time.Time             `json:"validFrom,omitempty" validate:"omitempty"`
 	ValidTo                     *time.Time             `json:"validTo,omitempty" validate:"omitempty"`
@@ -40,15 +40,15 @@ type ChargingScheduleType struct {
 	ChargingSchedulePeriod []ChargingSchedulePeriodType `json:"chargingSchedulePeriod" validate:"required"`
 	CustomData             *CustomDataType              `json:"customData,omitempty" validate:"omitempty"`
 	DigestValue            *string                      `json:"digestValue,omitempty" validate:"omitempty,max=88"`
-	Duration               *int32                       `json:"duration,omitempty" validate:"omitempty"`
-	ID                     int32                        `json:"id" validate:"required"`
+	Duration               *int64                       `json:"duration,omitempty" validate:"omitempty"`
+	ID                     int64                        `json:"id" validate:"required"`
 	LimitAtSoC             *LimitAtSoCType              `json:"limitAtSoC,omitempty" validate:"omitempty"`
 	MinChargingRate        *types.Decimal               `json:"minChargingRate,omitempty" validate:"omitempty"`
 	PowerTolerance         *types.Decimal               `json:"powerTolerance,omitempty" validate:"omitempty"`
 	PriceLevelSchedule     *PriceLevelScheduleType      `json:"priceLevelSchedule,omitempty" validate:"omitempty"`
-	RandomizedDelay        *int32                       `json:"randomizedDelay,omitempty" validate:"omitempty"`
+	RandomizedDelay        *int64                       `json:"randomizedDelay,omitempty" validate:"omitempty"`
 	SalesTariff            *SalesTariffType             `json:"salesTariff,omitempty" validate:"omitempty"`
-	SignatureID            *int32                       `json:"signatureId,omitempty" validate:"omitempty"`
+	SignatureID            *int64                       `json:"signatureId,omitempty" validate:"omitempty"`
 	StartSchedule          *time.Time                   `json:"startSchedule,omitempty" validate:"omitempty"`
 	UseLocalTime           *bool                        `json:"useLocalTime,omitempty" validate:"omitempty"`
 }
@@ -64,7 +64,7 @@ type AbsolutePriceScheduleType struct {
 	PriceAlgorithm             string                           `json:"priceAlgorithm" validate:"required,max=2000"`
 	PriceRuleStacks            []PriceRuleStackType             `json:"priceRuleStacks" validate:"required"`
 	PriceScheduleDescription   *string                          `json:"priceScheduleDescription,omitempty" validate:"omitempty,max=160"`
-	PriceScheduleID            int32                            `json:"priceScheduleID" validate:"required"`
+	PriceScheduleID            int64                            `json:"priceScheduleID" validate:"required"`
 	TaxRules                   []TaxRuleType                    `json:"taxRules,omitempty" validate:"omitempty"`
 	TimeAnchor                 time.Time                        `json:"timeAnchor" validate:"required"`
 }
@@ -77,39 +77,39 @@ type AdditionalSelectedServicesType struct {
 
 type RationalNumberType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Exponent   int32           `json:"exponent" validate:"required"`
-	Value      int32           `json:"value" validate:"required"`
+	Exponent   int64           `json:"exponent" validate:"required"`
+	Value      int64           `json:"value" validate:"required"`
 }
 
 type OverstayRuleListType struct {
 	CustomData             *CustomDataType     `json:"customData,omitempty" validate:"omitempty"`
 	OverstayPowerThreshold *RationalNumberType `json:"overstayPowerThreshold,omitempty" validate:"omitempty"`
 	OverstayRule           []OverstayRuleType  `json:"overstayRule" validate:"required"`
-	OverstayTimeThreshold  *int32              `json:"overstayTimeThreshold,omitempty" validate:"omitempty"`
+	OverstayTimeThreshold  *int64              `json:"overstayTimeThreshold,omitempty" validate:"omitempty"`
 }
 
 type OverstayRuleType struct {
 	CustomData              *CustomDataType    `json:"customData,omitempty" validate:"omitempty"`
 	OverstayFee             RationalNumberType `json:"overstayFee" validate:"required"`
-	OverstayFeePeriod       int32              `json:"overstayFeePeriod" validate:"required"`
+	OverstayFeePeriod       int64              `json:"overstayFeePeriod" validate:"required"`
 	OverstayRuleDescription *string            `json:"overstayRuleDescription,omitempty" validate:"omitempty,max=32"`
-	StartTime               int32              `json:"startTime" validate:"required"`
+	StartTime               int64              `json:"startTime" validate:"required"`
 }
 
 type PriceRuleStackType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Duration   int32           `json:"duration" validate:"required"`
+	Duration   int64           `json:"duration" validate:"required"`
 	PriceRule  []PriceRuleType `json:"priceRule" validate:"required"`
 }
 
 type PriceRuleType struct {
-	CarbonDioxideEmission         *int32              `json:"carbonDioxideEmission,omitempty" validate:"omitempty"`
+	CarbonDioxideEmission         *int64              `json:"carbonDioxideEmission,omitempty" validate:"omitempty"`
 	CustomData                    *CustomDataType     `json:"customData,omitempty" validate:"omitempty"`
 	EnergyFee                     RationalNumberType  `json:"energyFee" validate:"required"`
 	ParkingFee                    *RationalNumberType `json:"parkingFee,omitempty" validate:"omitempty"`
-	ParkingFeePeriod              *int32              `json:"parkingFeePeriod,omitempty" validate:"omitempty"`
+	ParkingFeePeriod              *int64              `json:"parkingFeePeriod,omitempty" validate:"omitempty"`
 	PowerRangeStart               RationalNumberType  `json:"powerRangeStart" validate:"required"`
-	RenewableGenerationPercentage *int32              `json:"renewableGenerationPercentage,omitempty" validate:"omitempty"`
+	RenewableGenerationPercentage *int64              `json:"renewableGenerationPercentage,omitempty" validate:"omitempty"`
 }
 
 type TaxRuleType struct {
@@ -120,7 +120,7 @@ type TaxRuleType struct {
 	CustomData                  *CustomDataType    `json:"customData,omitempty" validate:"omitempty"`
 	TaxIncludedInPrice          *bool              `json:"taxIncludedInPrice,omitempty" validate:"omitempty"`
 	TaxRate                     RationalNumberType `json:"taxRate" validate:"required"`
-	TaxRuleID                   int32              `json:"taxRuleID" validate:"required"`
+	TaxRuleID                   int64              `json:"taxRuleID" validate:"required"`
 	TaxRuleName                 *string            `json:"taxRuleName,omitempty" validate:"omitempty,max=100"`
 }
 
@@ -133,9 +133,9 @@ type ChargingSchedulePeriodType struct {
 	Limit                  *types.Decimal           `json:"limit,omitempty" validate:"omitempty"`
 	Limit_L2               *types.Decimal           `json:"limit_L2,omitempty" validate:"omitempty"`
 	Limit_L3               *types.Decimal           `json:"limit_L3,omitempty" validate:"omitempty"`
-	NumberPhases           *int32                   `json:"numberPhases,omitempty" validate:"omitempty"`
+	NumberPhases           *int64                   `json:"numberPhases,omitempty" validate:"omitempty"`
 	OperationMode          *string                  `json:"operationMode,omitempty" validate:"omitempty"`
-	PhaseToUse             *int32                   `json:"phaseToUse,omitempty" validate:"omitempty"`
+	PhaseToUse             *int64                   `json:"phaseToUse,omitempty" validate:"omitempty"`
 	PreconditioningRequest *bool                    `json:"preconditioningRequest,omitempty" validate:"omitempty"`
 	Setpoint               *types.Decimal           `json:"setpoint,omitempty" validate:"omitempty"`
 	SetpointReactive       *types.Decimal           `json:"setpointReactive,omitempty" validate:"omitempty"`
@@ -143,7 +143,7 @@ type ChargingSchedulePeriodType struct {
 	SetpointReactive_L3    *types.Decimal           `json:"setpointReactive_L3,omitempty" validate:"omitempty"`
 	Setpoint_L2            *types.Decimal           `json:"setpoint_L2,omitempty" validate:"omitempty"`
 	Setpoint_L3            *types.Decimal           `json:"setpoint_L3,omitempty" validate:"omitempty"`
-	StartPeriod            int32                    `json:"startPeriod" validate:"required"`
+	StartPeriod            int64                    `json:"startPeriod" validate:"required"`
 	V2xBaseline            *types.Decimal           `json:"v2xBaseline,omitempty" validate:"omitempty"`
 	V2xFreqWattCurve       []V2XFreqWattPointType   `json:"v2xFreqWattCurve,omitempty" validate:"omitempty"`
 	V2xSignalWattCurve     []V2XSignalWattPointType `json:"v2xSignalWattCurve,omitempty" validate:"omitempty"`
@@ -158,34 +158,34 @@ type V2XFreqWattPointType struct {
 type V2XSignalWattPointType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Power      types.Decimal   `json:"power" validate:"required"`
-	Signal     int32           `json:"signal" validate:"required"`
+	Signal     int64           `json:"signal" validate:"required"`
 }
 
 type LimitAtSoCType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Limit      types.Decimal   `json:"limit" validate:"required"`
-	SOC        int32           `json:"soc" validate:"required"`
+	SOC        int64           `json:"soc" validate:"required"`
 }
 
 type PriceLevelScheduleType struct {
 	CustomData                *CustomDataType               `json:"customData,omitempty" validate:"omitempty"`
-	NumberOfPriceLevels       int32                         `json:"numberOfPriceLevels" validate:"required"`
+	NumberOfPriceLevels       int64                         `json:"numberOfPriceLevels" validate:"required"`
 	PriceLevelScheduleEntries []PriceLevelScheduleEntryType `json:"priceLevelScheduleEntries" validate:"required"`
 	PriceScheduleDescription  *string                       `json:"priceScheduleDescription,omitempty" validate:"omitempty,max=32"`
-	PriceScheduleID           int32                         `json:"priceScheduleId" validate:"required"`
+	PriceScheduleID           int64                         `json:"priceScheduleId" validate:"required"`
 	TimeAnchor                time.Time                     `json:"timeAnchor" validate:"required"`
 }
 
 type PriceLevelScheduleEntryType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Duration   int32           `json:"duration" validate:"required"`
-	PriceLevel int32           `json:"priceLevel" validate:"required"`
+	Duration   int64           `json:"duration" validate:"required"`
+	PriceLevel int64           `json:"priceLevel" validate:"required"`
 }
 
 type SalesTariffType struct {
 	CustomData             *CustomDataType        `json:"customData,omitempty" validate:"omitempty"`
-	ID                     int32                  `json:"id" validate:"required"`
-	NumEPriceLevels        *int32                 `json:"numEPriceLevels,omitempty" validate:"omitempty"`
+	ID                     int64                  `json:"id" validate:"required"`
+	NumEPriceLevels        *int64                 `json:"numEPriceLevels,omitempty" validate:"omitempty"`
 	SalesTariffDescription *string                `json:"salesTariffDescription,omitempty" validate:"omitempty,max=32"`
 	SalesTariffEntry       []SalesTariffEntryType `json:"salesTariffEntry" validate:"required"`
 }
@@ -193,7 +193,7 @@ type SalesTariffType struct {
 type SalesTariffEntryType struct {
 	ConsumptionCost      []ConsumptionCostType    `json:"consumptionCost,omitempty" validate:"omitempty"`
 	CustomData           *CustomDataType          `json:"customData,omitempty" validate:"omitempty"`
-	EPriceLevel          *int32                   `json:"ePriceLevel,omitempty" validate:"omitempty"`
+	EPriceLevel          *int64                   `json:"ePriceLevel,omitempty" validate:"omitempty"`
 	RelativeTimeInterval RelativeTimeIntervalType `json:"relativeTimeInterval" validate:"required"`
 }
 
@@ -204,16 +204,16 @@ type ConsumptionCostType struct {
 }
 
 type CostType struct {
-	Amount           int32           `json:"amount" validate:"required"`
-	AmountMultiplier *int32          `json:"amountMultiplier,omitempty" validate:"omitempty"`
+	Amount           int64           `json:"amount" validate:"required"`
+	AmountMultiplier *int64          `json:"amountMultiplier,omitempty" validate:"omitempty"`
 	CostKind         string          `json:"costKind" validate:"required"`
 	CustomData       *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 }
 
 type RelativeTimeIntervalType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Duration   *int32          `json:"duration,omitempty" validate:"omitempty"`
-	Start      int32           `json:"start" validate:"required"`
+	Duration   *int64          `json:"duration,omitempty" validate:"omitempty"`
+	Start      int64           `json:"start" validate:"required"`
 }
 
 type RequestStartTransactionResponse struct {

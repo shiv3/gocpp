@@ -8,9 +8,9 @@ import (
 
 type SignedUpdateFirmwareRequest struct {
 	Firmware      FirmwareType `json:"firmware" validate:"required"`
-	RequestID     int32        `json:"requestId" validate:"required"`
-	Retries       *int32       `json:"retries,omitempty" validate:"omitempty"`
-	RetryInterval *int32       `json:"retryInterval,omitempty" validate:"omitempty"`
+	RequestID     int64        `json:"requestId" validate:"required"`
+	Retries       *int64       `json:"retries,omitempty" validate:"omitempty"`
+	RetryInterval *int64       `json:"retryInterval,omitempty" validate:"omitempty"`
 }
 
 type FirmwareType struct {

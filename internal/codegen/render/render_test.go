@@ -180,3 +180,28 @@ func assertContains(t *testing.T, s, substr string) {
 		t.Fatalf("source does not contain %q:\n%s", substr, s)
 	}
 }
+
+func TestRenderRawAndExtra(t *testing.T) {
+	out, err := Messages(ir.File{Package: "messages", Structs: []ir.Struct{
+		{GoName: "Req", Fields: []ir.Field{
+			{GoName: "Data", JSONName: "data", Type: ir.TypeRaw},
+			{GoName: "ID", JSONName: "id", Type: ir.TypeInt64},
+		}},
+		{GoName: "CustomDataType", AdditionalProperties: true, Fields: []ir.Field{
+			{GoName: "VendorID", JSONName: "vendorId", Type: ir.TypeString, Required: true},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(out)
+	assertContains(t, src, `"encoding/json"`)
+	assertContains(t, src, "Data json.RawMessage `json:\"data,omitempty\" validate:\"omitempty\"`")
+	assertContains(t, src, "ID   *int64")
+	assertContains(t, src, "Extra map[string]json.RawMessage `json:\"-\"`")
+	assertContains(t, src, "func (v CustomDataType) MarshalJSON() ([]byte, error)")
+	assertContains(t, src, `types.UnmarshalWithExtra(data, (*plain)(v), "vendorId")`)
+	if strings.Contains(src, "func (v Req) MarshalJSON") {
+		t.Error("closed struct must not get custom JSON methods")
+	}
+}

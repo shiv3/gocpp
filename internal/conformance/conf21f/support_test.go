@@ -18,7 +18,7 @@ func stringPtr21(v string) *string {
 	return &v
 }
 
-func int32Ptr21(v int32) *int32 {
+func int64Ptr21(v int64) *int64 {
 	return &v
 }
 

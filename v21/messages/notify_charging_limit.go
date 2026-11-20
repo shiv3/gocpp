@@ -6,7 +6,7 @@ type NotifyChargingLimitRequest struct {
 	ChargingLimit    ChargingLimitType      `json:"chargingLimit" validate:"required"`
 	ChargingSchedule []ChargingScheduleType `json:"chargingSchedule,omitempty" validate:"omitempty"`
 	CustomData       *CustomDataType        `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID           *int32                 `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID           *int64                 `json:"evseId,omitempty" validate:"omitempty"`
 }
 
 type ChargingLimitType struct {

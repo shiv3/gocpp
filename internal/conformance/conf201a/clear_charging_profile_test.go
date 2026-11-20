@@ -21,11 +21,11 @@ func TestClearChargingProfile201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid full request",
 			Message: messages.ClearChargingProfileRequest{
-				ChargingProfileID: int32Ptr(1),
+				ChargingProfileID: int64Ptr(1),
 				ChargingProfileCriteria: &messages.ClearChargingProfileType{
-					EVSEID:                 int32Ptr(1),
+					EVSEID:                 int64Ptr(1),
 					ChargingProfilePurpose: strPtr("ChargingStationMaxProfile"),
-					StackLevel:             int32Ptr(1),
+					StackLevel:             int64Ptr(1),
 				},
 			},
 			Valid: true,
@@ -33,9 +33,9 @@ func TestClearChargingProfile201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid without stackLevel",
 			Message: messages.ClearChargingProfileRequest{
-				ChargingProfileID: int32Ptr(1),
+				ChargingProfileID: int64Ptr(1),
 				ChargingProfileCriteria: &messages.ClearChargingProfileType{
-					EVSEID:                 int32Ptr(1),
+					EVSEID:                 int64Ptr(1),
 					ChargingProfilePurpose: strPtr("ChargingStationMaxProfile"),
 				},
 			},
@@ -44,9 +44,9 @@ func TestClearChargingProfile201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid evse criteria",
 			Message: messages.ClearChargingProfileRequest{
-				ChargingProfileID: int32Ptr(1),
+				ChargingProfileID: int64Ptr(1),
 				ChargingProfileCriteria: &messages.ClearChargingProfileType{
-					EVSEID: int32Ptr(1),
+					EVSEID: int64Ptr(1),
 				},
 			},
 			Valid: true,
@@ -55,7 +55,7 @@ func TestClearChargingProfile201_RequestValidation(t *testing.T) {
 			Name: "valid criteria without chargingProfileId",
 			Message: messages.ClearChargingProfileRequest{
 				ChargingProfileCriteria: &messages.ClearChargingProfileType{
-					EVSEID: int32Ptr(1),
+					EVSEID: int64Ptr(1),
 				},
 			},
 			Valid: true,

@@ -22,12 +22,12 @@ func chargingNeeds201() messages.ChargingNeedsType {
 		DCChargingParameters: &messages.DCChargingParametersType{
 			EVMaxCurrent:     0,
 			EVMaxVoltage:     0,
-			EnergyAmount:     ptr(int32(42)),
-			EVMaxPower:       ptr(int32(150)),
-			StateOfCharge:    ptr(int32(50)),
-			EVEnergyCapacity: ptr(int32(42)),
-			FullSoC:          ptr(int32(100)),
-			BulkSoC:          ptr(int32(80)),
+			EnergyAmount:     ptr(int64(42)),
+			EVMaxPower:       ptr(int64(150)),
+			StateOfCharge:    ptr(int64(50)),
+			EVEnergyCapacity: ptr(int64(42)),
+			FullSoC:          ptr(int64(100)),
+			BulkSoC:          ptr(int64(80)),
 		},
 	}
 }
@@ -40,7 +40,7 @@ func TestNotifyEVChargingNeeds201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid full request",
 			Message: messages.NotifyEVChargingNeedsRequest{
-				MaxScheduleTuples: ptr(int32(5)),
+				MaxScheduleTuples: ptr(int64(5)),
 				EVSEID:            1,
 				ChargingNeeds:     chargingNeeds201(),
 			},

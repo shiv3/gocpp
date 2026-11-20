@@ -11,7 +11,7 @@ import (
 
 func testSetMonitoringData201f(monitorType string) messages.SetMonitoringDataType {
 	return messages.SetMonitoringDataType{
-		ID:          int32Ptr201f(2),
+		ID:          int64Ptr201f(2),
 		Transaction: boolPtr201f(true),
 		Value:       decimal201f("42.0"),
 		Type:        monitorType,
@@ -23,7 +23,7 @@ func testSetMonitoringData201f(monitorType string) messages.SetMonitoringDataTyp
 
 func testSetMonitoringResult201f(status, monitorType string) messages.SetMonitoringResultType {
 	return messages.SetMonitoringResultType{
-		ID:         int32Ptr201f(2),
+		ID:         int64Ptr201f(2),
 		Status:     status,
 		Type:       monitorType,
 		Severity:   5,

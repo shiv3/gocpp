@@ -533,8 +533,8 @@ func TestSignedUpdateFirmware16_RequestValidation(t *testing.T) {
 			Message: messages.SignedUpdateFirmwareRequest{
 				Firmware:      firmware,
 				RequestID:     42,
-				Retries:       int32Ptr(5),
-				RetryInterval: int32Ptr(300),
+				Retries:       int64Ptr(5),
+				RetryInterval: int64Ptr(300),
 			},
 			Valid: true,
 		},
@@ -543,7 +543,7 @@ func TestSignedUpdateFirmware16_RequestValidation(t *testing.T) {
 			Message: messages.SignedUpdateFirmwareRequest{
 				Firmware:  firmware,
 				RequestID: 42,
-				Retries:   int32Ptr(5),
+				Retries:   int64Ptr(5),
 			},
 			Valid: true,
 		},
@@ -568,8 +568,8 @@ func TestSignedUpdateFirmware16_RequestValidation(t *testing.T) {
 			Message: messages.SignedUpdateFirmwareRequest{
 				Firmware:      firmware,
 				RequestID:     42,
-				Retries:       int32Ptr(0),
-				RetryInterval: int32Ptr(0),
+				Retries:       int64Ptr(0),
+				RetryInterval: int64Ptr(0),
 			},
 			Valid: true,
 		},

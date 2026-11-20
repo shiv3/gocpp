@@ -7,10 +7,10 @@ import (
 )
 
 type StatusNotificationRequest struct {
-	ConnectorID     int32           `json:"connectorId" validate:"required"`
+	ConnectorID     int64           `json:"connectorId" validate:"required"`
 	ConnectorStatus string          `json:"connectorStatus" validate:"required"`
 	CustomData      *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID          int32           `json:"evseId" validate:"required"`
+	EVSEID          int64           `json:"evseId" validate:"required"`
 	Timestamp       time.Time       `json:"timestamp" validate:"required"`
 }
 

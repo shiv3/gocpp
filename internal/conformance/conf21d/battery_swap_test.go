@@ -26,7 +26,7 @@ func must21Validator(t *testing.T, action, kind string) *schema.Validator {
 	return conformance.MustValidator(t, reg, "2.1", action, kind)
 }
 
-func int32Ptr(i int32) *int32 {
+func int64Ptr(i int64) *int64 {
 	return &i
 }
 

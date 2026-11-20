@@ -11,8 +11,8 @@ type NotifyPeriodicEventStream struct {
 	Basetime   time.Time               `json:"basetime" validate:"required"`
 	CustomData *CustomDataType         `json:"customData,omitempty" validate:"omitempty"`
 	Data       []StreamDataElementType `json:"data" validate:"required"`
-	ID         int32                   `json:"id" validate:"required"`
-	Pending    int32                   `json:"pending" validate:"required"`
+	ID         int64                   `json:"id" validate:"required"`
+	Pending    int64                   `json:"pending" validate:"required"`
 }
 
 type StreamDataElementType struct {

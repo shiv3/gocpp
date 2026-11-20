@@ -47,7 +47,7 @@ func TestMeterValues16_RequestValidation(t *testing.T) {
 			Name: "valid full request",
 			Message: messages.MeterValuesRequest{
 				ConnectorID:   1,
-				TransactionID: ptr(int32(1)),
+				TransactionID: ptr(int64(1)),
 				MeterValue:    []messages.MeterValue{meterValue16(now)},
 			},
 			Valid: true,
@@ -94,7 +94,7 @@ func TestMeterValues16_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid missing meterValue",
 			Message: map[string]any{
-				"connectorId": int32(1),
+				"connectorId": int64(1),
 			},
 			Valid: false,
 		},

@@ -18,8 +18,8 @@ func TestTriggerMessage16_RequestValidation(t *testing.T) {
 	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "TriggerMessage", "request")
 
-	connectorID := int32(1)
-	zeroConnectorID := int32(0)
+	connectorID := int64(1)
+	zeroConnectorID := int64(0)
 	cases := []conformance.ValidationCase{
 		{
 			Name: "valid requestedMessage with connectorId",

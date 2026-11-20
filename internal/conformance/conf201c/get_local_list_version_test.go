@@ -34,7 +34,7 @@ func validator201(t *testing.T, action, kind string) *schema.Validator {
 	return conformance.MustValidator(t, registry201(t), version201, action, kind)
 }
 
-func int32Ptr(v int32) *int32 {
+func int64Ptr(v int64) *int64 {
 	return &v
 }
 
@@ -56,7 +56,7 @@ func component201() messages.ComponentType {
 		Instance: strPtr("instance1"),
 		EVSE: &messages.EVSEType{
 			ID:          2,
-			ConnectorID: int32Ptr(2),
+			ConnectorID: int64Ptr(2),
 		},
 	}
 }

@@ -10,8 +10,8 @@ type NotifyCustomerInformationRequest struct {
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Data        string          `json:"data" validate:"required,max=512"`
 	GeneratedAt time.Time       `json:"generatedAt" validate:"required"`
-	RequestID   int32           `json:"requestId" validate:"required"`
-	SeqNo       int32           `json:"seqNo" validate:"required"`
+	RequestID   int64           `json:"requestId" validate:"required"`
+	SeqNo       int64           `json:"seqNo" validate:"required"`
 	Tbc         *bool           `json:"tbc,omitempty" validate:"omitempty"`
 }
 

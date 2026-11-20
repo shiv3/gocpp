@@ -20,6 +20,6 @@ type BootNotificationRequest struct {
 
 type BootNotificationResponse struct {
 	CurrentTime time.Time          `json:"currentTime" validate:"required"`
-	Interval    int32              `json:"interval" validate:"required"`
+	Interval    int64              `json:"interval" validate:"required"`
 	Status      RegistrationStatus `json:"status" validate:"required"`
 }

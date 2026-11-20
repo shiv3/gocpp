@@ -17,7 +17,7 @@ func TestChangeAvailability21_RequestValidation(t *testing.T) {
 			Name: "valid request",
 			Message: messages.ChangeAvailabilityRequest{
 				EVSE: &messages.EVSEType{
-					ConnectorID: ptr(int32(1)),
+					ConnectorID: ptr(int64(1)),
 					ID:          1,
 				},
 				OperationalStatus: "Operative",

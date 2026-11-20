@@ -24,7 +24,7 @@ func must16Validator(t *testing.T, action, kind string) *schema.Validator {
 	return conformance.MustValidator(t, reg, "1.6", action, kind)
 }
 
-func int32Ptr(i int32) *int32 {
+func int64Ptr(i int64) *int64 {
 	return &i
 }
 
@@ -58,11 +58,11 @@ func fullChargingSchedule() messages.ChargingSchedule {
 		ChargingSchedulePeriod: []messages.ChargingSchedulePeriod{
 			{
 				Limit:        types.NewFromInt(10),
-				NumberPhases: int32Ptr(3),
+				NumberPhases: int64Ptr(3),
 				StartPeriod:  0,
 			},
 		},
-		Duration:        int32Ptr(600),
+		Duration:        int64Ptr(600),
 		MinChargingRate: decimalPtr(types.NewFromInt(1)),
 		StartSchedule:   timePtr(testTime()),
 	}
@@ -87,7 +87,7 @@ func fullCsChargingProfiles() messages.CsChargingProfiles {
 		ChargingSchedule:       fullChargingSchedule(),
 		RecurrencyKind:         &recurrency,
 		StackLevel:             1,
-		TransactionID:          int32Ptr(42),
+		TransactionID:          int64Ptr(42),
 		ValidFrom:              timePtr(testTime()),
 		ValidTo:                timePtr(testTime().Add(time.Hour)),
 	}

@@ -4,9 +4,9 @@ package messages
 
 type ClearChargingProfileRequest struct {
 	ChargingProfilePurpose *ClearChargingProfileRequestChargingProfilePurpose `json:"chargingProfilePurpose,omitempty" validate:"omitempty"`
-	ConnectorID            *int32                                             `json:"connectorId,omitempty" validate:"omitempty"`
-	ID                     *int32                                             `json:"id,omitempty" validate:"omitempty"`
-	StackLevel             *int32                                             `json:"stackLevel,omitempty" validate:"omitempty"`
+	ConnectorID            *int64                                             `json:"connectorId,omitempty" validate:"omitempty"`
+	ID                     *int64                                             `json:"id,omitempty" validate:"omitempty"`
+	StackLevel             *int64                                             `json:"stackLevel,omitempty" validate:"omitempty"`
 }
 
 type ClearChargingProfileResponse struct {

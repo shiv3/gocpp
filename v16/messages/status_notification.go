@@ -7,7 +7,7 @@ import (
 )
 
 type StatusNotificationRequest struct {
-	ConnectorID     int32                              `json:"connectorId" validate:"required"`
+	ConnectorID     int64                              `json:"connectorId" validate:"required"`
 	ErrorCode       StatusNotificationRequestErrorCode `json:"errorCode" validate:"required"`
 	Info            *string                            `json:"info,omitempty" validate:"omitempty,max=50"`
 	Status          StatusNotificationRequestStatus    `json:"status" validate:"required"`

@@ -14,9 +14,9 @@ func testTransactionInfo201f() messages.TransactionType {
 	return messages.TransactionType{
 		TransactionID:     "42",
 		ChargingState:     strPtr201f("SuspendedEV"),
-		TimeSpentCharging: int32Ptr201f(100),
+		TimeSpentCharging: int64Ptr201f(100),
 		StoppedReason:     strPtr201f("Local"),
-		RemoteStartID:     int32Ptr201f(7),
+		RemoteStartID:     int64Ptr201f(7),
 	}
 }
 
@@ -38,9 +38,9 @@ func testTransactionEventRequest201f() messages.TransactionEventRequest {
 		TriggerReason:      "Authorized",
 		SeqNo:              1,
 		Offline:            boolPtr201f(true),
-		NumberOfPhasesUsed: int32Ptr201f(3),
-		CableMaxCurrent:    int32Ptr201f(20),
-		ReservationID:      int32Ptr201f(42),
+		NumberOfPhasesUsed: int64Ptr201f(3),
+		CableMaxCurrent:    int64Ptr201f(20),
+		ReservationID:      int64Ptr201f(42),
 		TransactionInfo:    testTransactionInfo201f(),
 		IDToken:            &messages.IdTokenType{IDToken: "1234", Type: "KeyCode"},
 		EVSE:               &messages.EVSEType{ID: 1},
@@ -382,7 +382,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 			Name: "valid full response",
 			Message: messages.TransactionEventResponse{
 				TotalCost:              decimalPtr201f(),
-				ChargingPriority:       int32Ptr201f(2),
+				ChargingPriority:       int64Ptr201f(2),
 				IDTokenInfo:            &messages.IdTokenInfoType{Status: "Accepted"},
 				UpdatedPersonalMessage: &messages.MessageContentType{Format: "UTF8", Content: "dummyContent"},
 			},
@@ -392,7 +392,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 			Name: "valid without updatedPersonalMessage",
 			Message: messages.TransactionEventResponse{
 				TotalCost:        decimalPtr201f(),
-				ChargingPriority: int32Ptr201f(2),
+				ChargingPriority: int64Ptr201f(2),
 				IDTokenInfo:      &messages.IdTokenInfoType{Status: "Accepted"},
 			},
 			Valid: true,
@@ -401,7 +401,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 			Name: "valid without idTokenInfo",
 			Message: messages.TransactionEventResponse{
 				TotalCost:        decimalPtr201f(),
-				ChargingPriority: int32Ptr201f(2),
+				ChargingPriority: int64Ptr201f(2),
 			},
 			Valid: true,
 		},
@@ -421,7 +421,7 @@ func TestTransactionEvent201_ResponseValidation(t *testing.T) {
 			Name: "invalid idTokenInfo status enum",
 			Message: messages.TransactionEventResponse{
 				TotalCost:              decimalPtr201f(),
-				ChargingPriority:       int32Ptr201f(2),
+				ChargingPriority:       int64Ptr201f(2),
 				IDTokenInfo:            &messages.IdTokenInfoType{Status: "invalidAuthorizationStatus"},
 				UpdatedPersonalMessage: &messages.MessageContentType{Format: "UTF8", Content: "dummyContent"},
 			},

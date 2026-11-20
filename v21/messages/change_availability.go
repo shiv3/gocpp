@@ -9,9 +9,9 @@ type ChangeAvailabilityRequest struct {
 }
 
 type EVSEType struct {
-	ConnectorID *int32          `json:"connectorId,omitempty" validate:"omitempty"`
+	ConnectorID *int64          `json:"connectorId,omitempty" validate:"omitempty"`
 	CustomData  *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID          int32           `json:"id" validate:"required"`
+	ID          int64           `json:"id" validate:"required"`
 }
 
 type ChangeAvailabilityResponse struct {

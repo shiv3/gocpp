@@ -72,7 +72,7 @@ func TestE2E_201TransactionEventGoldenPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Accepted", auth.IDTokenInfo.Status)
 
-	connectorID := int32(1)
+	connectorID := int64(1)
 	idToken := v201msg.IdTokenType{IDToken: "TAG1", Type: "ISO14443"}
 	_, err = cpc.TransactionEvent(ctx, v201msg.TransactionEventRequest{
 		EventType:       "Started",

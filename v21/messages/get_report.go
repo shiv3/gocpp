@@ -6,7 +6,7 @@ type GetReportRequest struct {
 	ComponentCriteria []string                `json:"componentCriteria,omitempty" validate:"omitempty"`
 	ComponentVariable []ComponentVariableType `json:"componentVariable,omitempty" validate:"omitempty"`
 	CustomData        *CustomDataType         `json:"customData,omitempty" validate:"omitempty"`
-	RequestID         int32                   `json:"requestId" validate:"required"`
+	RequestID         int64                   `json:"requestId" validate:"required"`
 }
 
 type GetReportResponse struct {

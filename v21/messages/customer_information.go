@@ -9,7 +9,7 @@ type CustomerInformationRequest struct {
 	CustomerIdentifier  *string                  `json:"customerIdentifier,omitempty" validate:"omitempty,max=64"`
 	IDToken             *IdTokenType             `json:"idToken,omitempty" validate:"omitempty"`
 	Report              bool                     `json:"report"`
-	RequestID           int32                    `json:"requestId" validate:"required"`
+	RequestID           int64                    `json:"requestId" validate:"required"`
 }
 
 type CertificateHashDataType struct {

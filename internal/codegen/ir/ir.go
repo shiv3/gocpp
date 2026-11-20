@@ -6,15 +6,15 @@ type Kind int
 
 const (
 	TypeString Kind = iota
-	TypeInt32
-	TypeInt64
-	TypeNumber // decimal
+	TypeInt64       // JSON Schema "integer"; always 64-bit, see assignScalar
+	TypeNumber      // decimal
 	TypeBool
 	TypeDateTime
 	TypeEnumRef
 	TypeStructRef
 	TypeSlice
 	TypeMap
+	TypeRaw // schema property with no type: any JSON value
 )
 
 // Field is one property of a message or nested struct.
@@ -32,7 +32,9 @@ type Field struct {
 // GoType renders the Go type expression for this field.
 func (f Field) GoType() string {
 	base := f.baseType()
-	if !f.Required && f.Type != TypeSlice && f.Type != TypeMap {
+	// Slices, maps and json.RawMessage are already nilable; "absent" is their
+	// zero value, so they are never pointers.
+	if !f.Required && f.Type != TypeSlice && f.Type != TypeMap && f.Type != TypeRaw {
 		return "*" + base
 	}
 	return base
@@ -42,8 +44,6 @@ func (f Field) baseType() string {
 	switch f.Type {
 	case TypeString:
 		return "string"
-	case TypeInt32:
-		return "int32"
 	case TypeInt64:
 		return "int64"
 	case TypeNumber:
@@ -60,6 +60,8 @@ func (f Field) baseType() string {
 		return "[]" + (Field{Type: f.ElemType, EnumName: f.EnumName, StructRef: f.StructRef, Required: true}).baseType()
 	case TypeMap:
 		return "map[string]any"
+	case TypeRaw:
+		return "json.RawMessage"
 	default:
 		return "any"
 	}
@@ -69,6 +71,10 @@ func (f Field) baseType() string {
 type Struct struct {
 	GoName string
 	Fields []Field
+	// AdditionalProperties is true when the schema does not forbid unknown
+	// properties (no "additionalProperties": false). Such structs carry an Extra
+	// map so the unknown properties survive a decode/encode round trip.
+	AdditionalProperties bool
 }
 
 // Enum is a named string enum with allowed values.

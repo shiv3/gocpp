@@ -4,7 +4,7 @@ package messages
 
 type SetDefaultTariffRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     int32           `json:"evseId" validate:"required"`
+	EVSEID     int64           `json:"evseId" validate:"required"`
 	Tariff     TariffType      `json:"tariff" validate:"required"`
 }
 

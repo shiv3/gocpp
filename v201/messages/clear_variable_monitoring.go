@@ -4,7 +4,7 @@ package messages
 
 type ClearVariableMonitoringRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID         []int32         `json:"id" validate:"required"`
+	ID         []int64         `json:"id" validate:"required"`
 }
 
 type ClearVariableMonitoringResponse struct {
@@ -14,7 +14,7 @@ type ClearVariableMonitoringResponse struct {
 
 type ClearMonitoringResultType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	ID         int32           `json:"id" validate:"required"`
+	ID         int64           `json:"id" validate:"required"`
 	Status     string          `json:"status" validate:"required"`
 	StatusInfo *StatusInfoType `json:"statusInfo,omitempty" validate:"omitempty"`
 }

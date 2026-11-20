@@ -3,7 +3,7 @@
 package messages
 
 type PullDynamicScheduleUpdateRequest struct {
-	ChargingProfileID int32           `json:"chargingProfileId" validate:"required"`
+	ChargingProfileID int64           `json:"chargingProfileId" validate:"required"`
 	CustomData        *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 }
 

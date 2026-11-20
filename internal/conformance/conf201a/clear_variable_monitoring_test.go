@@ -21,14 +21,14 @@ func TestClearVariableMonitoring201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid multiple ids",
 			Message: messages.ClearVariableMonitoringRequest{
-				ID: []int32{0, 2, 15},
+				ID: []int64{0, 2, 15},
 			},
 			Valid: true,
 		},
 		{
 			Name: "valid single id",
 			Message: messages.ClearVariableMonitoringRequest{
-				ID: []int32{0},
+				ID: []int64{0},
 			},
 			Valid: true,
 		},
@@ -36,14 +36,14 @@ func TestClearVariableMonitoring201_RequestValidation(t *testing.T) {
 			Name: "valid full request",
 			Message: messages.ClearVariableMonitoringRequest{
 				CustomData: testCustomData(),
-				ID:         []int32{1, 2},
+				ID:         []int64{1, 2},
 			},
 			Valid: true,
 		},
 		{
 			Name: "invalid empty id list",
 			Message: messages.ClearVariableMonitoringRequest{
-				ID: []int32{},
+				ID: []int64{},
 			},
 			Valid: false,
 		},

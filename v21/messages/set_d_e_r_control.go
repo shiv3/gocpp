@@ -27,7 +27,7 @@ type DERCurveType struct {
 	CustomData          *CustomDataType          `json:"customData,omitempty" validate:"omitempty"`
 	Duration            *types.Decimal           `json:"duration,omitempty" validate:"omitempty"`
 	Hysteresis          *HysteresisType          `json:"hysteresis,omitempty" validate:"omitempty"`
-	Priority            int32                    `json:"priority" validate:"required"`
+	Priority            int64                    `json:"priority" validate:"required"`
 	ReactivePowerParams *ReactivePowerParamsType `json:"reactivePowerParams,omitempty" validate:"omitempty"`
 	ResponseTime        *types.Decimal           `json:"responseTime,omitempty" validate:"omitempty"`
 	StartTime           *time.Time               `json:"startTime,omitempty" validate:"omitempty"`
@@ -70,7 +70,7 @@ type EnterServiceType struct {
 	HighVoltage types.Decimal   `json:"highVoltage" validate:"required"`
 	LowFreq     types.Decimal   `json:"lowFreq" validate:"required"`
 	LowVoltage  types.Decimal   `json:"lowVoltage" validate:"required"`
-	Priority    int32           `json:"priority" validate:"required"`
+	Priority    int64           `json:"priority" validate:"required"`
 	RampRate    *types.Decimal  `json:"rampRate,omitempty" validate:"omitempty"`
 	RandomDelay *types.Decimal  `json:"randomDelay,omitempty" validate:"omitempty"`
 }
@@ -80,14 +80,14 @@ type FixedPFType struct {
 	Displacement types.Decimal   `json:"displacement" validate:"required"`
 	Duration     *types.Decimal  `json:"duration,omitempty" validate:"omitempty"`
 	Excitation   bool            `json:"excitation"`
-	Priority     int32           `json:"priority" validate:"required"`
+	Priority     int64           `json:"priority" validate:"required"`
 	StartTime    *time.Time      `json:"startTime,omitempty" validate:"omitempty"`
 }
 
 type FixedVarType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Duration   *types.Decimal  `json:"duration,omitempty" validate:"omitempty"`
-	Priority   int32           `json:"priority" validate:"required"`
+	Priority   int64           `json:"priority" validate:"required"`
 	Setpoint   types.Decimal   `json:"setpoint" validate:"required"`
 	StartTime  *time.Time      `json:"startTime,omitempty" validate:"omitempty"`
 	Unit       string          `json:"unit" validate:"required"`
@@ -98,7 +98,7 @@ type FreqDroopType struct {
 	Duration     *types.Decimal  `json:"duration,omitempty" validate:"omitempty"`
 	OverDroop    types.Decimal   `json:"overDroop" validate:"required"`
 	OverFreq     types.Decimal   `json:"overFreq" validate:"required"`
-	Priority     int32           `json:"priority" validate:"required"`
+	Priority     int64           `json:"priority" validate:"required"`
 	ResponseTime types.Decimal   `json:"responseTime" validate:"required"`
 	StartTime    *time.Time      `json:"startTime,omitempty" validate:"omitempty"`
 	UnderDroop   types.Decimal   `json:"underDroop" validate:"required"`
@@ -108,7 +108,7 @@ type FreqDroopType struct {
 type GradientType struct {
 	CustomData   *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Gradient     types.Decimal   `json:"gradient" validate:"required"`
-	Priority     int32           `json:"priority" validate:"required"`
+	Priority     int64           `json:"priority" validate:"required"`
 	SoftGradient types.Decimal   `json:"softGradient" validate:"required"`
 }
 
@@ -117,7 +117,7 @@ type LimitMaxDischargeType struct {
 	Duration                *types.Decimal  `json:"duration,omitempty" validate:"omitempty"`
 	PctMaxDischargePower    *types.Decimal  `json:"pctMaxDischargePower,omitempty" validate:"omitempty"`
 	PowerMonitoringMustTrip *DERCurveType   `json:"powerMonitoringMustTrip,omitempty" validate:"omitempty"`
-	Priority                int32           `json:"priority" validate:"required"`
+	Priority                int64           `json:"priority" validate:"required"`
 	StartTime               *time.Time      `json:"startTime,omitempty" validate:"omitempty"`
 }
 

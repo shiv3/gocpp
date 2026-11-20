@@ -16,7 +16,7 @@ func TestClearVariableMonitoring21_RequestValidation(t *testing.T) {
 		{
 			Name: "valid request",
 			Message: messages.ClearVariableMonitoringRequest{
-				ID: []int32{1},
+				ID: []int64{1},
 			},
 			Valid: true,
 		},

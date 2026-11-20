@@ -4,7 +4,7 @@ package messages
 
 type ClearTariffsRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID     *int32          `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID     *int64          `json:"evseId,omitempty" validate:"omitempty"`
 	TariffIds  []string        `json:"tariffIds,omitempty" validate:"omitempty"`
 }
 

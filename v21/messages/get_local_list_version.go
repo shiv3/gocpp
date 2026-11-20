@@ -8,5 +8,5 @@ type GetLocalListVersionRequest struct {
 
 type GetLocalListVersionResponse struct {
 	CustomData    *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	VersionNumber int32           `json:"versionNumber" validate:"required"`
+	VersionNumber int64           `json:"versionNumber" validate:"required"`
 }

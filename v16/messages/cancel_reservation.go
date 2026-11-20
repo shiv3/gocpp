@@ -3,7 +3,7 @@
 package messages
 
 type CancelReservationRequest struct {
-	ReservationID int32 `json:"reservationId" validate:"required"`
+	ReservationID int64 `json:"reservationId" validate:"required"`
 }
 
 type CancelReservationResponse struct {

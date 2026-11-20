@@ -21,7 +21,7 @@ func strPtr201e(v string) *string {
 	return &v
 }
 
-func int32Ptr201e(v int32) *int32 {
+func int64Ptr201e(v int64) *int64 {
 	return &v
 }
 
@@ -53,7 +53,7 @@ func testAuthorizationData201e() messages.AuthorizationData {
 	}
 }
 
-func testChargingProfile201e(stackLevel int32) messages.ChargingProfileType {
+func testChargingProfile201e(stackLevel int64) messages.ChargingProfileType {
 	return messages.ChargingProfileType{
 		ID:                     1,
 		StackLevel:             stackLevel,

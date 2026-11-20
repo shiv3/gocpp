@@ -6,7 +6,7 @@ type SendLocalListRequest struct {
 	CustomData             *CustomDataType     `json:"customData,omitempty" validate:"omitempty"`
 	LocalAuthorizationList []AuthorizationData `json:"localAuthorizationList,omitempty" validate:"omitempty"`
 	UpdateType             string              `json:"updateType" validate:"required"`
-	VersionNumber          int32               `json:"versionNumber" validate:"required"`
+	VersionNumber          int64               `json:"versionNumber" validate:"required"`
 }
 
 type AuthorizationData struct {

@@ -5,7 +5,7 @@ package messages
 type NotifyDisplayMessagesRequest struct {
 	CustomData  *CustomDataType   `json:"customData,omitempty" validate:"omitempty"`
 	MessageInfo []MessageInfoType `json:"messageInfo,omitempty" validate:"omitempty"`
-	RequestID   int32             `json:"requestId" validate:"required"`
+	RequestID   int64             `json:"requestId" validate:"required"`
 	Tbc         *bool             `json:"tbc,omitempty" validate:"omitempty"`
 }
 

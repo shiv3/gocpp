@@ -5,7 +5,7 @@ package messages
 type ClearedChargingLimitRequest struct {
 	ChargingLimitSource string          `json:"chargingLimitSource" validate:"required"`
 	CustomData          *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID              *int32          `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID              *int64          `json:"evseId,omitempty" validate:"omitempty"`
 }
 
 type ClearedChargingLimitResponse struct {

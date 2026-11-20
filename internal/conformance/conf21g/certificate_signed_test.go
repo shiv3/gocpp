@@ -23,7 +23,7 @@ func strPtr21(s string) *string {
 	return &s
 }
 
-func int32Ptr21(i int32) *int32 {
+func int64Ptr21(i int64) *int64 {
 	return &i
 }
 
@@ -78,7 +78,7 @@ func certificateHashData21() messages.CertificateHashDataType {
 
 func evse21() *messages.EVSEType {
 	return &messages.EVSEType{
-		ConnectorID: int32Ptr21(1),
+		ConnectorID: int64Ptr21(1),
 		CustomData:  customData21(),
 		ID:          1,
 	}
@@ -334,7 +334,7 @@ func TestCertificateSigned21_RequestValidation(t *testing.T) {
 				CertificateChain: "sampleCert",
 				CertificateType:  strPtr21("ChargingStationCertificate"),
 				CustomData:       customData21(),
-				RequestID:        int32Ptr21(1),
+				RequestID:        int64Ptr21(1),
 			},
 			Valid: true,
 		},

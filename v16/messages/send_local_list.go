@@ -3,7 +3,7 @@
 package messages
 
 type SendLocalListRequest struct {
-	ListVersion            int32                          `json:"listVersion" validate:"required"`
+	ListVersion            int64                          `json:"listVersion" validate:"required"`
 	LocalAuthorizationList []LocalAuthorizationList       `json:"localAuthorizationList,omitempty" validate:"omitempty"`
 	UpdateType             SendLocalListRequestUpdateType `json:"updateType" validate:"required"`
 }

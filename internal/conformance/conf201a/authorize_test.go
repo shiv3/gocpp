@@ -169,9 +169,9 @@ func TestAuthorize201_ResponseValidation(t *testing.T) {
 				CustomData:        testCustomData(),
 				IDTokenInfo: messages.IdTokenInfoType{
 					CacheExpiryDateTime: &[]time.Time{testTime()}[0],
-					ChargingPriority:    int32Ptr(1),
+					ChargingPriority:    int64Ptr(1),
 					CustomData:          testCustomData(),
-					EVSEID:              []int32{1},
+					EVSEID:              []int64{1},
 					GroupIDToken: &messages.IdTokenType{
 						IDToken: "group",
 						Type:    "Local",

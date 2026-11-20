@@ -19,7 +19,7 @@ func TestPublishFirmwareStatusNotification201_RequestValidation(t *testing.T) {
 			Message: messages.PublishFirmwareStatusNotificationRequest{
 				Status:    "Published",
 				Location:  []string{"http://someUri"},
-				RequestID: ptr(int32(42)),
+				RequestID: ptr(int64(42)),
 			},
 			Valid: true,
 		},
@@ -119,7 +119,7 @@ func TestPublishFirmwareStatusNotification201_RequestValidation(t *testing.T) {
 			Message: messages.PublishFirmwareStatusNotificationRequest{
 				Status:    "Published",
 				Location:  []string{longString(513)},
-				RequestID: ptr(int32(42)),
+				RequestID: ptr(int64(42)),
 			},
 			Valid: false,
 		},

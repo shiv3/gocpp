@@ -8,8 +8,8 @@ import (
 
 type GetDiagnosticsRequest struct {
 	Location      string     `json:"location" validate:"required"`
-	Retries       *int32     `json:"retries,omitempty" validate:"omitempty"`
-	RetryInterval *int32     `json:"retryInterval,omitempty" validate:"omitempty"`
+	Retries       *int64     `json:"retries,omitempty" validate:"omitempty"`
+	RetryInterval *int64     `json:"retryInterval,omitempty" validate:"omitempty"`
 	StartTime     *time.Time `json:"startTime,omitempty" validate:"omitempty"`
 	StopTime      *time.Time `json:"stopTime,omitempty" validate:"omitempty"`
 }

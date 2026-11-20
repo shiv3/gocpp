@@ -58,8 +58,8 @@ func TestGetPeriodicEventStream21_ResponseValidation(t *testing.T) {
 						ID:         1,
 						Params: messages.PeriodicEventStreamParamsType{
 							CustomData: customData21(),
-							Interval:   int32Ptr21(60),
-							Values:     int32Ptr21(10),
+							Interval:   int64Ptr21(60),
+							Values:     int64Ptr21(10),
 						},
 						VariableMonitoringID: 2,
 					},

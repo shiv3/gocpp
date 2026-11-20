@@ -8,7 +8,7 @@ import (
 
 type AFRRSignalRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Signal     int32           `json:"signal" validate:"required"`
+	Signal     int64           `json:"signal" validate:"required"`
 	Timestamp  time.Time       `json:"timestamp" validate:"required"`
 }
 

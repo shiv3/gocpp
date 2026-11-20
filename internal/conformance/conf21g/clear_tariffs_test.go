@@ -19,7 +19,7 @@ func TestClearTariffs21_RequestValidation(t *testing.T) {
 			Name: "valid request",
 			Message: messages.ClearTariffsRequest{
 				CustomData: customData21(),
-				EVSEID:     int32Ptr21(1),
+				EVSEID:     int64Ptr21(1),
 				TariffIds:  []string{"tariff-1"},
 			},
 			Valid: true,

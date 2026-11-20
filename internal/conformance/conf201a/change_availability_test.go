@@ -24,7 +24,7 @@ func TestChangeAvailability201_RequestValidation(t *testing.T) {
 				OperationalStatus: "Operative",
 				EVSE: &messages.EVSEType{
 					ID:          1,
-					ConnectorID: int32Ptr(1),
+					ConnectorID: int64Ptr(1),
 				},
 			},
 			Valid: true,

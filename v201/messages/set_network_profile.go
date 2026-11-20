@@ -3,7 +3,7 @@
 package messages
 
 type SetNetworkProfileRequest struct {
-	ConfigurationSlot int32                        `json:"configurationSlot" validate:"required"`
+	ConfigurationSlot int64                        `json:"configurationSlot" validate:"required"`
 	ConnectionData    NetworkConnectionProfileType `json:"connectionData" validate:"required"`
 	CustomData        *CustomDataType              `json:"customData,omitempty" validate:"omitempty"`
 }
@@ -11,12 +11,12 @@ type SetNetworkProfileRequest struct {
 type NetworkConnectionProfileType struct {
 	Apn             *APNType        `json:"apn,omitempty" validate:"omitempty"`
 	CustomData      *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	MessageTimeout  int32           `json:"messageTimeout" validate:"required"`
+	MessageTimeout  int64           `json:"messageTimeout" validate:"required"`
 	OCPPCsmsURL     string          `json:"ocppCsmsUrl" validate:"required,max=512"`
 	OCPPInterface   string          `json:"ocppInterface" validate:"required"`
 	OCPPTransport   string          `json:"ocppTransport" validate:"required"`
 	OCPPVersion     string          `json:"ocppVersion" validate:"required"`
-	SecurityProfile int32           `json:"securityProfile" validate:"required"`
+	SecurityProfile int64           `json:"securityProfile" validate:"required"`
 	Vpn             *VPNType        `json:"vpn,omitempty" validate:"omitempty"`
 }
 
@@ -27,7 +27,7 @@ type APNType struct {
 	ApnUserName             *string         `json:"apnUserName,omitempty" validate:"omitempty,max=20"`
 	CustomData              *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	PreferredNetwork        *string         `json:"preferredNetwork,omitempty" validate:"omitempty,max=6"`
-	SimPin                  *int32          `json:"simPin,omitempty" validate:"omitempty"`
+	SimPin                  *int64          `json:"simPin,omitempty" validate:"omitempty"`
 	UseOnlyPreferredNetwork *bool           `json:"useOnlyPreferredNetwork,omitempty" validate:"omitempty"`
 }
 

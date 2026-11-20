@@ -5,7 +5,7 @@ package messages
 type SetChargingProfileRequest struct {
 	ChargingProfile ChargingProfileType `json:"chargingProfile" validate:"required"`
 	CustomData      *CustomDataType     `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID          int32               `json:"evseId" validate:"required"`
+	EVSEID          int64               `json:"evseId" validate:"required"`
 }
 
 type SetChargingProfileResponse struct {

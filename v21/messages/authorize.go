@@ -3,6 +3,7 @@
 package messages
 
 import (
+	"encoding/json"
 	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
@@ -16,6 +17,26 @@ type AuthorizeRequest struct {
 
 type CustomDataType struct {
 	VendorID string `json:"vendorId" validate:"required,max=255"`
+	// Extra holds the properties the schema does not define, verbatim, so they
+	// round-trip. Keys that clash with a defined field are ignored on encode.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// MarshalJSON encodes the defined fields followed by Extra.
+func (v CustomDataType) MarshalJSON() ([]byte, error) {
+	type plain CustomDataType
+	return types.MarshalWithExtra(plain(v), v.Extra)
+}
+
+// UnmarshalJSON decodes the defined fields and collects the rest into Extra.
+func (v *CustomDataType) UnmarshalJSON(data []byte) error {
+	type plain CustomDataType
+	extra, err := types.UnmarshalWithExtra(data, (*plain)(v), "vendorId")
+	if err != nil {
+		return err
+	}
+	v.Extra = extra
+	return nil
 }
 
 type IdTokenType struct {
@@ -50,9 +71,9 @@ type AuthorizeResponse struct {
 
 type IdTokenInfoType struct {
 	CacheExpiryDateTime *time.Time          `json:"cacheExpiryDateTime,omitempty" validate:"omitempty"`
-	ChargingPriority    *int32              `json:"chargingPriority,omitempty" validate:"omitempty"`
+	ChargingPriority    *int64              `json:"chargingPriority,omitempty" validate:"omitempty"`
 	CustomData          *CustomDataType     `json:"customData,omitempty" validate:"omitempty"`
-	EVSEID              []int32             `json:"evseId,omitempty" validate:"omitempty"`
+	EVSEID              []int64             `json:"evseId,omitempty" validate:"omitempty"`
 	GroupIDToken        *IdTokenType        `json:"groupIdToken,omitempty" validate:"omitempty"`
 	Language1           *string             `json:"language1,omitempty" validate:"omitempty,max=8"`
 	Language2           *string             `json:"language2,omitempty" validate:"omitempty,max=8"`
@@ -100,18 +121,18 @@ type TariffConditionsType struct {
 	DayOfWeek       []string        `json:"dayOfWeek,omitempty" validate:"omitempty"`
 	EndTimeOfDay    *string         `json:"endTimeOfDay,omitempty" validate:"omitempty"`
 	EVSEKind        *string         `json:"evseKind,omitempty" validate:"omitempty"`
-	MaxChargingTime *int32          `json:"maxChargingTime,omitempty" validate:"omitempty"`
+	MaxChargingTime *int64          `json:"maxChargingTime,omitempty" validate:"omitempty"`
 	MaxCurrent      *types.Decimal  `json:"maxCurrent,omitempty" validate:"omitempty"`
 	MaxEnergy       *types.Decimal  `json:"maxEnergy,omitempty" validate:"omitempty"`
-	MaxIdleTime     *int32          `json:"maxIdleTime,omitempty" validate:"omitempty"`
+	MaxIdleTime     *int64          `json:"maxIdleTime,omitempty" validate:"omitempty"`
 	MaxPower        *types.Decimal  `json:"maxPower,omitempty" validate:"omitempty"`
-	MaxTime         *int32          `json:"maxTime,omitempty" validate:"omitempty"`
-	MinChargingTime *int32          `json:"minChargingTime,omitempty" validate:"omitempty"`
+	MaxTime         *int64          `json:"maxTime,omitempty" validate:"omitempty"`
+	MinChargingTime *int64          `json:"minChargingTime,omitempty" validate:"omitempty"`
 	MinCurrent      *types.Decimal  `json:"minCurrent,omitempty" validate:"omitempty"`
 	MinEnergy       *types.Decimal  `json:"minEnergy,omitempty" validate:"omitempty"`
-	MinIdleTime     *int32          `json:"minIdleTime,omitempty" validate:"omitempty"`
+	MinIdleTime     *int64          `json:"minIdleTime,omitempty" validate:"omitempty"`
 	MinPower        *types.Decimal  `json:"minPower,omitempty" validate:"omitempty"`
-	MinTime         *int32          `json:"minTime,omitempty" validate:"omitempty"`
+	MinTime         *int64          `json:"minTime,omitempty" validate:"omitempty"`
 	StartTimeOfDay  *string         `json:"startTimeOfDay,omitempty" validate:"omitempty"`
 	ValidFromDate   *string         `json:"validFromDate,omitempty" validate:"omitempty"`
 	ValidToDate     *string         `json:"validToDate,omitempty" validate:"omitempty"`
@@ -119,7 +140,7 @@ type TariffConditionsType struct {
 
 type TaxRateType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Stack      *int32          `json:"stack,omitempty" validate:"omitempty"`
+	Stack      *int64          `json:"stack,omitempty" validate:"omitempty"`
 	Tax        types.Decimal   `json:"tax" validate:"required"`
 	Type       string          `json:"type" validate:"required,max=20"`
 }

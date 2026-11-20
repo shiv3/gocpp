@@ -12,7 +12,7 @@ type ReportDERControlRequest struct {
 	FreqDroop         []FreqDroopGetType         `json:"freqDroop,omitempty" validate:"omitempty"`
 	Gradient          []GradientGetType          `json:"gradient,omitempty" validate:"omitempty"`
 	LimitMaxDischarge []LimitMaxDischargeGetType `json:"limitMaxDischarge,omitempty" validate:"omitempty"`
-	RequestID         int32                      `json:"requestId" validate:"required"`
+	RequestID         int64                      `json:"requestId" validate:"required"`
 	Tbc               *bool                      `json:"tbc,omitempty" validate:"omitempty"`
 }
 

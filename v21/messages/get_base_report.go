@@ -5,7 +5,7 @@ package messages
 type GetBaseReportRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	ReportBase string          `json:"reportBase" validate:"required"`
-	RequestID  int32           `json:"requestId" validate:"required"`
+	RequestID  int64           `json:"requestId" validate:"required"`
 }
 
 type GetBaseReportResponse struct {

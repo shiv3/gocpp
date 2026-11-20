@@ -18,7 +18,7 @@ func TestVatNumberValidation21_RequestValidation(t *testing.T) {
 		{
 			Name: "valid",
 			Message: messages.VatNumberValidationRequest{
-				EVSEID:    int32Ptr21(1),
+				EVSEID:    int64Ptr21(1),
 				VatNumber: "NL123456789B01",
 			},
 			Valid: true,

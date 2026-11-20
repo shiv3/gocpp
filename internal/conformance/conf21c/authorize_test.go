@@ -57,7 +57,7 @@ func statusInfo21(reasonCode string) *messages.StatusInfoType {
 func component21() messages.ComponentType {
 	return messages.ComponentType{
 		EVSE: &messages.EVSEType{
-			ConnectorID: ptr(int32(1)),
+			ConnectorID: ptr(int64(1)),
 			ID:          1,
 		},
 		Instance: ptr("instance-1"),

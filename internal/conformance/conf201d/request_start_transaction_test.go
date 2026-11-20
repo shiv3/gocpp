@@ -33,7 +33,7 @@ func TestRequestStartTransaction201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid full request",
 			Message: messages.RequestStartTransactionRequest{
-				EVSEID:          ptr(int32(1)),
+				EVSEID:          ptr(int64(1)),
 				RemoteStartID:   42,
 				IDToken:         idToken201("KeyCode"),
 				ChargingProfile: ptr(requestStartChargingProfile201()),
@@ -44,7 +44,7 @@ func TestRequestStartTransaction201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid without groupIdToken",
 			Message: messages.RequestStartTransactionRequest{
-				EVSEID:          ptr(int32(1)),
+				EVSEID:          ptr(int64(1)),
 				RemoteStartID:   42,
 				IDToken:         idToken201("KeyCode"),
 				ChargingProfile: ptr(requestStartChargingProfile201()),
@@ -54,7 +54,7 @@ func TestRequestStartTransaction201_RequestValidation(t *testing.T) {
 		{
 			Name: "valid without chargingProfile",
 			Message: messages.RequestStartTransactionRequest{
-				EVSEID:        ptr(int32(1)),
+				EVSEID:        ptr(int64(1)),
 				RemoteStartID: 42,
 				IDToken:       idToken201("KeyCode"),
 			},
@@ -83,7 +83,7 @@ func TestRequestStartTransaction201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid idToken type enum",
 			Message: messages.RequestStartTransactionRequest{
-				EVSEID:          ptr(int32(1)),
+				EVSEID:          ptr(int64(1)),
 				RemoteStartID:   42,
 				IDToken:         idToken201("invalidIdToken"),
 				ChargingProfile: ptr(requestStartChargingProfile201()),
@@ -94,7 +94,7 @@ func TestRequestStartTransaction201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid empty chargingProfile",
 			Message: messages.RequestStartTransactionRequest{
-				EVSEID:          ptr(int32(1)),
+				EVSEID:          ptr(int64(1)),
 				RemoteStartID:   42,
 				IDToken:         idToken201("KeyCode"),
 				ChargingProfile: &messages.ChargingProfileType{},
@@ -105,7 +105,7 @@ func TestRequestStartTransaction201_RequestValidation(t *testing.T) {
 		{
 			Name: "invalid groupIdToken type enum",
 			Message: messages.RequestStartTransactionRequest{
-				EVSEID:          ptr(int32(1)),
+				EVSEID:          ptr(int64(1)),
 				RemoteStartID:   42,
 				IDToken:         idToken201("KeyCode"),
 				ChargingProfile: ptr(requestStartChargingProfile201()),

@@ -4,7 +4,7 @@ package messages
 
 type FirmwareStatusNotificationRequest struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	RequestID  *int32          `json:"requestId,omitempty" validate:"omitempty"`
+	RequestID  *int64          `json:"requestId,omitempty" validate:"omitempty"`
 	Status     string          `json:"status" validate:"required"`
 	StatusInfo *StatusInfoType `json:"statusInfo,omitempty" validate:"omitempty"`
 }
