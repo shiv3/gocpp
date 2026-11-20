@@ -119,7 +119,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			return
 		}
 	}
-	hctx, span := c.cfg.Tracer.Start(c.ctx, "ocpp.handler")
+	hctx, span := c.cfg.Tracer.Start(ocppj.ContextWithMessageID(c.ctx, frame.MsgID), "ocpp.handler")
 	span.SetAttributes(
 		attribute.String("ocpp.action", frame.Action),
 		attribute.String("ocpp.cp_id", c.id),
@@ -197,7 +197,7 @@ func (c *Conn) runSendHandler(frame ocppj.Frame) {
 			return
 		}
 	}
-	if err := h(c.ctx, c, reqPayload); err != nil {
+	if err := h(ocppj.ContextWithMessageID(c.ctx, frame.MsgID), c, reqPayload); err != nil {
 		c.cfg.Logger.WarnContext(c.ctx, "SEND handler error",
 			"cp_id", c.id, "action", frame.Action, "err", err)
 	}

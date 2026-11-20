@@ -14,6 +14,8 @@ type metrics struct {
 	calls       *prometheus.CounterVec
 	callDur     *prometheus.HistogramVec
 	schemaFails *prometheus.CounterVec
+	queueDepth  *prometheus.HistogramVec
+	pingLatency *prometheus.HistogramVec
 }
 
 // New creates a Prometheus-backed Metrics and registers collectors with reg.
@@ -24,8 +26,10 @@ func New(reg prometheus.Registerer) observability.Metrics {
 		calls:       prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_calls_total", Help: "calls completed"}, []string{"version", "action", "direction", "status"}),
 		callDur:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_call_duration_seconds", Help: "call duration"}, []string{"version", "action", "direction"}),
 		schemaFails: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_schema_failures_total", Help: "schema validation failures"}, []string{"version", "action", "direction"}),
+		queueDepth:  prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_outbound_queue_depth", Help: "frames waiting for the writer, sampled at enqueue", Buckets: []float64{0, 1, 2, 4, 8, 16, 32, 64, 128, 256}}, []string{"version"}),
+		pingLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_ping_latency_seconds", Help: "WebSocket ping round-trip time"}, []string{"version"}),
 	}
-	reg.MustRegister(m.connections, m.pending, m.calls, m.callDur, m.schemaFails)
+	reg.MustRegister(m.connections, m.pending, m.calls, m.callDur, m.schemaFails, m.queueDepth, m.pingLatency)
 	return m
 }
 
@@ -42,4 +46,11 @@ func (m *metrics) PendingCallCount(version string, delta int) {
 }
 func (m *metrics) SchemaValidationFailure(version, action, direction string) {
 	m.schemaFails.WithLabelValues(version, action, direction).Inc()
+}
+
+func (m *metrics) OutboundQueueDepth(version string, depth int) {
+	m.queueDepth.WithLabelValues(version).Observe(float64(depth))
+}
+func (m *metrics) PingLatency(version string, d time.Duration) {
+	m.pingLatency.WithLabelValues(version).Observe(d.Seconds())
 }

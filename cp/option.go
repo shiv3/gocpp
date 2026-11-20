@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj/signing"
 	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/core/transport"
@@ -209,4 +210,13 @@ func WithLenientSchema() Option {
 	return optionFunc(func(c *clientConfig) {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
 	})
+}
+
+// WithFrameObserver installs a callback that sees every raw OCPP-J frame,
+// inbound (after read, including unparsable frames) and outbound (after the
+// write attempt, with the error if it failed). It runs inline on the
+// connection's reader/writer goroutine, so it must be fast and must not block;
+// panics are recovered. See observability.SlogFrameObserver.
+func WithFrameObserver(fn observability.FrameObserver) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.FrameObserver = fn })
 }

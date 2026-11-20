@@ -23,6 +23,9 @@ func TestOTel_RecordsInstruments(t *testing.T) {
 	m.PendingCallCount("1.6", 1)
 	m.CallCompleted("1.6", "Heartbeat", "inbound", 5*time.Millisecond, "ok")
 	m.SchemaValidationFailure("1.6", "BootNotification", "inbound")
+	cm := m.(observability.ConnectionMetrics)
+	cm.OutboundQueueDepth("1.6", 3)
+	cm.PingLatency("1.6", time.Millisecond)
 
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(context.Background(), &rm))
@@ -36,6 +39,7 @@ func TestOTel_RecordsInstruments(t *testing.T) {
 	for _, want := range []string{
 		"gocpp.connections", "gocpp.pending_calls",
 		"gocpp.calls", "gocpp.call.duration", "gocpp.schema_failures",
+		"gocpp.outbound_queue.depth", "gocpp.ping.latency",
 	} {
 		require.Truef(t, got[want], "expected metric %q to be recorded", want)
 	}

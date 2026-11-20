@@ -23,6 +23,7 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 	}()
 
 	msgID := ocppj.NewMsgID()
+	ocppj.NotifyMessageID(ctx, msgID)
 	sendPayload := reqPayload
 	if c.cfg.SchemaMode == SchemaModeLenient {
 		out, herr := c.lenientValidate(action, "request", reqPayload)

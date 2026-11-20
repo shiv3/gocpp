@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Frame observer: `csms.WithFrameObserver` / `cp.WithFrameObserver`
+  (`dispatcher.Config.FrameObserver`) receive an `observability.FrameEvent`
+  (cp id, version, direction, raw bytes, type, message id, action, time, write
+  error) for every inbound frame (including unparsable ones) and every outbound
+  frame (after the write attempt; includes signed messages, SEND, CALLERROR and
+  CALLRESULTERROR). It runs inline and must be fast; panics are recovered.
+  `observability.SlogFrameObserver(logger, level, maxRaw)` is a ready-made logger.
+- Message ids: inbound handlers read the frame's id with
+  `ocppj.MessageIDFromContext(ctx)`; an outbound `Call`/`CallAsync`/`Send` reports
+  the id it was sent with through `ocppj.WithMessageIDCallback(ctx, fn)`, with no
+  change to the typed call signatures.
+- Optional `observability.ConnectionMetrics` (outbound queue depth, WebSocket
+  ping round-trip latency), implemented by the prom (`gocpp_outbound_queue_depth`,
+  `gocpp_ping_latency_seconds`) and otel adapters. Existing `Metrics`
+  implementations keep working unchanged.
 - `csms.Conn.Close(ctx)` and `csms.Server.Disconnect(ctx, id)`: close one charge
   point's connection from the server side (WebSocket close 1000, reason "closed by
   the server"), waiting for teardown up to ctx. The disconnect callback fires once
