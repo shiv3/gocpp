@@ -39,9 +39,8 @@ func newNode(t *testing.T, hub *memory.InProcessHub, id string) *node {
 }
 
 // connect dials the charge point to this node. reply answers each CALL the CSMS
-// sends; it gets the action and returns the raw frame tail after the message id
-// (e.g. `3,{"status":"Accepted"}` is built by the helper below).
-func (n *node) connect(t *testing.T, ctx context.Context, cpID string, reply func(action string) (callError *ocppj.CallError)) *websocket.Conn {
+// sends: nil answers with Accepted, a CallError answers with that error.
+func (n *node) connect(ctx context.Context, t *testing.T, cpID string, reply func(action string) (callError *ocppj.CallError)) *websocket.Conn {
 	t.Helper()
 	url := "ws" + n.ts.URL[len("http"):] + "/ocpp/" + cpID
 	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
@@ -85,7 +84,7 @@ func TestCluster_CallForwardedToOwningInstance(t *testing.T) {
 	defer cancel()
 	hub := memory.NewInProcessHub()
 	a, b := newNode(t, hub, "A"), newNode(t, hub, "B")
-	a.connect(t, ctx, "CP_1", func(string) *ocppj.CallError { return nil })
+	a.connect(ctx, t, "CP_1", func(string) *ocppj.CallError { return nil })
 
 	inst, ok := owner(t, b, "CP_1")
 	require.True(t, ok)
@@ -128,7 +127,7 @@ func TestCluster_CallErrorPropagates(t *testing.T) {
 	defer cancel()
 	hub := memory.NewInProcessHub()
 	a, b := newNode(t, hub, "A"), newNode(t, hub, "B")
-	a.connect(t, ctx, "CP_1", func(string) *ocppj.CallError {
+	a.connect(ctx, t, "CP_1", func(string) *ocppj.CallError {
 		return ocppj.NewCallError(ocppj.ErrorCodeNotSupported, "no reset here", nil)
 	})
 	conn, err := b.srv.Lookup(ctx, "CP_1")
@@ -155,7 +154,7 @@ func TestCluster_OwnerLostConnectionAfterLookup(t *testing.T) {
 	defer cancel()
 	hub := memory.NewInProcessHub()
 	a, b := newNode(t, hub, "A"), newNode(t, hub, "B")
-	cp := a.connect(t, ctx, "CP_1", func(string) *ocppj.CallError { return nil })
+	cp := a.connect(ctx, t, "CP_1", func(string) *ocppj.CallError { return nil })
 	conn, err := b.srv.Lookup(ctx, "CP_1")
 	require.NoError(t, err)
 
@@ -173,10 +172,10 @@ func TestCluster_StaleDisconnectKeepsNewerOwner(t *testing.T) {
 	defer cancel()
 	hub := memory.NewInProcessHub()
 	a, b := newNode(t, hub, "A"), newNode(t, hub, "B")
-	staleCP := a.connect(t, ctx, "CP_1", func(string) *ocppj.CallError { return nil })
+	staleCP := a.connect(ctx, t, "CP_1", func(string) *ocppj.CallError { return nil })
 
 	// The charger reconnects to B while A still holds its (now stale) entry.
-	b.connect(t, ctx, "CP_1", func(string) *ocppj.CallError { return nil })
+	b.connect(ctx, t, "CP_1", func(string) *ocppj.CallError { return nil })
 	inst, ok := owner(t, a, "CP_1")
 	require.True(t, ok)
 	require.Equal(t, "B", inst, "last registration wins")
@@ -220,7 +219,7 @@ func TestCluster_StaleDisconnectWithoutCompareAndDelete(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(func() { ts.Close(); srv.Close() })
 	a := &node{srv: srv, ts: ts, reg: reg}
-	cp := a.connect(t, ctx, "CP_1", func(string) *ocppj.CallError { return nil })
+	cp := a.connect(ctx, t, "CP_1", func(string) *ocppj.CallError { return nil })
 
 	hub.Bind("CP_1", "B") // another instance took over
 	_ = cp.Close(websocket.StatusNormalClosure, "")
@@ -231,7 +230,7 @@ func TestCluster_StaleDisconnectWithoutCompareAndDelete(t *testing.T) {
 	require.Equal(t, "B", inst)
 
 	// Without a takeover the entry is removed.
-	cp2 := a.connect(t, ctx, "CP_2", func(string) *ocppj.CallError { return nil })
+	cp2 := a.connect(ctx, t, "CP_2", func(string) *ocppj.CallError { return nil })
 	_, ok = owner(t, a, "CP_2")
 	require.True(t, ok)
 	_ = cp2.Close(websocket.StatusNormalClosure, "")
