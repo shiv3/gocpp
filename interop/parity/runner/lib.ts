@@ -14,6 +14,10 @@ export const BIN: Record<Lib, string> = {
   "ocpp-go": join(PARITY_DIR, "bin/cs-ocppgo"),
 };
 
+/** Extra flags for cs-gocpp only, e.g. GOCPP_ARGS="-compat" to run it with
+ *  csms.WithOCPPGoCompat(). */
+export const gocppArgs = () => (process.env.GOCPP_ARGS ?? "").split(/\s+/).filter(Boolean);
+
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- normalise
@@ -68,6 +72,7 @@ export class Server {
     public dir: string,
     public extraArgs: string[] = [],
   ) {}
+  libArgs() { return this.lib === "gocpp" ? gocppArgs() : []; }
   get base() { return `http://127.0.0.1:${this.port}`; }
   get eventsFile() { return join(this.dir, "server.jsonl"); }
 
@@ -75,7 +80,7 @@ export class Server {
     mkdirSync(this.dir, { recursive: true });
     this.exited = null;
     const fd = openSync(join(this.dir, "server.log"), "a");
-    this.proc = spawn(BIN[this.lib], ["-listen", `127.0.0.1:${this.port}`, "-events", this.eventsFile, "-call-timeout", "5s", ...this.extraArgs], {
+    this.proc = spawn(BIN[this.lib], ["-listen", `127.0.0.1:${this.port}`, "-events", this.eventsFile, "-call-timeout", "5s", ...this.libArgs(), ...this.extraArgs], {
       stdio: ["ignore", fd, fd],
     });
     closeSync(fd);

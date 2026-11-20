@@ -30,6 +30,7 @@ func main() {
 	eventsPath := flag.String("events", "", "append events as JSONL to this file")
 	callTimeout := flag.Duration("call-timeout", 10*time.Second, "timeout for CSMS-initiated calls")
 	schemaMode := flag.String("schema", "lenient", "schema validation mode: lenient|strict|tolerant|off")
+	compat := flag.Bool("compat", false, "enable csms.WithOCPPGoCompat() (implies lenient schema)")
 	flag.Parse()
 	if *listen == "" {
 		log.Fatal("-listen is required")
@@ -51,7 +52,18 @@ func main() {
 			rec.Disconnect(c.ID(), cause, raw)
 		}),
 	}
+	if *compat {
+		// The preset sets lenient schema, the ocpp-go error codes, message id drop,
+		// UTC whole-second times and the keepalive; it needs a registry.
+		reg := schema.NewRegistry()
+		if err := v16.RegisterSchemas(reg); err != nil {
+			log.Fatal(err)
+		}
+		opts = append(opts, csms.WithSchemaRegistry(reg), csms.WithOCPPGoCompat())
+		*schemaMode = "compat"
+	}
 	switch *schemaMode {
+	case "compat":
 	case "off":
 	case "lenient", "strict", "tolerant":
 		reg := schema.NewRegistry()
@@ -135,7 +147,7 @@ func (h *handler) OnAuthorize(_ context.Context, c *csms.Conn, req v16msg.Author
 
 func (h *handler) OnStartTransaction(_ context.Context, c *csms.Conn, req v16msg.StartTransactionRequest) (v16msg.StartTransactionResponse, error) {
 	h.rec.Request(c.ID(), "StartTransaction", req)
-	resp := v16msg.StartTransactionResponse{IDTagInfo: idTagInfo(req.IDTag), TransactionID: h.tx.Next()}
+	resp := v16msg.StartTransactionResponse{IDTagInfo: idTagInfo(req.IDTag), TransactionID: int64(h.tx.Next())}
 	h.rec.Response(c.ID(), "StartTransaction", resp, nil)
 	return resp, nil
 }

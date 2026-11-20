@@ -23,7 +23,7 @@ bin/cs-ocppgo -listen 127.0.0.1:9001 -events /tmp/ocppgo.jsonl
 
 Flags (both): `-listen HOST:PORT` (required), `-events PATH` (JSONL, appended;
 default none), `-call-timeout 10s`. `cs-gocpp` also has
-`-schema lenient|strict|tolerant|off` (default `lenient`).
+`-schema lenient|strict|tolerant|off` (default `lenient`). `-compat` turns on `csms.WithOCPPGoCompat()` (implies lenient); the runner passes extra cs-gocpp flags from the `GOCPP_ARGS` environment variable, e.g. `GOCPP_ARGS="-compat" bun run interop/parity/runner/main.ts --only 'A-*,B-*,C-*' --runs 1`.
 
 Endpoint: `ws://HOST:PORT/ocpp/{cpId}`, subprotocol `ocpp1.6`, no auth, last
 connection wins for a duplicate id. Read limit: library default (1 MiB in both).
