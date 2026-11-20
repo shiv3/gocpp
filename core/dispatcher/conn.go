@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
@@ -260,14 +261,15 @@ func (c *Conn) reader() {
 					"cp_id", c.id, "err", err)
 				// OCPP 2.0.1 / 2.1 Part 4 §4.2.3: a message with a MessageTypeId the
 				// receiver does not support is answered with CALLERROR
-				// MessageTypeNotSupported. OCPP 1.6J defines no such code, so a 1.6
-				// peer's unknown frame is deliberately dropped silently (ocpp-go
-				// answers it even on 1.6; we do not, because the code is not in the
-				// 1.6 error table).
+				// MessageTypeNotSupported. OCPP 1.6J defines no such code, so by
+				// default a 1.6 peer's unknown frame is dropped silently (ocpp-go
+				// answers it even on 1.6; an ErrorCodeMapper can do the same).
 				var ute *ocppj.UnknownMessageTypeError
-				if c.version != ocppj.V16 && errors.As(err, &ute) && ute.MsgID != "" {
-					c.trySendCallError(ute.MsgID, ocppj.NewCallError(
-						ocppj.ErrorCodeMessageTypeNotSupported, ute.Error(), nil))
+				if errors.As(err, &ute) && ute.MsgID != "" {
+					def := ocppj.NewCallError(ocppj.ErrorCodeMessageTypeNotSupported, ute.Error(), nil)
+					if wire, reply := c.mapBuiltinError(ErrorSourceUnknownMessageType, "", ute, def, c.version != ocppj.V16); reply {
+						c.trySendCallErrorWire(ute.MsgID, wire, def.Description)
+					}
 				}
 				continue
 			}
@@ -278,8 +280,14 @@ func (c *Conn) reader() {
 			var perr *ocppj.ProtocolError
 			if errors.As(err, &perr) && perr.MessageType == int(ocppj.Call) && perr.MsgID != "" {
 				// WireCode spells it per version (FormationViolation / FormatViolation).
-				c.trySendCallError(perr.MsgID, ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, perr.Message, nil))
+				def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, perr.Message, nil)
+				if wire, reply := c.mapBuiltinError(ErrorSourceMalformedFrame, "", perr, def, true); reply {
+					c.trySendCallErrorWire(perr.MsgID, wire, def.Description)
+				}
 			}
+			continue
+		}
+		if !c.checkMessageID(frame) {
 			continue
 		}
 		if !c.routeInbound(frame) {
@@ -370,4 +378,46 @@ func subprotocolToVersion(sub string) ocppj.Version {
 	default:
 		return ocppj.Version(sub)
 	}
+}
+
+// checkMessageID applies the message id policy to an inbound CALL. It returns
+// false when the frame must be dropped (a CALLERROR has already been queued if
+// the policy answers it).
+func (c *Conn) checkMessageID(frame ocppj.Frame) bool {
+	if frame.Type != ocppj.Call && frame.Type != ocppj.Send {
+		return true
+	}
+	empty := frame.MsgID == ""
+	long := utf8.RuneCountInString(frame.MsgID) > ocppj.MaxMessageIDLength
+	if !empty && !long {
+		return true
+	}
+	policy := c.cfg.MessageIDPolicy
+	if policy == MessageIDAuto {
+		switch c.cfg.SchemaMode {
+		case SchemaModeStrict:
+			policy = MessageIDReject
+		default:
+			policy = MessageIDAccept
+		}
+	}
+	switch policy {
+	case MessageIDAccept:
+		if c.cfg.SchemaMode == SchemaModeLenient || c.cfg.SchemaMode == SchemaModeTolerant {
+			c.cfg.Logger.WarnContext(c.ctx, "message id breaks the OCPP-J limit; accepted",
+				"cp_id", c.id, "action", frame.Action, "empty", empty, "length", utf8.RuneCountInString(frame.MsgID))
+		}
+		return true
+	case MessageIDReject:
+		if long && frame.Type == ocppj.Call {
+			def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation,
+				fmt.Sprintf("message id longer than %d characters", ocppj.MaxMessageIDLength), nil)
+			if wire, reply := c.mapBuiltinError(ErrorSourceMessageID, frame.Action, nil, def, true); reply {
+				c.trySendCallErrorWire(frame.MsgID, wire, def.Description)
+			}
+		}
+	}
+	c.cfg.Logger.WarnContext(c.ctx, "dropping message with invalid message id",
+		"cp_id", c.id, "action", frame.Action, "empty", empty, "length", utf8.RuneCountInString(frame.MsgID))
+	return false
 }

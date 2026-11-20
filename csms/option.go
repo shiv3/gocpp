@@ -20,13 +20,15 @@ type serverConfig struct {
 	// lenientTimeLocation interprets zone-less date-times in lenient mode (nil = UTC).
 	lenientTimeLocation *time.Location
 	dispatcher          dispatcher.Config
-	subProtocols        []string
-	compressionMode     transport.CompressionMode
-	path                string
-	cpIDExtractor       CPIDExtractor
-	instanceID          string
-	registry            *schema.Registry
-	duplicatePolicy     DuplicatePolicy
+	// timeEncoding rewrites outbound date-times (zero = untouched).
+	timeEncoding    schema.TimeEncoding
+	subProtocols    []string
+	compressionMode transport.CompressionMode
+	path            string
+	cpIDExtractor   CPIDExtractor
+	instanceID      string
+	registry        *schema.Registry
+	duplicatePolicy DuplicatePolicy
 
 	globalConcurrencyLimit int
 
@@ -335,4 +337,61 @@ func WithTracerProvider(tp trace.TracerProvider) Option {
 // a ready-made logger.
 func WithFrameObserver(fn observability.FrameObserver) Option {
 	return optionFunc(func(c *serverConfig) { c.dispatcher.FrameObserver = fn })
+}
+
+// WithTimeEncoding controls how date-time values are written on the wire in
+// every outbound message (CALL, CALLRESULT, SEND): convert to UTC and/or fix the
+// number of fractional-second digits, for chargers that reject fractional
+// seconds or a non-UTC offset. The zero value (the default) leaves values as the
+// message types encode them. Fields are found through the schema registry, so it
+// needs WithSchemaRegistry; messages without a registered schema are sent
+// unchanged.
+func WithTimeEncoding(e schema.TimeEncoding) Option {
+	return optionFunc(func(c *serverConfig) { c.timeEncoding = e })
+}
+
+// WithErrorCodeMapper overrides the CALLERROR code (or suppresses the reply) for
+// errors gocpp generates itself: unknown action, schema rejection, undecodable
+// payload, malformed frame, unsupported message type. It never sees errors a
+// handler returns. dispatcher.OCPPGoErrorCodeMapper is a ready-made mapper.
+func WithErrorCodeMapper(m dispatcher.ErrorCodeMapper) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.ErrorCodeMapper = m })
+}
+
+// WithMessageIDPolicy sets how an inbound CALL whose message id is empty or
+// longer than 36 characters (the OCPP-J limit) is handled. The default,
+// dispatcher.MessageIDAuto, rejects under WithStrictSchema(true) and accepts
+// (logging a warning) otherwise.
+func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.MessageIDPolicy = p })
+}
+
+// WithOCPPGoCompat makes the server reproduce the charger-visible behaviour of
+// the ocpp-go library where gocpp differs, so chargers tuned against ocpp-go keep
+// working during a staged migration. It is shorthand for, in order:
+//
+//   - WithLenientSchema()
+//   - WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper())
+//   - WithMessageIDPolicy(dispatcher.MessageIDDrop)
+//   - WithTimeEncoding(UTC, whole seconds)
+//   - WithWebSocketPingInterval(0): ocpp-go servers never ping
+//   - WithWebSocketReadTimeout(60s): ocpp-go's server ping wait
+//
+// Options listed after it win, so any single behaviour can be put back, e.g.
+// csms.WithOCPPGoCompat(), csms.WithWebSocketPingInterval(54*time.Second). The
+// lenient schema mode and the time encoding need WithSchemaRegistry. See
+// docs/migration-from-ocpp-go.md for what each part changes and why.
+func WithOCPPGoCompat() Option {
+	return optionFunc(func(c *serverConfig) {
+		for _, o := range []Option{
+			WithLenientSchema(),
+			WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper()),
+			WithMessageIDPolicy(dispatcher.MessageIDDrop),
+			WithTimeEncoding(schema.TimeEncoding{UTC: true, Precision: schema.TimePrecisionSeconds}),
+			WithWebSocketPingInterval(0),
+			WithWebSocketReadTimeout(60 * time.Second),
+		} {
+			o.apply(c)
+		}
+	})
 }

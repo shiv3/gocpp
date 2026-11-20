@@ -52,9 +52,23 @@ func (v *Validator) ValidateLenientWith(raw []byte, opts LenientOptions) (out []
 		return nil, nil, fmt.Errorf("decode instance: %w", err)
 	}
 
+	// A JSON null payload stands for "no fields": several stacks send
+	// [2,"id","Heartbeat",null]. Treat it as an empty object (soft keyword "type")
+	// so a message with no required fields is accepted and one with required
+	// fields is still rejected by the validator.
+	coerced := false
+	if inst == nil {
+		inst = map[string]any{}
+		raw = []byte("{}")
+		coerced = true
+		soft = append(soft, "type")
+	}
+
 	// Schema-guided coercion runs first so that the validation below (and the
 	// typed decode after it) sees the repaired values.
-	coerced := coerceInstance(v.doc, inst, opts, &soft)
+	if coerceInstance(v.doc, inst, raw, opts, &soft) {
+		coerced = true
+	}
 
 	verr := v.schema.Validate(inst)
 	if verr == nil {

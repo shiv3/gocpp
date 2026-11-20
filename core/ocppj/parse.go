@@ -7,6 +7,9 @@ import (
 
 const maxRawInError = 256
 
+// MaxMessageIDLength is the OCPP-J limit on a message id, in characters.
+const MaxMessageIDLength = 36
+
 // signedSuffix is the OCPP 2.1 Part 4 §7.1 marker appended to a signed message's
 // action name (e.g. "BootNotification-Signed").
 const signedSuffix = "-Signed"
@@ -34,7 +37,7 @@ func Parse(raw []byte) (Frame, error) {
 		return Frame{}, &ProtocolError{Stage: "parse", Raw: truncateRaw(raw), Message: "not a JSON array: " + err.Error()}
 	}
 	if len(arr) < 2 {
-		return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "array too short"}
+		return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "array too short", Elements: len(arr)}
 	}
 	var mt int
 	if err := json.Unmarshal(arr[0], &mt); err != nil {
@@ -45,8 +48,8 @@ func Parse(raw []byte) (Frame, error) {
 		return Frame{}, &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: "message id not a string"}
 	}
 
-	shapeErr := func(msg string) error {
-		return &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: msg, MessageType: mt, MsgID: msgID}
+	shapeErr := func(msg string) *ProtocolError {
+		return &ProtocolError{Stage: "shape", Raw: truncateRaw(raw), Message: msg, MessageType: mt, MsgID: msgID, Elements: len(arr)}
 	}
 
 	switch MessageType(mt) {
@@ -56,7 +59,9 @@ func Parse(raw []byte) (Frame, error) {
 		}
 		var action string
 		if err := json.Unmarshal(arr[2], &action); err != nil {
-			return Frame{}, shapeErr("action not a string")
+			pe := shapeErr("action not a string")
+			pe.BadField = "action"
+			return Frame{}, pe
 		}
 		base, signed := splitSignedAction(action)
 		return Frame{Type: Call, Signed: signed, MsgID: msgID, Action: base, Payload: arr[3]}, nil
@@ -85,7 +90,9 @@ func Parse(raw []byte) (Frame, error) {
 		}
 		var action string
 		if err := json.Unmarshal(arr[2], &action); err != nil {
-			return Frame{}, shapeErr("action not a string")
+			pe := shapeErr("action not a string")
+			pe.BadField = "action"
+			return Frame{}, pe
 		}
 		base, signed := splitSignedAction(action)
 		return Frame{Type: Send, Signed: signed, MsgID: msgID, Action: base, Payload: arr[3]}, nil

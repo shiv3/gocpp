@@ -36,6 +36,10 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) (_ [
 			return nil, err
 		}
 	}
+	sendPayload, err = c.transformOutbound(action, "request", sendPayload)
+	if err != nil {
+		return nil, err
+	}
 	var raw []byte
 	if c.cfg.Signer != nil {
 		signed, serr := c.cfg.Signer.SignPayload(action, ocppj.Call, sendPayload)

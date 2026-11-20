@@ -7,6 +7,25 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `csms.WithOCPPGoCompat()` / `cp.WithOCPPGoCompat()`: one preset that reproduces
+  ocpp-go's charger-visible behaviour for staged migrations (lenient schema,
+  ocpp-go error codes, silent drop of bad message ids, UTC whole-second times, no
+  server pings with a 60 s idle close). Shorthand for the granular options below;
+  later options win. See docs/migration-from-ocpp-go.md for the full table of
+  gocpp default vs compat vs ocpp-go.
+- `WithErrorCodeMapper(dispatcher.ErrorCodeMapper)` (csms and cp): change the
+  CALLERROR code, or suppress the reply, for errors gocpp generates itself;
+  `dispatcher.OCPPGoErrorCodeMapper()` mirrors ocpp-go. `ocppj.ProtocolError`
+  gains `Elements` and `BadField`; `dispatcher.NewDecodeError` builds the
+  decode-failure error typed handlers return.
+- `WithMessageIDPolicy` (csms and cp): `MessageIDAuto`, `Accept`, `Reject`, `Drop`
+  for an inbound CALL with an empty or over-36-character message id.
+- `WithTimeEncoding(schema.TimeEncoding{UTC, Precision})` (csms and cp): control
+  how every outbound date-time is written (UTC / fixed fractional digits), guided
+  by the schema registry; works on 1.6, 2.0.1 and 2.1. Default unchanged.
+- Lenient mode now reads a `null` payload as `{}` (`[2,"id","Heartbeat",null]`)
+  and coerces a non-string 1.6 `DataTransfer.data` (object, array, number,
+  boolean) to its compact JSON text, as ocpp-go accepts both.
 - Frame observer: `csms.WithFrameObserver` / `cp.WithFrameObserver`
   (`dispatcher.Config.FrameObserver`) receive an `observability.FrameEvent`
   (cp id, version, direction, raw bytes, type, message id, action, time, write
@@ -154,6 +173,11 @@ All notable changes to this project are documented here. The format is based on
   details element, so pending calls resolve immediately instead of timing out.
 
 ### Changed
+- Strict schema mode now enforces the OCPP-J 36-character message id limit on
+  inbound CALLs: an over-long id is answered with CALLERROR FormationViolation
+  (FormatViolation on 2.x, id echoed) and an empty id is dropped. Lenient and
+  tolerant modes accept both and log a warning. Restore the old behaviour with
+  `WithMessageIDPolicy(dispatcher.MessageIDAccept)`.
 - `memory.NewConnectionRegistry` now stores global routes (`PutGlobal` /
   `LookupGlobal` / `DeleteGlobal` were no-ops). Code relying on `LookupGlobal`
   always reporting not-found must not rely on it any more.

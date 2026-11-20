@@ -40,6 +40,15 @@ func NewServer(opts ...Option) *Server {
 	for _, o := range opts {
 		o.apply(&cfg)
 	}
+	if cfg.registry != nil && !cfg.timeEncoding.IsZero() {
+		cfg.dispatcher.OutboundTransform = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, error) {
+			v, ok := cfg.registry.Lookup(string(version), action, kind)
+			if !ok {
+				return payload, nil
+			}
+			return v.EncodeTimes(payload, cfg.timeEncoding)
+		}
+	}
 	if cfg.registry != nil && cfg.dispatcher.SchemaMode != dispatcher.SchemaModeOff {
 		if cfg.dispatcher.SchemaMode == dispatcher.SchemaModeLenient {
 			cfg.dispatcher.SchemaValidateLenient = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, []string, error) {

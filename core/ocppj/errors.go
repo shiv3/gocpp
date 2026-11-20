@@ -15,6 +15,11 @@ type ProtocolError struct {
 	// answer a malformed CALL with a CallError for the right message id.
 	MessageType int
 	MsgID       string
+	// Elements is the number of elements of the frame's JSON array (0 when the
+	// frame was not an array). BadField names the element that failed to decode
+	// ("action" for a non-string action), empty otherwise.
+	Elements int
+	BadField string
 }
 
 func (e *ProtocolError) Error() string {
