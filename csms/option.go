@@ -151,6 +151,15 @@ func WithIOBufferSizes(read, write int) Option {
 	})
 }
 
+// WithHandlerPool runs inbound handlers on the resident workers of pool when one
+// is idle, and on a new goroutine otherwise (never queued, so a slow handler
+// cannot delay another connection). It saves the stack growth of a fresh
+// goroutine per message; measure before enabling. The caller owns the pool and
+// closes it after Shutdown. nil keeps a goroutine per message.
+func WithHandlerPool(pool *dispatcher.HandlerPool) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.HandlerPool = pool })
+}
+
 // WithSigner signs outbound CSMS->CP CALL/SEND messages (OCPP 2.1 Signed Messages).
 func WithSigner(s *signing.Signer) Option {
 	return optionFunc(func(c *serverConfig) { c.dispatcher.Signer = s })

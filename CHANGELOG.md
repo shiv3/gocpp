@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `dispatcher.HandlerPool` / `NewHandlerPool(n)` with `Config.HandlerPool`, and
+  `csms.WithHandlerPool` / `cp.WithHandlerPool` (off by default): inbound handlers
+  run on resident workers with warm stacks when one is idle, and on a new goroutine
+  otherwise. It is a non-blocking hand-off, never a queue, so a slow handler cannot
+  delay another connection. It removes the stack growth (`runtime.copystack`) of a
+  fresh goroutine per message; see docs/performance.md for when it pays.
 - `csms.WithOutboundValidation(bool)` / `cp.WithOutboundValidation(bool)` (default
   true): with false, payloads this side produces (handler replies, outbound Calls and
   Sends) skip schema validation and lenient repair; inbound messages are still

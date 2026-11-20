@@ -138,6 +138,10 @@ type Config struct {
 	// nil disables the global cap. The same *semaphore.Weighted must be shared
 	// by every connection for the limit to be server-wide.
 	GlobalHandlerLimiter *semaphore.Weighted
+	// HandlerPool, when non-nil, runs inbound handlers on resident goroutines
+	// with warm stacks when one is idle (see HandlerPool); nil, the default,
+	// starts a goroutine per message. Share one pool across connections.
+	HandlerPool *HandlerPool
 	Logger               *slog.Logger
 	Metrics              MetricsHook
 	Tracer               observability.Tracer

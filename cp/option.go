@@ -64,6 +64,13 @@ func WithCompression(m transport.CompressionMode) Option {
 	return optionFunc(func(c *clientConfig) { c.compressionMode = m })
 }
 
+// WithHandlerPool runs inbound handlers on the resident workers of pool when one
+// is idle, and on a new goroutine otherwise (see csms.WithHandlerPool). The
+// caller owns the pool and closes it after the client is closed.
+func WithHandlerPool(pool *dispatcher.HandlerPool) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.HandlerPool = pool })
+}
+
 // WithSigner signs outbound CALL/SEND messages (OCPP 2.1 Signed Messages).
 func WithSigner(s *signing.Signer) Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.Signer = s })
