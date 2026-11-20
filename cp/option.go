@@ -160,9 +160,10 @@ func WithInboundQueueSize(n int) Option {
 	})
 }
 
-// WithOutboundQueueSize sets the depth of the channel feeding the connection's
-// writer (default 4). Every send waits for its own write result, so a larger
-// buffer only helps many goroutines sending at once. n <= 0 keeps the default.
+// WithOutboundQueueSize has no effect: connections no longer have an outbound
+// queue (senders write under a per-connection FIFO lock).
+//
+// Deprecated: remove the option.
 func WithOutboundQueueSize(n int) Option {
 	return optionFunc(func(c *clientConfig) {
 		if n > 0 {

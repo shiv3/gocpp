@@ -39,8 +39,10 @@ type FrameEvent struct {
 }
 
 // FrameObserver receives every raw frame. It runs inline on the connection's
-// reader (inbound) or writer (outbound) goroutine, so it must return quickly:
-// a slow observer delays all traffic on that connection. Hand work off to a
+// reader goroutine (inbound) or on the goroutine that sent the frame, while it
+// still holds the connection's write lock (outbound, so observers see frames in
+// wire order), and must return quickly: a slow observer delays all traffic on
+// that connection. It must not send on the same connection synchronously. Hand work off to a
 // channel or goroutine if it may block. Panics are recovered and logged.
 type FrameObserver func(ctx context.Context, ev FrameEvent)
 

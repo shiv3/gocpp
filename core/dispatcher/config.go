@@ -113,10 +113,9 @@ type Config struct {
 	HandlerTimeout time.Duration
 	// MaxMessageSize is the largest inbound WebSocket message accepted, in bytes.
 	MaxMessageSize int64
-	// OutboundQueueSize is the depth of the channel feeding the writer. The
-	// writer is synchronous per send (each send waits for its write result), so a
-	// deeper buffer only holds frames from concurrent senders; keep it small.
-	// Values below 1 are treated as 0 (unbuffered).
+	// OutboundQueueSize is ignored. Connections no longer have a writer goroutine
+	// and queue: each sender writes under a per-connection FIFO write lock. The
+	// field is kept so existing configuration still compiles.
 	OutboundQueueSize int
 	// InboundQueueSize bounds the per-connection queue of inbound CALL/SEND
 	// frames that wait for a free handler slot (or for ReleaseInbound). It matters

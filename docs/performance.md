@@ -125,8 +125,8 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 |------|---------|--------|
 | `WithGlobalConcurrencyLimit(n)` | disabled | Server-wide cap on concurrent inbound handlers; back-pressures when full. |
 | `MaxConcurrentHandlers` (`dispatcher.Config`) | 16 | Per-connection cap on concurrent inbound handlers. |
-| `InboundQueueSize` (`dispatcher.Config`, `WithInboundQueueSize`) | 4 | Reader-to-dispatcher channel depth; only fills while all handler slots are busy, then back-pressure reaches the socket. |
-| `OutboundQueueSize` (`dispatcher.Config`, `WithOutboundQueueSize`) | 4 | Channel feeding the writer; each send waits for its own write, so a large buffer buys nothing. |
+| `InboundQueueSize` (`dispatcher.Config`, `WithInboundQueueSize`) | 4 | Bounded queue of inbound CALLs waiting for a handler slot; only fills while all slots are busy, then back-pressure reaches the socket. |
+| `OutboundQueueSize` (`dispatcher.Config`, `WithOutboundQueueSize`) | ignored | Kept for compatibility; there is no writer queue any more (senders write under a per-connection FIFO lock). |
 | `WithCallTimeout` | 30s | Deadline for an outbound CSMS→CP call awaiting its result. |
 | `WithWriteTimeout` | 10s | Deadline for a single socket write. |
 | `WithConcurrentCalls()` | serialized | Outbound CALLs are limited to one outstanding per connection by default (OCPP-mandated); later calls wait in a bounded per-connection FIFO (`WithAsyncQueueSize`, 64). This option lifts the limit (non-compliant). Measured overhead: see `core/dispatcher/call_bench_test.go`; in-process, serialized and concurrent are within noise (about 7.1 µs and 55 allocs per call on one connection; about 0.65 M calls/s at 1,000 connections and 0.58 M calls/s at 10,000, 56 allocs per call, in both modes). |

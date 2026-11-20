@@ -6,6 +6,11 @@ import "context"
 
 // WS is a context-native WebSocket connection. All blocking operations accept a
 // context so the dispatcher can cancel reads/writes during connection teardown.
+//
+// Concurrency contract: the dispatcher calls Read from one goroutine at a time
+// and serializes Write calls itself (one write in flight), but Ping and Close may
+// run concurrently with Read and Write, and Close must unblock a Write that is in
+// flight. The slice returned by Read is owned by the caller.
 type WS interface {
 	// Read blocks until one full text message arrives or ctx is cancelled.
 	Read(ctx context.Context) ([]byte, error)
