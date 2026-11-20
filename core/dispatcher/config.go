@@ -142,9 +142,9 @@ type Config struct {
 	// with warm stacks when one is idle (see HandlerPool); nil, the default,
 	// starts a goroutine per message. Share one pool across connections.
 	HandlerPool *HandlerPool
-	Logger               *slog.Logger
-	Metrics              MetricsHook
-	Tracer               observability.Tracer
+	Logger      *slog.Logger
+	Metrics     MetricsHook
+	Tracer      observability.Tracer
 	// FrameObserver, when non-nil, sees every raw inbound frame (after read,
 	// including unparsable ones) and every outbound frame (after the write
 	// attempt, with the write error if any). It runs inline on the reader or
