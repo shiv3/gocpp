@@ -18,6 +18,15 @@ type Validator struct {
 	// doc is the raw schema document; the lenient coercion pass walks it to
 	// learn each field's declared type and format.
 	doc any
+	// in holds the property names and string enum values of the schema so the
+	// lenient decoder can reuse them instead of allocating.
+	in *interner
+	// coercible is false when the schema declares no string, integer, number or
+	// boolean value anywhere, so lenient coercion can never change a payload.
+	coercible bool
+	// emptyOK is true when the lenient path accepts "{}" unchanged and without
+	// soft findings (computed at construction); see ValidateLenientWith.
+	emptyOK bool
 }
 
 // New compiles the named schema file from the given filesystem.
@@ -38,7 +47,66 @@ func New(fsys fs.FS, name string) (*Validator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compile schema %s: %w", name, err)
 	}
-	return &Validator{schema: s, name: name, doc: doc}, nil
+	v := &Validator{schema: s, name: name, doc: doc, in: newInterner(), coercible: hasCoercibleLeaf(doc)}
+	collectSchemaStrings(doc, v.in)
+	if out, soft, err := v.ValidateLenientWith([]byte("{}"), LenientOptions{}); err == nil && len(soft) == 0 && string(out) == "{}" {
+		v.emptyOK = true
+	}
+	return v, nil
+}
+
+// hasCoercibleLeaf reports whether doc declares a "type" that lenient coercion
+// can act on (string, integer, number, boolean) anywhere.
+func hasCoercibleLeaf(doc any) bool {
+	switch n := doc.(type) {
+	case map[string]any:
+		for k, child := range n {
+			if k == "type" {
+				if t, ok := child.(string); ok {
+					switch t {
+					case "string", "integer", "number", "boolean":
+						return true
+					}
+				}
+			}
+			if hasCoercibleLeaf(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range n {
+			if hasCoercibleLeaf(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// collectSchemaStrings adds every property name and string enum value in doc to in.
+func collectSchemaStrings(doc any, in *interner) {
+	switch n := doc.(type) {
+	case map[string]any:
+		if props, ok := n["properties"].(map[string]any); ok {
+			for k := range props {
+				in.add(k)
+			}
+		}
+		if en, ok := n["enum"].([]any); ok {
+			for _, e := range en {
+				if s, ok := e.(string); ok {
+					in.add(s)
+				}
+			}
+		}
+		for _, child := range n {
+			collectSchemaStrings(child, in)
+		}
+	case []any:
+		for _, child := range n {
+			collectSchemaStrings(child, in)
+		}
+	}
 }
 
 // Validate checks raw JSON against the schema.

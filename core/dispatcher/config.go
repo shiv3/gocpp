@@ -157,6 +157,12 @@ type Config struct {
 	// decoupled from core/schema.
 	SchemaValidateLenient func(version ocppj.Version, action, kind string, payload []byte) (out []byte, soft []string, err error)
 	SchemaMode            SchemaMode
+	// SkipOutboundValidation turns schema validation (and lenient repair) off for
+	// payloads this side produces: replies of local handlers, outbound CALLs and
+	// SENDs. Inbound messages, including the CALLRESULT answering an outbound
+	// CALL, are still validated according to SchemaMode. A throughput knob for
+	// deployments whose typed handlers are trusted to build valid payloads.
+	SkipOutboundValidation bool
 
 	// OutboundTransform, when non-nil, rewrites every outbound CALL, SEND and
 	// CALLRESULT payload (kind is "request" or "response") after validation and

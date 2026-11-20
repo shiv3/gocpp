@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"connectorId\":1,\"errorCode\":\"NoError\",\"status\":\"Available\",\"timestamp\":\"2026-01-01T00:00:00Z\"}")

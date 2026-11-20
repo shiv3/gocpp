@@ -34,17 +34,9 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 
 	msgID := ocppj.NewMsgID()
 	ocppj.NotifyMessageID(ctx, msgID)
-	sendPayload := reqPayload
-	if c.cfg.SchemaMode == SchemaModeLenient {
-		out, herr := c.lenientValidate(action, "request", reqPayload)
-		if herr != nil {
-			return nil, herr
-		}
-		sendPayload = out
-	} else if err := c.schemaValidationError(action, "request", reqPayload); err != nil {
-		if c.cfg.SchemaMode == SchemaModeStrict {
-			return nil, err
-		}
+	sendPayload, verr := c.validateOutbound(action, "request", reqPayload)
+	if verr != nil {
+		return nil, verr
 	}
 	sendPayload, err = c.transformOutbound(action, "request", sendPayload)
 	if err != nil {
