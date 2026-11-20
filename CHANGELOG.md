@@ -290,6 +290,11 @@ All notable changes to this project are documented here. The format is based on
   `ErrCallTimeout`), and a write that exceeds `WriteTimeout` aborts the socket
   without a close frame, as before. `transport.StatusAbnormalClosure` (1006) is
   added.
+- Small per-connection savings (about 0.3 KB heap each): `dispatcher.NewConnShared`
+  takes a `*Config` shared by many connections, and `csms` builds one config per
+  negotiated version instead of copying it for every connection (a server with
+  `WithConnConfig` still builds one per connection); the pending-call table keeps
+  its first entry inline and allocates a map only for a second concurrent call.
 - Per-connection queue defaults shrink: `OutboundQueueSize` 64 -> 4 and the new
   `InboundQueueSize` defaults to 4 (the inbound queue used to share
   `OutboundQueueSize`). Idle heap per connection drops from ~34 KB to ~23 KB.

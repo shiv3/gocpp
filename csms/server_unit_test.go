@@ -137,3 +137,13 @@ func newStartedTestConn(t *testing.T) *Conn {
 	})
 	return &Conn{inner: dconn}
 }
+
+// Without a per-connection override hook every connection of a version shares one
+// dispatcher config; the hook gives each its own.
+func TestServer_VersionConfigShared(t *testing.T) {
+	s := NewServer()
+	a, b := s.versionConfig("ocpp1.6"), s.versionConfig("ocpp1.6")
+	require.Same(t, a, b)
+	require.NotSame(t, a, s.versionConfig("ocpp2.0.1"))
+	require.NotNil(t, a.Metrics)
+}

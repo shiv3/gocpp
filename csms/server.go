@@ -22,6 +22,8 @@ import (
 type Server struct {
 	cfg serverConfig
 	reg *dispatcher.HandlerRegistry
+	// verCfg caches the shared dispatcher.Config per subprotocol.
+	verCfg sync.Map
 
 	mu    sync.RWMutex
 	conns map[string]*Conn
@@ -138,7 +140,8 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dcfg := s.cfg.dispatcher
-	if s.cfg.connConfig != nil {
+	perConn := s.cfg.connConfig != nil
+	if perConn {
 		t := ConnTimeouts{
 			CallTimeout:  dcfg.CallTimeout,
 			WriteTimeout: dcfg.WriteTimeout,
@@ -189,11 +192,18 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 
 	ws := transport.NewCoderWSWithLimit(c, dcfg.MaxMessageSize)
 
-	// Per-connection dispatcher config: version-bound metrics + tracer.
-	dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
-	dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
+	// Dispatcher config with version-bound metrics + tracer. Without a per-
+	// connection override hook it is shared by every connection of a version.
+	var dcfgp *dispatcher.Config
+	if perConn {
+		dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
+		dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
+		dcfgp = &dcfg
+	} else {
+		dcfgp = s.versionConfig(c.Subprotocol())
+	}
 
-	dconn = dispatcher.NewConn(cpID, ws, dcfg, s.reg, dispatcher.ConnMetadata{
+	dconn = dispatcher.NewConnShared(cpID, ws, dcfgp, s.reg, dispatcher.ConnMetadata{
 		RemoteAddr:    r.RemoteAddr,
 		RequestHeader: r.Header,
 		TLS:           r.TLS,
@@ -254,6 +264,20 @@ func (s *Server) connCleanup(cpID string, conn *Conn) {
 		_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
 		s.retractGlobal(cpID)
 	}
+}
+
+// versionConfig returns the dispatcher config shared by connections that
+// negotiated subprotocol sub (metrics and tracer are bound to it). It is built
+// once and never modified.
+func (s *Server) versionConfig(sub string) *dispatcher.Config {
+	if v, ok := s.verCfg.Load(sub); ok {
+		return v.(*dispatcher.Config)
+	}
+	d := s.cfg.dispatcher
+	d.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, sub)
+	d.Tracer = observability.NewTracer(s.cfg.tracerProvider)
+	v, _ := s.verCfg.LoadOrStore(sub, &d)
+	return v.(*dispatcher.Config)
 }
 
 func (s *Server) extractCPID(r *http.Request) (string, bool) {
