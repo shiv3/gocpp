@@ -2,7 +2,6 @@ package ocppj
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -104,6 +103,6 @@ func Parse(raw []byte) (Frame, error) {
 		}
 		return Frame{Type: MessageTypeCallResultError, MsgID: msgID, ErrCode: code, ErrDesc: desc, ErrData: data}, nil
 	default:
-		return Frame{}, fmt.Errorf("%w: %d", ErrIgnoredMessageType, mt)
+		return Frame{}, &UnknownMessageTypeError{MessageType: mt, MsgID: msgID}
 	}
 }
