@@ -2,6 +2,7 @@ package csms_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -76,11 +77,20 @@ func TestServer_RefusesUpgradesDuringShutdownAndAfterClose(t *testing.T) {
 		_, resp, err := websocket.Dial(ctx, base+"cp2", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 		return err != nil && resp != nil && resp.StatusCode == http.StatusServiceUnavailable
 	}, 2*time.Second, 10*time.Millisecond)
-	_ = <-done
+	require.NoError(t, ignoreDeadline(<-done))
 
 	srv2 := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	ts2 := httptest.NewServer(srv2.Handler())
 	defer ts2.Close()
 	srv2.Close()
 	requireRefusedWith503(ctx, t, "ws"+ts2.URL[len("http"):]+"/ocpp/cp3")
+}
+
+// ignoreDeadline accepts the deadline error Shutdown returns when a peer never
+// finishes the close handshake within the test's shutdown budget.
+func ignoreDeadline(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+	return err
 }
