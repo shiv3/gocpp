@@ -44,7 +44,8 @@ func DoCallAsync(ctx context.Context, c *Conn, action string, payload []byte, cb
 	}
 	go func() {
 		defer c.asyncWG.Done()
-		cb(DoCall(ctx, c, action, payload))
+		resp, err := DoCall(ctx, c, action, payload)
+		c.runAsyncCallback(action, cb, resp, err)
 	}()
 	return nil
 }
@@ -98,7 +99,8 @@ func (c *Conn) asyncWorker() {
 			c.drainAsync()
 			return
 		case job := <-c.asyncQ:
-			job.cb(DoCall(job.ctx, c, job.action, job.payload))
+			resp, err := DoCall(job.ctx, c, job.action, job.payload)
+			c.runAsyncCallback(job.action, job.cb, resp, err)
 		}
 	}
 }
@@ -109,9 +111,24 @@ func (c *Conn) drainAsync() {
 	for {
 		select {
 		case job := <-c.asyncQ:
-			job.cb(nil, cause)
+			c.runAsyncCallback(job.action, job.cb, nil, cause)
 		default:
 			return
 		}
 	}
+}
+
+// runAsyncCallback invokes an application callback and recovers from a panic.
+// The callbacks run on goroutines owned by the connection (the serialized
+// worker, or a per-call goroutine), where an unrecovered panic would take down
+// the whole process and with it every other connection; the worker must also
+// keep serving the rest of its queue.
+func (c *Conn) runAsyncCallback(action string, cb AsyncCallback, payload []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.cfg.Logger.ErrorContext(c.ctx, "async callback panic recovered",
+				"cp_id", c.id, "action", action, "panic", r)
+		}
+	}()
+	cb(payload, err)
 }

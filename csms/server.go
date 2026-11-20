@@ -230,7 +230,7 @@ func (s *Server) removeConn(id string, c *Conn) bool {
 
 func (s *Server) handleConnected(c *Conn) {
 	if s.cfg.onConnect != nil {
-		s.cfg.onConnect(c)
+		s.callHook("onConnect", c, func() { s.cfg.onConnect(c) })
 	}
 }
 
@@ -239,8 +239,23 @@ func (s *Server) handleDisconnected(c *Conn, err error) {
 		err = ocppj.ErrConnClosed
 	}
 	if s.cfg.onDisconnect != nil {
-		c.disconnectOnce.Do(func() { s.cfg.onDisconnect(c, err) })
+		c.disconnectOnce.Do(func() {
+			s.callHook("onDisconnect", c, func() { s.cfg.onDisconnect(c, err) })
+		})
 	}
+}
+
+// callHook runs an application lifecycle callback, recovering from a panic so a
+// faulty hook cannot crash the process or skip the rest of the connection
+// lifecycle (registry cleanup, close).
+func (s *Server) callHook(name string, c *Conn, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.cfg.dispatcher.Logger.Error("csms lifecycle callback panic recovered",
+				"cp_id", c.ID(), "callback", name, "panic", r)
+		}
+	}()
+	fn()
 }
 
 // Get returns the live connection for a charge point, if connected.
