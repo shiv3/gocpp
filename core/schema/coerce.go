@@ -78,7 +78,6 @@ func (c *coercer) walk(node map[string]any, inst any, set func(any), depth int) 
 			if !ok {
 				continue
 			}
-			k := k
 			c.walk(cs, child, func(nv any) { v[k] = nv }, depth+1)
 		}
 	case []any:
@@ -87,7 +86,6 @@ func (c *coercer) walk(node map[string]any, inst any, set func(any), depth int) 
 			return
 		}
 		for i, child := range v {
-			i := i
 			c.walk(items, child, func(nv any) { v[i] = nv }, depth+1)
 		}
 	default:
