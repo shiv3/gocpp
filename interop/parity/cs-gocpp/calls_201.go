@@ -1,0 +1,48 @@
+// Code generated from the gocpp profiles (SentByCSMS + DataTransfer); do not edit by hand.
+
+package main
+
+import "github.com/shiv3/gocpp/v201/profiles"
+
+var calls201 = map[string]callFn{
+	"CancelReservation":          typed(profiles.CancelReservation),
+	"CertificateSigned":          typed(profiles.CertificateSigned),
+	"ChangeAvailability":         typed(profiles.ChangeAvailability),
+	"ClearCache":                 typed(profiles.ClearCache),
+	"ClearChargingProfile":       typed(profiles.ClearChargingProfile),
+	"ClearDisplayMessage":        typed(profiles.ClearDisplayMessage),
+	"ClearVariableMonitoring":    typed(profiles.ClearVariableMonitoring),
+	"CostUpdated":                typed(profiles.CostUpdated),
+	"CustomerInformation":        typed(profiles.CustomerInformation),
+	"DataTransfer":               typed(profiles.DataTransfer),
+	"DeleteCertificate":          typed(profiles.DeleteCertificate),
+	"GetBaseReport":              typed(profiles.GetBaseReport),
+	"GetChargingProfiles":        typed(profiles.GetChargingProfiles),
+	"GetCompositeSchedule":       typed(profiles.GetCompositeSchedule),
+	"GetDisplayMessages":         typed(profiles.GetDisplayMessages),
+	"GetInstalledCertificateIds": typed(profiles.GetInstalledCertificateIds),
+	"GetLocalListVersion":        typed(profiles.GetLocalListVersion),
+	"GetLog":                     typed(profiles.GetLog),
+	"GetMonitoringReport":        typed(profiles.GetMonitoringReport),
+	"GetReport":                  typed(profiles.GetReport),
+	"GetTransactionStatus":       typed(profiles.GetTransactionStatus),
+	"GetVariables":               typed(profiles.GetVariables),
+	"InstallCertificate":         typed(profiles.InstallCertificate),
+	"PublishFirmware":            typed(profiles.PublishFirmware),
+	"RequestStartTransaction":    typed(profiles.RequestStartTransaction),
+	"RequestStopTransaction":     typed(profiles.RequestStopTransaction),
+	"ReserveNow":                 typed(profiles.ReserveNow),
+	"Reset":                      typed(profiles.Reset),
+	"SendLocalList":              typed(profiles.SendLocalList),
+	"SetChargingProfile":         typed(profiles.SetChargingProfile),
+	"SetDisplayMessage":          typed(profiles.SetDisplayMessage),
+	"SetMonitoringBase":          typed(profiles.SetMonitoringBase),
+	"SetMonitoringLevel":         typed(profiles.SetMonitoringLevel),
+	"SetNetworkProfile":          typed(profiles.SetNetworkProfile),
+	"SetVariableMonitoring":      typed(profiles.SetVariableMonitoring),
+	"SetVariables":               typed(profiles.SetVariables),
+	"TriggerMessage":             typed(profiles.TriggerMessage),
+	"UnlockConnector":            typed(profiles.UnlockConnector),
+	"UnpublishFirmware":          typed(profiles.UnpublishFirmware),
+	"UpdateFirmware":             typed(profiles.UpdateFirmware),
+}
