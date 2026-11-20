@@ -10,3 +10,12 @@
 /docs/superpowers/
 # local Claude Code config (skills, etc.)
 /.claude/
+/interop/parity/bin/
+# load test raw output (summaries and report.md are committed)
+/interop/loadtest/results/*/*/timeline.csv
+/interop/loadtest/results/*/*/latency.csv
+/interop/loadtest/results/*/*/calls.csv
+/interop/loadtest/results/*/*/server.log
+/interop/loadtest/results/*/*/events.log
+/interop/loadtest/results/*/*/dumps/
+/interop/loadtest/results/*/*/run.log

@@ -1,0 +1,22 @@
+Date: 2026-11-20. Everything ran locally on one WSL2 machine over loopback.
+
+## Setup
+
+- Servers: the parity test CSMS pair (`interop/parity/cs-gocpp`, `cs-ocppgo`), started with `-lite` (no event history kept), `-call-timeout 30s` and `-pprof`. gocpp is current main (b9cf356, serialized outbound calls by default), ocpp-go is the `v0.17.2-fix.3` fork. `gocpp-compat` is cs-gocpp with `-compat`.
+- Server pinned to 4 cores (`taskset -c 0-3`, GOMAXPROCS=4); load generator pinned to 6 other cores (`taskset -c 4-9`, GOMAXPROCS=6). Total cores used: 10.
+- Fleet: 4,000 OCPP 1.6J chargers, connect ramp over 60 s, 40% mute (they connect, send their own traffic and answer pings, but never answer a CSMS call), 3 flappers (drop and reconnect every 3-8 s), 20 chargers run by two clients with the same id (replace storm), 15% doing transactions (Authorize, StartTransaction, MeterValues every 5 s for 25 s, StopTransaction, about every 40 s), 2 connectors each.
+- Time compression: Heartbeat every 30 s (jittered 10%) instead of 60 s, so message traffic is about 280 msg/s at 4,000 chargers.
+- CSMS driver: 50 calls/s through `/control/call` (GetConfiguration 50%, TriggerMessage 30%, RemoteStartTransaction 20%) to random chargers; about 40% land on mute chargers and time out after 30 s.
+- 25 min per soak run, 5 restarts (SIGTERM, 2 s pause, start). Chargers reconnect with 0-3 s initial jitter then exponential backoff (1 s base, 30 s cap, full jitter).
+- Freeze detector: two canary chargers send a Heartbeat every second; a round trip over 10 s or three stalled `/control/health` polls is a freeze (goroutine dump from pprof). The detector was checked once by SIGSTOP-ing a server for 18 s: it fired after 9 s via the health check and saved a goroutine dump.
+- Latency percentiles come from log-bucket histograms (12% resolution, bucket upper bound). Restart recovery times are dominated by the client behaviour (2.2 s until the server is healthy again, plus reconnect jitter and backoff after refused connections), so they are comparable between servers but not a server-only number.
+
+## Findings
+
+1. **No freeze, crash, leak or unbounded growth in any run, for either library**: gocpp default, gocpp `-compat` and the ocpp-go fork all kept the canary Heartbeat round trip under ~5 ms in steady state, never stalled `/control/health`, and logged no panic. The mute-charger call timeouts (about 26,500 per run) did not stall anything.
+2. All three servers reconnect 99% of the fleet within 6.0-7.0 s of being healthy after each restart (about 8.3-9.1 s after the kill); gocpp and the fork are indistinguishable here.
+3. Steady-state latency at 4,000 chargers is sub-millisecond for all of them (Heartbeat p50 0.2 ms, p99 0.7-0.9 ms).
+4. **Memory and goroutines**: gocpp uses about 2.3x the memory and 3.3x the goroutines of the fork for the same fleet (4,000 connections: about 490 MB / 33,300 goroutines vs 210 MB / 9,950; 8.3 vs 2.5 goroutines per connection; `-compat` 457 MB / 29,300). Both scale linearly with connections (10,000: 1,198 MB / 83,000 vs 503 MB / 24,600). RSS sawtooths with GC and restarts but plateaus at the same level in every segment; goroutine counts are flat per connection (no drift), file descriptor counts do not drift.
+5. **Hot-spot test** (90% of 300 calls/s aimed at 100 mute chargers, so each of them has ~80 calls waiting at any time): no freeze; gocpp reached 800 MB / 11 goroutines per connection (flat after warm-up), the fork 479 MB / 5. gocpp answers 7,832 of those calls with `ocpp: outbound queue full` (kind `other`) because its per-connection wait queue is bounded (`AsyncQueueSize`); the fork has no equivalent outcome and lets all of them time out.
+6. **Knee**: no knee in fleet size up to 10,000 chargers (server CPU 0.22 core, canary RTT 5 ms at most, Heartbeat p99 3.4 ms on gocpp, 0.6 ms on the fork). Increasing the message rate instead (4,000 chargers, timers sped up 1x-320x): both stay flat to about 15,000 msg/s; at 30,000 msg/s gocpp Heartbeat p99 is 18 ms (1.56 of 4 cores) against 1.4 ms for the fork (1.09 cores); at about 58,000 msg/s gocpp p99 is 29 ms (2.54 cores) against 6.6 ms (2.0 cores). Neither is CPU-saturated at that point (4 cores available), so the gocpp tail growth beyond ~15-30k msg/s is something other than raw CPU (not investigated; candidates are scheduler or GC pressure from the larger per-message allocation and goroutine footprint, or contention in the per-connection path).
+

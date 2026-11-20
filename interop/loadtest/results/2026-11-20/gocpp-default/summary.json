@@ -1,0 +1,420 @@
+{
+ "abort_reason": "",
+ "aborted": false,
+ "call_latency_ms": {
+  "http_eof": {
+   "n": 3015,
+   "P50": 16485.814,
+   "P95": 29053.637,
+   "P99": 30021.574,
+   "Max": 30021.574,
+   "Mean": 0
+  },
+  "http_refused": {
+   "n": 502,
+   "P50": 0.112,
+   "P95": 14.641,
+   "P99": 16.214,
+   "Max": 16.214,
+   "Mean": 0
+  },
+  "http_reset": {
+   "n": 11,
+   "P50": 13.072,
+   "P95": 36.183,
+   "P99": 36.183,
+   "Max": 36.183,
+   "Mean": 0
+  },
+  "not_connected": {
+   "n": 290,
+   "P50": 0.221,
+   "P95": 0.613,
+   "P99": 28.9,
+   "Max": 50.643,
+   "Mean": 0
+  },
+  "ok": {
+   "n": 44087,
+   "P50": 0.488,
+   "P95": 0.964,
+   "P99": 1.355,
+   "Max": 42.62,
+   "Mean": 0
+  },
+  "timeout": {
+   "n": 26487,
+   "P50": 30059.951,
+   "P95": 30059.951,
+   "P99": 30059.951,
+   "Max": 30059.951,
+   "Mean": 0
+  }
+ },
+ "calls": {
+  "http_eof": 3015,
+  "http_refused": 502,
+  "http_reset": 11,
+  "not_connected": 290,
+  "ok": 44087,
+  "timeout": 26487
+ },
+ "config": {
+  "ServerBin": "/work/scratch/lt/bin/cs-gocpp",
+  "ServerArgs": "",
+  "Addr": "127.0.0.1:9000",
+  "Taskset": "0-3",
+  "Pprof": "127.0.0.1:6060",
+  "Out": "/work/wt/gocpp-loadtest/interop/loadtest/results/2026-11-20/gocpp-default",
+  "Label": "gocpp-default",
+  "ServerProcs": 4,
+  "Steps": [
+   {
+    "N": 4000,
+    "Rate": 50,
+    "Dur": 1500000000000
+   }
+  ],
+  "Ramp": 60000000000,
+  "HB": 30000000000,
+  "ReconnBase": 1000000000,
+  "ReconnCap": 30000000000,
+  "ReconnJitter0": 3000000000,
+  "RestartGap": 2000000000,
+  "Sample": 5000000000,
+  "FreezeThresh": 10000000000,
+  "CallTimeout": 30000000000,
+  "TxCycle": 40000000000,
+  "TxLen": 25000000000,
+  "Meter": 5000000000,
+  "HBJitter": 0.1,
+  "Mute": 0.4,
+  "TxFrac": 0.15,
+  "Flappers": 3,
+  "Dups": 20,
+  "Restarts": 5,
+  "Connectors": 2,
+  "MinAvailMB": 1200,
+  "Attach": false
+ },
+ "connect_errors": {
+  "refused": 21308,
+  "reset": 44
+ },
+ "csms_calls_delivered": {
+  "muted_dropped": 29527,
+  "unmuted": 44087
+ },
+ "duration_s": 1500.036066504,
+ "final_up": 3988,
+ "freezes": null,
+ "label": "gocpp-default",
+ "latency_all_ms": {
+  "Authorize": {
+   "n": 20158,
+   "P50": 0.247,
+   "P95": 0.488,
+   "P99": 0.768,
+   "Max": 10.748,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 29954,
+   "P50": 0.197,
+   "P95": 0.964,
+   "P99": 3.758,
+   "Max": 21.001,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 184804,
+   "P50": 0.221,
+   "P95": 0.488,
+   "P99": 0.686,
+   "Max": 8.812,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 94407,
+   "P50": 0.277,
+   "P95": 0.547,
+   "P99": 0.861,
+   "Max": 10.437,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 20158,
+   "P50": 0.197,
+   "P95": 0.436,
+   "P99": 0.686,
+   "Max": 4.664,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 128166,
+   "P50": 0.157,
+   "P95": 0.436,
+   "P99": 1.355,
+   "Max": 13.36,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 18146,
+   "P50": 0.197,
+   "P95": 0.436,
+   "P99": 0.686,
+   "Max": 10.182,
+   "Mean": 0
+  }
+ },
+ "latency_by_step_steady_ms": {
+  "0": {
+   "Authorize": {
+    "n": 17331,
+    "P50": 0.247,
+    "P95": 0.488,
+    "P99": 0.768,
+    "Max": 10.748,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 9229,
+    "P50": 0.197,
+    "P95": 0.436,
+    "P99": 0.686,
+    "Max": 4.22,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 161076,
+    "P50": 0.221,
+    "P95": 0.488,
+    "P99": 0.686,
+    "Max": 8.812,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 85992,
+    "P50": 0.277,
+    "P95": 0.547,
+    "P99": 0.861,
+    "Max": 10.437,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 17331,
+    "P50": 0.197,
+    "P95": 0.436,
+    "P99": 0.686,
+    "Max": 4.664,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 62249,
+    "P50": 0.176,
+    "P95": 0.347,
+    "P99": 0.613,
+    "Max": 10.143,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 17231,
+    "P50": 0.197,
+    "P95": 0.436,
+    "P99": 0.686,
+    "Max": 10.182,
+    "Mean": 0
+   }
+  }
+ },
+ "latency_restart_windows_ms": {
+  "Authorize": {
+   "n": 2827,
+   "P50": 0.247,
+   "P95": 0.488,
+   "P99": 0.768,
+   "Max": 5.815,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 20725,
+   "P50": 0.176,
+   "P95": 1.355,
+   "P99": 4.209,
+   "Max": 21.001,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 23728,
+   "P50": 0.221,
+   "P95": 0.488,
+   "P99": 0.768,
+   "Max": 5.991,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 8415,
+   "P50": 0.277,
+   "P95": 0.547,
+   "P99": 0.861,
+   "Max": 2.745,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 2827,
+   "P50": 0.197,
+   "P95": 0.436,
+   "P99": 0.861,
+   "Max": 1.29,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 65917,
+   "P50": 0.157,
+   "P95": 0.613,
+   "P99": 2.132,
+   "Max": 13.36,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 915,
+   "P50": 0.197,
+   "P95": 0.436,
+   "P99": 0.768,
+   "Max": 1.505,
+   "Mean": 0
+  }
+ },
+ "latency_steady_ms": {
+  "Authorize": {
+   "n": 17331,
+   "P50": 0.247,
+   "P95": 0.488,
+   "P99": 0.768,
+   "Max": 10.748,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 9229,
+   "P50": 0.197,
+   "P95": 0.436,
+   "P99": 0.686,
+   "Max": 4.22,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 161076,
+   "P50": 0.221,
+   "P95": 0.488,
+   "P99": 0.686,
+   "Max": 8.812,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 85992,
+   "P50": 0.277,
+   "P95": 0.547,
+   "P99": 0.861,
+   "Max": 10.437,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 17331,
+   "P50": 0.197,
+   "P95": 0.436,
+   "P99": 0.686,
+   "Max": 4.664,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 62249,
+   "P50": 0.176,
+   "P95": 0.347,
+   "P99": 0.613,
+   "Max": 10.143,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 17231,
+   "P50": 0.197,
+   "P95": 0.436,
+   "P99": 0.686,
+   "Max": 10.182,
+   "Mean": 0
+  }
+ },
+ "request_errors": {
+  "Authorize/closed": 4,
+  "BootNotification/closed": 20,
+  "Heartbeat/closed": 13,
+  "MeterValues/closed": 13
+ },
+ "restarts": [
+  {
+   "k": 1,
+   "kill_at_s": 300.035697753,
+   "exit_ms": 63,
+   "ready_after_kill_s": 2.264578726,
+   "pre_up": 3994,
+   "t90_from_ready_s": 2.502980989,
+   "t99_from_ready_s": 6.509339789,
+   "t99_from_kill_s": 8.773918515,
+   "t100_from_ready_s": 15.2759611,
+   "reached_99": true,
+   "peak_up": 3991
+  },
+  {
+   "k": 2,
+   "kill_at_s": 540.035008551,
+   "exit_ms": 41,
+   "ready_after_kill_s": 2.2427782179999998,
+   "pre_up": 3990,
+   "t90_from_ready_s": 2.503062292,
+   "t99_from_ready_s": 6.510927866,
+   "t99_from_kill_s": 8.753706084000001,
+   "t100_from_ready_s": 11.271403877000001,
+   "reached_99": true,
+   "peak_up": 3987
+  },
+  {
+   "k": 3,
+   "kill_at_s": 780.035449935,
+   "exit_ms": 43,
+   "ready_after_kill_s": 2.253210115,
+   "pre_up": 3985,
+   "t90_from_ready_s": 2.502463131,
+   "t99_from_ready_s": 6.761456086,
+   "t99_from_kill_s": 9.014666201,
+   "t100_from_ready_s": 9.767220269,
+   "reached_99": true,
+   "peak_up": 3982
+  },
+  {
+   "k": 4,
+   "kill_at_s": 1020.035810392,
+   "exit_ms": 41,
+   "ready_after_kill_s": 2.242391491,
+   "pre_up": 3987,
+   "t90_from_ready_s": 2.50230038,
+   "t99_from_ready_s": 6.25905646,
+   "t99_from_kill_s": 8.501447951,
+   "t100_from_ready_s": 7.762692424,
+   "reached_99": true,
+   "peak_up": 3984
+  },
+  {
+   "k": 5,
+   "kill_at_s": 1260.035720906,
+   "exit_ms": 37,
+   "ready_after_kill_s": 2.051073478,
+   "pre_up": 3990,
+   "t90_from_ready_s": 2.753010148,
+   "t99_from_ready_s": 6.257783988,
+   "t99_from_kill_s": 8.308857466,
+   "t100_from_ready_s": 11.76989012,
+   "reached_99": true,
+   "peak_up": 3987
+  }
+ ],
+ "server_crashes": 0
+}
