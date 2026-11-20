@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"connectorId\":1,\"errorCode\":\"NoError\",\"status\":\"Foo\"}")

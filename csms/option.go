@@ -348,6 +348,18 @@ func WithTolerantSchema() Option {
 	})
 }
 
+// WithOutboundValidation controls whether payloads this side produces (replies of
+// registered handlers, typed and raw outbound Calls and Sends) go through schema
+// validation. The default is true. Passing false skips validation, and the lenient
+// repairs (enum case, timestamp and number coercion), for those payloads only:
+// inbound messages, including the CALLRESULT answering your own call, are validated
+// as configured. Typed message structs generated from the schemas rarely produce an
+// invalid payload, so turning this off removes a validation pass per message at
+// high request rates; keep it on while developing handlers that build raw payloads.
+func WithOutboundValidation(on bool) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.SkipOutboundValidation = !on })
+}
+
 // WithLenientSchema enables lenient JSON-Schema validation: structurally broken
 // messages are rejected, while benign violations are logged and passed, and
 // enum case mismatches are normalized to canonical values. Last-wins with

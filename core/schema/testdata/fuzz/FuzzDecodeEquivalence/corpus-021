@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"chargePointVendor\":\"V\xc3\xa9\",\"chargePointModel\":\"M\\n\"}")

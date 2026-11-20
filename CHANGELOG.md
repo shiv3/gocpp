@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- `csms.WithOutboundValidation(bool)` / `cp.WithOutboundValidation(bool)` (default
+  true): with false, payloads this side produces (handler replies, outbound Calls and
+  Sends) skip schema validation and lenient repair; inbound messages are still
+  validated as configured. Backed by `dispatcher.Config.SkipOutboundValidation`.
 - `BenchmarkDispatchRoundTrip` (benchmarks/, in-memory transport, schema off/lenient/strict)
   and `BenchmarkValidateLenient` / `BenchmarkValidateStrict` (core/schema); baselines in
   docs/performance.md, "Per-message baselines".
@@ -202,6 +206,13 @@ All notable changes to this project are documented here. The format is based on
   details element, so pending calls resolve immediately instead of timing out.
 
 ### Changed
+- The lenient schema path is cheaper: a payload that is `{}` (modulo whitespace) and
+  valid for the schema returns without decoding or validating, other payloads are
+  decoded by a small reflection-free decoder (strings and numbers share one copy of
+  the payload, schema property names and enum values are reused), and the coercion
+  walk no longer allocates per element or runs for schemas with nothing coercible.
+  Accept/reject decisions, soft findings and normalised output are unchanged
+  (differential tests against the previous implementation, plus fuzzing).
 - `ocppj.Parse` decodes well-formed frames with a hand-written scanner (2 allocations
   for a CALL instead of 11) and falls back to the previous reflective decoder for
   anything unusual, so frames and errors are identical (`FuzzParseEquivalence`).

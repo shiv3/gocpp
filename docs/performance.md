@@ -131,6 +131,7 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 | `WithWriteTimeout` | 10s | Deadline for a single socket write. |
 | `WithConcurrentCalls()` | serialized | Outbound CALLs are limited to one outstanding per connection by default (OCPP-mandated); later calls wait in a bounded per-connection FIFO (`WithAsyncQueueSize`, 64). This option lifts the limit (non-compliant). Measured overhead: see `core/dispatcher/call_bench_test.go`; in-process, serialized and concurrent are within noise (about 7.1 µs and 55 allocs per call on one connection; about 0.65 M calls/s at 1,000 connections and 0.58 M calls/s at 10,000, 56 allocs per call, in both modes). |
 | `WithHandlerTimeout(d)` | 60s | Per-handler deadline (0 = none). |
+| `WithOutboundValidation(bool)` | true | With false, payloads gocpp itself produces (handler replies, outbound Calls and Sends) skip schema validation and lenient repair. Inbound validation is unchanged. At high request rates it removes the response-side validation pass (about half of the lenient schema cost per request); keep it on while developing handlers that build raw payloads. |
 | `WithMaxMessageSize(n)` | 1 MiB | Largest inbound WebSocket message. |
 | `csms.WithMaxConnections(n)` | unlimited | Connection cap; over it, upgrades get HTTP 503 + Retry-After. |
 | `WithWebSocketPingInterval(d)` | disabled | Transport keepalive; adds one goroutine per connection and detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |

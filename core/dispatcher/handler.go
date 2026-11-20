@@ -188,25 +188,13 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		c.sendCallError(frame.MsgID, ce)
 		return
 	}
-	respPayload := resp
-	if c.cfg.SchemaMode == SchemaModeLenient {
-		out, herr := c.lenientValidate(frame.Action, "response", resp)
-		if herr != nil {
-			status = "schema_invalid"
-			// The local handler produced an invalid response, so no valid
-			// CallResult can be sent. Return InternalError to the peer.
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, herr.Error(), nil))
-			return
-		}
-		respPayload = out
-	} else if err := c.schemaValidationError(frame.Action, "response", resp); err != nil {
-		if c.cfg.SchemaMode == SchemaModeStrict {
-			status = "schema_invalid"
-			// The local handler produced an invalid response, so no valid
-			// CallResult can be sent. Return InternalError to the peer.
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, err.Error(), nil))
-			return
-		}
+	respPayload, verr := c.validateOutbound(frame.Action, "response", resp)
+	if verr != nil {
+		status = "schema_invalid"
+		// The local handler produced an invalid response, so no valid
+		// CallResult can be sent. Return InternalError to the peer.
+		c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, verr.Error(), nil))
+		return
 	}
 	respPayload, terr := c.transformOutbound(frame.Action, "response", respPayload)
 	if terr != nil {
@@ -379,6 +367,23 @@ func (c *Conn) lenientValidate(action, kind string, payload []byte) (out []byte,
 			"version", string(c.version), "action", action, "kind", kind, "keywords", soft)
 	}
 	return out, nil
+}
+
+// validateOutbound applies the configured schema policy to a payload this side
+// produced (kind "request" for outbound CALL/SEND, "response" for a handler
+// result). It returns the payload to send, or the error that stops the send:
+// a hard lenient violation, or any violation in strict mode.
+func (c *Conn) validateOutbound(action, kind string, payload []byte) ([]byte, error) {
+	if c.cfg.SkipOutboundValidation {
+		return payload, nil
+	}
+	if c.cfg.SchemaMode == SchemaModeLenient {
+		return c.lenientValidate(action, kind, payload)
+	}
+	if err := c.schemaValidationError(action, kind, payload); err != nil && c.cfg.SchemaMode == SchemaModeStrict {
+		return nil, err
+	}
+	return payload, nil
 }
 
 func (c *Conn) schemaValidationError(action, kind string, payload []byte) error {

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"connectorId\":1,\"meterValue\":[{\"timestamp\":\"2026-01-01T00:00:00Z\",\"sampledValue\":[{\"value\":\"123\",\"unit\":\"wh\"}]}]}")

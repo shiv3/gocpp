@@ -45,11 +45,24 @@ func (v *Validator) ValidateLenient(raw []byte) (out []byte, soft []string, err 
 
 // ValidateLenientWith is ValidateLenient with explicit options.
 func (v *Validator) ValidateLenientWith(raw []byte, opts LenientOptions) (out []byte, soft []string, err error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var inst any
-	if err := dec.Decode(&inst); err != nil {
-		return nil, nil, fmt.Errorf("decode instance: %w", err)
+	// {} (modulo whitespace) is the whole payload of Heartbeat.req and of most
+	// 1.6 confirmations. When the schema accepts it as is (checked once at
+	// construction) there is nothing to decode, coerce or validate. The rest lives
+	// in a separate function so this fast path does not pay for the heap-allocated
+	// locals of the general one.
+	if v.emptyOK && isEmptyObject(raw) {
+		return raw, nil, nil
+	}
+	return v.validateLenient(raw, opts)
+}
+
+func (v *Validator) validateLenient(raw []byte, opts LenientOptions) (out []byte, soft []string, err error) {
+	inst, ok := fastDecode(raw, v.in)
+	if !ok {
+		var derr error
+		if inst, derr = decodeGeneric(raw); derr != nil {
+			return nil, nil, fmt.Errorf("decode instance: %w", derr)
+		}
 	}
 
 	// A JSON null payload stands for "no fields": several stacks send
@@ -66,8 +79,11 @@ func (v *Validator) ValidateLenientWith(raw []byte, opts LenientOptions) (out []
 
 	// Schema-guided coercion runs first so that the validation below (and the
 	// typed decode after it) sees the repaired values.
-	if coerceInstance(v.doc, inst, raw, opts, &soft) {
-		coerced = true
+	if v.coercible {
+		var changed bool
+		if soft, changed = coerceInstance(v.doc, inst, raw, opts, soft); changed {
+			coerced = true
+		}
 	}
 
 	verr := v.schema.Validate(inst)
@@ -207,4 +223,37 @@ func setStringAtPath(inst any, loc []string, val string) {
 			node[i] = val
 		}
 	}
+}
+
+// decodeGeneric is the reference decoder the fast one falls back to: first JSON
+// value of raw, numbers kept as json.Number.
+func decodeGeneric(raw []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var inst any
+	err := dec.Decode(&inst)
+	return inst, err
+}
+
+// isEmptyObject reports whether raw is "{}" with optional JSON whitespace around
+// and inside the braces.
+func isEmptyObject(raw []byte) bool {
+	i := 0
+	skip := func() {
+		for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\r' || raw[i] == '\n') {
+			i++
+		}
+	}
+	skip()
+	if i >= len(raw) || raw[i] != '{' {
+		return false
+	}
+	i++
+	skip()
+	if i >= len(raw) || raw[i] != '}' {
+		return false
+	}
+	i++
+	skip()
+	return i == len(raw)
 }

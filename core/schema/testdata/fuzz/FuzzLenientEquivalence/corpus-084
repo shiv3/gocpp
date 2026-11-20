@@ -1,0 +1,3 @@
+go test fuzz v1
+byte(84)
+[]byte("{\"type\":\"Hard\",\"extra\":{\"deep\":[1,{\"x\":null}]}}")

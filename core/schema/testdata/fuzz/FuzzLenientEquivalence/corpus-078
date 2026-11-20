@@ -1,0 +1,3 @@
+go test fuzz v1
+byte(78)
+[]byte("{\"idTag\":\"T\",\"connectorId\":\"2\"}")

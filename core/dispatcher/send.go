@@ -90,17 +90,9 @@ func DoSend(ctx context.Context, c *Conn, action string, reqPayload []byte) (err
 		c.cfg.Metrics.CallCompleted(action, "outbound", time.Since(start), status)
 	}()
 
-	sendPayload := reqPayload
-	if c.cfg.SchemaMode == SchemaModeLenient {
-		out, herr := c.lenientValidate(action, "request", reqPayload)
-		if herr != nil {
-			return herr
-		}
-		sendPayload = out
-	} else if verr := c.schemaValidationError(action, "request", reqPayload); verr != nil {
-		if c.cfg.SchemaMode == SchemaModeStrict {
-			return verr
-		}
+	sendPayload, verr := c.validateOutbound(action, "request", reqPayload)
+	if verr != nil {
+		return verr
 	}
 	sendPayload, err = c.transformOutbound(action, "request", sendPayload)
 	if err != nil {
