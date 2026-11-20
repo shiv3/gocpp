@@ -99,7 +99,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	h, ok := c.reg.Lookup(frame.Action)
 	if !ok {
 		status = "not_implemented"
-		c.sendCallError(frame.MsgID, ocppj.NewCallError(
+		c.replyBuiltinError(frame.MsgID, ErrorSourceUnknownAction, frame.Action, ocppj.ErrUnknownAction, ocppj.NewCallError(
 			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
 		return
 	}
@@ -108,14 +108,14 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		out, herr := c.lenientValidate(frame.Action, "request", frame.Payload)
 		if herr != nil {
 			status = "schema_invalid"
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(SchemaErrorCode(herr), herr.Error(), nil))
+			c.replyBuiltinError(frame.MsgID, ErrorSourceSchema, frame.Action, herr, ocppj.NewCallError(SchemaErrorCode(herr), herr.Error(), nil))
 			return
 		}
 		reqPayload = out
 	} else if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
 		if c.cfg.SchemaMode == SchemaModeStrict {
 			status = "schema_invalid"
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(SchemaErrorCode(err), err.Error(), nil))
+			c.replyBuiltinError(frame.MsgID, ErrorSourceSchema, frame.Action, err, ocppj.NewCallError(SchemaErrorCode(err), err.Error(), nil))
 			return
 		}
 	}
@@ -129,7 +129,13 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	span.End()
 	if err != nil {
 		status = "error"
-		c.sendCallError(frame.MsgID, mapHandlerError(err))
+		ce := mapHandlerError(err)
+		var de *decodeError
+		if errors.As(err, &de) {
+			c.replyBuiltinError(frame.MsgID, ErrorSourceDecode, frame.Action, de.err, ce)
+			return
+		}
+		c.sendCallError(frame.MsgID, ce)
 		return
 	}
 	respPayload := resp
@@ -151,6 +157,12 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 			c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, err.Error(), nil))
 			return
 		}
+	}
+	respPayload, terr := c.transformOutbound(frame.Action, "response", respPayload)
+	if terr != nil {
+		status = "error"
+		c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, terr.Error(), nil))
+		return
 	}
 	c.sendCallResult(frame.MsgID, respPayload)
 }
@@ -232,6 +244,20 @@ func SchemaErrorCode(err error) ocppj.ErrorCode {
 		}
 	}
 	return ocppj.ErrorCodeFormationViolation
+}
+
+// decodeError marks a CallError that came from decoding a request payload into
+// the handler's typed struct, so ErrorCodeMapper can tell it from an error the
+// application returned.
+type decodeError struct{ err error }
+
+func (e *decodeError) Error() string { return e.err.Error() }
+func (e *decodeError) Unwrap() error { return e.err }
+
+// NewDecodeError is the CALLERROR a typed handler wrapper returns when the
+// request payload cannot be decoded (code per DecodeErrorCode).
+func NewDecodeError(err error) *ocppj.CallError {
+	return ocppj.WrapCallError(DecodeErrorCode(err), &decodeError{err: err}, nil)
 }
 
 // DecodeErrorCode picks the CALLERROR code for a failure to decode a request

@@ -21,6 +21,10 @@ a single module that also speaks OCPP 2.1.
 | logrus logger | `slog.Logger` (stdlib `log/slog`) via `WithLogger` |
 | Validation via go-playground struct tags | JSON-Schema validation (`WithSchemaRegistry` + `WithStrictSchema` / `WithLenientSchema` / `WithTolerantSchema`) + generated tags |
 
+For a staged migration where chargers in the field depend on ocpp-go's exact replies
+(error codes, null payloads, timestamp format, idle handling), see
+[migration-from-ocpp-go.md](migration-from-ocpp-go.md) and `csms.WithOCPPGoCompat()`.
+
 ## Before / after
 
 A CSMS handling BootNotification + Heartbeat.

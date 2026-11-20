@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
 	"regexp"
 	"strconv"
@@ -24,20 +25,48 @@ type LenientOptions struct {
 //
 // It mutates inst in place and reports whether anything changed. Anything it
 // cannot repair is left untouched for the validator to reject.
-func coerceInstance(doc, inst any, opts LenientOptions, soft *[]string) bool {
+//
+// raw is the original payload text; it lets a root-level DataTransfer-style
+// "data" property keep its exact bytes when it is turned into a string.
+func coerceInstance(doc, inst any, raw []byte, opts LenientOptions, soft *[]string) bool {
 	root, ok := doc.(map[string]any)
 	if !ok {
 		return false
 	}
-	c := &coercer{root: root, opts: opts, soft: soft}
-	c.walk(root, inst, nil, 0)
+	c := &coercer{root: root, opts: opts, soft: soft, raw: raw}
+	c.prim = c.coercePrimitive
+	c.walk(root, inst, "", nil, 0)
+	return c.changed
+}
+
+// encodeInstanceTimes rewrites every date-time string in inst (found through the
+// schema doc) with enc, in place, and reports whether anything changed.
+func encodeInstanceTimes(doc, inst any, enc TimeEncoding) bool {
+	root, ok := doc.(map[string]any)
+	if !ok {
+		return false
+	}
+	c := &coercer{root: root}
+	c.prim = func(typ, format string, v any) (any, string, bool) {
+		s, isStr := v.(string)
+		if !isStr || format != "date-time" {
+			return nil, "", false
+		}
+		out, ok := enc.Format(s)
+		return out, "", ok
+	}
+	c.walk(root, inst, "", nil, 0)
 	return c.changed
 }
 
 type coercer struct {
-	root    map[string]any
-	opts    LenientOptions
-	soft    *[]string
+	root map[string]any
+	opts LenientOptions
+	soft *[]string
+	raw  []byte
+	// prim converts one primitive; it returns the new value, the soft keyword to
+	// record (empty for none) and whether it changed anything.
+	prim    func(typ, format string, v any) (any, string, bool)
 	changed bool
 }
 
@@ -64,12 +93,16 @@ func (c *coercer) resolve(node map[string]any) map[string]any {
 	return node
 }
 
-// walk visits inst under schema node. set replaces inst in its parent.
-func (c *coercer) walk(node map[string]any, inst any, set func(any), depth int) {
+// walk visits inst under schema node. key is the property name inst sits under
+// ("" at the root and in arrays); set replaces inst in its parent.
+func (c *coercer) walk(node map[string]any, inst any, key string, set func(any), depth int) {
 	if depth > maxCoerceDepth {
 		return
 	}
 	node = c.resolve(node)
+	if c.softText(node, inst, key, set, depth) {
+		return
+	}
 	switch v := inst.(type) {
 	case map[string]any:
 		props, _ := node["properties"].(map[string]any)
@@ -78,7 +111,7 @@ func (c *coercer) walk(node map[string]any, inst any, set func(any), depth int) 
 			if !ok {
 				continue
 			}
-			c.walk(cs, child, func(nv any) { v[k] = nv }, depth+1)
+			c.walk(cs, child, k, func(nv any) { v[k] = nv }, depth+1)
 		}
 	case []any:
 		items, ok := node["items"].(map[string]any)
@@ -86,7 +119,7 @@ func (c *coercer) walk(node map[string]any, inst any, set func(any), depth int) 
 			return
 		}
 		for i, child := range v {
-			c.walk(items, child, func(nv any) { v[i] = nv }, depth+1)
+			c.walk(items, child, "", func(nv any) { v[i] = nv }, depth+1)
 		}
 	default:
 		if set == nil {
@@ -94,12 +127,55 @@ func (c *coercer) walk(node map[string]any, inst any, set func(any), depth int) 
 		}
 		typ, _ := node["type"].(string)
 		format, _ := node["format"].(string)
-		if nv, kw, ok := c.coercePrimitive(typ, format, inst); ok {
+		if nv, kw, ok := c.prim(typ, format, inst); ok {
 			set(nv)
 			c.changed = true
-			*c.soft = append(*c.soft, kw)
+			if kw != "" && c.soft != nil {
+				*c.soft = append(*c.soft, kw)
+			}
 		}
 	}
+}
+
+// softText turns a JSON object, array or boolean found under a string-typed
+// "data" property into its compact JSON text (OCPP 1.6 DataTransfer.data is a
+// string in the schema but many stacks send structured JSON there). The text is
+// lossless; at the payload root it is the original bytes, compacted. Only the
+// property named "data" is converted: for any other string field a structured
+// value is a real error. It reports whether it consumed inst.
+func (c *coercer) softText(node map[string]any, inst any, key string, set func(any), depth int) bool {
+	if c.soft == nil || key != "data" || set == nil {
+		return false
+	}
+	if typ, _ := node["type"].(string); typ != "string" {
+		return false
+	}
+	switch inst.(type) {
+	case map[string]any, []any, bool:
+	default:
+		return false
+	}
+	text := ""
+	if depth == 1 {
+		var rawRoot map[string]json.RawMessage
+		if json.Unmarshal(c.raw, &rawRoot) == nil {
+			var buf bytes.Buffer
+			if json.Compact(&buf, rawRoot[key]) == nil {
+				text = buf.String()
+			}
+		}
+	}
+	if text == "" {
+		b, err := json.Marshal(inst)
+		if err != nil {
+			return false
+		}
+		text = string(b)
+	}
+	set(text)
+	c.changed = true
+	*c.soft = append(*c.soft, "type")
+	return true
 }
 
 func (c *coercer) coercePrimitive(typ, format string, v any) (any, string, bool) {
