@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\x09[\x0a2,\x0d\"id\",\"Heartbeat\",{}\x0a]\x0a")

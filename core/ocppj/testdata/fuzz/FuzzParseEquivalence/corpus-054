@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("[2,\"id\",\"H\xc3\xa9\xe2\x80\xa8\",{}]")

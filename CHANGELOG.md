@@ -202,6 +202,15 @@ All notable changes to this project are documented here. The format is based on
   details element, so pending calls resolve immediately instead of timing out.
 
 ### Changed
+- `ocppj.Parse` decodes well-formed frames with a hand-written scanner (2 allocations
+  for a CALL instead of 11) and falls back to the previous reflective decoder for
+  anything unusual, so frames and errors are identical (`FuzzParseEquivalence`).
+  `Frame.Payload` and `Frame.ErrData` are now sub-slices of the input buffer instead
+  of copies: do not modify the buffer passed to `Parse` while the Frame is in use.
+  The `Encode*` functions build the frame in one allocation.
+- `ocppj.NewMsgID` no longer takes a process-wide mutex (math/rand/v2 instead of a
+  crypto/rand monotonic source). Ids stay unique and time-sortable, but two ids from
+  the same millisecond are no longer ordered by creation.
 - The read idle watchdog and the WebSocket ping loop are `time.AfterFunc` timers
   instead of two goroutines per connection (8 -> 6 resident goroutines, ~2 KB less
   stack and ~1.8 KB less heap per connection), and inbound frames no longer

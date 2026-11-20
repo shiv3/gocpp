@@ -1,6 +1,9 @@
 package ocppj
 
 import (
+	"time"
+
+	"github.com/oklog/ulid/v2"
 	"sync"
 	"testing"
 
@@ -26,4 +29,17 @@ func TestNewMsgID_Unique(t *testing.T) {
 	}
 	wg.Wait()
 	require.Len(t, seen, n)
+}
+
+func TestNewMsgID_FormatAndOrder(t *testing.T) {
+	a := NewMsgID()
+	time.Sleep(3 * time.Millisecond)
+	b := NewMsgID()
+	for _, id := range []string{a, b} {
+		require.Len(t, id, 26)
+		require.LessOrEqual(t, len(id), MaxMessageIDLength)
+		_, err := ulid.ParseStrict(id)
+		require.NoError(t, err)
+	}
+	require.Less(t, a, b, "ids from different milliseconds sort by creation time")
 }
