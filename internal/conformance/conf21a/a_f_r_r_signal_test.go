@@ -7,19 +7,15 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v21 "github.com/shiv3/gocpp/v21"
 	"github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	decimal.MarshalJSONWithoutQuotes = true
-}
 
 func TestAFRRSignal21_RequestValidation(t *testing.T) {
 	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
@@ -160,6 +156,6 @@ func testTime() time.Time {
 	return time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 }
 
-func dec() decimal.Decimal {
-	return decimal.NewFromInt(1)
+func dec() types.Decimal {
+	return types.NewFromInt(1)
 }

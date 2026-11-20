@@ -47,7 +47,7 @@ func (f Field) baseType() string {
 	case TypeInt64:
 		return "int64"
 	case TypeNumber:
-		return "decimal.Decimal"
+		return "types.Decimal"
 	case TypeBool:
 		return "bool"
 	case TypeDateTime:

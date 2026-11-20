@@ -3,12 +3,12 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 )
 
 type CostUpdatedRequest struct {
 	CustomData    *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	TotalCost     decimal.Decimal `json:"totalCost" validate:"required"`
+	TotalCost     types.Decimal   `json:"totalCost" validate:"required"`
 	TransactionID string          `json:"transactionId" validate:"required,max=36"`
 }
 

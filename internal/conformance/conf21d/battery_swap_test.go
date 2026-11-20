@@ -9,19 +9,15 @@ import (
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v21 "github.com/shiv3/gocpp/v21"
 	messages "github.com/shiv3/gocpp/v21/messages"
 	v21profiles "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	decimal.MarshalJSONWithoutQuotes = true
-}
 
 func must21Validator(t *testing.T, action, kind string) *schema.Validator {
 	t.Helper()
@@ -61,8 +57,8 @@ func testBatteryData() messages.BatteryDataType {
 	return messages.BatteryDataType{
 		EVSEID:       1,
 		SerialNumber: "battery-1",
-		SoC:          decimal.NewFromInt(80),
-		SoH:          decimal.NewFromInt(90),
+		SoC:          types.NewFromInt(80),
+		SoH:          types.NewFromInt(90),
 	}
 }
 
@@ -90,7 +86,7 @@ func testVariableMonitoring() messages.VariableMonitoringType {
 		Severity:              1,
 		Transaction:           false,
 		Type:                  "UpperThreshold",
-		Value:                 decimal.NewFromInt(10),
+		Value:                 types.NewFromInt(10),
 	}
 }
 
@@ -191,8 +187,8 @@ func TestBatterySwap21_RequestValidation(t *testing.T) {
 					{
 						EVSEID:       1,
 						SerialNumber: longString(51),
-						SoC:          decimal.NewFromInt(80),
-						SoH:          decimal.NewFromInt(90),
+						SoC:          types.NewFromInt(80),
+						SoH:          types.NewFromInt(90),
 					},
 				},
 				EventType: "BatteryIn",

@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -29,14 +29,14 @@ type ChargingSchedule struct {
 	ChargingRateUnit       ChargingScheduleChargingRateUnit `json:"chargingRateUnit" validate:"required"`
 	ChargingSchedulePeriod []ChargingSchedulePeriod         `json:"chargingSchedulePeriod" validate:"required"`
 	Duration               *int32                           `json:"duration,omitempty" validate:"omitempty"`
-	MinChargingRate        *decimal.Decimal                 `json:"minChargingRate,omitempty" validate:"omitempty"`
+	MinChargingRate        *types.Decimal                   `json:"minChargingRate,omitempty" validate:"omitempty"`
 	StartSchedule          *time.Time                       `json:"startSchedule,omitempty" validate:"omitempty"`
 }
 
 type ChargingSchedulePeriod struct {
-	Limit        decimal.Decimal `json:"limit" validate:"required"`
-	NumberPhases *int32          `json:"numberPhases,omitempty" validate:"omitempty"`
-	StartPeriod  int32           `json:"startPeriod" validate:"required"`
+	Limit        types.Decimal `json:"limit" validate:"required"`
+	NumberPhases *int32        `json:"numberPhases,omitempty" validate:"omitempty"`
+	StartPeriod  int32         `json:"startPeriod" validate:"required"`
 }
 
 type RemoteStartTransactionResponse struct {

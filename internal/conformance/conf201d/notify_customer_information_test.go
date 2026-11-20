@@ -8,21 +8,17 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
 const subprotocol201 = "ocpp2.0.1"
-
-func init() {
-	decimal.MarshalJSONWithoutQuotes = true
-}
 
 func ptr[T any](v T) *T {
 	return &v
@@ -36,8 +32,8 @@ func longString(n int) string {
 	return strings.Repeat("x", n)
 }
 
-func dec(v string) decimal.Decimal {
-	d, err := decimal.NewFromString(v)
+func dec(v string) types.Decimal {
+	d, err := types.NewFromString(v)
 	if err != nil {
 		panic(err)
 	}

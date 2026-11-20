@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj/signing"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	v21client "github.com/shiv3/gocpp/v21/client"
 	v21msg "github.com/shiv3/gocpp/v21/messages"
 	v21p "github.com/shiv3/gocpp/v21/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,7 +109,7 @@ func TestE2E_21SignedNotifyPeriodicEventStream(t *testing.T) {
 
 	err := v21client.NewCP(client).NotifyPeriodicEventStream(ctx, v21msg.NotifyPeriodicEventStream{
 		ID: 7, Pending: 0, Basetime: time.Now().UTC(),
-		Data: []v21msg.StreamDataElementType{{T: decimal.NewFromInt(0), V: "230.0"}},
+		Data: []v21msg.StreamDataElementType{{T: types.NewFromInt(0), V: "230.0"}},
 	})
 	require.NoError(t, err)
 	select {

@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -45,7 +45,7 @@ type ChargingPeriodType struct {
 type CostDimensionType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
 	Type       string          `json:"type" validate:"required"`
-	Volume     decimal.Decimal `json:"volume" validate:"required"`
+	Volume     types.Decimal   `json:"volume" validate:"required"`
 }
 
 type TotalCostType struct {
@@ -62,15 +62,15 @@ type TotalCostType struct {
 }
 
 type TotalPriceType struct {
-	CustomData *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	ExclTax    *decimal.Decimal `json:"exclTax,omitempty" validate:"omitempty"`
-	InclTax    *decimal.Decimal `json:"inclTax,omitempty" validate:"omitempty"`
+	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	ExclTax    *types.Decimal  `json:"exclTax,omitempty" validate:"omitempty"`
+	InclTax    *types.Decimal  `json:"inclTax,omitempty" validate:"omitempty"`
 }
 
 type TotalUsageType struct {
 	ChargingTime    int32           `json:"chargingTime" validate:"required"`
 	CustomData      *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	Energy          decimal.Decimal `json:"energy" validate:"required"`
+	Energy          types.Decimal   `json:"energy" validate:"required"`
 	IdleTime        int32           `json:"idleTime" validate:"required"`
 	ReservationTime *int32          `json:"reservationTime,omitempty" validate:"omitempty"`
 }
@@ -88,18 +88,18 @@ type TransactionType struct {
 }
 
 type TransactionLimitType struct {
-	CustomData *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	MaxCost    *decimal.Decimal `json:"maxCost,omitempty" validate:"omitempty"`
-	MaxEnergy  *decimal.Decimal `json:"maxEnergy,omitempty" validate:"omitempty"`
-	MaxSoC     *int32           `json:"maxSoC,omitempty" validate:"omitempty"`
-	MaxTime    *int32           `json:"maxTime,omitempty" validate:"omitempty"`
+	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	MaxCost    *types.Decimal  `json:"maxCost,omitempty" validate:"omitempty"`
+	MaxEnergy  *types.Decimal  `json:"maxEnergy,omitempty" validate:"omitempty"`
+	MaxSoC     *int32          `json:"maxSoC,omitempty" validate:"omitempty"`
+	MaxTime    *int32          `json:"maxTime,omitempty" validate:"omitempty"`
 }
 
 type TransactionEventResponse struct {
 	ChargingPriority            *int32                `json:"chargingPriority,omitempty" validate:"omitempty"`
 	CustomData                  *CustomDataType       `json:"customData,omitempty" validate:"omitempty"`
 	IDTokenInfo                 *IdTokenInfoType      `json:"idTokenInfo,omitempty" validate:"omitempty"`
-	TotalCost                   *decimal.Decimal      `json:"totalCost,omitempty" validate:"omitempty"`
+	TotalCost                   *types.Decimal        `json:"totalCost,omitempty" validate:"omitempty"`
 	TransactionLimit            *TransactionLimitType `json:"transactionLimit,omitempty" validate:"omitempty"`
 	UpdatedPersonalMessage      *MessageContentType   `json:"updatedPersonalMessage,omitempty" validate:"omitempty"`
 	UpdatedPersonalMessageExtra []MessageContentType  `json:"updatedPersonalMessageExtra,omitempty" validate:"omitempty"`

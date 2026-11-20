@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -12,7 +12,7 @@ type NotifySettlementRequest struct {
 	PspRef           string          `json:"pspRef" validate:"required,max=255"`
 	ReceiptID        *string         `json:"receiptId,omitempty" validate:"omitempty,max=50"`
 	ReceiptURL       *string         `json:"receiptUrl,omitempty" validate:"omitempty,max=2000"`
-	SettlementAmount decimal.Decimal `json:"settlementAmount" validate:"required"`
+	SettlementAmount types.Decimal   `json:"settlementAmount" validate:"required"`
 	SettlementTime   time.Time       `json:"settlementTime" validate:"required"`
 	Status           string          `json:"status" validate:"required"`
 	StatusInfo       *string         `json:"statusInfo,omitempty" validate:"omitempty,max=500"`

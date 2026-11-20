@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -27,7 +27,7 @@ type SampledValueType struct {
 	Phase            *string               `json:"phase,omitempty" validate:"omitempty"`
 	SignedMeterValue *SignedMeterValueType `json:"signedMeterValue,omitempty" validate:"omitempty"`
 	UnitOfMeasure    *UnitOfMeasureType    `json:"unitOfMeasure,omitempty" validate:"omitempty"`
-	Value            decimal.Decimal       `json:"value" validate:"required"`
+	Value            types.Decimal         `json:"value" validate:"required"`
 }
 
 type SignedMeterValueType struct {

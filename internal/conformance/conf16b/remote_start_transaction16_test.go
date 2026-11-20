@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v16 "github.com/shiv3/gocpp/v16"
 	"github.com/shiv3/gocpp/v16/messages"
 	v16profiles "github.com/shiv3/gocpp/v16/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,7 +26,7 @@ func validChargingProfile16() *messages.ChargingProfile {
 			ChargingSchedulePeriod: []messages.ChargingSchedulePeriod{
 				{
 					StartPeriod: 0,
-					Limit:       decimal.NewFromFloat(10.0),
+					Limit:       types.NewFromFloat(10.0),
 				},
 			},
 		},
@@ -34,12 +34,6 @@ func validChargingProfile16() *messages.ChargingProfile {
 }
 
 func TestRemoteStartTransaction16_RequestValidation(t *testing.T) {
-	oldDecimalJSON := decimal.MarshalJSONWithoutQuotes
-	decimal.MarshalJSONWithoutQuotes = true
-	t.Cleanup(func() {
-		decimal.MarshalJSONWithoutQuotes = oldDecimalJSON
-	})
-
 	reg := conformance.SchemaRegistry(v16.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "1.6", "RemoteStartTransaction", "request")
 

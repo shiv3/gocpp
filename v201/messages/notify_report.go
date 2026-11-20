@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -34,13 +34,13 @@ type VariableAttributeType struct {
 }
 
 type VariableCharacteristicsType struct {
-	CustomData         *CustomDataType  `json:"customData,omitempty" validate:"omitempty"`
-	DataType           string           `json:"dataType" validate:"required"`
-	MaxLimit           *decimal.Decimal `json:"maxLimit,omitempty" validate:"omitempty"`
-	MinLimit           *decimal.Decimal `json:"minLimit,omitempty" validate:"omitempty"`
-	SupportsMonitoring bool             `json:"supportsMonitoring"`
-	Unit               *string          `json:"unit,omitempty" validate:"omitempty,max=16"`
-	ValuesList         *string          `json:"valuesList,omitempty" validate:"omitempty,max=1000"`
+	CustomData         *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
+	DataType           string          `json:"dataType" validate:"required"`
+	MaxLimit           *types.Decimal  `json:"maxLimit,omitempty" validate:"omitempty"`
+	MinLimit           *types.Decimal  `json:"minLimit,omitempty" validate:"omitempty"`
+	SupportsMonitoring bool            `json:"supportsMonitoring"`
+	Unit               *string         `json:"unit,omitempty" validate:"omitempty,max=16"`
+	ValuesList         *string         `json:"valuesList,omitempty" validate:"omitempty,max=1000"`
 }
 
 type NotifyReportResponse struct {

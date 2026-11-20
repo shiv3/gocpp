@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/types"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/internal/conformance"
 	v201 "github.com/shiv3/gocpp/v201"
 	"github.com/shiv3/gocpp/v201/messages"
 	v201profiles "github.com/shiv3/gocpp/v201/profiles"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,22 +66,12 @@ func testChargingProfile201e(stackLevel int32) messages.ChargingProfileType {
 				ChargingSchedulePeriod: []messages.ChargingSchedulePeriodType{
 					{
 						StartPeriod: 0,
-						Limit:       decimal.NewFromFloat(200.0),
+						Limit:       types.NewFromFloat(200.0),
 					},
 				},
 			},
 		},
 	}
-}
-
-func useDecimalJSONWithoutQuotes201e(t *testing.T) {
-	t.Helper()
-
-	oldDecimalJSON := decimal.MarshalJSONWithoutQuotes
-	decimal.MarshalJSONWithoutQuotes = true
-	t.Cleanup(func() {
-		decimal.MarshalJSONWithoutQuotes = oldDecimalJSON
-	})
 }
 
 func requireCSMSHandlerInvalidDirection201e[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {

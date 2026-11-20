@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -20,8 +20,8 @@ type BatteryDataType struct {
 	EVSEID         int32           `json:"evseId" validate:"required"`
 	ProductionDate *time.Time      `json:"productionDate,omitempty" validate:"omitempty"`
 	SerialNumber   string          `json:"serialNumber" validate:"required,max=50"`
-	SoC            decimal.Decimal `json:"soC" validate:"required"`
-	SoH            decimal.Decimal `json:"soH" validate:"required"`
+	SoC            types.Decimal   `json:"soC" validate:"required"`
+	SoH            types.Decimal   `json:"soH" validate:"required"`
 	VendorInfo     *string         `json:"vendorInfo,omitempty" validate:"omitempty,max=500"`
 }
 

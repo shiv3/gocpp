@@ -11,7 +11,6 @@ import (
 )
 
 func TestReportChargingProfiles21_RequestValidation(t *testing.T) {
-	useDecimalJSONWithoutQuotes21(t)
 
 	reg := conformance.SchemaRegistry(v21.RegisterSchemas)
 	validator := conformance.MustValidator(t, reg, "2.1", "ReportChargingProfiles", "request")

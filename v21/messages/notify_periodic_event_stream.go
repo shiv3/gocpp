@@ -3,7 +3,7 @@
 package messages
 
 import (
-	"github.com/shopspring/decimal"
+	"github.com/shiv3/gocpp/core/types"
 	"time"
 )
 
@@ -17,6 +17,6 @@ type NotifyPeriodicEventStream struct {
 
 type StreamDataElementType struct {
 	CustomData *CustomDataType `json:"customData,omitempty" validate:"omitempty"`
-	T          decimal.Decimal `json:"t" validate:"required"`
+	T          types.Decimal   `json:"t" validate:"required"`
 	V          string          `json:"v" validate:"required,max=2500"`
 }
