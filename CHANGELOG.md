@@ -121,6 +121,7 @@ All notable changes to this project are documented here. The format is based on
   header — i.e. non-browser charge points — are always allowed).
 
 ### Fixed
+- Flaky `TestCluster_StaleDisconnectKeepsNewerOwner`: the test helper accepted the previous owner's route as proof that the new instance had published. Test-only; docs/clustering.md now states the cross-instance publish-ordering guarantee precisely.
 - `csms.CallAsync` / `CallRawAsync` on a local connection called themselves instead of
   the dispatcher (unbounded recursion); they now dispatch the call.
 - `cp.Client.Run` no longer stops reconnecting after 15 minutes: the backoff
