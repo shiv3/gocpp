@@ -10,3 +10,7 @@
 /docs/superpowers/
 # local Claude Code config (skills, etc.)
 /.claude/
+
+# built binaries of the reference commands
+/cmd/gocpp-gateway/gocpp-gateway
+/cmd/gocppctl/gocppctl
