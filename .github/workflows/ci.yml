@@ -20,6 +20,9 @@ jobs:
           GOCPP_TEST_SPLIT: "1"
       # Footprint bounds are not asserted under -race (it inflates heap/stack).
       - run: go test -count=1 -run TestIdleFootprintBounds ./benchmarks/
+      # Gateway performance gate: the in-process split may add at most 0.5 ms mean
+      # and 2 ms p99 per message (docs/gateway.md, performance).
+      - run: go test -count=1 -run TestGateHopOverhead ./benchmarks/
 
   codegen-drift:
     runs-on: ubuntu-latest
@@ -61,6 +64,9 @@ jobs:
         with:
           go-version: "1.26"
       - run: go test -race -count=1 ./...
+        working-directory: addons/link-grpc
+      # gRPC hop latency gate (skipped under -race).
+      - run: go test -count=1 -run TestGateGRPCHopLatency ./...
         working-directory: addons/link-grpc
       - run: go test -count=1 -timeout 5m ./...
         working-directory: cmd/gocpp-gateway
