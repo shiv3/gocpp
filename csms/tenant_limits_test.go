@@ -23,10 +23,11 @@ type tenantMetrics struct {
 	mu       sync.Mutex
 	sessions map[string]int
 	rejected map[string]int
+	infl     map[string]int
 }
 
 func newTenantMetrics() *tenantMetrics {
-	return &tenantMetrics{sessions: map[string]int{}, rejected: map[string]int{}}
+	return &tenantMetrics{sessions: map[string]int{}, rejected: map[string]int{}, infl: map[string]int{}}
 }
 func (m *tenantMetrics) TenantSessions(t string, d int) {
 	m.mu.Lock()
@@ -37,6 +38,16 @@ func (m *tenantMetrics) TenantRejected(t, kind string) {
 	m.mu.Lock()
 	m.rejected[t+"/"+kind]++
 	m.mu.Unlock()
+}
+func (m *tenantMetrics) TenantInflight(t string, d int) {
+	m.mu.Lock()
+	m.infl[t] += d
+	m.mu.Unlock()
+}
+func (m *tenantMetrics) inflight(t string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.infl[t]
 }
 func (m *tenantMetrics) rejections() map[string]int {
 	m.mu.Lock()
@@ -226,4 +237,210 @@ func TestTenantLimits_RejectCode(t *testing.T) {
 	defer func() { _ = c.CloseNow() }()
 	require.Equal(t, "ok", hb(t, c, 1))
 	require.Equal(t, "InternalError", hb(t, c, 2))
+}
+
+// inflightRig is an embedded server whose Heartbeat handler parks until released,
+// so calls stay in flight for as long as a test wants.
+type inflightRig struct {
+	url     string
+	release chan struct{}
+	started chan struct{}
+	m       *tenantMetrics
+	once    sync.Once
+}
+
+func (r *inflightRig) unpark() { r.once.Do(func() { close(r.release) }) }
+
+func newInflightRig(t *testing.T, l csms.TenantLimits) *inflightRig {
+	t.Helper()
+	r := &inflightRig{release: make(chan struct{}), started: make(chan struct{}, 256), m: newTenantMetrics()}
+	l.Resolver = csms.TenantFromRequest(func(req *http.Request) (string, bool) {
+		v := req.Header.Get("X-Tenant")
+		return v, v != ""
+	})
+	srv := csms.NewServer(csms.WithTenantLimits(l), csms.WithMetrics(r.m))
+	require.NoError(t, csms.On(srv, edgeHBMsg, func(ctx context.Context, _ *csms.Conn, _ edgeHB) (edgeHBResp, error) {
+		r.started <- struct{}{}
+		select {
+		case <-r.release:
+		case <-ctx.Done():
+		}
+		return edgeHBResp{CurrentTime: "now"}, nil
+	}))
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(func() { r.unpark(); ts.Close(); srv.Close() })
+	r.url = "ws" + ts.URL[len("http"):] + "/ocpp/"
+	return r
+}
+
+// park sends a Heartbeat on a fresh charger of tenant. The returned channel
+// receives the reply: "ok" or the CALLERROR code. A refused call answers at once,
+// an admitted one only after the rig releases its handler.
+func (r *inflightRig) park(t *testing.T, id, tenant string) <-chan string {
+	t.Helper()
+	c, _, err := dialTenant(r.url, id, tenant)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	out := make(chan string, 1)
+	var wg sync.WaitGroup
+	t.Cleanup(func() { cancel(); _ = c.CloseNow(); wg.Wait() })
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"p1","Heartbeat",{}]`)))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, data, err := c.Read(ctx)
+		if err != nil {
+			return
+		}
+		var arr []json.RawMessage
+		if json.Unmarshal(data, &arr) != nil {
+			return
+		}
+		if string(arr[0]) == "3" {
+			out <- "ok"
+			return
+		}
+		var code string
+		_ = json.Unmarshal(arr[2], &code)
+		out <- code
+	}()
+	return out
+}
+
+// settle waits for the refusals to arrive and counts the replies received so far.
+func settle(chans []<-chan string) (replies []string) {
+	time.Sleep(300 * time.Millisecond)
+	for _, ch := range chans {
+		select {
+		case v := <-ch:
+			replies = append(replies, v)
+		default:
+		}
+	}
+	return replies
+}
+
+func repeatStr(s string, n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = s
+	}
+	return out
+}
+
+// A noisy tenant with many chargers cannot take the capacity a quiet tenant is
+// entitled to: the quiet tenant is admitted up to its share however busy the
+// noisy one is, and the noisy one is refused, with its sessions kept.
+func TestTenantLimits_InFlightPoolNoisyVersusQuiet(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+	r := newInflightRig(t, csms.TenantLimits{InFlightPool: 4})
+
+	// The quiet tenant has one idle session: its share (2 of 4) stays reserved.
+	quietIdle, _, err := dialTenant(r.url, "Q0", "quiet")
+	require.NoError(t, err)
+	defer func() { _ = quietIdle.CloseNow() }()
+
+	var noisy []<-chan string
+	for i := 0; i < 8; i++ {
+		noisy = append(noisy, r.park(t, "N"+strconv.Itoa(i), "noisy"))
+	}
+	// Only the noisy tenant's own share runs; it cannot borrow the quiet one's.
+	require.Equal(t, repeatStr("GenericError", 6), settle(noisy))
+	require.Len(t, r.started, 2)
+
+	// The quiet tenant gets its share right away while the noisy one is saturated.
+	q := []<-chan string{r.park(t, "Q1", "quiet"), r.park(t, "Q2", "quiet")}
+	require.Empty(t, settle(q), "both quiet calls were admitted, none refused")
+	require.Len(t, r.started, 4)
+	rej := r.m.rejections()
+	require.Equal(t, 6, rej["noisy/inflight"])
+	require.Zero(t, rej["quiet/inflight"])
+
+	// A noisy session that was refused is still up and is admitted again once
+	// capacity frees.
+	r.unpark()
+	require.Eventually(t, func() bool { return len(r.started) == 4 && r.m.inflight("noisy") == 0 && r.m.inflight("quiet") == 0 },
+		3*time.Second, 20*time.Millisecond)
+	again := r.park(t, "N9", "noisy")
+	require.Equal(t, []string{"ok"}, settle([]<-chan string{again}))
+}
+
+// With the other tenants idle (no sessions) a tenant may use the whole pool:
+// capacity is not wasted, and the slots come back when the handlers return.
+func TestTenantLimits_InFlightPoolIsWorkConserving(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+	r := newInflightRig(t, csms.TenantLimits{InFlightPool: 4})
+	var chans []<-chan string
+	for i := 0; i < 6; i++ {
+		chans = append(chans, r.park(t, "S"+strconv.Itoa(i), "solo"))
+	}
+	require.Equal(t, repeatStr("GenericError", 2), settle(chans))
+	require.Len(t, r.started, 4)
+	r.unpark()
+	require.Eventually(t, func() bool { return r.m.inflight("solo") == 0 }, 3*time.Second, 20*time.Millisecond)
+	require.Equal(t, 0, r.m.rejections()["solo/messages"])
+}
+
+// Weights split the pool: with weights 3:1 over a pool of 8 and both tenants
+// busy, the heavy tenant is entitled to 6 slots and the light one to 2.
+func TestTenantLimits_InFlightPoolWeights(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+	r := newInflightRig(t, csms.TenantLimits{
+		InFlightPool: 8,
+		Tenants: map[string]csms.TenantLimit{
+			"heavy": {Weight: 3},
+			"light": {Weight: 1},
+		},
+	})
+	idleHeavy, _, err := dialTenant(r.url, "H0", "heavy")
+	require.NoError(t, err)
+	defer func() { _ = idleHeavy.CloseNow() }()
+	var light []<-chan string
+	for i := 0; i < 8; i++ {
+		light = append(light, r.park(t, "L"+strconv.Itoa(i), "light"))
+	}
+	// The light tenant gets 2; the heavy tenant's 6 stay reserved.
+	require.Equal(t, repeatStr("GenericError", 6), settle(light))
+	var heavy []<-chan string
+	for i := 1; i <= 6; i++ {
+		heavy = append(heavy, r.park(t, "H"+strconv.Itoa(i), "heavy"))
+	}
+	require.Empty(t, settle(heavy))
+	require.Len(t, r.started, 8)
+}
+
+// MaxInFlight is a hard per-tenant ceiling even when the pool has room, and
+// another tenant is not affected by it.
+func TestTenantLimits_MaxInFlightPerTenant(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+	r := newInflightRig(t, csms.TenantLimits{
+		Tenants:    map[string]csms.TenantLimit{"capped": {MaxInFlight: 2}},
+		RejectCode: ocppj.ErrorCodeInternalError,
+	})
+	var capped []<-chan string
+	for i := 0; i < 5; i++ {
+		capped = append(capped, r.park(t, "C"+strconv.Itoa(i), "capped"))
+	}
+	require.Equal(t, repeatStr("InternalError", 3), settle(capped))
+	free := []<-chan string{r.park(t, "F1", "free"), r.park(t, "F2", "free"), r.park(t, "F3", "free")}
+	require.Empty(t, settle(free))
+	require.Len(t, r.started, 5)
+	require.Equal(t, 3, r.m.rejections()["capped/inflight"])
+}
+
+// A session that closes with calls in flight gives its slots back even though
+// the handlers may never finish.
+func TestTenantLimits_InFlightReleasedWhenSessionEnds(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+	r := newInflightRig(t, csms.TenantLimits{Tenants: map[string]csms.TenantLimit{"a": {MaxInFlight: 1}}})
+	c, _, err := dialTenant(r.url, "A1", "a")
+	require.NoError(t, err)
+	require.NoError(t, c.Write(context.Background(), websocket.MessageText, []byte(`[2,"p1","Heartbeat",{}]`)))
+	<-r.started
+	require.Equal(t, 1, r.m.inflight("a"))
+	require.NoError(t, c.CloseNow())
+	// The handler is released by the connection context; either way the slot is back.
+	require.Eventually(t, func() bool { return r.m.inflight("a") == 0 }, 3*time.Second, 20*time.Millisecond)
+	next := r.park(t, "A2", "a")
+	require.Empty(t, settle([]<-chan string{next}))
 }

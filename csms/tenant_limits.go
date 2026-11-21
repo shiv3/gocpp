@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 )
@@ -38,6 +37,15 @@ type TenantLimit struct {
 	// MessageBurst is the bucket depth (default: one second of MessageRate, at
 	// least 1).
 	MessageBurst int
+	// MaxInFlight caps the tenant's inbound CALLs and SENDs in flight at once (from
+	// the moment the frame is admitted until its handler returned and the reply is
+	// queued, so on a gateway it covers the backend hop), summed over its sessions.
+	// A message over the cap is refused like one over MessageRate. It is a hard
+	// ceiling on top of the weighted pool (TenantLimits.InFlightPool).
+	MaxInFlight int
+	// Weight is the tenant's share of TenantLimits.InFlightPool relative to the
+	// other tenants that have sessions (default 1).
+	Weight float64
 }
 
 // TenantLimits configures per-tenant limits (WithTenantLimits).
@@ -50,6 +58,17 @@ type TenantLimits struct {
 	Resolver TenantResolver
 	// AttrKey is the session attribute holding the tenant (default "tenant").
 	AttrKey string
+
+	// InFlightPool is the number of inbound CALLs and SENDs the server lets run at
+	// once across all tenants (0: no pool, only the per-tenant MaxInFlight).
+	// Capacity is split by TenantLimit.Weight among the tenants that currently have
+	// sessions: a tenant is always admitted up to its weighted share, so a noisy
+	// tenant cannot crowd out a quiet one; above its share it may borrow capacity
+	// that no other tenant could claim right now (the sum of the other tenants'
+	// unused shares stays reserved), so idle capacity is not wasted. A refused
+	// message is answered with RejectCode, counted as kind "inflight", and the
+	// session stays up.
+	InFlightPool int
 
 	// Default applies to tenants not listed in Tenants.
 	Default TenantLimit
@@ -88,6 +107,17 @@ type tenants struct {
 	mu      sync.Mutex
 	byID    map[string]*tenantState
 	labeled int
+
+	// active is the set of tenants with at least one session and the sum of their
+	// weights, replaced (never mutated) when it changes; the in-flight pool reads it
+	// without locking. totalInflight is the pool's current use.
+	active        atomic.Pointer[activeSet]
+	totalInflight atomic.Int64
+}
+
+type activeSet struct {
+	tenants     []*tenantState
+	totalWeight float64
 }
 
 // tenantState is the live state of one tenant.
@@ -96,6 +126,8 @@ type tenantState struct {
 	label    string
 	limit    TenantLimit
 	sessions atomic.Int64
+	inflight atomic.Int64
+	weight   float64
 
 	mu     sync.Mutex
 	tokens float64
@@ -143,7 +175,11 @@ func (t *tenants) state(id string) *tenantState {
 	if lim.MessageRate > 0 && lim.MessageBurst <= 0 {
 		lim.MessageBurst = max(1, int(math.Ceil(lim.MessageRate)))
 	}
-	s := &tenantState{id: id, label: "other", limit: lim, tokens: float64(lim.MessageBurst)}
+	w := lim.Weight
+	if w <= 0 {
+		w = 1
+	}
+	s := &tenantState{id: id, label: "other", limit: lim, weight: w, tokens: float64(lim.MessageBurst)}
 	if t.labeled < t.cfg.MaxMetricTenants {
 		t.labeled++
 		s.label = id
@@ -167,6 +203,9 @@ func (t *tenants) admit(id string, replacing bool) (s *tenantState, release func
 			return s, nil, false
 		}
 		if s.sessions.CompareAndSwap(cur, cur+1) {
+			if cur == 0 {
+				t.setActive()
+			}
 			break
 		}
 	}
@@ -176,12 +215,34 @@ func (t *tenants) admit(id string, replacing bool) (s *tenantState, release func
 	var once sync.Once
 	return s, func() {
 		once.Do(func() {
-			s.sessions.Add(-1)
+			if s.sessions.Add(-1) == 0 {
+				t.setActive()
+			}
 			if t.metrics != nil {
 				t.metrics.TenantSessions(s.label, -1)
 			}
 		})
 	}, true
+}
+
+// setActive rebuilds the set of tenants with sessions after one gained its first
+// or lost its last. A
+// concurrent 0->1 and 1->0 on the same tenant can interleave; the set is then
+// corrected by the session count read under the lock.
+func (t *tenants) setActive() {
+	if t.cfg.InFlightPool <= 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var set activeSet
+	for _, o := range t.byID {
+		if o.sessions.Load() > 0 {
+			set.tenants = append(set.tenants, o)
+			set.totalWeight += o.weight
+		}
+	}
+	t.active.Store(&set)
 }
 
 // connShare is one session's fair-share credit inside its tenant's bucket.
@@ -191,23 +252,153 @@ type connShare struct {
 	last   time.Time
 }
 
-// gate returns the inbound gate of one session of s, or nil when the tenant has
-// no message budget.
-func (t *tenants) gate(s *tenantState) dispatcher.InboundGate {
-	if s.limit.MessageRate <= 0 {
+// tenantConn is the admission state of one session: its fair-share credit and
+// the in-flight slots it currently holds.
+type tenantConn struct {
+	t      *tenants
+	s      *tenantState
+	share  *connShare
+	reject *ocppj.CallError
+	limitR *ocppj.CallError
+
+	mu     sync.Mutex
+	held   int64
+	closed bool
+}
+
+// newConn returns the gate state of one session of s, or nil when the tenant has
+// neither a message budget nor an in-flight limit.
+func (t *tenants) newConn(s *tenantState) *tenantConn {
+	if s.limit.MessageRate <= 0 && s.limit.MaxInFlight <= 0 && t.cfg.InFlightPool <= 0 {
 		return nil
 	}
-	cs := &connShare{tokens: math.MaxFloat64}
-	reject := &ocppj.CallError{Code: t.cfg.RejectCode, Description: "tenant message rate exceeded"}
-	return func(ocppj.Frame) *ocppj.CallError {
-		if s.allow(cs, time.Now()) {
-			return nil
-		}
+	return &tenantConn{
+		t: t, s: s, share: &connShare{tokens: math.MaxFloat64},
+		reject: &ocppj.CallError{Code: t.cfg.RejectCode, Description: "tenant message rate exceeded"},
+		limitR: &ocppj.CallError{Code: t.cfg.RejectCode, Description: "tenant in-flight limit exceeded"},
+	}
+}
+
+// gate is the dispatcher.InboundGate of the session.
+func (c *tenantConn) gate(ocppj.Frame) *ocppj.CallError {
+	t, s := c.t, c.s
+	if s.limit.MessageRate > 0 && !s.allow(c.share, time.Now()) {
 		if t.metrics != nil {
 			t.metrics.TenantRejected(s.label, "messages")
 		}
-		return reject
+		return c.reject
 	}
+	if (s.limit.MaxInFlight > 0 || t.cfg.InFlightPool > 0) && !c.acquire() {
+		if t.metrics != nil {
+			t.metrics.TenantRejected(s.label, "inflight")
+		}
+		return c.limitR
+	}
+	return nil
+}
+
+func (c *tenantConn) acquire() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return true // the session is going away; nothing to count
+	}
+	if !c.t.acquireInflight(c.s) {
+		return false
+	}
+	c.held++
+	return true
+}
+
+// done releases the slot of a frame whose handler returned.
+func (c *tenantConn) done(ocppj.Frame) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.held == 0 {
+		return
+	}
+	c.held--
+	c.t.releaseInflight(c.s, 1)
+}
+
+// close returns the slots of frames that were admitted but never finished
+// because the session ended.
+func (c *tenantConn) close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	c.closed = true
+	if c.held > 0 {
+		c.t.releaseInflight(c.s, c.held)
+		c.held = 0
+	}
+}
+
+// acquireInflight takes one in-flight slot for s, or reports that the tenant is
+// refused. The slot is taken first and given back on refusal, so concurrent
+// sessions cannot overshoot a limit by racing between check and increment.
+func (t *tenants) acquireInflight(s *tenantState) bool {
+	mine := s.inflight.Add(1)
+	total := t.totalInflight.Add(1)
+	if lim := int64(s.limit.MaxInFlight); lim > 0 && mine > lim {
+		t.undoInflight(s, 1)
+		return false
+	}
+	if pool := int64(t.cfg.InFlightPool); pool > 0 && !t.poolAdmits(s, mine, total, pool) {
+		t.undoInflight(s, 1)
+		return false
+	}
+	if t.metrics != nil {
+		if m, ok := t.metrics.(observability.TenantInflightMetrics); ok {
+			m.TenantInflight(s.label, 1)
+		}
+	}
+	return true
+}
+
+func (t *tenants) undoInflight(s *tenantState, n int64) {
+	s.inflight.Add(-n)
+	t.totalInflight.Add(-n)
+}
+
+func (t *tenants) releaseInflight(s *tenantState, n int64) {
+	t.undoInflight(s, n)
+	if t.metrics != nil {
+		if m, ok := t.metrics.(observability.TenantInflightMetrics); ok {
+			m.TenantInflight(s.label, -int(n))
+		}
+	}
+}
+
+// poolAdmits decides whether s, which now holds mine slots with total in use in
+// the pool, may keep the slot it just took. Up to its weighted share a tenant is
+// always admitted; above it only while the slots left after reserving the
+// unused shares of the other tenants with sessions cover it.
+func (t *tenants) poolAdmits(s *tenantState, mine, total, pool int64) bool {
+	set := t.active.Load()
+	if set == nil || set.totalWeight <= 0 {
+		return total <= pool
+	}
+	if mine <= shareOf(s, set, pool) {
+		return true
+	}
+	var reserved int64
+	for _, o := range set.tenants {
+		if o == s {
+			continue
+		}
+		if unused := shareOf(o, set, pool) - o.inflight.Load(); unused > 0 {
+			reserved += unused
+		}
+	}
+	return total <= pool-reserved
+}
+
+// shareOf is the weighted guaranteed share of s (at least one slot).
+func shareOf(s *tenantState, set *activeSet, pool int64) int64 {
+	return max(1, int64(float64(pool)*s.weight/set.totalWeight))
 }
 
 // allow takes one message from the tenant's bucket for a session.

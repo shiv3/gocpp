@@ -145,13 +145,30 @@ tenant, simultaneous sessions and inbound messages per second:
   session can only use its equal share of the rate, so one noisy charger cannot
   starve the other chargers of its tenant, and a tenant never consumes
   another's budget.
-- Metrics: `gocpp_tenant_sessions{tenant}`, `gocpp_tenant_rejected_total{tenant,kind}`
-  (`kind` = `sessions` | `messages`) and `gocpp_accepts_total{result="tenant_limit"}`;
+- **In-flight CALLs** (`TenantLimits.InFlightPool`, `TenantLimit.Weight`,
+  `TenantLimit.MaxInFlight`) bound how many inbound CALLs and SENDs run at once,
+  from admission until the handler (on a gateway: the backend hop) has answered.
+  The pool is split by weight among the tenants that currently have sessions. A
+  tenant is always admitted up to its weighted share (at least one slot), so a
+  noisy tenant can never crowd out a quiet one; above its share it may borrow
+  capacity, but only what remains after reserving the unused shares of the other
+  active tenants, so idle capacity is used and a tenant that wakes up finds its
+  share free. `MaxInFlight` is a hard per-tenant ceiling on top. A refused
+  message gets the same answer as an over-rate one (`RejectCode` CALLERROR, SEND
+  dropped, session stays up) and is counted as `kind="inflight"`. Slots of frames
+  that never finished because the session ended are returned when it closes.
+  This protects the processing tier (and the gateway's goroutines) from a tenant
+  whose backend calls are slow; the message rate bounds arrivals, the in-flight
+  cap bounds concurrency.
+- Metrics: `gocpp_tenant_sessions{tenant}`, `gocpp_tenant_inflight{tenant}`,
+  `gocpp_tenant_rejected_total{tenant,kind}`
+  (`kind` = `sessions` | `messages` | `inflight`) and `gocpp_accepts_total{result="tenant_limit"}`;
   the tenant label is bounded by `MaxMetricTenants` (default 100, the rest
   reported as `other`).
 - On a gateway the check runs at the edge, before the backend hop; an embedded
   server can use it too. Flags: `--tenant-header`, `--tenant-attr`,
-  `--tenant-max-sessions`, `--tenant-message-rate`, `--tenant-message-burst`.
+  `--tenant-max-sessions`, `--tenant-message-rate`, `--tenant-message-burst`,
+  `--tenant-inflight-pool`, `--tenant-max-inflight`, `--tenant-weights a=3,b=1`.
 
 Overhead, measured with `benchmarks` (`BenchmarkEdgeAndTenant`, one Heartbeat over
 a real WebSocket, pinned to 4 CPUs on a shared host): the tenant check adds no

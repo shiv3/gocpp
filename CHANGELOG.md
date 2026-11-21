@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format is based on
   extensions `observability.TenantMetrics` and `EdgeMetrics` (Prometheus and
   OpenTelemetry), `gocpp-gateway --edge-heartbeat --tenant-*` flags, benchmark
   `BenchmarkEdgeAndTenant` and gate `TestGateEdgeAndTenantOverhead`.
+- Weighted in-flight caps per tenant (`csms.TenantLimits.InFlightPool`,
+  `TenantLimit.Weight` / `MaxInFlight`): the pool is split by weight among the
+  tenants with sessions, a tenant is always admitted up to its share and may
+  borrow only what other active tenants cannot claim, refusals answer with
+  `RejectCode` and count as `kind="inflight"`. `dispatcher.Conn.SetInboundDone`,
+  optional `observability.TenantInflightMetrics` (`gocpp_tenant_inflight`),
+  `gocpp-gateway --tenant-inflight-pool --tenant-max-inflight --tenant-weights`.
 - Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
   capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
   from the registered handlers and honoured by `PoolSet` (unhandled actions fall
