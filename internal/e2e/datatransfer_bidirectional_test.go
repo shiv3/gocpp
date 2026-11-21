@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ import (
 // directions using the single generated v16p.DataTransfer descriptor, as OCPP
 // 1.6 allows DataTransfer to be initiated by either peer.
 func TestE2E_DataTransfer_Bidirectional(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 
 	// CP-initiated DataTransfer: CSMS handles it.
 	require.NoError(t, csms.On(srv, v16p.DataTransfer, func(_ context.Context, _ *csms.Conn, req v16msg.DataTransferRequest) (v16msg.DataTransferResponse, error) {

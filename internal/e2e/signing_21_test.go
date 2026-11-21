@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"math/big"
 	"net/http/httptest"
 	"testing"
@@ -39,7 +40,7 @@ func cpSignerCert(t *testing.T) (*signing.Signer, *x509.Certificate) {
 func TestE2E_21SignedBootNotification(t *testing.T) {
 	signer, cert := cpSignerCert(t)
 
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithVerifier(signing.NewVerifier(cert)), csms.WithRequireSignature(true))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithVerifier(signing.NewVerifier(cert)), csms.WithRequireSignature(true))
 	gotReason := make(chan string, 1)
 	require.NoError(t, csms.On(srv, v21p.BootNotification, func(_ context.Context, _ *csms.Conn, req v21msg.BootNotificationRequest) (v21msg.BootNotificationResponse, error) {
 		gotReason <- req.Reason
@@ -68,7 +69,7 @@ func TestE2E_21SignedBootNotificationRejectedWithoutTrust(t *testing.T) {
 	signer, _ := cpSignerCert(t)
 	_, otherCert := cpSignerCert(t) // CSMS trusts a different cert
 
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithVerifier(signing.NewVerifier(otherCert)), csms.WithRequireSignature(true))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithVerifier(signing.NewVerifier(otherCert)), csms.WithRequireSignature(true))
 	require.NoError(t, csms.On(srv, v21p.BootNotification, func(_ context.Context, _ *csms.Conn, _ v21msg.BootNotificationRequest) (v21msg.BootNotificationResponse, error) {
 		return v21msg.BootNotificationResponse{CurrentTime: time.Now().UTC(), Interval: 300, Status: "Accepted"}, nil
 	}))
@@ -91,7 +92,7 @@ func TestE2E_21SignedBootNotificationRejectedWithoutTrust(t *testing.T) {
 
 func TestE2E_21SignedNotifyPeriodicEventStream(t *testing.T) {
 	signer, cert := cpSignerCert(t)
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithVerifier(signing.NewVerifier(cert)), csms.WithRequireSignature(true))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithVerifier(signing.NewVerifier(cert)), csms.WithRequireSignature(true))
 	got := make(chan v21msg.NotifyPeriodicEventStream, 1)
 	require.NoError(t, csms.OnSend(srv, v21p.NotifyPeriodicEventStream, func(_ context.Context, _ *csms.Conn, req v21msg.NotifyPeriodicEventStream) error {
 		got <- req

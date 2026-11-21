@@ -3,6 +3,7 @@ package conformance_test
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -261,7 +262,7 @@ func TestBootNotification16_RoundTrip(t *testing.T) {
 }
 
 func TestBootNotification16_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	wrongDirection := ocppj.Message[messages.BootNotificationRequest, messages.BootNotificationResponse]{
 		Action:    profiles.BootNotification.Action,
 		Direction: ocppj.SentByCSMS,

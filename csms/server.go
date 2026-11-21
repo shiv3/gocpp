@@ -3,6 +3,7 @@ package csms
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,7 +15,10 @@ import (
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/transport"
+	"github.com/shiv3/gocpp/gateway"
+	"github.com/shiv3/gocpp/gateway/inproc"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -22,6 +26,9 @@ import (
 type Server struct {
 	cfg serverConfig
 	reg *dispatcher.HandlerRegistry
+	// handlers mirrors reg with handlers typed on *Conn, for dispatch that does
+	// not start from a dispatcher.Conn.
+	handlers handlerTable
 	// verCfg caches the shared dispatcher.Config per subprotocol.
 	verCfg sync.Map
 
@@ -31,12 +38,36 @@ type Server struct {
 	// yet registered; guarded by mu together with conns.
 	reserved int
 
+	// sessions is nil unless the server is clustered (WithInstanceID or
+	// WithSessionRegistry).
+	sessions *sessionManager
+
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// edge is non-nil on a gateway, backend on a processing tier (see
+	// gateway_edge.go and gateway_backend.go).
+	edge    *edge
+	backend *backend
+	// split is the gateway half of a server created with WithSplitInProcess.
+	split      *Server
+	splitDrain func(context.Context) error // detaches the in-process backend
 
 	// stopping is set when Shutdown or Close begins; new upgrades are refused
 	// from then on.
 	stopping atomic.Bool
+
+	// draining is set by Drain: new upgrades are refused. drainRetryAfter is the
+	// base of their Retry-After; acceptRejected and drainRejected count refusals.
+	draining        atomic.Bool
+	drainActive     atomic.Bool
+	partialDrain    atomic.Bool
+	softMax         atomic.Int64
+	sessMetrics     observability.SessionMetrics
+	drainSt         *drainState
+	drainRetryAfter atomic.Int64
+	acceptRejected  atomic.Uint64
+	drainRejected   atomic.Uint64
 }
 
 // NewServer creates a CSMS server.
@@ -44,6 +75,17 @@ func NewServer(opts ...Option) *Server {
 	cfg := defaultServerConfig()
 	for _, o := range opts {
 		o.apply(&cfg)
+	}
+	if cfg.edgeLink != nil {
+		applyEdgeConfig(&cfg)
+	}
+	if cfg.gatewayID != "" && cfg.sessionCfg.GatewayID == "" {
+		cfg.sessionCfg.GatewayID = cfg.gatewayID
+	}
+	var splitHub *inproc.Hub
+	if cfg.splitInProcess && cfg.link == nil {
+		splitHub = inproc.New()
+		cfg.link = splitHub.Backend()
 	}
 	if cfg.registry != nil && !cfg.timeEncoding.IsZero() {
 		cfg.dispatcher.OutboundTransform = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, error) {
@@ -79,13 +121,33 @@ func NewServer(opts ...Option) *Server {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
-		cfg:    cfg,
-		reg:    dispatcher.NewHandlerRegistry(),
-		conns:  make(map[string]*Conn),
-		ctx:    ctx,
-		cancel: cancel,
+		cfg:     cfg,
+		reg:     dispatcher.NewHandlerRegistry(),
+		conns:   make(map[string]*Conn),
+		ctx:     ctx,
+		cancel:  cancel,
+		drainSt: &drainState{},
+	}
+	s.softMax.Store(int64(cfg.softMax))
+	s.sessMetrics, _ = cfg.metrics.(observability.SessionMetrics)
+	if cfg.link == nil {
+		// A processing tier holds no sockets, so it has nothing to claim or
+		// reconcile; it only reads the registry (see lookupGateway).
+		s.initSessions()
+	}
+	if cfg.edgeLink != nil {
+		s.edge = newEdge(s, cfg.edgeLink, cfg.gatewayID)
+		context.AfterFunc(ctx, s.edge.detach)
+	}
+	if cfg.link != nil {
+		s.backend = newBackend(s, cfg.link)
+	}
+	if splitHub != nil {
+		s.split = NewGatewayServer(splitHub.Gateway(), opts...)
+		s.splitDrain = splitHub.AttachBackend(backendUpstream{s.backend}, s.info())
 	}
 	if s.clustered() {
+		go s.sessions.run(ctx)
 		// Serve calls other instances forward to the charge points connected here,
 		// until Shutdown or Close.
 		go s.serveRemote()
@@ -95,6 +157,9 @@ func NewServer(opts ...Option) *Server {
 
 // Handler returns the http.Handler that upgrades charge point connections.
 func (s *Server) Handler() http.Handler {
+	if s.split != nil {
+		return s.split.Handler()
+	}
 	return http.HandlerFunc(s.serveWS)
 }
 
@@ -109,39 +174,85 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// connect that is closed immediately.
 	if s.stopping.Load() || s.ctx.Err() != nil {
 		w.Header().Set("Retry-After", "5")
+		s.upgradeResult("shutting_down")
 		http.Error(w, "server shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if s.draining.Load() {
+		s.drainRejected.Add(1)
+		w.Header().Set("Retry-After", jitterRetryAfter(time.Duration(s.drainRetryAfter.Load())))
+		s.upgradeResult("draining")
+		http.Error(w, "server draining", http.StatusServiceUnavailable)
+		return
+	}
+	if lim := s.cfg.acceptLimit; lim != nil && !lim.allow(time.Now()) {
+		s.acceptRejected.Add(1)
+		w.Header().Set("Retry-After", jitterRetryAfter(max(lim.refillTime(), time.Second)))
+		s.upgradeResult("rate_limited")
+		http.Error(w, "too many connection attempts", http.StatusServiceUnavailable)
 		return
 	}
 	cpID, ok := s.extractCPID(r)
 	if !ok {
+		s.upgradeResult("bad_request")
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
 		return
 	}
-	id, err := s.cfg.auth.Authenticate(r, cpID)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if id.CPID != "" {
-		cpID = id.CPID
+	var edgeReply gateway.ConnectReply
+	if s.edge != nil {
+		// The processing tier decides the upgrade (authentication, admission,
+		// connection timing).
+		var status int
+		var msg string
+		edgeReply, status, msg = s.edge.connect(r, cpID)
+		if status != 0 {
+			if status == http.StatusServiceUnavailable {
+				w.Header().Set("Retry-After", "5")
+				s.upgradeResult("upstream_error")
+			} else {
+				s.upgradeResult("auth_rejected")
+			}
+			http.Error(w, msg, status)
+			return
+		}
+		if edgeReply.CPID != "" {
+			cpID = edgeReply.CPID
+		}
+	} else {
+		id, err := s.cfg.auth.Authenticate(r, cpID)
+		if err != nil {
+			s.upgradeResult("auth_rejected")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if id.CPID != "" {
+			cpID = id.CPID
+		}
 	}
 	if !validCPID(cpID) {
+		s.upgradeResult("bad_request")
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
 		return
 	}
 	if s.cfg.duplicatePolicy == DuplicatePolicyRejectNew && s.hasConn(cpID) {
+		s.upgradeResult("bad_request")
 		http.Error(w, "duplicate charge point id", http.StatusConflict)
 		return
 	}
 
 	if s.cfg.checkOrigin != nil && !s.cfg.checkOrigin(r) {
+		s.upgradeResult("bad_request")
 		http.Error(w, "forbidden origin", http.StatusForbidden)
 		return
 	}
 
 	dcfg := s.cfg.dispatcher
 	perConn := s.cfg.connConfig != nil
-	if perConn {
+	if t := edgeReply.Timeouts; t != nil {
+		perConn = true
+		dcfg.CallTimeout, dcfg.WriteTimeout = t.CallTimeout, t.WriteTimeout
+		dcfg.PingInterval, dcfg.PongWait, dcfg.ReadTimeout = t.PingInterval, t.PongWait, t.ReadTimeout
+	} else if perConn {
 		t := ConnTimeouts{
 			CallTimeout:  dcfg.CallTimeout,
 			WriteTimeout: dcfg.WriteTimeout,
@@ -157,10 +268,33 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	res, release, ok := s.reserveSlot(cpID)
 	if !ok {
 		w.Header().Set("Retry-After", "30")
+		s.upgradeResult("full")
 		http.Error(w, "too many connections", http.StatusServiceUnavailable)
 		return
 	}
 	defer release()
+
+	// Claim the session before accepting the upgrade, so the registry's epoch
+	// order follows the order in which sockets were established. An upgrade that
+	// cannot succeed (not a WebSocket request, no common subprotocol) claims
+	// nothing; one that fails after the claim releases it.
+	var sess storage.Session
+	claimed, registeredSession := false, false
+	var attrs map[string]string
+	if s.edge != nil {
+		attrs = edgeReply.Attrs
+	}
+	if s.cfg.sessionAttrs != nil {
+		attrs = s.cfg.sessionAttrs(r, cpID)
+	}
+	if s.sessions != nil && s.upgradeWillSucceed(r) {
+		sess, claimed = s.claimSession(r, cpID, attrs)
+		defer func() {
+			if claimed && !registeredSession {
+				s.releaseSession(sess)
+			}
+		}()
+	}
 
 	var dconn *dispatcher.Conn
 	acceptOpts := &websocket.AcceptOptions{
@@ -186,6 +320,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Subprotocol() == "" {
+		s.upgradeResult("subprotocol")
 		_ = c.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return
 	}
@@ -203,12 +338,29 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		dcfgp = s.versionConfig(c.Subprotocol())
 	}
 
-	dconn = dispatcher.NewConnShared(cpID, ws, dcfgp, s.reg, dispatcher.ConnMetadata{
+	meta := dispatcher.ConnMetadata{
 		RemoteAddr:    r.RemoteAddr,
 		RequestHeader: r.Header,
 		TLS:           r.TLS,
-	})
-	conn := &Conn{inner: dconn, gone: make(chan struct{})}
+	}
+	var gws *gwSession
+	if s.edge != nil {
+		gws = s.edge.newSession(cpID, sess.Epoch)
+		gws.version = ocppj.Version(strings.TrimPrefix(c.Subprotocol(), "ocpp"))
+		gws.setAttrs(edgeReply.Attrs)
+		meta.Owner = gws
+	}
+	dconn = dispatcher.NewConnShared(cpID, ws, dcfgp, s.reg, meta)
+	switch {
+	case claimed:
+		dconn.SetAttachment(&sessionRef{s: sess, srv: s})
+	case s.cfg.sessionAttrs != nil || edgeReply.Attrs != nil:
+		// Not clustered (or unclaimed): attributes still travel with the connection.
+		local := storage.Session{CPID: cpID, ConnectedAt: time.Now()}
+		local.Meta, _ = storage.MergeAttrs(nil, attrs)
+		dconn.SetAttachment(&sessionRef{s: local, srv: s})
+	}
+	conn := &Conn{inner: dconn, gone: make(chan struct{}), gw: gws}
 	// gone is closed by connCleanup once the connection is registered; every
 	// earlier return closes it here.
 	registered := false
@@ -236,9 +388,13 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		// of live connections may have missed this one.
 		dconn.Abort(ocppj.ErrConnClosed)
 	}
+	registeredSession = true
+	s.upgradeResult("ok")
 	s.handleConnected(conn)
+	if s.edge != nil {
+		s.edge.opened(conn, r, edgeReply)
+	}
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
-	s.publishGlobal(cpID)
 	dconn.ReleaseInbound()
 	// From here the connection's lifetime is not tied to this HTTP handler:
 	// it returns now, releasing its goroutine and the *http.Request, and the
@@ -258,11 +414,20 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 func (s *Server) connCleanup(cpID string, conn *Conn) {
 	defer close(conn.gone)
 	dconn := conn.inner
-	s.handleDisconnected(conn, context.Cause(dconn.Context()))
+	cause := context.Cause(dconn.Context())
+	s.handleDisconnected(conn, cause)
+	if s.edge != nil {
+		// Like the disconnect callback, before the close handshake, which can
+		// take as long as an unresponsive peer likes.
+		s.edge.closed(conn, cause)
+	}
 	_ = dconn.Close(nil)
+	s.sessionClosed(dconn, cause)
 	if s.removeConn(cpID, conn) {
 		_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
-		s.retractGlobal(cpID)
+		// Compare-and-delete on the epoch: a newer connection of the same id,
+		// here or on another instance, keeps its record.
+		s.releaseSession(conn.holderSession())
 	}
 }
 
@@ -290,6 +455,25 @@ func (s *Server) extractCPID(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return cpID, validCPID(cpID)
+}
+
+// upgradeWillSucceed is a cheap pre-check, run before a session is claimed, that
+// the request is a WebSocket upgrade offering a subprotocol this server speaks.
+func (s *Server) upgradeWillSucceed(r *http.Request) bool {
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
+	for _, h := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, p := range strings.Split(h, ",") {
+			p = strings.TrimSpace(p)
+			for _, ours := range s.cfg.subProtocols {
+				if p == ours {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func validCPID(cpID string) bool {
@@ -424,16 +608,27 @@ func (s *Server) callHook(name string, c *Conn, fn func()) {
 }
 
 // Get returns the live connection for a charge point, if connected.
+//
+// On a server created with WithSplitInProcess, whose gateway half lives in the
+// same process, it returns a handle for the session (see Lookup).
 func (s *Server) Get(id string) (*Conn, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	c, ok := s.conns[id]
+	s.mu.RUnlock()
+	if !ok && s.split != nil {
+		if h, err := s.lookupGateway(context.Background(), id); err == nil {
+			return h, true
+		}
+	}
 	return c, ok
 }
 
 // Connections returns the ids of the charge points currently connected to this
 // instance, in no particular order.
 func (s *Server) Connections() []string {
+	if s.split != nil {
+		return s.split.Connections()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ids := make([]string, 0, len(s.conns))
@@ -456,8 +651,12 @@ func (s *Server) Disconnect(ctx context.Context, id string) error {
 
 // Close shuts down the server and all connections immediately.
 func (s *Server) Close() {
+	if s.split != nil {
+		s.split.Close()
+	}
 	s.stopping.Store(true)
 	s.cancel()
+	s.waitSplit()
 }
 
 // Shutdown gracefully closes all live charge-point connections with a normal
@@ -468,6 +667,13 @@ func (s *Server) Close() {
 // WebSocket handshake; the HTTP server hosting Handler() is still the caller's
 // to stop.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.split != nil {
+		err := s.split.Shutdown(ctx)
+		s.stopping.Store(true)
+		s.cancel()
+		s.waitSplit()
+		return err
+	}
 	s.stopping.Store(true)
 	s.mu.RLock()
 	conns := make([]*Conn, 0, len(s.conns))
@@ -498,4 +704,45 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *Server) upgradeResult(result string) {
+	if s.sessMetrics != nil {
+		s.sessMetrics.UpgradeResult(result)
+	}
+}
+
+// sessionClosed reports a finished connection to SessionMetrics. The close code
+// is the one the server sent for its own causes; a drop is reported as 1006.
+func (s *Server) sessionClosed(c *dispatcher.Conn, cause error) {
+	if s.sessMetrics == nil {
+		return
+	}
+	code, label := "1006", "other"
+	switch {
+	case errors.Is(cause, ocppj.ErrGatewayDraining):
+		code, label = "1012", "drain"
+	case errors.Is(cause, ocppj.ErrDrainTimeout):
+		code, label = "1012", "drain_timeout"
+	case errors.Is(cause, ocppj.ErrConnReplaced):
+		code, label = "1008", "replaced"
+	case errors.Is(cause, ocppj.ErrConnClosedByServer):
+		code, label = "1000", "server_close"
+	case errors.Is(cause, ocppj.ErrConnDropped):
+		label = "dropped"
+	case cause == nil || errors.Is(cause, ocppj.ErrConnClosed):
+		code, label = "1000", "other"
+	}
+	s.sessMetrics.SessionClosed(string(c.Version()), time.Since(c.Stats().ConnectedAt), code, label)
+}
+
+// waitSplit detaches the in-process backend of a split server, waiting briefly
+// for the work in flight.
+func (s *Server) waitSplit() {
+	if s.splitDrain == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = s.splitDrain(ctx)
 }

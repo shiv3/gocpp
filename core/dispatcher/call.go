@@ -22,6 +22,10 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) ([]b
 
 // call implements DoCall. With acquire false the caller already owns the slot.
 func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acquire bool) (_ []byte, err error) {
+	if !c.beginCall() {
+		return nil, ocppj.ErrGatewayDraining
+	}
+	defer c.endCall()
 	start := time.Now()
 	c.cfg.Metrics.CallStarted(action, "outbound")
 	defer func() {
@@ -34,11 +38,11 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 
 	msgID := ocppj.NewMsgID()
 	ocppj.NotifyMessageID(ctx, msgID)
-	sendPayload, verr := c.validateOutbound(action, "request", reqPayload)
+	sendPayload, verr := c.pipe.ValidateOutbound(ctx, action, "request", reqPayload)
 	if verr != nil {
 		return nil, verr
 	}
-	sendPayload, err = c.transformOutbound(action, "request", sendPayload)
+	sendPayload, err = c.pipe.TransformOutbound(action, "request", sendPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -84,25 +88,17 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 	if err := c.send(ctx, raw); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
+	notifySent(ctx)
 
 	select {
 	case res := <-pc.respCh:
 		if res.err != nil {
 			return nil, res.err
 		}
-		respPayload := res.payload
-		if c.cfg.SchemaMode == SchemaModeLenient {
-			out, herr := c.lenientValidate(action, "response", res.payload)
-			if herr != nil {
-				c.maybeSendResultError(msgID, herr)
-				return nil, herr
-			}
-			respPayload = out
-		} else if verr := c.schemaValidationError(action, "response", res.payload); verr != nil {
-			if c.cfg.SchemaMode == SchemaModeStrict {
-				c.maybeSendResultError(msgID, verr)
-				return nil, verr
-			}
+		respPayload, herr := c.pipe.ValidateInbound(ctx, action, "response", res.payload)
+		if herr != nil {
+			c.maybeSendResultError(msgID, herr)
+			return nil, herr
 		}
 		return respPayload, nil
 	case <-c.ctx.Done():
@@ -120,4 +116,22 @@ func (c *Conn) maybeSendResultError(msgID string, cause error) {
 		return
 	}
 	c.sendCallResultError(msgID, ocppj.WrapCallError(ocppj.ErrorCodeFormatViolation, cause, nil))
+}
+
+type sentHookKey struct{}
+
+// WithSentHook returns a context that makes DoCall (and the csms/cp wrappers
+// built on it) invoke fn once, on the calling goroutine, right after the CALL
+// frame has been written to the socket. A call that fails before fn ran was
+// never sent and is safe to retry; one that fails after may have been executed
+// by the peer. The gateway uses it to report that distinction to the processing
+// tier.
+func WithSentHook(ctx context.Context, fn func()) context.Context {
+	return context.WithValue(ctx, sentHookKey{}, fn)
+}
+
+func notifySent(ctx context.Context) {
+	if fn, _ := ctx.Value(sentHookKey{}).(func()); fn != nil {
+		fn()
+	}
 }

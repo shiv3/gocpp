@@ -3,6 +3,7 @@ package conf16a
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -82,7 +83,7 @@ func TestAuthorize16_ResponseValidation(t *testing.T) {
 }
 
 func TestAuthorize16_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	wrongDirection := ocppj.Message[messages.AuthorizeRequest, messages.AuthorizeResponse]{
 		Action:    v16profiles.Authorize.Action,
 		Direction: ocppj.SentByCSMS,

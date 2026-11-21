@@ -264,11 +264,10 @@ func (g gatedRegistry) PutGlobal(ctx context.Context, cpID, inst string) error {
 	return g.ConnectionRegistry.PutGlobal(ctx, cpID, inst)
 }
 
-// The global route is published synchronously in the connect path: a slow
-// registry write delays the first inbound handler instead of letting it run
-// (and the connection look established) before the route exists. Publish order
-// therefore follows connection order on one instance.
-func TestCluster_GlobalRoutePublishedBeforeInboundHandled(t *testing.T) {
+// The session is claimed before the upgrade is accepted: a slow registry write
+// delays the handshake itself, so the connection never looks established (and
+// no inbound handler runs) before its route exists.
+func TestCluster_RouteClaimedBeforeUpgradeAccepted(t *testing.T) {
 	hub := memory.NewInProcessHub()
 	reg := gatedRegistry{hub.Registry(), make(chan struct{})}
 	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithInstanceID("A"),
@@ -284,14 +283,24 @@ func TestCluster_GlobalRoutePublishedBeforeInboundHandled(t *testing.T) {
 	t.Cleanup(func() { ts.Close(); srv.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
-	require.NoError(t, err)
+	dialed := make(chan *websocket.Conn, 1)
+	go func() {
+		c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+		if err == nil {
+			dialed <- c
+		}
+	}()
+	select {
+	case <-dialed:
+		t.Fatal("upgrade accepted while the claim was pending")
+	case <-time.After(150 * time.Millisecond):
+	}
+	_, connected := srv.Get("CP_1")
+	require.False(t, connected)
+	close(reg.release)
+	c := <-dialed
 	t.Cleanup(func() { _ = c.CloseNow() })
 	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"1","Heartbeat",{}]`)))
-
-	time.Sleep(150 * time.Millisecond)
-	require.Nil(t, routeAtHandler.Load(), "inbound handled while the route publish was still pending")
-	close(reg.release)
 	_, reply, err := c.Read(ctx)
 	require.NoError(t, err)
 	require.Contains(t, string(reply), `[3,"1"`)

@@ -3,6 +3,7 @@ package conf201c
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"testing"
 	"time"
 
@@ -78,7 +79,7 @@ func componentVariable201() messages.ComponentVariableType {
 func requireCSMSHandlerInvalidDirection201[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
-	srv := csms.NewServer(csms.WithSubProtocols(subprotocol201))
+	srv := splitmode.NewServer(csms.WithSubProtocols(subprotocol201))
 	wrongDirection := ocppj.Message[Req, Resp]{
 		Action:    msg.Action,
 		Direction: ocppj.SentByCSMS,

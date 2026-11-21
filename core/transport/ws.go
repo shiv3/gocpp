@@ -43,4 +43,7 @@ const (
 	StatusAbnormalClosure StatusCode = 1006
 	StatusPolicyViolation StatusCode = 1008
 	StatusInternalError   StatusCode = 1011
+	// StatusServiceRestart asks the peer to reconnect (RFC 6455 registry, 1012).
+	// A draining server closes with it.
+	StatusServiceRestart StatusCode = 1012
 )

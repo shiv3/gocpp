@@ -13,6 +13,7 @@ import (
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/core/transport"
+	"github.com/shiv3/gocpp/gateway"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -27,11 +28,16 @@ type serverConfig struct {
 	path            string
 	cpIDExtractor   CPIDExtractor
 	instanceID      string
+	sessionReg      storage.SessionRegistry
+	sessionAttrs    func(r *http.Request, cpID string) map[string]string
+	sessionCfg      SessionConfig
 	registry        *schema.Registry
 	duplicatePolicy DuplicatePolicy
 
 	globalConcurrencyLimit int
 	maxConnections         int
+	acceptLimit            *tokenBucket
+	softMax                int
 	ioReadBuffer           int
 	ioWriteBuffer          int
 
@@ -49,6 +55,15 @@ type serverConfig struct {
 	originPatterns           []string
 	insecureSkipVerifyOrigin bool
 	checkOrigin              func(r *http.Request) bool
+
+	// Gateway mode (see gateway_edge.go, gateway_backend.go).
+	edgeLink       gateway.GatewayLink // set: this server is a gateway
+	gatewayID      string
+	link           gateway.BackendLink // set: this server is a processing tier
+	splitInProcess bool
+	backendInfo    gateway.BackendInfo
+	gwRouter       gateway.Router
+	onOrphan       func(cpID, callID, action string, payload []byte, err error)
 }
 
 func defaultServerConfig() serverConfig {
@@ -295,6 +310,11 @@ func WithOnDisconnect(fn func(*Conn, error)) Option {
 // the message router (WithMessageRouter), and Server.Lookup can forward calls to
 // charge points held elsewhere. The id must be unique per running instance. See
 // docs/clustering.md.
+//
+// Routes are recorded through a storage.SessionRegistry: the connection registry
+// itself when it implements the interface (the in-memory registries do), else an
+// adapter over its PutGlobal / LookupGlobal / DeleteGlobal with the guarantees
+// those calls always had. Prefer WithSessionRegistry for new code.
 func WithInstanceID(id string) Option {
 	return optionFunc(func(c *serverConfig) { c.instanceID = id })
 }
@@ -413,6 +433,36 @@ func WithAuthenticator(a auth.Authenticator) Option {
 	return optionFunc(func(c *serverConfig) { c.auth = a })
 }
 
+// WithSessionRegistry makes the server record every connection it holds in reg
+// under a registry-assigned epoch and turns on multi-instance routing, like
+// WithInstanceID (whose value, if set, becomes the gateway id unless cfg gives
+// one). The registry claims the session before the WebSocket upgrade is accepted,
+// releases it with a compare-and-delete when the connection ends, keeps a
+// gateway lease alive and runs a reconcile loop that closes sockets superseded
+// by a newer connection elsewhere. At most one SessionConfig may be given; omit
+// it for the defaults. See docs/clustering.md.
+//
+// Servers that share one registry see each other's sessions; use
+// memory.NewSessionRegistry in tests and addons/registry-redis in production.
+func WithSessionRegistry(reg storage.SessionRegistry, cfg ...SessionConfig) Option {
+	return optionFunc(func(c *serverConfig) {
+		c.sessionReg = reg
+		if len(cfg) > 0 {
+			c.sessionCfg = cfg[0]
+		}
+	})
+}
+
+// WithSessionAttributes sets a function that derives the session attributes
+// (site, vendor, model, firmware, tenant, ...) from the upgrade request, e.g. from
+// the authenticated identity or headers. They are stored in the session record
+// and can be matched by DrainOptions.Select and by rollout tooling reading the
+// registry; update them later with Conn.SetAttrs or Server.SetSessionAttrs. The
+// function must not retain the returned map.
+func WithSessionAttributes(fn func(r *http.Request, cpID string) map[string]string) Option {
+	return optionFunc(func(c *serverConfig) { c.sessionAttrs = fn })
+}
+
 // WithConnectionRegistry sets the connection registry (default in-memory).
 func WithConnectionRegistry(r storage.ConnectionRegistry) Option {
 	return optionFunc(func(c *serverConfig) { c.connReg = r })
@@ -423,12 +473,14 @@ func WithMessageRouter(r storage.MessageRouter) Option {
 	return optionFunc(func(c *serverConfig) { c.router = r })
 }
 
-// WithTransactionStore sets the transaction store (default in-memory).
+// WithTransactionStore sets the transaction store (default in-memory). It is an
+// application-facing extension point: csms keeps it but never reads or writes it.
 func WithTransactionStore(s storage.TransactionStore) Option {
 	return optionFunc(func(c *serverConfig) { c.txStore = s })
 }
 
-// WithConfigStore sets the configuration store (default in-memory).
+// WithConfigStore sets the configuration store (default in-memory). It is an
+// application-facing extension point: csms keeps it but never reads or writes it.
 func WithConfigStore(s storage.ConfigStore) Option {
 	return optionFunc(func(c *serverConfig) { c.cfgStore = s })
 }
@@ -508,4 +560,33 @@ func WithOCPPGoCompat() Option {
 			o.apply(c)
 		}
 	})
+}
+
+// WithSplitInProcess makes the server run both tiers of a split deployment in
+// this process: an internal gateway terminates the WebSockets (Handler returns
+// its handler) and forwards every message over the in-process link to this
+// server, which acts as the processing tier. The wire behaviour is identical to
+// embedded mode and the same options configure both tiers; the point is the
+// topology: handlers run behind the same contract and session handles as when
+// the tiers are separate processes, which is what the conformance suite checks
+// (GOCPP_TEST_SPLIT=1, see internal/splitmode). Get returns a handle for a
+// connected charger, Connections lists the gateway's sessions.
+func WithSplitInProcess() Option {
+	return optionFunc(func(c *serverConfig) { c.splitInProcess = true })
+}
+
+// WithBackendInfo declares who a processing-tier server is when it attaches to a
+// link: its pool ("" = gateway.DefaultPool), build version, role, labels. A
+// gateway only sends inbound work to pools its router names, and without a
+// router that is the default pool only, so starting a server in another pool
+// is never a traffic change by itself. Proto, Caps and ID are filled in.
+func WithBackendInfo(info gateway.BackendInfo) Option {
+	return optionFunc(func(c *serverConfig) { c.backendInfo = info })
+}
+
+// WithRouter sets the routing hook of a gateway (NewGatewayServer): for every
+// message it names the backend pool that serves it, from the charger id, the
+// action and the session attributes. Default gateway.DefaultRouter.
+func WithRouter(r gateway.Router) Option {
+	return optionFunc(func(c *serverConfig) { c.gwRouter = r })
 }

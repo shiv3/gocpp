@@ -13,12 +13,16 @@ func OnSend[Req any](s *Server, m ocppj.SendMessage[Req], h func(ctx context.Con
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpHandle, m.Direction); err != nil {
 		return err
 	}
-	s.reg.RegisterSend(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) error {
+	typed := func(ctx context.Context, c *Conn, payload []byte) error {
 		var req Req
 		if err := codec.Unmarshal(payload, &req); err != nil {
 			return dispatcher.NewDecodeError(err)
 		}
-		return h(ctx, &Conn{inner: dc}, req)
+		return h(ctx, c, req)
+	}
+	s.handlers.setSend(m.Action, typed)
+	s.reg.RegisterSend(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) error {
+		return typed(ctx, &Conn{inner: dc}, payload)
 	})
 	return nil
 }
@@ -28,12 +32,18 @@ func Send[Req any](ctx context.Context, c *Conn, m ocppj.SendMessage[Req], req R
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpCall, m.Direction); err != nil {
 		return err
 	}
-	if c.inner == nil {
+	if c.inner == nil && c.gw == nil {
 		return ErrRemoteConn
 	}
 	payload, err := codec.Marshal(req)
 	if err != nil {
 		return err
+	}
+	if c.inner == nil {
+		if c.srv == nil || c.srv.backend == nil {
+			return ErrRemoteConn
+		}
+		return c.srv.sendGateway(ctx, c, m.Action, payload)
 	}
 	return dispatcher.DoSend(ctx, c.inner, m.Action, payload)
 }

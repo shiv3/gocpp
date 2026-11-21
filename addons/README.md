@@ -8,6 +8,7 @@ pull in what you import.
 | Addon | Module path | Purpose | External dep |
 |---|---|---|---|
 | [router-redis](router-redis/) | `github.com/shiv3/gocpp/addons/router-redis` | `storage.MessageRouter` over Redis Pub/Sub for multi-instance CSMS call fan-out | `redis/go-redis/v9` |
+| [registry-redis](registry-redis/) | `github.com/shiv3/gocpp/addons/registry-redis` | `storage.SessionRegistry` on Redis (Lua scripts: epoch-based claim, compare-and-delete release, gateway leases) | `redis/go-redis/v9` |
 | [router-nats](router-nats/) | `github.com/shiv3/gocpp/addons/router-nats` | `storage.MessageRouter` over NATS request/reply | `nats-io/nats.go` |
 | [router-temporal](router-temporal/) | `github.com/shiv3/gocpp/addons/router-temporal` | Durable, retryable `storage.MessageRouter` backed by Temporal (experimental) | `go.temporal.io/sdk` |
 | [statefsm](statefsm/) | `github.com/shiv3/gocpp/addons/statefsm` | OCPP 1.6 connector state machine helper over the pluggable stores | `looplab/fsm` |
@@ -46,3 +47,5 @@ isolate state so one CSMS can serve multiple tenants (the same cpID under two te
 not collide). Pure Go, no external dependency.
 
 See each addon's own README for the full API and examples.
+
+- `link-grpc`: gRPC link between gateways and backends (gateway mode, see docs/gateway.md).

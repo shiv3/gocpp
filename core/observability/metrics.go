@@ -22,6 +22,29 @@ func (NoOp) CallCompleted(string, string, string, time.Duration, string) {}
 func (NoOp) PendingCallCount(string, int)                                {}
 func (NoOp) SchemaValidationFailure(string, string, string)              {}
 
+// SchemaSoftViolationMetrics is an optional extension of Metrics. In lenient
+// schema mode each repaired or tolerated violation is reported once, with the
+// schema keyword that triggered it (for example "enum", "format", "type").
+type SchemaSoftViolationMetrics interface {
+	SchemaSoftViolation(version, action, kind, keyword string)
+}
+
+// SessionMetrics is an optional extension of Metrics for the CSMS server's
+// connection lifecycle: what a canary comparison of gateways or servers needs.
+// Constant labels such as gateway_id and gateway_version are added by wrapping
+// the Prometheus registerer (prometheus.WrapRegistererWith) or by the OTel
+// resource.
+type SessionMetrics interface {
+	// SessionClosed reports a connection that ended: how long it lasted, the
+	// WebSocket close code as sent ("1000", "1008", "1012") or inferred ("1006"
+	// for a drop) and the cause: "server_close", "replaced", "drain",
+	// "drain_timeout", "dropped" or "other".
+	SessionClosed(version string, d time.Duration, code, cause string)
+	// UpgradeResult counts one upgrade attempt: "ok", "rate_limited", "draining",
+	// "shutting_down", "full", "auth_rejected", "bad_request", "subprotocol".
+	UpgradeResult(result string)
+}
+
 // ConnectionMetrics is an optional extension of Metrics. A Metrics value that
 // also implements it receives per-connection health samples; implementations
 // of Metrics that do not are unaffected.

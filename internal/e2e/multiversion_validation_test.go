@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestE2E_MultiVersionStrictValidation(t *testing.T) {
 	require.NoError(t, v16.RegisterSchemas(reg))
 	require.NoError(t, v201.RegisterSchemas(reg))
 
-	srv := csms.NewServer(
+	srv := splitmode.NewServer(
 		csms.WithSubProtocols("ocpp2.0.1", "ocpp1.6"),
 		csms.WithSchemaRegistry(reg),
 		csms.WithStrictSchema(true),

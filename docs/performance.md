@@ -47,6 +47,76 @@ Size it around the number of handlers typically in flight (tens, not thousands:
 a pool far larger than that rotates through cold workers and is slower). Measure
 with your own handlers before enabling it; it is off by default.
 
+## Runtime settings for a long-lived-connection CSMS
+
+All numbers below are from the final acceptance run (`interop/loadtest/results/2026-11-21-final/report.md` on branch `test/loadtest-4k`): 4,000 chargers, server pinned to 4 cores, 30k and 60k messages/s (Heartbeat-heavy mix, lenient schema), Go 1.26, one run per row.
+
+### GOMAXPROCS
+
+Leave it unset. Go 1.25 and later follows the cgroup CPU limit, so a container limited to 4 CPUs gets 4. Give the process at least 2 CPUs: with one, the GC background workers time-slice with the reader and handler goroutines and the tail grows. Do not set GOMAXPROCS above the CPUs you actually get; extra Ps only add scheduler contention.
+
+### GOMEMLIMIT
+
+Always set it, to 80-90% of the container memory limit. It turns an out-of-memory kill into a more aggressive GC, and it is what makes a high GOGC safe. A gocpp process with 4,000 connections needs about 150 MB at GOGC=100, so the limit is a safety net, not a steady-state knob.
+
+### GOGC
+
+Go's default of 100 is fine below roughly 10k requests/s. Above that, a larger value moves GC mark phases out of the way of requests, at a cost in RSS that is roughly proportional (the live heap is about 60-65 MB at 4,000 connections):
+
+| GOGC | msg/s | GC cycles/s | in-mark share of time | Heartbeat p99 | max RSS | server CPU |
+|---|---|---|---|---|---|---|
+| 100 | 30k | 2.3 | 2.3% | 1.7 ms | 151 MB | 1.16 cores |
+| 300 | 30k | 0.7 | 0.8% | 1.0 ms | 264 MB | 1.10 cores |
+| 100 | 60k | 4.7 | 5.2% | 7.4 ms | 151 MB | 2.11 cores |
+| 300 | 60k | 1.4 | 1.7% | 4.2 ms | 270 MB | 2.01 cores |
+
+Rule of thumb: in-mark share is about `alloc MB/s x 0.3 ms / (GOGC/100)` per second; keep it under 1%. Here 104 MB/s at 30k gives 3% at GOGC=100 (measured 2.3%) and 1% at GOGC=300 (measured 0.8%). Never use `GOGC=off` without `GOMEMLIMIT`, and do not use a heap ballast (it only makes RSS larger than the live data). The ocpp-go fork behaves the same way (p99 2.4 -> 0.9 ms at 30k with GOGC=300, RSS 211 -> 364 MB), so a comparison between libraries should use the same GOGC.
+
+### What to export
+
+Run the Prometheus Go collector with the runtime metrics enabled and watch `go_goroutines` (should be about 1.0-1.5 per connection; a rising ratio means handlers or calls are piling up), `/sched/latencies:seconds` (p99 above a few ms means CPU starvation or GC), GC assist CPU (`/cpu/classes/gc/mark/assist:cpu-seconds`; non-zero sustained assist means the allocation rate outruns the GC), heap objects and stack bytes (`/memory/classes/heap/stacks:bytes`), and `Conn.Stats()` for per-connection queues.
+
+### permessage-deflate
+
+Compression with context takeover costs far more per connection than everything else on this page saves. Keep it off unless the link needs it.
+
+## Per-connection footprint (current)
+
+Measured with `BenchmarkIdleFootprint` (2,000 connections) and the 10,000-connection idle run:
+
+| | before the footprint work | now | ocpp-go fork |
+|---|---|---|---|
+| resident goroutines per idle connection | 8 | 1 | 2 |
+| heap + stack per idle connection | 34 + 27 KB | 7.8 + 4.1 KB | 12.4 KB heap (stack not measured) |
+| RSS per idle connection | 61 KB | 13.6 KB | 22.7 KB |
+| 10,000 idle connections, RSS | about 610 MB | 151 MB | 240 MB |
+| 4,000-charger soak (40% mute, 50 calls/s), max RSS / goroutines | 501 MB / 33,326 | 154 MB / 5,323 | 212 MB / 9,972 |
+| allocation per request at 30k msg/s, lenient / schema off | 7.6 / 3.3 KB | 3.5 / 1.4 KB | 2.9 KB |
+
+The 1.0-1.5 goroutine ratio under load comes from handlers and outbound-call timers in flight. The socket buffers are 1 KB + 1 KB of that (`WithIOBufferSizes`).
+
+## Schema validation cost
+
+Validation is the largest per-request cost after the transport. In `BenchmarkDispatchRoundTrip` (one inbound CALL, typed handler, CALLRESULT, in-memory transport):
+
+| schema mode | Heartbeat allocs/op, B/op | StatusNotification allocs/op, B/op |
+|---|---|---|
+| off | 14, 704 | 14, 696 |
+| lenient | 27, 1,720 | 53, 2,682 |
+| strict | 50, 3,162 | 82, 4,268 |
+
+Lenient is now cheaper than strict: an empty-object fast path (Heartbeat requests, most 1.6 confirmations) and a reflection-free decoder avoid most allocations, while strict still runs the full validator. Under load at 30k msg/s (Heartbeat-heavy mix) lenient allocates 3.5 KB per request and uses 1.16 cores; schema off allocates 1.4 KB and uses 0.81 cores (-30%), and its Heartbeat p99 is 0.8 ms against 1.7 ms. At 60k msg/s: 3.5 vs 1.4 KB, 2.11 vs 1.52 cores.
+
+- Run lenient in production (it is opt-in: `WithLenientSchema()`; the library default is validation off) unless profiling shows validation dominating; it protects handlers from malformed charger payloads and repairs common firmware mistakes.
+- `WithOutboundValidation(false)` skips validation of payloads your own handlers and calls produce (inbound validation is unchanged). That removes the response-side pass, about half of the lenient cost per request, and is the right setting once your handler output is covered by tests.
+- `WithSchemaRegistry` omitted (schema off) is for trusted fleets or a validating proxy in front.
+
+## Handler pool sizing
+
+`HandlerPool` removes the stack growth of a fresh goroutine per message (`runtime.copystack` was 20% of server CPU samples at 60k msg/s). Measured effect with 64 workers: server CPU -22% at 30k msg/s (0.91 vs 1.16 cores) and -18% at 60k (1.72 vs 2.11), same RSS, Heartbeat p99 unchanged within histogram resolution; no effect at the low rate of the 4,000-charger soak (about 280 msg/s), where it only adds 64 idle goroutines.
+
+Size it around the number of handlers typically in flight. In `BenchmarkDispatchParallel` (256 connections, lenient, 4 cores): 64 workers -20% ns/op, 256 workers -10%, 1,024 workers 8% slower, because a large pool rotates through cold workers and the hand-off hit rate drops; 20 workers hit only 2% of dispatches because more handlers are in flight than workers. Start with 64, check CPU in a profile, and do not go above a few hundred. If your handlers block on I/O for milliseconds, the pool saves little because stacks are not the bottleneck; keep it off.
+
 ## Measuring footprint
 
 Benchmarks live in `benchmarks/footprint_test.go`:
@@ -78,9 +148,9 @@ only logs under `-race`; CI runs it a second time without `-race`. Run it with
 ## Concurrency bounds
 
 Inbound handler concurrency is bounded at two levels. Both must be acquired
-before a handler goroutine is spawned; when a bound is saturated the `dispatch`
-loop blocks, which back-pressures through the inbound channel
-(`InboundQueueSize`, default 4) and ultimately slows reads on that socket (including
+before a handler starts; when a bound is saturated, new inbound Calls wait in the
+connection's bounded queue (`InboundQueueSize`, default 4), and once that is full
+the reader stops reading, which slows that socket (including
 CALLRESULTs, so raise it if handlers block for long while awaiting a reply). No
 inbound Call is dropped — it waits for a slot.
 
@@ -123,9 +193,9 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 
 - **Baseline goroutines** (`~N`) and **socket/file descriptors** scale with the
   number of connections, not with `WithGlobalConcurrencyLimit`. To bound those,
-  limit the number of accepted connections at your load balancer or in front of
-  `Server.Handler()` (e.g. reject/503 above a threshold). gocpp does not cap the
-  connection count itself.
+  limit the number of accepted connections with `csms.WithMaxConnections(n)`
+  (default 0 = unlimited; over the cap an upgrade gets HTTP 503 + `Retry-After`
+  before the handshake) and/or at your load balancer.
 - **Outbound** CSMS→CP calls are governed by `CallTimeout` (default 30s) and
   `WriteTimeout` (default 10s), not by the handler semaphores.
 
@@ -137,14 +207,15 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 | `MaxConcurrentHandlers` (`dispatcher.Config`) | 16 | Per-connection cap on concurrent inbound handlers. |
 | `InboundQueueSize` (`dispatcher.Config`, `WithInboundQueueSize`) | 4 | Bounded queue of inbound CALLs waiting for a handler slot; only fills while all slots are busy, then back-pressure reaches the socket. |
 | `OutboundQueueSize` (`dispatcher.Config`, `WithOutboundQueueSize`) | ignored | Kept for compatibility; there is no writer queue any more (senders write under a per-connection FIFO lock). |
-| `WithCallTimeout` | 30s | Deadline for an outbound CSMS→CP call awaiting its result. |
+| `WithCallTimeout` | 30s | Deadline for an outbound CSMS→CP call awaiting its result. It starts once the call owns the connection's call slot, just before the CALL is written; time spent waiting for the slot is bounded by the caller's ctx, not by this timeout. |
 | `WithWriteTimeout` | 10s | Deadline for a single socket write. |
 | `WithConcurrentCalls()` | serialized | Outbound CALLs are limited to one outstanding per connection by default (OCPP-mandated); later calls wait in a bounded per-connection FIFO (`WithAsyncQueueSize`, 64). This option lifts the limit (non-compliant). Measured overhead: see `core/dispatcher/call_bench_test.go`; in-process, serialized and concurrent are within noise (about 7.1 µs and 55 allocs per call on one connection; about 0.65 M calls/s at 1,000 connections and 0.58 M calls/s at 10,000, 56 allocs per call, in both modes). |
 | `WithHandlerTimeout(d)` | 60s | Per-handler deadline (0 = none). |
 | `WithOutboundValidation(bool)` | true | With false, payloads gocpp itself produces (handler replies, outbound Calls and Sends) skip schema validation and lenient repair. Inbound validation is unchanged. At high request rates it removes the response-side validation pass (about half of the lenient schema cost per request); keep it on while developing handlers that build raw payloads. |
-| `WithMaxMessageSize(n)` | 1 MiB | Largest inbound WebSocket message. |
+| `WithMaxMessageSize(n)` | 1 MiB | Largest inbound WebSocket message; a larger one closes the connection with close code 1009 (Message Too Big). |
 | `csms.WithMaxConnections(n)` | unlimited | Connection cap; over it, upgrades get HTTP 503 + Retry-After. |
-| `WithWebSocketPingInterval(d)` | disabled | Transport keepalive (a timer, plus a goroutine only while a pong is awaited); detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |
+| `WithWebSocketPingInterval(d)` | 54s (0 disables) | Transport keepalive on by default (a timer, plus a goroutine only while a pong is awaited); detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |
+| `WithWebSocketReadTimeout(d)` | 60s (0 disables) | Read idle watchdog: the connection is closed if no frame, ping or pong arrives within `d`. |
 | `WithIOBufferSizes(read, write)` | 1024, 1024 | Per-connection socket buffers (net/http would use 4096 each). |
 | `WithHandlerPool(pool)` | off | Resident handler workers with warm stacks; see "Handler worker pool". |
 
@@ -172,7 +243,7 @@ go test -run '^$' -bench DispatchRoundTrip -benchmem ./benchmarks/
 go test -run '^$' -bench 'Validate(Lenient|Strict)' -benchmem ./core/schema/
 ```
 
-Baseline before the per-message allocation work (Go 1.26, i5-13600K, one run;
+Baseline before the per-message allocation work (Go 1.26, i5-13600K, one run; current allocation counts are in "Schema validation cost" above;
 `schema=off` has no validation, `lenient` and `strict` validate both the request and
 the response):
 

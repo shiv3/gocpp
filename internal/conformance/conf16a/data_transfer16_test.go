@@ -3,6 +3,7 @@ package conf16a
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 
@@ -123,7 +124,7 @@ func TestDataTransfer16_ResponseValidation(t *testing.T) {
 }
 
 func TestDataTransfer16_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	wrongDirection := ocppj.Message[messages.DataTransferRequest, messages.DataTransferResponse]{
 		Action:    v16profiles.DataTransfer.Action,
 		Direction: ocppj.SentByCSMS,

@@ -13,8 +13,9 @@ A from-scratch alternative to `lorenzodonini/ocpp-go` with:
   schemas — no hand-written, drift-prone message structs.
 - **Generics-first API** — typed `On[Req,Resp]` handlers and `Call[Req,Resp]`, so
   request/response types are inferred from a single message value.
-- **Context-native concurrency** — every connection owns reader/writer/dispatch
-  goroutines bound to a `context`; teardown flows from one `cancel(cause)`. Race- and
+- **Context-native concurrency** — every connection owns one reader
+  goroutine (about 13 KB RSS idle) bound to a `context`; handlers run on short-lived
+  goroutines or an optional warm worker pool; teardown flows from one `cancel(cause)`. Race- and
   goroutine-leak-tested (`-race` + `goleak`).
 - **Two-layer validation** — JSON-Schema validation against the embedded official
   schemas (source of truth), plus generated `validate` struct tags.
@@ -27,7 +28,7 @@ A from-scratch alternative to `lorenzodonini/ocpp-go` with:
 go get github.com/shiv3/gocpp
 ```
 
-Requires Go 1.25+.
+Requires Go 1.26+ (see `go.mod`).
 
 ## Quick start
 
@@ -97,7 +98,7 @@ Runnable examples: [`examples/csms-minimal`](examples/csms-minimal),
 | `core/dispatcher` | Version-agnostic connection lifecycle + pending-call tracking |
 | `core/schema` | JSON-Schema validator + registry |
 | `core/auth` | `Authenticator`: `None`, `BasicAuth`, `MTLSFromClientCert` |
-| `core/storage` (+ `/memory`) | `ConnectionRegistry`, `MessageRouter`, `TransactionStore`, `ConfigStore` |
+| `core/storage` (+ `/memory`) | `ConnectionRegistry`, `MessageRouter` (used by csms), `TransactionStore`, `ConfigStore` (extension points for your handlers; csms does not use them itself) |
 | `core/observability` (+ `/metrics/{prom,otel}`) | `Metrics` (NoOp/Prometheus/OpenTelemetry), OTel tracer |
 
 ## Addons
@@ -144,7 +145,9 @@ Schema handling is three-state. With a registry set:
   case, near-RFC3339 timestamps (zone-less, space separator, `+0900`, lowercase `t`/`z`;
   zone-less values use UTC or `WithLenientTimeLocation`), and quoted numbers/booleans or
   numbers where a string is expected (only when the conversion is lossless).
-- `WithStrictSchema(false)` (default) — validation off.
+- `WithStrictSchema(false)` — validation off. **This is the library default**: with no
+  schema option set, nothing is validated, even if a registry is configured. Lenient is
+  opt-in (only the bundled load-test harness enables it by default).
 
 `cp.WithTolerantSchema()` / `cp.WithStrictSchema()` do the same on the charge-point side.
 
@@ -187,7 +190,7 @@ make codegen       # regenerate v16/v201/v21 from schemas/
 ```
 
 The `internal/conformance` suite ports lorenzodonini/ocpp-go's per-message test cases
-(validation tables + direction enforcement) across all 188 messages of 1.6/2.0.1/2.1.
+(validation tables + direction enforcement) across all 194 messages of 1.6/2.0.1/2.1 (39 + 64 + 91 generated profiles).
 
 ## Documentation
 

@@ -30,6 +30,12 @@ func (b *metricsBridge) SchemaValidationFailure(version, action, direction strin
 	b.m.SchemaValidationFailure(version, action, direction)
 }
 
+func (b *metricsBridge) SchemaSoftViolation(version, action, kind, keyword string) {
+	if m, ok := b.m.(observability.SchemaSoftViolationMetrics); ok {
+		m.SchemaSoftViolation(version, action, kind, keyword)
+	}
+}
+
 func (b *metricsBridge) OutboundQueueDepth(version string, depth int) {
 	if m, ok := b.m.(observability.ConnectionMetrics); ok {
 		m.OutboundQueueDepth(version, depth)

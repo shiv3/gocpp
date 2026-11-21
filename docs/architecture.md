@@ -17,19 +17,36 @@ only on `core/ocppj` (message values) and `core/schema` (embedded schemas). The
 dispatcher is **version-agnostic**: adding a version added zero dispatcher code — the
 key §1 boundary, validated across 1.6/2.0.1/2.1.
 
+## Split deployment
+
+The same layers can run as a gateway (connection tier) and a backend (processing
+tier) joined by a link; see [gateway.md](gateway.md). The seam is
+`dispatcher.Pipeline` (the payload policy of a connection: signing, schema
+validation, lenient coercion, error mapping), which both an embedded `Conn` and a
+backend call, so error codes are identical in both modes.
+
 ## Connection lifecycle
 
-`dispatcher.Conn` owns three goroutines bound to a `context.WithCancelCause`:
+`dispatcher.Conn` is bound to a `context.WithCancelCause` and has one resident
+goroutine, the **reader**:
 
-- **reader** — reads frames, routes CallResult/CallError to the pending store, queues
-  inbound Calls for dispatch.
-- **writer** — single owner of the socket write side; serializes outbound frames.
-- **dispatch** — bounded-concurrency handler execution (`semaphore`).
+- the **reader** reads frames, routes CallResult/CallError to the pending store and
+  starts a short-lived goroutine (or hands the frame to a resident `HandlerPool`
+  worker) for each inbound Call. When every handler slot is busy it parks the frame in
+  a small bounded queue (`InboundQueueSize`) that finishing handlers drain, and only
+  stops reading when that queue is full.
+- **writes** happen on the goroutine that produced the frame (a handler or a `Call`
+  caller) under a per-connection FIFO lock; there is no writer goroutine. A lazily
+  armed timer enforces `WriteTimeout` and aborts the transport when a write stalls.
+- **teardown** is a `context.AfterFunc` callback on the connection context; it runs
+  once, whichever side ends the connection.
+- the read-idle watchdog and WebSocket ping are `time.AfterFunc` timers, not goroutines.
 
-Teardown flows from a single `cancel(cause)`; `send` is guarded on `ctx.Done()` on both
-enqueue and result-wait, so there is no write deadlock and the outbound channel is never
-closed (no send-on-closed panic). Handlers run with panic recovery — a panicking handler
-replies `InternalError` and the connection survives.
+Teardown flows from a single `cancel(cause)`; senders check `ctx.Done()` before writing
+and while waiting for a result, so there is no write deadlock and no channel is closed
+under a sender (no send-on-closed panic). Handlers run with panic recovery: a panicking
+handler replies `InternalError` and the connection survives. See
+[performance.md](performance.md) for the cost model.
 
 ## Code generation
 
@@ -49,3 +66,15 @@ Output is deterministic: `make codegen && git diff --exit-code` must stay clean.
 `core/storage`, `core/auth`, `core/observability` define interfaces with in-memory / NoOp
 defaults, wired into the CSMS via options. Real adapters (Redis/NATS/Postgres) are
 post-v1.0; the interfaces are the frozen candidates.
+
+## Sessions across instances, and deploys
+
+A server that takes part in clustering (`WithInstanceID` or `WithSessionRegistry`)
+records each connection in a `storage.SessionRegistry` under a registry-assigned
+epoch: it claims the session before it accepts the WebSocket upgrade, releases it
+by compare-and-delete on the epoch when the connection ends, keeps a per-process
+lease, and runs a reconcile loop that closes sockets superseded elsewhere. See
+[clustering](clustering.md). `Server.Drain` and the accept rate limiters move
+charge points off a process at a controlled pace for deploys; see
+[draining](draining.md). Both work in a single process and are independent of any
+gateway topology.

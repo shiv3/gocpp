@@ -9,7 +9,6 @@ import (
 
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type HandlerFunc func(ctx context.Context, c *Conn, payload []byte) ([]byte, error)
@@ -22,6 +21,8 @@ type SendHandlerFunc func(ctx context.Context, c *Conn, payload []byte) error
 type HandlerRegistry struct {
 	mu    sync.RWMutex
 	hs    map[string]HandlerFunc
+	fb    FallbackFunc
+	sfb   SendFallbackFunc
 	sends map[string]SendHandlerFunc
 }
 
@@ -37,6 +38,62 @@ func (r *HandlerRegistry) Lookup(action string) (HandlerFunc, bool) {
 	defer r.mu.RUnlock()
 	h, ok := r.hs[action]
 	return h, ok
+}
+
+// FallbackFunc is a catch-all inbound CALL handler: it receives the action as
+// well, because it serves actions nothing was registered for.
+type FallbackFunc func(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error)
+
+// SendFallbackFunc is FallbackFunc for an inbound SEND.
+type SendFallbackFunc func(ctx context.Context, c *Conn, action string, payload []byte) error
+
+// SetFallback sets the handler Resolve returns for an action with no
+// registered handler (nil clears it). A gateway uses it as a catch-all that
+// forwards every action upstream; Lookup is unaffected.
+func (r *HandlerRegistry) SetFallback(h FallbackFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fb = h
+}
+
+// SetSendFallback is SetFallback for inbound SEND frames (see ResolveSend).
+func (r *HandlerRegistry) SetSendFallback(h SendFallbackFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sfb = h
+}
+
+// Resolve is Lookup that falls back to the handler set by SetFallback when the
+// action has none. Inbound dispatch uses it.
+func (r *HandlerRegistry) Resolve(action string) (HandlerFunc, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if h, ok := r.hs[action]; ok {
+		return h, true
+	}
+	if r.fb == nil {
+		return nil, false
+	}
+	fb := r.fb
+	return func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+		return fb(ctx, c, action, payload)
+	}, true
+}
+
+// ResolveSend is LookupSend with the SetSendFallback catch-all.
+func (r *HandlerRegistry) ResolveSend(action string) (SendHandlerFunc, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if h, ok := r.sends[action]; ok {
+		return h, true
+	}
+	if r.sfb == nil {
+		return nil, false
+	}
+	fb := r.sfb
+	return func(ctx context.Context, c *Conn, payload []byte) error {
+		return fb(ctx, c, action, payload)
+	}, true
 }
 
 func (r *HandlerRegistry) Register(action string, h HandlerFunc) {
@@ -113,151 +170,47 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		return
 	}
 
+	// Every inbound message runs on a fresh goroutine whose 2 KiB stack is too
+	// small for the handler chain, so it has to grow. Growing at entry, while
+	// only a few frames exist, is cheaper than growing later from inside the
+	// pipeline (about 7% of a Heartbeat round trip in BenchmarkInboundHeartbeat),
+	// so reserve frame space here, which makes the runtime grow once, now.
+	var reserve [stackReserve]byte
+	reserveStack(&reserve)
 	start := time.Now()
 	c.cfg.Metrics.CallStarted(frame.Action, "inbound")
 	status := "ok"
 	defer func() {
 		c.cfg.Metrics.CallCompleted(frame.Action, "inbound", time.Since(start), status)
 	}()
-	// A panic in a user handler must not crash the whole peer/process: recover,
-	// log, and reply with an InternalError CallError so the connection survives.
-	defer func() {
-		if r := recover(); r != nil {
-			status = "panic"
-			c.cfg.Logger.ErrorContext(c.ctx, "handler panic recovered",
-				"cp_id", c.id, "action", frame.Action, "panic", r)
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(
-				ocppj.ErrorCodeInternalError, "internal error", nil))
-		}
-	}()
 
-	decoded, reject := c.decodeSignedPayload(frame)
-	if reject != nil {
-		status = "signature_invalid"
-		c.sendCallError(frame.MsgID, reject)
-		return
+	var run func(ctx context.Context, payload []byte) ([]byte, error)
+	if h, ok := c.reg.Resolve(frame.Action); ok {
+		run = func(ctx context.Context, payload []byte) ([]byte, error) { return h(ctx, c, payload) }
 	}
-	frame.Payload = decoded
-
-	h, ok := c.reg.Lookup(frame.Action)
-	if !ok {
-		status = "not_implemented"
-		c.replyBuiltinError(frame.MsgID, ErrorSourceUnknownAction, frame.Action, ocppj.ErrUnknownAction, ocppj.NewCallError(
-			ocppj.ErrorCodeNotImplemented, "action "+frame.Action+" not implemented", nil))
-		return
-	}
-	reqPayload := frame.Payload
-	if c.cfg.SchemaMode == SchemaModeLenient {
-		out, herr := c.lenientValidate(frame.Action, "request", frame.Payload)
-		if herr != nil {
-			status = "schema_invalid"
-			c.replyBuiltinError(frame.MsgID, ErrorSourceSchema, frame.Action, herr, ocppj.NewCallError(SchemaErrorCode(herr), herr.Error(), nil))
-			return
-		}
-		reqPayload = out
-	} else if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
-		if c.cfg.SchemaMode == SchemaModeStrict {
-			status = "schema_invalid"
-			c.replyBuiltinError(frame.MsgID, ErrorSourceSchema, frame.Action, err, ocppj.NewCallError(SchemaErrorCode(err), err.Error(), nil))
-			return
-		}
-	}
-	baseCtx, cancelHandler := c.handlerContext(frame.MsgID)
+	hctx, cancelHandler := c.handlerContext(frame.MsgID)
 	defer cancelHandler()
-	hctx, span := c.cfg.Tracer.Start(baseCtx, "ocpp.handler")
-	if span.IsRecording() {
-		span.SetAttributes(
-			attribute.String("ocpp.action", frame.Action),
-			attribute.String("ocpp.cp_id", c.id),
-			attribute.String("ocpp.direction", "inbound"),
-		)
+	out := c.pipe.RunCall(hctx, &frame, run)
+	status = out.Status
+	switch {
+	case out.Err == nil:
+		c.sendCallResult(frame.MsgID, out.Payload)
+	case !out.NoReply:
+		c.sendCallErrorWire(frame.MsgID, out.Wire, out.Err)
 	}
-	resp, err := h(hctx, c, reqPayload)
-	span.End()
-	if err != nil {
-		status = "error"
-		if hctx.Err() != nil && errors.Is(err, context.DeadlineExceeded) {
-			status = "timeout"
-			c.cfg.Logger.WarnContext(c.ctx, "handler exceeded its timeout",
-				"cp_id", c.id, "action", frame.Action, "timeout", c.cfg.HandlerTimeout)
-			c.sendCallError(frame.MsgID, ocppj.NewCallError(
-				ocppj.ErrorCodeInternalError, "handler timed out", nil))
-			return
-		}
-		ce := mapHandlerError(err)
-		var de *decodeError
-		if errors.As(err, &de) {
-			c.replyBuiltinError(frame.MsgID, ErrorSourceDecode, frame.Action, de.err, ce)
-			return
-		}
-		c.sendCallError(frame.MsgID, ce)
-		return
-	}
-	respPayload, verr := c.validateOutbound(frame.Action, "response", resp)
-	if verr != nil {
-		status = "schema_invalid"
-		// The local handler produced an invalid response, so no valid
-		// CallResult can be sent. Return InternalError to the peer.
-		c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, verr.Error(), nil))
-		return
-	}
-	respPayload, terr := c.transformOutbound(frame.Action, "response", respPayload)
-	if terr != nil {
-		status = "error"
-		c.sendCallError(frame.MsgID, ocppj.NewCallError(ocppj.ErrorCodeInternalError, terr.Error(), nil))
-		return
-	}
-	c.sendCallResult(frame.MsgID, respPayload)
 }
 
 // runSendHandler dispatches an inbound SEND (OCPP 2.1). A SEND is unconfirmed:
 // the receiver MUST NOT reply with a CallResult or CallError, so every outcome
 // (missing handler, schema-invalid, handler error) is logged and dropped.
 func (c *Conn) runSendHandler(frame ocppj.Frame) {
-	// A panic in a user SEND handler must not crash the peer/process. Unlike a
-	// Call, a SEND has no reply, so recover, log, and drop.
-	defer func() {
-		if r := recover(); r != nil {
-			c.cfg.Logger.ErrorContext(c.ctx, "SEND handler panic recovered",
-				"cp_id", c.id, "action", frame.Action, "panic", r)
-		}
-	}()
-
-	h, ok := c.reg.LookupSend(frame.Action)
-	if !ok {
-		c.cfg.Logger.DebugContext(c.ctx, "no SEND handler registered, dropping",
-			"cp_id", c.id, "action", frame.Action)
-		return
-	}
-	decoded, reject := c.decodeSignedPayload(frame)
-	if reject != nil {
-		c.cfg.Logger.WarnContext(c.ctx, "dropping unverifiable signed SEND",
-			"cp_id", c.id, "action", frame.Action, "code", reject.Code)
-		return
-	}
-	frame.Payload = decoded
-	reqPayload := frame.Payload
-	if c.cfg.SchemaMode == SchemaModeLenient {
-		out, herr := c.lenientValidate(frame.Action, "request", frame.Payload)
-		if herr != nil {
-			c.cfg.Logger.WarnContext(c.ctx, "dropping schema-invalid SEND",
-				"cp_id", c.id, "action", frame.Action, "err", herr)
-			return
-		}
-		reqPayload = out
-	} else if err := c.schemaValidationError(frame.Action, "request", frame.Payload); err != nil {
-		if c.cfg.SchemaMode == SchemaModeStrict {
-			c.cfg.Logger.WarnContext(c.ctx, "dropping schema-invalid SEND",
-				"cp_id", c.id, "action", frame.Action, "err", err)
-			return
-		}
+	var run func(ctx context.Context, payload []byte) error
+	if h, ok := c.reg.ResolveSend(frame.Action); ok {
+		run = func(ctx context.Context, payload []byte) error { return h(ctx, c, payload) }
 	}
 	hctx, cancelHandler := c.handlerContext(frame.MsgID)
 	defer cancelHandler()
-	if err := h(hctx, c, reqPayload); err != nil {
-		c.cfg.Logger.WarnContext(c.ctx, "SEND handler error",
-			"cp_id", c.id, "action", frame.Action, "err", err)
-	}
+	c.pipe.RunSend(hctx, &frame, run)
 }
 
 // SchemaErrorCode picks the CALLERROR code for a schema rejection of an inbound
@@ -344,65 +297,8 @@ func mustJSON(v any) []byte {
 	return b
 }
 
-func (c *Conn) recordSchemaValidationFailure(action, kind string) {
-	if m, ok := c.cfg.Metrics.(schemaValidationMetricsHook); ok {
-		m.SchemaValidationFailure(string(c.version), action, kind)
-	}
-}
+// stackReserve is the frame space runHandler reserves up front; see there.
+const stackReserve = 600
 
-// lenientValidate applies lenient validation. A non-nil hardErr means the
-// caller must reject the message. Otherwise out is the payload to continue with,
-// possibly enum-normalized.
-func (c *Conn) lenientValidate(action, kind string, payload []byte) (out []byte, hardErr error) {
-	if c.cfg.SchemaValidateLenient == nil {
-		return payload, nil
-	}
-	out, soft, err := c.cfg.SchemaValidateLenient(c.version, action, kind, payload)
-	if err != nil {
-		c.recordSchemaValidationFailure(action, kind)
-		return nil, err
-	}
-	for _, kw := range soft {
-		if m, ok := c.cfg.Metrics.(schemaSoftViolationMetricsHook); ok {
-			m.SchemaSoftViolation(string(c.version), action, kind, kw)
-		}
-	}
-	if len(soft) > 0 {
-		c.cfg.Logger.WarnContext(c.ctx, "schema soft violations passed (lenient)",
-			"version", string(c.version), "action", action, "kind", kind, "keywords", soft)
-	}
-	return out, nil
-}
-
-// validateOutbound applies the configured schema policy to a payload this side
-// produced (kind "request" for outbound CALL/SEND, "response" for a handler
-// result). It returns the payload to send, or the error that stops the send:
-// a hard lenient violation, or any violation in strict mode.
-func (c *Conn) validateOutbound(action, kind string, payload []byte) ([]byte, error) {
-	if c.cfg.SkipOutboundValidation {
-		return payload, nil
-	}
-	if c.cfg.SchemaMode == SchemaModeLenient {
-		return c.lenientValidate(action, kind, payload)
-	}
-	if err := c.schemaValidationError(action, kind, payload); err != nil && c.cfg.SchemaMode == SchemaModeStrict {
-		return nil, err
-	}
-	return payload, nil
-}
-
-func (c *Conn) schemaValidationError(action, kind string, payload []byte) error {
-	if c.cfg.SchemaValidate == nil || c.cfg.SchemaMode == SchemaModeOff {
-		return nil
-	}
-	err := c.cfg.SchemaValidate(c.version, action, kind, payload)
-	if err == nil {
-		return nil
-	}
-	c.recordSchemaValidationFailure(action, kind)
-	if c.cfg.SchemaMode == SchemaModeTolerant {
-		c.cfg.Logger.WarnContext(c.ctx, "schema validation failed",
-			"version", string(c.version), "action", action, "kind", kind, "err", err)
-	}
-	return err
-}
+//go:noinline
+func reserveStack(*[stackReserve]byte) {}

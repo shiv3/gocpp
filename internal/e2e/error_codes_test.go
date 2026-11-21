@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -58,7 +59,7 @@ func TestE2E_SchemaViolationErrorCodes(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			srv := csms.NewServer(csms.WithSubProtocols(c.sub), csms.WithSchemaRegistry(reg), c.mode)
+			srv := splitmode.NewServer(csms.WithSubProtocols(c.sub), csms.WithSchemaRegistry(reg), c.mode)
 			require.NoError(t, csms.On(srv, anyMsg(c.action), func(ctx context.Context, _ *csms.Conn, req anyReq) (anyReq, error) {
 				t.Error("handler reached for an invalid request")
 				return anyReq{}, nil
@@ -87,7 +88,7 @@ func TestE2E_TypedDecodeErrorCode(t *testing.T) {
 		ConnectorID int `json:"connectorId"`
 	}
 	msg := ocppj.Message[req, anyReq]{Action: "Probe", Direction: ocppj.SentByCP}
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	require.NoError(t, csms.On(srv, msg, func(ctx context.Context, _ *csms.Conn, r req) (anyReq, error) {
 		return anyReq{}, nil
 	}))

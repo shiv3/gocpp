@@ -7,6 +7,165 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+
+- `addons/link-grpc` (own module): gRPC link between gateways and backends
+  (protobuf contract `gocpp.link.v1`, backends dial gateways, Hello/HelloAck
+  protocol and capability negotiation, Drain/DrainAck, Unsupported answers).
+- `cmd/gocpp-gateway` (own module): reference gateway binary (`serve`, `probe`),
+  Prometheus metrics, `/readyz`, soft session cap, SIGTERM drain; chaos tests with
+  real processes; `examples/gke-gateway` manifests.
+- Gateway mode (phase 3 of docs/design/gateway.md): `gateway` package (contract:
+  `Envelope`, `Upstream`, `Downstream`, `WireError`, `Pool`), `gateway/inproc`
+  (in-process link), `csms.NewGatewayServer` (connection tier),
+  `csms.WithGatewayLink` + `Server.ServeGateway` / `Server.Upstream` (processing
+  tier), `csms.WithGatewayID`, `csms.WithOnOrphanResult`, `Conn.GatewaySession`,
+  `csms.WithSplitInProcess`. On a backend `Lookup` returns a session handle whose
+  `Call`, `Send` and `Close` go through the link. See docs/gateway.md. The
+  conformance and e2e suites run a second time through the in-process link
+  (`GOCPP_TEST_SPLIT=1`).
+- Staged-release seams: `gateway.BackendInfo`, `DefaultPool`, `PoolSet`,
+  `Router` / `RouteInput` / `RouteDecision`, `Envelope.Route`,
+  `ControlSetAttrs`, `csms.WithBackendInfo`, `csms.WithRouter`,
+  `Conn.UpdateAttrs`. Without a router only the default backend pool gets work.
+- `dispatcher.RawCallError`, `dispatcher.WithSentHook`, `HandlerRegistry` send
+  fallback (`SetSendFallback`, `ResolveSend`), `ConnMetadata.Owner` /
+  `Conn.Owner`.
+- `dispatcher.Pipeline` (`NewPipeline`, `RunCall`, `RunSend`, `ValidateInbound`,
+  `ValidateOutbound`, `TransformOutbound`, `DecodeSigned`, `MapBuiltinError`): the
+  payload policy of a connection (signed-message unwrap, schema validation and
+  lenient coercion, outbound transform, handler-error to CALLERROR mapping),
+  extracted from `Conn` so it needs only a `Config`, a version and a charge point
+  id. Embedded connections use it unchanged; it is the seam a processing tier
+  behind a gateway uses to apply identical rules.
+- `HandlerRegistry.SetFallback` / `Resolve`: a catch-all handler (receiving the
+  action) for actions with no registered handler (`Lookup` is unchanged).
+- `transport.StatusServiceRestart` (WebSocket close code 1012).
+- `csms.On` / `csms.OnSend` also record the handler in a table typed on
+  `*csms.Conn` (internal), used by the upcoming gateway mode.
+- `storage.SessionRegistry` (Claim / CAS Release / Reassert with registry-assigned
+  epochs, per-gateway lease, `LookupMany`), `memory.NewSessionRegistry`, and
+  `csms.WithSessionRegistry` with `csms.SessionConfig`. The server claims a
+  session before accepting the WebSocket upgrade, releases it by epoch when the
+  connection ends, keeps a gateway lease alive and runs a reconcile loop that
+  closes sockets superseded by a newer connection on another instance and
+  re-asserts lost records. `csms.Conn.Session()` returns the record.
+  `dispatcher.Conn.SetAttachment/Attachment`.
+- `addons/registry-redis`: `storage.SessionRegistry` on Redis with Lua scripts.
+- `csms.Server.Drain(ctx, DrainOptions)`: moves every charge point off a server
+  without a reconnect storm. New upgrades get `503` with a jittered
+  `Retry-After` (`Server.Draining`, `Server.ReadyHandler` for readiness), sessions
+  are closed at a fixed rate (default sessions / (0.9 x window), window 5 min),
+  idle first, with close code 1012 (service restart) and cause
+  `ocppj.ErrGatewayDraining`; a busy session stops taking new calls (they fail
+  unsent with `ErrGatewayDraining`) and is closed when idle or after its grace;
+  at the end of the window the rest are closed with `ocppj.ErrDrainTimeout`.
+  `dispatcher.Conn.TryDrain` / `Quiesce` / `ForceDrain` / `Draining` are the
+  per-connection primitives.
+- Session attributes and gateway labels (aligned with docs/design/gateway.md section 5):
+  attributes live in `storage.Session.Meta` under the reserved prefix `attr.`
+  (`Session.Attrs()`, `storage.MergeAttrs`; `route.` is reserved for gateway routing
+  decisions), `SessionRegistry.SetAttrs` merges (empty value deletes) with a compare
+  on the epoch, `Session.GatewayVersion`, `GatewayInfo.Labels` stored in the lease
+  (`version`, `policy_rev`, ...; memory and Redis), `csms.SessionConfig.Version/Labels`,
+  `Server.SetGatewayLabel`, `csms.WithSessionAttributes`, `Conn.Attrs/SetAttrs`
+  (1 KiB cap, `ErrAttrsTooLarge`), `Server.SetSessionAttrs`.
+- Targeted drain for rollouts: `DrainOptions.CPIDs/Attrs/Select/Filter/Max/Fraction/
+  RefuseDuring` close only the selected sessions (idle first, paced, 1012) while the
+  server keeps serving (lease stays `serving`, `ReadyHandler` not-ready meanwhile);
+  `Server.DrainStatus` reports progress.
+- `csms.WithSoftMaxConnections` / `Server.SetSoftMaxConnections`: `ReadyHandler`
+  reports not-ready at or above the soft cap; upgrades and sessions are unaffected.
+- `observability.SessionMetrics` (Prometheus and OTel): session duration, closes by
+  code and cause, upgrade results.
+- `csms.WithAcceptRateLimit(rate, burst)` (token bucket in front of the upgrade,
+  `503` + jittered `Retry-After`), `csms.RateLimitListener` (shed connections at TCP
+  accept, before TLS), `Server.AdmissionStats`.
+- `transport.SharedTicketKeys` / `RotateSharedTicketKeys`: TLS session ticket keys
+  derived from a shared secret so a charge point reconnecting to another pod
+  resumes its TLS session.
+- `observability.SchemaSoftViolationMetrics` (optional extension of `Metrics`).
+  The Prometheus (`gocpp_schema_soft_violations_total{version,action,kind,keyword}`)
+  and OpenTelemetry (`gocpp.schema_soft_violations`) adapters implement it, and the
+  dispatcher's metrics bridge forwards it, so lenient-mode soft violations are now
+  exported.
+
+### Changed
+
+- With `WithInstanceID`, the connection registry's global routes are now recorded
+  as epoch-ordered sessions when the registry implements `storage.SessionRegistry`
+  (the in-memory registries and `InProcessHub` do): a delayed write from an old
+  connection can no longer overwrite a newer one, and a superseded socket is
+  closed by the reconcile loop. Registries that only implement `ConnectionRegistry`
+  keep working through an adapter with their previous guarantees.
+- In a clustered server the route is claimed before the WebSocket upgrade is
+  accepted (it was published right after), so a slow registry now delays the
+  handshake; after `SessionConfig.ClaimTimeout` (2s) the connection is accepted
+  unclaimed and claimed in the background.
+- `Server.Lookup` reads `SessionRegistry.Lookup`, which honours gateway leases.
+
+### Fixed
+
+- `gocpp_outbound_queue_depth` / `gocpp.outbound_queue.depth` help text and the
+  `dispatcher.Conn` doc comment described the removed writer-goroutine queue. The
+  metric samples senders waiting for or holding the per-connection write lock
+  (1 = uncontended write).
+
+### Docs
+
+- The library default schema mode is off; lenient is opt-in (docs/performance.md
+  called it the default; it is only the load-test harness default). README and
+  docs/usage.md now say so explicitly.
+- WebSocket keepalive is on by default (ping 54s, pong wait 60s, read idle 60s);
+  the usage and performance tables said it was disabled.
+- `csms.WithMaxConnections` exists (default unlimited); docs/performance.md claimed
+  connections cannot be limited.
+- `CallTimeout` starts once the call owns the connection's call slot, right before
+  the CALL is written, not when `Call` is invoked (the 0.2.0 wording "when the CALL
+  is written" was accurate in effect; usage.md is now precise).
+- `WithTransactionStore` / `WithConfigStore` are application-facing extension points
+  that csms itself does not use.
+- README: Go 1.26+ (matches go.mod); 194 messages across 1.6/2.0.1/2.1 (39 + 64 + 91).
+- `WithMaxMessageSize` overflow closes with 1009 (covered by `TestMaxMessageSize`).
+
+## [0.2.0] - 2026-11-21
+
+This release collects everything since v0.1.3 (v0.1.4–v0.1.7 were tagged
+without changelog sections). It contains breaking changes; pre-v1 minor
+versions may break APIs. Read the upgrade notes first.
+
+### Upgrade notes
+
+- **Generated types:** every JSON-Schema `integer` is `int64` (was `int32`);
+  JSON-Schema `number` fields are `types.Decimal` (encoded as JSON numbers);
+  untyped 2.0.1/2.1 properties such as `DataTransfer.data` are
+  `json.RawMessage`; `CustomDataType` keeps unknown properties in `Extra`.
+  `datatransfer.Marshal`/`Unmarshal` work on `json.RawMessage`; use
+  `MarshalString`/`UnmarshalString` for 1.6.
+- **Outbound CALLs are serialized per connection by default** (OCPP-J
+  synchronicity). `WithConcurrentCalls()` restores the old, non-compliant
+  behaviour.
+- **Handler contexts are not cancelled on disconnect**; they carry a per-handler
+  deadline (`WithHandlerTimeout`, default 60 s). Use `csms.ConnFromContext(ctx)` /
+  `cp.ConnDone(ctx)` to observe a disconnect.
+- **Connection model:** one resident goroutine per connection; there is no writer
+  goroutine or outbound queue any more, so `WithOutboundQueueSize` is ignored
+  (deprecated). Writers take a per-connection write lock in FIFO order.
+- **Error codes:** schema/decode rejections use the specific OCPP codes
+  (Occurrence/Property/TypeConstraintViolation); unknown message types get
+  `MessageTypeNotSupported` on 2.0.1/2.1; types 5/6 are only valid on 2.1.
+  `WithOCPPGoCompat()` reproduces ocpp-go's charger-visible behaviour for staged
+  migrations (see docs/migration-from-ocpp-go.md).
+- **Parsed frames** reference the read buffer (`Frame.Payload`/`ErrData` are
+  sub-slices); `NewMsgID` values minted in the same millisecond are unique but not
+  ordered.
+- **Clustering** is wired: with `WithInstanceID` + a message router, calls reach
+  charge points connected to other instances (`Server.Lookup`).
+
+Performance and sizing guidance: docs/performance.md.
+
+
+### Added
+- `docs/performance.md`: runtime guidance (GOMAXPROCS, GOMEMLIMIT, GOGC with measured tradeoffs), schema-mode and handler-pool cost, current per-connection footprint. `docs/architecture.md` and the README describe the one-reader-goroutine connection model.
 - `dispatcher.HandlerPool` / `NewHandlerPool(n)` with `Config.HandlerPool`, and
   `csms.WithHandlerPool` / `cp.WithHandlerPool` (off by default): inbound handlers
   run on resident workers with warm stacks when one is idle, and on a new goroutine
@@ -142,6 +301,7 @@ All notable changes to this project are documented here. The format is based on
   header — i.e. non-browser charge points — are always allowed).
 
 ### Fixed
+- Test hygiene: `TestTimeEncoding_ClientOutbound` closes its client, so `go test -race -count=N ./csms` no longer trips the goroutine-leak check in `TestServerLifecycle*` on later passes.
 - Message types 5 (CALLRESULTERROR) and 6 (SEND) are OCPP 2.1 only. On a 1.6 or
   2.0.1 connection they are now treated as unknown message types (2.0.1: CALLERROR
   `MessageTypeNotSupported`; 1.6: ignored, answered under the ocpp-go compat preset)
@@ -482,6 +642,8 @@ All additions are opt-in and preserve prior default behavior.
 ### OCPP spec compatibility
 - OCPP 1.6 (edition 2 + Security Whitepaper), 2.0.1, 2.1.
 
+[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/shiv3/gocpp/releases/tag/v0.2.0
 [0.1.3]: https://github.com/shiv3/gocpp/releases/tag/v0.1.3
 [0.1.2]: https://github.com/shiv3/gocpp/releases/tag/v0.1.2
 [0.1.1]: https://github.com/shiv3/gocpp/releases/tag/v0.1.1

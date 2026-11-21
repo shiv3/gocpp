@@ -3,12 +3,14 @@ package csms
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/storage"
 )
 
 // Conn is a CSMS-side connection to a charge point.
@@ -21,11 +23,18 @@ type Conn struct {
 	remoteID string
 	srv      *Server
 
+	// gw is the gateway session this Conn belongs to: its own on a gateway, the
+	// session of a handle or message on a processing tier (see GatewaySession).
+	gw *gwSession
+
 	// gone is closed once the server has finished tearing this connection down:
 	// disconnect callback fired and the connection removed from the registry. Nil
 	// for the short-lived wrappers handed to typed handlers, which only wait for
 	// the inner connection.
 	gone chan struct{}
+
+	// session is the registry record of a remote handle (see Server.Lookup).
+	session *storage.Session
 
 	// disconnectOnce makes the disconnect notification fire exactly once, whether
 	// it comes from a replacement or from the connection's own teardown. Do blocks
@@ -47,9 +56,109 @@ func (c *Conn) ID() string {
 // details such as Version, RemoteAddr and TLS are empty for it.
 func (c *Conn) Remote() bool { return c.inner == nil }
 
+// Session returns the registry record of this connection: for a live local
+// connection the session this server claimed for it, for a remote handle the
+// record that Lookup found. ok is false when the server runs without a session
+// registry (and clustering), and for a connection accepted while the registry
+// was unreachable until it has been claimed (Epoch is 0 until then). The value
+// is a snapshot; the epoch of a connection can change when the server re-claims
+// it.
+func (c *Conn) Session() (s storage.Session, ok bool) {
+	if c.inner == nil && c.gw != nil {
+		return c.gw.storageSession(), true
+	}
+	if c.inner == nil {
+		if c.session == nil {
+			return storage.Session{}, false
+		}
+		return *c.session, true
+	}
+	p, _ := c.inner.Attachment().(*sessionRef)
+	if p == nil {
+		return storage.Session{}, false
+	}
+	return p.s, true
+}
+
+// ErrAttrsTooLarge is returned by SetAttrs when the attributes would exceed
+// storage.MaxAttrBytes.
+var ErrAttrsTooLarge = errors.New("csms: session attributes exceed the size cap")
+
+// Attrs returns a copy of the session attributes (see WithSessionAttributes and
+// SetAttrs); nil when there are none. They are stored in the session record as
+// Meta keys with the reserved prefix "attr.".
+func (c *Conn) Attrs() map[string]string {
+	s, _ := c.Session()
+	return s.Attrs()
+}
+
+// SetAttrs merges attrs into the session attributes: a key replaces its value, a
+// key with an empty value is deleted, other attributes stay. The total size of
+// keys and values is capped (storage.MaxAttrBytes; ErrAttrsTooLarge). With a
+// session registry the record is updated there too (compare-and-set on the
+// epoch); the local value is updated first, so a registry error leaves the next
+// reconcile pass to repair the record. Attribute keys starting with "gocpp." are
+// reserved for a gateway to interpret (gocpp.busy) and are stored like any other.
+// Not supported on a remote handle (ErrRemoteConn).
+func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
+	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
+		return c.srv.setAttrsGateway(ctx, c, attrs)
+	}
+	if c.inner == nil {
+		return ErrRemoteConn
+	}
+	ref, _ := c.inner.Attachment().(*sessionRef)
+	if ref == nil {
+		ref = &sessionRef{s: storage.Session{CPID: c.inner.ID()}, srv: c.srv}
+	}
+	s := ref.s
+	meta, ok := storage.MergeAttrs(s.Meta, attrs)
+	if !ok {
+		return ErrAttrsTooLarge
+	}
+	s.Meta = meta
+	c.inner.SetAttachment(&sessionRef{s: s, srv: ref.srv})
+	if ref.srv == nil || ref.srv.sessions == nil || s.Epoch == 0 {
+		return nil
+	}
+	_, err := ref.srv.sessions.reg.SetAttrs(ctx, s.CPID, s.Epoch, attrs)
+	return err
+}
+
+// sessionHolder implementation, used by the session manager.
+
+func (c *Conn) holderID() string { return c.inner.ID() }
+
+func (c *Conn) holderSession() storage.Session {
+	s, _ := c.Session()
+	return s
+}
+
+func (c *Conn) setHolderSession(s storage.Session) {
+	var srv *Server
+	if ref, _ := c.inner.Attachment().(*sessionRef); ref != nil {
+		srv = ref.srv
+	}
+	c.inner.SetAttachment(&sessionRef{s: s, srv: srv})
+}
+
+// sessionRef is what the server hangs on a dispatcher connection: the session
+// snapshot and the server that owns it.
+type sessionRef struct {
+	s   storage.Session
+	srv *Server
+}
+
+func (c *Conn) alive() bool { return c.inner.Context().Err() == nil }
+
+func (c *Conn) displace() { c.inner.Abort(ocppj.ErrConnReplaced) }
+
 // Version returns the negotiated OCPP version.
 func (c *Conn) Version() ocppj.Version {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.version
+		}
 		return ""
 	}
 	return c.inner.Version()
@@ -58,6 +167,9 @@ func (c *Conn) Version() ocppj.Version {
 // Subprotocol returns the negotiated WebSocket subprotocol.
 func (c *Conn) Subprotocol() string {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.subprotocol()
+		}
 		return ""
 	}
 	return c.inner.Subprotocol()
@@ -66,6 +178,9 @@ func (c *Conn) Subprotocol() string {
 // RemoteAddr returns the peer network address from the HTTP upgrade request.
 func (c *Conn) RemoteAddr() string {
 	if c.inner == nil {
+		if c.gw != nil && c.gw.info() != nil {
+			return c.gw.info().RemoteAddr
+		}
 		return ""
 	}
 	return c.inner.RemoteAddr()
@@ -74,6 +189,9 @@ func (c *Conn) RemoteAddr() string {
 // RequestHeader returns a copy of the HTTP upgrade request headers.
 func (c *Conn) RequestHeader() http.Header {
 	if c.inner == nil {
+		if c.gw != nil && c.gw.info() != nil {
+			return c.gw.info().RequestHeader.Clone()
+		}
 		return nil
 	}
 	return c.inner.RequestHeader()
@@ -82,6 +200,9 @@ func (c *Conn) RequestHeader() http.Header {
 // TLS returns a copy of the HTTP upgrade TLS connection state, if available.
 func (c *Conn) TLS() *tls.ConnectionState {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.tlsState()
+		}
 		return nil
 	}
 	return c.inner.TLS()
@@ -99,6 +220,9 @@ func (c *Conn) TLS() *tls.ConnectionState {
 // returns ctx.Err() and the teardown still completes in the background.
 func (c *Conn) Close(ctx context.Context) error {
 	if c.inner == nil {
+		if c.gw != nil && c.srv != nil && c.srv.backend != nil {
+			return c.srv.closeGateway(ctx, c)
+		}
 		return ErrRemoteConn
 	}
 	c.inner.Abort(ocppj.ErrConnClosedByServer)
@@ -152,7 +276,8 @@ func (c *Conn) Done() <-chan struct{} {
 func ConnFromContext(ctx context.Context) (*Conn, bool) {
 	dc, ok := dispatcher.ConnFromContext(ctx)
 	if !ok {
-		return nil, false
+		c, ok := ctx.Value(gwConnKey{}).(*Conn)
+		return c, ok
 	}
 	return &Conn{inner: dc}, true
 }

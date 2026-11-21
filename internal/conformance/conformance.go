@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"reflect"
 	"sync"
@@ -99,7 +100,7 @@ func RoundTripCSMS[Req, Resp any](
 		clientOpts = append(clientOpts, cp.WithSchemaRegistry(reg), cp.WithStrictSchema(true))
 	}
 
-	srv := csms.NewServer(serverOpts...)
+	srv := splitmode.NewServer(serverOpts...)
 	if register != nil {
 		register(srv)
 	}
@@ -143,7 +144,7 @@ func RoundTripCP[Req, Resp any](
 		clientOpts = append(clientOpts, cp.WithSchemaRegistry(reg), cp.WithStrictSchema(true))
 	}
 
-	srv := csms.NewServer(serverOpts...)
+	srv := splitmode.NewServer(serverOpts...)
 	defer srv.Close()
 
 	ts := httptest.NewServer(srv.Handler())

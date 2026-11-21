@@ -42,9 +42,14 @@ func (c *Conn) send(ctx context.Context, payload []byte) error {
 	if c.ctx.Err() != nil {
 		return context.Cause(c.ctx)
 	}
+	// Stamped before the write and undone if it fails: a peer that reads the
+	// frame immediately must already see LastSentAt set (stamping after the write
+	// raced with it).
+	now := time.Now().UnixNano()
+	prevSent := c.lastSent.Swap(now)
 	err := c.write(payload)
-	if err == nil {
-		c.lastSent.Store(time.Now().UnixNano())
+	if err != nil {
+		c.lastSent.CompareAndSwap(now, prevSent)
 	}
 	c.observeOutbound(payload, err)
 	if err != nil {
@@ -163,10 +168,6 @@ func (c *Conn) trySendCallErrorWire(msgID, wire, desc string) {
 		"cp_id", c.id, "msg_id", msgID)
 }
 
-func (c *Conn) sendCallError(msgID string, ce *ocppj.CallError) {
-	c.sendCallErrorWire(msgID, ce.WireCode(c.version), ce)
-}
-
 func (c *Conn) sendCallErrorWire(msgID, wire string, ce *ocppj.CallError) {
 	var details []byte
 	if ce.Details != nil {
@@ -198,11 +199,11 @@ func DoSend(ctx context.Context, c *Conn, action string, reqPayload []byte) (err
 		c.cfg.Metrics.CallCompleted(action, "outbound", time.Since(start), status)
 	}()
 
-	sendPayload, verr := c.validateOutbound(action, "request", reqPayload)
+	sendPayload, verr := c.pipe.ValidateOutbound(ctx, action, "request", reqPayload)
 	if verr != nil {
 		return verr
 	}
-	sendPayload, err = c.transformOutbound(action, "request", sendPayload)
+	sendPayload, err = c.pipe.TransformOutbound(action, "request", sendPayload)
 	if err != nil {
 		return err
 	}
@@ -241,39 +242,4 @@ func (c *Conn) sendCallResultError(msgID string, ce *ocppj.CallError) {
 		return
 	}
 	_ = c.send(c.ctx, raw)
-}
-
-// mapBuiltinError runs the configured ErrorCodeMapper for a CALLERROR the
-// dispatcher generated itself. def is the default error; it returns the wire
-// code to send and whether to reply.
-func (c *Conn) mapBuiltinError(src ErrorSource, action string, err error, def *ocppj.CallError, defReply bool) (string, bool) {
-	wire := def.WireCode(c.version)
-	if c.cfg.ErrorCodeMapper == nil {
-		return wire, defReply
-	}
-	return c.cfg.ErrorCodeMapper(ErrorContext{
-		Source: src, Version: c.version, Action: action, Err: err, WireCode: wire, Reply: defReply,
-	})
-}
-
-// replyBuiltinError answers msgID with a dispatcher-generated CALLERROR,
-// honouring the ErrorCodeMapper.
-func (c *Conn) replyBuiltinError(msgID string, src ErrorSource, action string, err error, def *ocppj.CallError) {
-	if wire, reply := c.mapBuiltinError(src, action, err, def, true); reply {
-		c.sendCallErrorWire(msgID, wire, def)
-	}
-}
-
-// transformOutbound applies Config.OutboundTransform (date-time encoding) to an
-// outbound payload. A failure is returned for a request and, for a response,
-// handled by the caller.
-func (c *Conn) transformOutbound(action, kind string, payload []byte) ([]byte, error) {
-	if c.cfg.OutboundTransform == nil {
-		return payload, nil
-	}
-	out, err := c.cfg.OutboundTransform(c.version, action, kind, payload)
-	if err != nil {
-		return nil, fmt.Errorf("transform outbound %s: %w", kind, err)
-	}
-	return out, nil
 }

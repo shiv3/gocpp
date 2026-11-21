@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -38,7 +39,7 @@ func (h *testCPHandler) OnReset(_ context.Context, _ v16msg.ResetRequest) (v16ms
 }
 
 func TestE2E_RegisterHandlers(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	require.NoError(t, handlers.RegisterCSMS(srv, testCSMSHandler{}))
 
 	ts := httptest.NewServer(srv.Handler())
