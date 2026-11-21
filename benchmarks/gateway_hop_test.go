@@ -29,18 +29,25 @@ type hopRig struct {
 // configuration, design 2.7) and connects one raw WebSocket client.
 func newHopRig(tb testing.TB, split bool) *hopRig {
 	tb.Helper()
+	return newHopRigOpts(tb, split, nil)
+}
+
+// newHopRigOpts is newHopRig with extra options for the server that terminates
+// the WebSocket (the gateway when split, the only server otherwise).
+func newHopRigOpts(tb testing.TB, split bool, edgeOpts []csms.Option) *hopRig {
+	tb.Helper()
 	var handler func() *csms.Server
 	var closers []func()
 	if split {
 		hub := inproc.New()
-		gw := csms.NewGatewayServer(hub.Gateway(), csms.WithSubProtocols("ocpp1.6"), csms.WithLogger(quiet))
+		gw := csms.NewGatewayServer(hub.Gateway(), append([]csms.Option{csms.WithSubProtocols("ocpp1.6"), csms.WithLogger(quiet)}, edgeOpts...)...)
 		be := csms.NewServer(csms.WithGatewayLink(hub.Backend()), csms.WithSubProtocols("ocpp1.6"), csms.WithLogger(quiet))
 		register(tb, be)
 		drain := hub.AttachBackend(be.Upstream(), gwInfo())
 		handler = func() *csms.Server { return gw }
 		closers = append(closers, gw.Close, func() { _ = drain(context.Background()); be.Close() })
 	} else {
-		srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithLogger(quiet))
+		srv := csms.NewServer(append([]csms.Option{csms.WithSubProtocols("ocpp1.6"), csms.WithLogger(quiet)}, edgeOpts...)...)
 		register(tb, srv)
 		handler = func() *csms.Server { return srv }
 		closers = append(closers, srv.Close)

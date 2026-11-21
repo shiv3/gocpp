@@ -65,6 +65,14 @@ type serverConfig struct {
 	gwRouter       gateway.Router
 	gwAuthCache    *AuthCacheConfig
 	onOrphan       func(cpID, callID, action string, payload []byte, err error)
+	edgeResponders map[string]EdgeResponder
+	// edgeTimeEncoding is timeEncoding as the gateway keeps it (the processing tier applies it otherwise).
+	edgeTimeEncoding  schema.TimeEncoding
+	onEdgeResponse    func(cpID, action string)
+	edgeHeartbeat     bool
+	edgeHeartbeatWhen []func(EdgeRequest) bool
+
+	tenantLimits *TenantLimits
 }
 
 func defaultServerConfig() serverConfig {

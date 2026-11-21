@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/gateway"
@@ -67,6 +68,9 @@ type edge struct {
 
 	detach func()
 
+	responders map[string]EdgeResponder
+	edgeMetric observability.EdgeMetrics
+
 	callsMu sync.Mutex
 	calls   map[string]*edgeCall
 }
@@ -91,7 +95,9 @@ func newEdge(s *Server, link gateway.GatewayLink, id string) *edge {
 	if router == nil {
 		router = gateway.DefaultRouter{}
 	}
-	e := &edge{s: s, link: link, id: id, boot: boot, router: router, calls: make(map[string]*edgeCall)}
+	e := &edge{s: s, link: link, id: id, boot: boot, router: router, calls: make(map[string]*edgeCall),
+		responders: s.cfg.buildEdgeResponders()}
+	e.edgeMetric, _ = s.cfg.metrics.(observability.EdgeMetrics)
 	if c := s.cfg.gwAuthCache; c != nil {
 		e.auth = newAuthCache(*c)
 	}
@@ -104,6 +110,7 @@ func newEdge(s *Server, link gateway.GatewayLink, id string) *edge {
 // applyEdgeConfig neutralises the options that belong to the processing tier.
 func applyEdgeConfig(c *serverConfig) {
 	c.registry = nil
+	c.edgeTimeEncoding = c.timeEncoding
 	c.timeEncoding = schema.TimeEncoding{}
 	c.dispatcher.SchemaMode = dispatcher.SchemaModeOff
 	c.dispatcher.SchemaValidate = nil
@@ -297,6 +304,20 @@ func (e *edge) envelope(ctx context.Context, dc *dispatcher.Conn, kind gateway.K
 // forward is the catch-all CALL handler: it hands the call to the processing
 // tier and turns the answer into what the dispatcher writes.
 func (e *edge) forward(ctx context.Context, dc *dispatcher.Conn, action string, payload []byte) ([]byte, error) {
+	if r := e.responders[action]; r != nil {
+		if sess, _ := dc.Owner().(*gwSession); sess != nil {
+			req := EdgeRequest{CPID: sess.ref.CPID, Version: sess.version, Action: action, Payload: payload, Attrs: sess.attrs()}
+			if out, ok := r(ctx, req); ok {
+				if e.edgeMetric != nil {
+					e.edgeMetric.EdgeResponse(string(sess.version), action)
+				}
+				if fn := e.s.cfg.onEdgeResponse; fn != nil {
+					fn(sess.ref.CPID, action)
+				}
+				return out, nil
+			}
+		}
+	}
 	env, ok := e.envelope(ctx, dc, gateway.KindCall, action, payload)
 	if !ok {
 		return nil, ocppj.NewCallError(ocppj.ErrorCodeInternalError, "no gateway session", nil)

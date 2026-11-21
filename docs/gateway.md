@@ -106,6 +106,61 @@ is byte-identical to embedded mode (`TestGateway_WireIdenticalToEmbedded`).
 - **Idempotency key.** `CallRequest.CallID` makes duplicate requests that arrive
   while the first is in flight share its outcome (the charger sees one CALL).
 
+## Edge Heartbeat and per-tenant limits
+
+Both are opt-in options of the gateway (`csms.NewGatewayServer`) and default off;
+`cmd/gocpp-gateway` has flags for them.
+
+**Edge responder.** `csms.WithEdgeHeartbeat()` makes the gateway answer
+`Heartbeat` with its own clock (`{"currentTime": ...}`, RFC 3339 UTC, formatted
+per `WithTimeEncoding`), so the most frequent idle message of a fleet never takes
+the backend hop. `csms.WithEdgeResponder(action, fn)` does the same for any
+action; `fn` returns the CALLRESULT payload, or `false` to forward the CALL as
+usual, so a responder can decide per session from the attributes the backend set
+(`csms.WithEdgeHeartbeat(func(r csms.EdgeRequest) bool { return r.Attrs["boot"] == "accepted" })`
+answers only once the backend accepted the charger's BootNotification). The
+trade-offs are real, which is why it is off by default: the gateway becomes
+action-aware for that action, the request is not validated at the edge, and the
+backend no longer sees those messages (use `csms.WithOnEdgeResponse` and the
+`gocpp_edge_responses_total{version,action}` metric for liveness bookkeeping).
+`gocpp-gateway --edge-heartbeat`.
+
+**Per-tenant limits.** `csms.WithTenantLimits(csms.TenantLimits{...})` limits, per
+tenant, simultaneous sessions and inbound messages per second:
+
+- The tenant is resolved once, at connect: `Resolver(r, cpID)` (a header, a path
+  segment, an id mapping; `csms.TenantFromRequest` adapts the resolvers of
+  `addons/tenant`), else the session attribute `AttrKey` (default `tenant`) that
+  the backend returned from its connect decision. A charger without a tenant
+  belongs to tenant `""` and gets `Default`.
+- **Sessions** (`MaxSessions`) are checked at admission, before the upgrade: an
+  upgrade over the cap is a plain 503 with a jittered `Retry-After`
+  (`RetryAfter`), so nothing is established and torn down, and a charger
+  replacing its own live socket is not counted twice.
+- **Messages** (`MessageRate`, `MessageBurst`) are one token bucket per tenant,
+  summed over its sessions. A message over budget is answered with a CALLERROR
+  (`RejectCode`, default `GenericError`; OCPP has no throttling code) and never
+  reaches a handler or the backend; an over-budget SEND is dropped; the session
+  stays up. The bucket is shared fairly: while it is more than half empty, a
+  session can only use its equal share of the rate, so one noisy charger cannot
+  starve the other chargers of its tenant, and a tenant never consumes
+  another's budget.
+- Metrics: `gocpp_tenant_sessions{tenant}`, `gocpp_tenant_rejected_total{tenant,kind}`
+  (`kind` = `sessions` | `messages`) and `gocpp_accepts_total{result="tenant_limit"}`;
+  the tenant label is bounded by `MaxMetricTenants` (default 100, the rest
+  reported as `other`).
+- On a gateway the check runs at the edge, before the backend hop; an embedded
+  server can use it too. Flags: `--tenant-header`, `--tenant-attr`,
+  `--tenant-max-sessions`, `--tenant-message-rate`, `--tenant-message-burst`.
+
+Overhead, measured with `benchmarks` (`BenchmarkEdgeAndTenant`, one Heartbeat over
+a real WebSocket, pinned to 4 CPUs on a shared host): the tenant check adds no
+allocation (17 allocs/op embedded, 31 split, with and without it) and its time is
+below the run-to-run noise; the edge Heartbeat takes a split round trip from 31
+allocs / 2.4 KB to 19 allocs / 1.8 KB and about 20% off its latency (the
+in-process hop; over a network link the saving is the network round trip).
+`TestGateEdgeAndTenantOverhead` keeps both honest in CI.
+
 ## The gRPC link and the reference binary
 
 `addons/link-grpc` (its own module, so the main module gains no gRPC dependency)
@@ -312,6 +367,5 @@ server against a gateway with a NATS backend) and runs the whole chaos suite.
 
 ## Not yet
 
-An edge Heartbeat responder, per-tenant
-caps (phase 6). Without a registry a gateway numbers its sessions with a local
-counter, so duplicate connections across two gateways are not detected yet.
+Without a registry a gateway numbers its sessions with a local counter, so
+duplicate connections across two gateways are not detected yet.

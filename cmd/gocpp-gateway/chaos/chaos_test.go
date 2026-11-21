@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/coder/websocket"
 	natsd "github.com/nats-io/nats-server/v2/server"
 	"github.com/redis/go-redis/v9"
 	linkgrpc "github.com/shiv3/gocpp/addons/link-grpc"
@@ -728,4 +729,51 @@ func TestChaos_NATSBrokerRestart(t *testing.T) {
 	require.Zero(t, c.disconnects.get())
 	require.Eventually(t, func() bool { return c.heartbeat(ctx) == nil }, 20*time.Second, 200*time.Millisecond)
 	require.True(t, g.ready())
+}
+
+// --edge-heartbeat: the gateway answers Heartbeat itself (the backend never sees
+// it) while other messages still reach the backend.
+func TestChaos_EdgeHeartbeat(t *testing.T) {
+	mr := miniredis.RunT(t)
+	g := startGateway(t, "gw-1", mr.Addr(), "--edge-heartbeat")
+	b := startBackend(t, "b1", mr.Addr(), g.link)
+	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
+	c := newCharger(t, g.ws, "CP_1")
+	ctx, cancel := ctxT(10 * time.Second)
+	defer cancel()
+	for i := 0; i < 20; i++ {
+		require.NoError(t, c.heartbeat(ctx))
+	}
+	require.NoError(t, c.boot(ctx, "x"))
+	require.Zero(t, b.count("HANDLED Heartbeat"))
+	require.Equal(t, 1, b.count("HANDLED BootNotification"))
+}
+
+// Per-tenant session cap at the gateway: the tenant is a request header, the
+// refusal is a 503 before the upgrade, and another tenant is unaffected.
+func TestChaos_TenantSessionCap(t *testing.T) {
+	mr := miniredis.RunT(t)
+	g := startGateway(t, "gw-1", mr.Addr(), "--tenant-header", "X-Tenant", "--tenant-max-sessions", "1")
+	startBackend(t, "b1", mr.Addr(), g.link)
+	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
+	dial := func(id, tenant string) (*websocket.Conn, int, error) {
+		ctx, cancel := ctxT(5 * time.Second)
+		defer cancel()
+		c, resp, err := websocket.Dial(ctx, "ws://"+g.ws+"/ocpp/"+id, &websocket.DialOptions{
+			Subprotocols: []string{"ocpp1.6"}, HTTPHeader: http.Header{"X-Tenant": []string{tenant}}})
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		return c, status, err
+	}
+	c1, _, err := dial("CP_1", "a")
+	require.NoError(t, err)
+	defer func() { _ = c1.CloseNow() }()
+	_, status, err := dial("CP_2", "a")
+	require.Error(t, err)
+	require.Equal(t, http.StatusServiceUnavailable, status)
+	c3, _, err := dial("CP_3", "b")
+	require.NoError(t, err)
+	_ = c3.CloseNow()
 }

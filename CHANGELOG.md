@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Gateway options (phase 6): `csms.WithEdgeHeartbeat` / `WithEdgeResponder` /
+  `WithOnEdgeResponse` (a gateway answers Heartbeat, or any configured action,
+  itself without a backend hop; opt-in) and `csms.WithTenantLimits` (per-tenant
+  session cap checked before the upgrade and a fairly shared per-tenant message
+  rate budget; tenant from a request resolver, a cp id mapping or the session
+  attributes). `dispatcher.Conn.SetInboundGate`, the optional metrics
+  extensions `observability.TenantMetrics` and `EdgeMetrics` (Prometheus and
+  OpenTelemetry), `gocpp-gateway --edge-heartbeat --tenant-*` flags, benchmark
+  `BenchmarkEdgeAndTenant` and gate `TestGateEdgeAndTenantOverhead`.
 - Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
   capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
   from the registered handlers and honoured by `PoolSet` (unhandled actions fall

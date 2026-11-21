@@ -27,6 +27,9 @@ type Conn struct {
 	// session of a handle or message on a processing tier (see GatewaySession).
 	gw *gwSession
 
+	// tenantRelease returns the tenant session slot (WithTenantLimits).
+	tenantRelease func()
+
 	// gone is closed once the server has finished tearing this connection down:
 	// disconnect callback fired and the connection removed from the registry. Nil
 	// for the short-lived wrappers handed to typed handlers, which only wait for
