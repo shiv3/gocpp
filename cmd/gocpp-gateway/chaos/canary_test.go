@@ -212,7 +212,7 @@ func TestChaos_CanaryGuardTripsOnErrors(t *testing.T) {
 func TestChaos_PolicyStoreDownAndInvalidPolicy(t *testing.T) {
 	mr := miniredis.RunT(t)
 	g := startGateway(t, "gw-1", mr.Addr())
-	startPoolBackend(t, "be-d", "", "", g.link)
+	def1 := startPoolBackend(t, "be-d", "", "", g.link)
 	can := startPoolBackend(t, "be-c", "canary", "", g.link)
 	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
 	ctl := controller(t, mr.Addr())
@@ -250,7 +250,9 @@ func TestChaos_PolicyStoreDownAndInvalidPolicy(t *testing.T) {
 	require.Eventually(t, g2.ready, 5*time.Second, 50*time.Millisecond)
 	c2 := newCharger(t, g2.ws, "CP_2")
 	require.NoError(t, hb(t, c2))
-	require.Equal(t, 1, def2.count("HANDLED Heartbeat"))
+	// (Over NATS every backend meets every gateway on the broker, so either default backend may serve it.)
+	require.Equal(t, 1, def1.count("HANDLED Heartbeat be-d CP_2")+def2.count("HANDLED Heartbeat be-d2 CP_2"))
+	require.Zero(t, can.count("CP_2"), "no policy: the canary pool gets nothing")
 	require.Contains(t, metrics(t, g2), "gocpp_gateway_route_policy_missing{")
 	require.Regexp(t, `gocpp_gateway_route_policy_missing\{[^}]*\} 1\n`, metrics(t, g2))
 }
