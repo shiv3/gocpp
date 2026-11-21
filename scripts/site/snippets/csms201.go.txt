@@ -1,0 +1,49 @@
+package main
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/csms"
+	"github.com/shiv3/gocpp/v201"
+	v201client "github.com/shiv3/gocpp/v201/client"
+	v201msg "github.com/shiv3/gocpp/v201/messages"
+	v201p "github.com/shiv3/gocpp/v201/profiles"
+)
+
+func main() {
+	reg := schema.NewRegistry()
+	if err := v201.RegisterSchemas(reg); err != nil { // the official 2.0.1 schemas, embedded
+		log.Fatal(err)
+	}
+	srv := csms.NewServer(
+		csms.WithSubProtocols("ocpp2.0.1"),
+		csms.WithSchemaRegistry(reg),
+		csms.WithLenientSchema(), // reject broken messages, repair common field quirks
+	)
+
+	// Req and Resp are inferred from the message value: no type assertions.
+	err := csms.On(srv, v201p.Heartbeat, func(ctx context.Context, c *csms.Conn, req v201msg.HeartbeatRequest) (v201msg.HeartbeatResponse, error) {
+		return v201msg.HeartbeatResponse{CurrentTime: time.Now()}, nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// CSMS -> charge point: a typed call, sent once the charge point is connected.
+	go func() {
+		time.Sleep(10 * time.Second)
+		conn, ok := srv.Get("CP_1")
+		if !ok {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		resp, err := v201client.NewCSMS(conn).Reset(ctx, v201msg.ResetRequest{Type: "OnIdle"})
+		log.Println(resp.Status, err)
+	}()
+
+	log.Fatal(srv.ListenAndServe(":8080"))
+}
