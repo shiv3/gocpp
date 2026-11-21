@@ -183,9 +183,9 @@ func TestHealthyRolloutAdvancesThroughAllStages(t *testing.T) {
 
 // run drives a rollout whose gateways follow the store immediately, until it
 // finishes or max steps pass.
-func (r *rig) run(max int, every time.Duration) []rollout.Decision {
+func (r *rig) run(limit int, every time.Duration) []rollout.Decision {
 	var out []rollout.Decision
-	for i := 0; i < max && !r.ctl.Finished(); i++ {
+	for i := 0; i < limit && !r.ctl.Finished(); i++ {
 		out = append(out, r.step())
 		r.follow()
 		r.clk.advance(every)
