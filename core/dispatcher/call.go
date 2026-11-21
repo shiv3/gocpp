@@ -34,11 +34,11 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 
 	msgID := ocppj.NewMsgID()
 	ocppj.NotifyMessageID(ctx, msgID)
-	sendPayload, verr := c.validateOutbound(action, "request", reqPayload)
+	sendPayload, verr := c.pipe.ValidateOutbound(ctx, action, "request", reqPayload)
 	if verr != nil {
 		return nil, verr
 	}
-	sendPayload, err = c.transformOutbound(action, "request", sendPayload)
+	sendPayload, err = c.pipe.TransformOutbound(action, "request", sendPayload)
 	if err != nil {
 		return nil, err
 	}
@@ -90,19 +90,10 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 		if res.err != nil {
 			return nil, res.err
 		}
-		respPayload := res.payload
-		if c.cfg.SchemaMode == SchemaModeLenient {
-			out, herr := c.lenientValidate(action, "response", res.payload)
-			if herr != nil {
-				c.maybeSendResultError(msgID, herr)
-				return nil, herr
-			}
-			respPayload = out
-		} else if verr := c.schemaValidationError(action, "response", res.payload); verr != nil {
-			if c.cfg.SchemaMode == SchemaModeStrict {
-				c.maybeSendResultError(msgID, verr)
-				return nil, verr
-			}
+		respPayload, herr := c.pipe.ValidateInbound(ctx, action, "response", res.payload)
+		if herr != nil {
+			c.maybeSendResultError(msgID, herr)
+			return nil, herr
 		}
 		return respPayload, nil
 	case <-c.ctx.Done():

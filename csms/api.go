@@ -14,16 +14,23 @@ func On[Req, Resp any](s *Server, m ocppj.Message[Req, Resp], h func(ctx context
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpHandle, m.Direction); err != nil {
 		return err
 	}
-	s.reg.Register(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) ([]byte, error) {
+	typed := func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
 		var req Req
 		if err := codec.Unmarshal(payload, &req); err != nil {
 			return nil, dispatcher.NewDecodeError(err)
 		}
-		resp, err := h(ctx, &Conn{inner: dc}, req)
+		resp, err := h(ctx, c, req)
 		if err != nil {
 			return nil, err
 		}
 		return codec.Marshal(resp)
+	}
+	// The same closure is kept in a table typed on *Conn so that a processing
+	// tier behind a gateway can run it with a Conn that is not backed by a
+	// dispatcher.Conn (see Server.handler).
+	s.handlers.setCall(m.Action, typed)
+	s.reg.Register(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) ([]byte, error) {
+		return typed(ctx, &Conn{inner: dc}, payload)
 	})
 	return nil
 }
