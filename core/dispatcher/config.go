@@ -142,9 +142,17 @@ type Config struct {
 	// with warm stacks when one is idle (see HandlerPool); nil, the default,
 	// starts a goroutine per message. Share one pool across connections.
 	HandlerPool *HandlerPool
-	Logger      *slog.Logger
-	Metrics     MetricsHook
-	Tracer      observability.Tracer
+	// DeepHandlerStack grows the stack of every goroutine started for an
+	// inbound message to 16 KB before the handler runs. Set it when handlers
+	// are known to go deep (a gateway forwarding each CALL through a link
+	// transport and its encoder): a 2 KB stack that grows as needed is copied
+	// three or four times on the way down, each time with more frames to
+	// adjust, and one copy of an almost empty stack costs a fraction of that.
+	// Leave it off for ordinary handlers, which fit the default.
+	DeepHandlerStack bool
+	Logger           *slog.Logger
+	Metrics          MetricsHook
+	Tracer           observability.Tracer
 	// FrameObserver, when non-nil, sees every raw inbound frame (after read,
 	// including unparsable ones) and every outbound frame (after the write
 	// attempt, with the write error if any). It runs inline on the reader or

@@ -139,6 +139,9 @@ func applyEdgeConfig(c *serverConfig) {
 	if c.dispatcher.HandlerTimeout == 0 {
 		c.dispatcher.HandlerTimeout = defaultGatewayHandlerTimeout
 	}
+	// A gateway's handler is the forward path (pool selection, the link
+	// transport's send path, its encoder): about 10 KB deep.
+	c.dispatcher.DeepHandlerStack = true
 }
 
 // newSession allocates the reference of a session being accepted. With a

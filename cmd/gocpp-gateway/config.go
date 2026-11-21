@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	linkgrpc "github.com/shiv3/gocpp/addons/link-grpc"
 )
 
 // config is the whole configuration of the gateway: flags, each with an
@@ -90,6 +92,7 @@ type config struct {
 
 	LeaseTTL, HeartbeatEvery, ReconcileEvery, ClaimTimeout time.Duration
 	LinkKeepalive                                          time.Duration
+	LinkWriteLinger                                        time.Duration
 }
 
 const envPrefix = "GOCPP_GATEWAY_"
@@ -245,6 +248,7 @@ func parseConfig(args []string) (config, error) {
 	fs.DurationVar(&c.ReconcileEvery, "reconcile-interval", envDur("RECONCILE_INTERVAL", 30*time.Second), "full registry reconcile pass interval")
 	fs.DurationVar(&c.ClaimTimeout, "claim-timeout", envDur("CLAIM_TIMEOUT", 2*time.Second), "registry wait on connect before accepting unclaimed")
 	fs.DurationVar(&c.LinkKeepalive, "link-keepalive", envDur("LINK_KEEPALIVE", 10*time.Second), "HTTP/2 keepalive ping interval on the link (dead backends are detected within about 1.5x)")
+	fs.DurationVar(&c.LinkWriteLinger, "link-write-linger", envDur("LINK_WRITE_LINGER", 0), "let a busy gRPC link stream gather frames for up to this long before writing them to the backend as one batch (saves CPU at high message rates, adds up to this much latency while it applies; a stream whose frames are on average more than half of it apart is never delayed); 0 = off; at most 5ms")
 	fs.StringVar(&c.LogLevel, "log-level", env("LOG_LEVEL", "info"), "debug|info|warn|error")
 	if err := fs.Parse(args); err != nil {
 		return c, err
@@ -275,6 +279,12 @@ func parseConfig(args []string) (config, error) {
 	}
 	if c.ID == "" {
 		return c, fmt.Errorf("--id is required (no hostname)")
+	}
+	if c.LinkWriteLinger < 0 || c.LinkWriteLinger > linkgrpc.MaxWriteLinger {
+		return c, fmt.Errorf("--link-write-linger must be between 0 and %v, not %v", linkgrpc.MaxWriteLinger, c.LinkWriteLinger)
+	}
+	if c.LinkWriteLinger > 0 && c.Link != "grpc" {
+		return c, fmt.Errorf("--link-write-linger applies to the gRPC link only (the NATS client batches its own writes)")
 	}
 	return c, nil
 }

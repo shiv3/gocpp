@@ -62,6 +62,9 @@ func (c *Conn) enqueueInbound(f ocppj.Frame) bool {
 // handlerLoop runs f and then keeps popping queued frames until none is left or
 // the connection ends. It owns one unit of running.
 func (c *Conn) handlerLoop(f ocppj.Frame) {
+	if c.cfg.DeepHandlerStack {
+		growDeepStack()
+	}
 	for {
 		c.runHandler(f)
 		if d := c.inboundDone; d != nil {

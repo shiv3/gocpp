@@ -196,7 +196,7 @@ func serve(args []string) error {
 	default:
 		grpcLink = linkgrpc.NewGateway(linkgrpc.WithRouteObserver(engine),
 			linkgrpc.WithGatewayVersion(cfg.Version), linkgrpc.WithGatewayMetrics(newLinkMetrics(wrapped)),
-			linkgrpc.WithUpstreamWait(cfg.UpstreamWait))
+			linkgrpc.WithUpstreamWait(cfg.UpstreamWait), linkgrpc.WithGatewayWriteLinger(cfg.LinkWriteLinger))
 		link = grpcLink
 	}
 	wrapped.MustRegister(poolCollector{link})

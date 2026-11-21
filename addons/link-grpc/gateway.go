@@ -41,6 +41,7 @@ type Gateway struct {
 	metrics      Metrics
 	helloTimeout time.Duration
 	maxInFlight  int
+	linger       time.Duration
 	gwID         atomic.Value // string: id of the attached csms gateway server
 	boot         string
 	proto        gateway.ProtoRange // link versions spoken (SupportedProto)
@@ -73,6 +74,22 @@ func WithRouteObserver(o gateway.RouteObserver) GatewayOption {
 
 // WithMaxInFlight caps the requests in flight per backend stream (default 4096).
 func WithMaxInFlight(n int) GatewayOption { return func(g *Gateway) { g.maxInFlight = n } }
+
+// WithGatewayWriteLinger makes a busy stream gather frames for up to d before
+// writing them to the backend as one batch, which saves CPU (system calls and
+// wake-ups on both ends) at the price of latency. The default, 0, never delays
+// a write. The linger is adaptive: it applies only while frames follow each
+// other on the stream at intervals of at most d/2 on average (so at least two
+// more are expected within the wait); a stream below that rate writes every
+// frame at once, exactly as without the option. While it applies, a frame
+// waits d/2 on average and d at most, plus timer latency: when the process is
+// otherwise idle, as after the last frame of a burst, the Go runtime may fire a
+// sub-millisecond timer up to about 1 ms late. The wait ends early when a batch
+// is full. d is clamped to [0, MaxWriteLinger]. Each end sets its own
+// direction: see WithBackendWriteLinger for replies.
+func WithGatewayWriteLinger(d time.Duration) GatewayOption {
+	return func(g *Gateway) { g.linger = clampLinger(d) }
+}
 
 // NewGateway returns the gateway end of the link.
 func NewGateway(opts ...GatewayOption) *Gateway {
@@ -270,6 +287,7 @@ func (p *peer) send(f *linkpb.GatewayFrame) error { return p.out.push(f) }
 
 func (p *peer) initSend() {
 	p.out.write = p.stream.Send
+	p.out.linger = p.g.linger
 	p.out.size = func(f *linkpb.GatewayFrame) int { return proto.Size(f) }
 	if slices.Contains(p.info.Caps, gateway.CapBatch) {
 		p.out.batch = func(fs []*linkpb.GatewayFrame) error {
