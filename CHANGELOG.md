@@ -182,6 +182,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Gateway mode: the processing tier runs the connect/disconnect hooks of one charge point's session events one at a time, so a replaced session's disconnect can no longer run after the new session's connect when `SessionClosed(old)` and `SessionOpened(new)` arrive concurrently. A session event still waiting for a backend when the gateway server closes now gives up after the closing bound instead of keeping a goroutine for the pool's hold time.
 - The `ConnectionCount` gauge (`gocpp_connections`) drifted negative when a connection
   was closed twice (a replaced connection is closed by the replacement and by its own
   teardown); the close is now counted once.

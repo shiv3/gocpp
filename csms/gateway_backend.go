@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"net/url"
 	"sync"
@@ -46,6 +47,19 @@ type backend struct {
 
 	mu       sync.Mutex
 	sessions map[string]*gwSession // newest session seen per charge point
+
+	// events serializes the session events of one charge point (striped by id):
+	// observing a session and running the application's connect/disconnect hooks
+	// for it must not interleave with the same for another session of the same
+	// charger, or the old session's disconnect could run after the new one's
+	// connect.
+	events [64]sync.Mutex
+}
+
+func (b *backend) eventLock(cpID string) *sync.Mutex {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(cpID))
+	return &b.events[h.Sum32()%uint32(len(b.events))]
 }
 
 func newBackend(s *Server, link gateway.BackendLink) *backend {
@@ -246,13 +260,18 @@ func (u backendUpstream) Notify(ctx context.Context, env gateway.Envelope) error
 		frame := ocppj.Frame{Type: ocppj.Send, MsgID: env.MsgID, Action: env.Action, Payload: env.Payload}
 		pipe.RunSend(hctx, &frame, run)
 	case gateway.KindSessionOpened:
+		l := u.b.eventLock(env.Session.CPID)
+		l.Lock()
+		defer l.Unlock()
 		sess, displaced := u.b.observe(env.Session, env.Version, env.Open)
 		if displaced != nil {
 			u.b.replaced(displaced, sess)
 		}
 		s.handleConnected(u.b.handle(sess))
 	case gateway.KindSessionClosed:
-
+		l := u.b.eventLock(env.Session.CPID)
+		l.Lock()
+		defer l.Unlock()
 		if !u.b.forget(env.Session) {
 			return nil // stale: a newer session of this charger is known
 		}
