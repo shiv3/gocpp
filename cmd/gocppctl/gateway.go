@@ -30,7 +30,12 @@ func gatewayCmd(ctx context.Context, args []string, out io.Writer) error {
 	var c conn
 	c.flags(fs)
 	var (
-		token     = fs.String("admin-token", os.Getenv("GOCPPCTL_ADMIN_TOKEN"), "bearer token of the gateways' admin API")
+		tokenFile = fs.String("admin-token-file", os.Getenv("GOCPPCTL_ADMIN_TOKEN_FILE"), "file holding the bearer token of the gateways' admin API (or set GOCPPCTL_ADMIN_TOKEN)")
+		adminTLS  = fs.Bool("admin-tls", os.Getenv("GOCPPCTL_ADMIN_TLS") == "true", "reach the gateways' admin API over HTTPS (lease addresses without a scheme mean https)")
+		adminCA   = fs.String("admin-ca", os.Getenv("GOCPPCTL_ADMIN_CA"), "CA file that verifies the admin API servers (implies --admin-tls)")
+		adminCert = fs.String("admin-cert", os.Getenv("GOCPPCTL_ADMIN_CERT"), "client certificate for admin API mTLS")
+		adminKey  = fs.String("admin-key", os.Getenv("GOCPPCTL_ADMIN_KEY"), "client key for admin API mTLS")
+		plainTok  = fs.Bool("admin-insecure-token", false, "send the admin token over plain HTTP even to a non-loopback host (not recommended)")
 		gwID      = fs.String("gateway", "", "gateway id (the lease id, the pod name)")
 		adminAddr = fs.String("admin-addr", "", "admin host:port, instead of the lease label (single gateway)")
 		count     = fs.Int("count", 0, "shed: sessions to close")
@@ -61,7 +66,16 @@ func gatewayCmd(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 	defer closeFn()
-	cl := admin.Client{Token: *token}
+	token, err := secretFromFile(*tokenFile, "GOCPPCTL_ADMIN_TOKEN")
+	if err != nil {
+		return err
+	}
+	cl := admin.Client{Token: token, AllowPlaintextToken: *plainTok}
+	if *adminTLS || *adminCA != "" {
+		if cl.TLS, err = tlsConfig(*adminCA, *adminCert, *adminKey, ""); err != nil {
+			return err
+		}
+	}
 	g := &gwTool{ctx: ctx, reg: reg, cl: cl, out: out, override: *adminAddr}
 	attrMap, err := attrs.m()
 	if err != nil {

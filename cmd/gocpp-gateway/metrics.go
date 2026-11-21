@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/shiv3/gocpp/gateway"
 )
 
 // linkMetrics implements linkgrpc.Metrics (design 5.4: labels pool,
@@ -43,11 +44,13 @@ func (m *linkMetrics) AttachResult(proto uint32, result string) {
 }
 
 func (m *linkMetrics) UpstreamRequest(pool, ver, action, outcome string, d time.Duration) {
+	action = gateway.LabelAction(action) // chargers choose action names: bound the label
 	m.upstream.WithLabelValues(pool, ver, action, outcome).Inc()
 	m.upstreamSec.WithLabelValues(pool, ver, action).Observe(d.Seconds())
 }
 
 func (m *linkMetrics) DownstreamCall(pool, ver, action, outcome string) {
+	action = gateway.LabelAction(action)
 	m.downstream.WithLabelValues(pool, ver, action, outcome).Inc()
 }
 

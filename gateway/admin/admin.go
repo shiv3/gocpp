@@ -108,14 +108,27 @@ type handler struct {
 	o   Options
 }
 
-func (h *handler) auth(next http.Handler) http.Handler {
+func (h *handler) auth(next http.Handler) http.Handler { return RequireToken(h.o.Token, next) }
+
+// RequireToken wraps next so that, when token is not empty, a request must carry
+// "Authorization: Bearer <token>". An empty token disables the check; callers
+// that listen beyond loopback must not pass one (cmd/gocpp-gateway refuses to).
+// The comparison is constant time.
+func RequireToken(token string, next http.Handler) http.Handler {
+	if token == "" {
+		return next
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if h.o.Token != "" {
-			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if subtle.ConstantTimeCompare([]byte(got), []byte(h.o.Token)) != 1 {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
+		const prefix = "Bearer "
+		h := r.Header.Get("Authorization")
+		got, ok := "", len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix)
+		if ok {
+			got = h[len(prefix):]
+		}
+		if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})

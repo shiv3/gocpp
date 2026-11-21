@@ -4,7 +4,7 @@ Two kinds of release, two procedures. This page is the checklist; the semantics
 are in [staged-releases.md](staged-releases.md) (routing policy) and
 [design/gateway.md](design/gateway.md) section 5. Commands are `gocppctl`
 (`--redis-addr` or `GOCPPCTL_REDIS_ADDR` names the session registry; add
-`--admin-token` or `GOCPPCTL_ADMIN_TOKEN` for the `gateway` commands).
+`--admin-token-file` or `GOCPPCTL_ADMIN_TOKEN` for the `gateway` commands).
 
 Promotion is **external**: a person, a pipeline or the optional
 `addons/rollout` controller runs the steps. A gateway never promotes itself; it
@@ -65,7 +65,7 @@ a soft session cap (readiness) and filled by a paced partial drain of the others
 Entry criteria: capacity so that `G-1` gateways hold the fleet, PDB
 `maxUnavailable: 1`, `terminationGracePeriodSeconds` above `--drain-window`,
 `minReadySeconds` so a crash-looping pod stops the rollout; each pod has
-`--advertise-admin $(POD).gateway-link:9100` and an admin token
+`--advertise-admin $(POD).gateway-link:9443` and an admin token
 (`examples/gke-gateway/gateway.yaml`).
 
 1. **Canary pod.** `kubectl patch statefulset gateway -p '{"spec":{"updateStrategy":{"rollingUpdate":{"partition":G-1}}}}'`

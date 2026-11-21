@@ -23,8 +23,8 @@ func newTap(cfg config, reg prometheus.Registerer, log *slog.Logger) (*tap.Expor
 		sinks = append(sinks, s)
 	}
 	if cfg.TapNATS {
-		nc, err := nats.Connect(cfg.NATSURL, nats.Name("gocpp-gateway-tap-"+cfg.ID), nats.ReconnectBufSize(-1),
-			nats.MaxReconnects(-1))
+		nc, err := nats.Connect(cfg.NATSURL, append(natsSecurityOptions(cfg), nats.Name("gocpp-gateway-tap-"+cfg.ID), nats.ReconnectBufSize(-1),
+			nats.MaxReconnects(-1))...)
 		if err != nil {
 			return nil, err
 		}

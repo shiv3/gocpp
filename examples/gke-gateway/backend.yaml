@@ -1,5 +1,12 @@
 # The processing tier: any application built with csms.WithGatewayLink and
 # linkgrpc.NewBackend(linkgrpc.DNSTargets("gateway-link", "9090"), ...).
+#
+# The link is mutual TLS (tls.yaml): the backend presents /link-tls/tls.crt and
+# verifies the gateways against /link-tls/ca.crt under the server name
+# "gateway-link", e.g.
+#   creds := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert},
+#       RootCAs: pool, ServerName: "gateway-link", MinVersion: tls.VersionTLS13})
+#   linkgrpc.WithDialOptions(grpc.WithTransportCredentials(creds))
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,6 +28,12 @@ spec:
           env:
             - {name: GOCPP_POOL, value: default}
             - {name: GOCPP_GATEWAYS, value: "gateway-link:9090"}
+            - {name: GOCPP_LINK_TLS_DIR, value: /link-tls}
+          volumeMounts:
+            - {name: link-tls, mountPath: /link-tls, readOnly: true}
+      volumes:
+        - name: link-tls
+          secret: {secretName: backend-link-tls}
 ---
 # Optional canary: attaches with pool "canary". It receives no inbound work until a
 # gateway router (csms.WithRouter) names the pool; it can issue calls at once.
@@ -43,3 +56,9 @@ spec:
           env:
             - {name: GOCPP_POOL, value: canary}
             - {name: GOCPP_GATEWAYS, value: "gateway-link:9090"}
+            - {name: GOCPP_LINK_TLS_DIR, value: /link-tls}
+          volumeMounts:
+            - {name: link-tls, mountPath: /link-tls, readOnly: true}
+      volumes:
+        - name: link-tls
+          secret: {secretName: backend-link-tls}

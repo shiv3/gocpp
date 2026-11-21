@@ -196,6 +196,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- `gocpp-gateway` secure defaults (pre-merge review of the gateway, not yet released): the gRPC link is
+  served only with mutual TLS (`--link-tls-cert`, `--link-tls-key`, `--link-client-ca`) unless
+  `--link-insecure` is given, which logs a warning; the admin API and pprof moved to their own
+  listener `--admin` (default `127.0.0.1:9101`, a non-loopback address needs a token, pprof is behind the
+  token, optional `--admin-tls-*`), while `/metrics`, `/healthz` and `/readyz` are on the new
+  `--metrics-listen` (default `:9100`); secrets are no longer flags (`--admin-token`, `--redis-password`,
+  `--attr-source-token` are replaced by env variables or `--...-file`); Redis TLS
+  (`--redis-tls*`) and NATS TLS/credentials options were added. `gocppctl` reads tokens and passwords from
+  `GOCPPCTL_ADMIN_TOKEN` / `GOCPPCTL_REDIS_PASSWORD` or `--...-file` flags, has TLS options for the admin API
+  and Redis, and the admin client (`gateway/admin.Client`) refuses to send the token over plain HTTP to a
+  non-loopback host. `examples/gke-gateway` uses mTLS (cert-manager) and docs/gateway.md has a Security section
+  (link, admin, Redis, NATS subject permissions).
 - With `WithInstanceID`, the connection registry's global routes are now recorded
   as epoch-ordered sessions when the registry implements `storage.SessionRegistry`
   (the in-memory registries and `InProcessHub` do): a delayed write from an old
@@ -243,6 +255,9 @@ All notable changes to this project are documented here. The format is based on
   per tenant id ever seen. Tenants with no session, nothing in flight and a refilled
   message bucket are dropped when the table doubles; metric labels stay bounded by
   `MaxMetricTenants`.
+- Gateway admin API: the bearer token is only accepted with the `Bearer ` scheme. Unbounded
+  growth from charger-chosen action names in `PoolSet.Unhandled` and the gateway link metrics: names outside
+  the standard OCPP set (and not advertised by a backend) are counted as `other`.
 - Gateway mode: the processing tier runs the connect/disconnect hooks of one charge point's session events one at a time, so a replaced session's disconnect can no longer run after the new session's connect when `SessionClosed(old)` and `SessionOpened(new)` arrive concurrently. A session event still waiting for a backend when the gateway server closes now gives up after the closing bound instead of keeping a goroutine for the pool's hold time.
 - The `ConnectionCount` gauge (`gocpp_connections`) drifted negative when a connection
   was closed twice (a replaced connection is closed by the replacement and by its own

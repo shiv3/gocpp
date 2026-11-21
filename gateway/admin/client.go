@@ -3,9 +3,11 @@ package admin
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -15,6 +17,23 @@ import (
 type Client struct {
 	HTTP  *http.Client // default: 10 s timeout
 	Token string
+	// TLS, when set, is used for HTTPS requests and makes a base without a
+	// scheme (the gateway's lease label is host:port) mean https. Ignored when
+	// HTTP is set.
+	TLS *tls.Config
+	// AllowPlaintextToken lets Token travel over http:// to a non-loopback host.
+	// By default the client refuses: the bearer token would be readable (and the
+	// address comes from a lease label anyone with Redis access can set).
+	AllowPlaintextToken bool
+}
+
+// loopbackHost reports whether host (no port) is a loopback address or "localhost".
+func loopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (c Client) do(ctx context.Context, method, base, path string, body any, out any) error {
@@ -27,13 +46,20 @@ func (c Client) do(ctx context.Context, method, base, path string, body any, out
 		rd = bytes.NewReader(b)
 	}
 	if !strings.Contains(base, "://") {
-		base = "http://" + base
+		if c.TLS != nil {
+			base = "https://" + base
+		} else {
+			base = "http://" + base
+		}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(base, "/")+path, rd)
 	if err != nil {
 		return err
 	}
 	if c.Token != "" {
+		if req.URL.Scheme != "https" && !c.AllowPlaintextToken && !loopbackHost(req.URL.Hostname()) {
+			return fmt.Errorf("refusing to send the admin token over plain HTTP to %s: use TLS (--admin-ca / an https address)", req.URL.Host)
+		}
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 	if body != nil {
@@ -42,6 +68,9 @@ func (c Client) do(ctx context.Context, method, base, path string, body any, out
 	hc := c.HTTP
 	if hc == nil {
 		hc = &http.Client{Timeout: 10 * time.Second}
+		if c.TLS != nil {
+			hc.Transport = &http.Transport{TLSClientConfig: c.TLS}
+		}
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

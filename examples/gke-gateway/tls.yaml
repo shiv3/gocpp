@@ -1,0 +1,74 @@
+# Mutual TLS between the tiers (the gRPC link) and TLS for the admin API, issued
+# by cert-manager from a private CA. The gateway refuses to serve the link
+# without a client CA (--link-client-ca), so a backend needs a certificate signed
+# by this CA to attach; without it nobody on the cluster network can read the
+# charge point traffic or send commands.
+#
+# Replace the namespace-wide issuer with your own CA if you have one.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: gocpp-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gocpp-link-ca
+spec:
+  isCA: true
+  commonName: gocpp-link-ca
+  secretName: gocpp-link-ca
+  privateKey: {algorithm: ECDSA, size: 256}
+  issuerRef: {name: gocpp-selfsigned, kind: Issuer}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: gocpp-link-ca
+spec:
+  ca: {secretName: gocpp-link-ca}
+---
+# The gateway pods' server certificate for the link and the admin API. Backends
+# dial "gateway-link" (headless: one A record per pod) and verify this name;
+# gocppctl reaches a pod as <pod>.gateway-link.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gateway-link
+spec:
+  secretName: gateway-link-tls
+  duration: 2160h
+  renewBefore: 360h
+  privateKey: {algorithm: ECDSA, size: 256}
+  usages: [server auth, client auth]
+  dnsNames:
+    - gateway-link
+    - "*.gateway-link"
+  issuerRef: {name: gocpp-link-ca, kind: Issuer}
+---
+# The backends' client certificate (what the gateway's --link-client-ca checks).
+# Mount the Secret in every backend and gocppctl uses the same CA to verify the
+# gateways' admin API.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: backend-link
+spec:
+  secretName: backend-link-tls
+  duration: 2160h
+  renewBefore: 360h
+  privateKey: {algorithm: ECDSA, size: 256}
+  usages: [client auth]
+  commonName: gocpp-backend
+  issuerRef: {name: gocpp-link-ca, kind: Issuer}
+---
+# Admin API bearer token: kubectl create secret generic gateway-admin --from-literal=token="$(openssl rand -hex 32)"
+# (not a manifest: do not commit a token).
+#
+# Without cert-manager: create the same Secrets yourself, e.g.
+#   kubectl create secret generic gateway-link-tls --from-file=tls.crt --from-file=tls.key --from-file=ca.crt
+#   kubectl create secret generic backend-link-tls  --from-file=tls.crt --from-file=tls.key --from-file=ca.crt
+# with certificates signed by one CA; the gateway needs ca.crt to verify backends,
+# the backends need it to verify the gateway.
