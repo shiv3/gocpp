@@ -22,6 +22,10 @@ func DoCall(ctx context.Context, c *Conn, action string, reqPayload []byte) ([]b
 
 // call implements DoCall. With acquire false the caller already owns the slot.
 func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acquire bool) (_ []byte, err error) {
+	if !c.beginCall() {
+		return nil, ocppj.ErrGatewayDraining
+	}
+	defer c.endCall()
 	start := time.Now()
 	c.cfg.Metrics.CallStarted(action, "outbound")
 	defer func() {

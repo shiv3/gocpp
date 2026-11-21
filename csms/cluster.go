@@ -137,6 +137,8 @@ var remoteSentinels = map[string]error{
 	"call_cancelled":     ocppj.ErrCallCancelled,
 	"queue_full":         ocppj.ErrQueueFull,
 	"concurrent_limit":   ocppj.ErrConcurrentCallLimit,
+	"gateway_draining":   ocppj.ErrGatewayDraining,
+	"drain_timeout":      ocppj.ErrDrainTimeout,
 }
 
 func encodeRemoteError(err error) *remoteError {

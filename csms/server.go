@@ -45,6 +45,13 @@ type Server struct {
 	// stopping is set when Shutdown or Close begins; new upgrades are refused
 	// from then on.
 	stopping atomic.Bool
+
+	// draining is set by Drain: new upgrades are refused. drainRetryAfter is the
+	// base of their Retry-After; acceptRejected and drainRejected count refusals.
+	draining        atomic.Bool
+	drainRetryAfter atomic.Int64
+	acceptRejected  atomic.Uint64
+	drainRejected   atomic.Uint64
 }
 
 // NewServer creates a CSMS server.
@@ -120,6 +127,18 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	if s.stopping.Load() || s.ctx.Err() != nil {
 		w.Header().Set("Retry-After", "5")
 		http.Error(w, "server shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if s.draining.Load() {
+		s.drainRejected.Add(1)
+		w.Header().Set("Retry-After", jitterRetryAfter(time.Duration(s.drainRetryAfter.Load())))
+		http.Error(w, "server draining", http.StatusServiceUnavailable)
+		return
+	}
+	if lim := s.cfg.acceptLimit; lim != nil && !lim.allow(time.Now()) {
+		s.acceptRejected.Add(1)
+		w.Header().Set("Retry-After", jitterRetryAfter(max(lim.refillTime(), time.Second)))
+		http.Error(w, "too many connection attempts", http.StatusServiceUnavailable)
 		return
 	}
 	cpID, ok := s.extractCPID(r)

@@ -34,6 +34,7 @@ type serverConfig struct {
 
 	globalConcurrencyLimit int
 	maxConnections         int
+	acceptLimit            *tokenBucket
 	ioReadBuffer           int
 	ioWriteBuffer          int
 
