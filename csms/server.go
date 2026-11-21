@@ -3,6 +3,7 @@ package csms
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -50,6 +51,9 @@ type Server struct {
 	// base of their Retry-After; acceptRejected and drainRejected count refusals.
 	draining        atomic.Bool
 	drainActive     atomic.Bool
+	partialDrain    atomic.Bool
+	softMax         atomic.Int64
+	sessMetrics     observability.SessionMetrics
 	drainSt         *drainState
 	drainRetryAfter atomic.Int64
 	acceptRejected  atomic.Uint64
@@ -103,6 +107,8 @@ func NewServer(opts ...Option) *Server {
 		cancel:  cancel,
 		drainSt: &drainState{},
 	}
+	s.softMax.Store(int64(cfg.softMax))
+	s.sessMetrics, _ = cfg.metrics.(observability.SessionMetrics)
 	s.initSessions()
 	if s.clustered() {
 		go s.sessions.run(ctx)
@@ -129,28 +135,33 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// connect that is closed immediately.
 	if s.stopping.Load() || s.ctx.Err() != nil {
 		w.Header().Set("Retry-After", "5")
+		s.upgradeResult("shutting_down")
 		http.Error(w, "server shutting down", http.StatusServiceUnavailable)
 		return
 	}
 	if s.draining.Load() {
 		s.drainRejected.Add(1)
 		w.Header().Set("Retry-After", jitterRetryAfter(time.Duration(s.drainRetryAfter.Load())))
+		s.upgradeResult("draining")
 		http.Error(w, "server draining", http.StatusServiceUnavailable)
 		return
 	}
 	if lim := s.cfg.acceptLimit; lim != nil && !lim.allow(time.Now()) {
 		s.acceptRejected.Add(1)
 		w.Header().Set("Retry-After", jitterRetryAfter(max(lim.refillTime(), time.Second)))
+		s.upgradeResult("rate_limited")
 		http.Error(w, "too many connection attempts", http.StatusServiceUnavailable)
 		return
 	}
 	cpID, ok := s.extractCPID(r)
 	if !ok {
+		s.upgradeResult("bad_request")
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
 		return
 	}
 	id, err := s.cfg.auth.Authenticate(r, cpID)
 	if err != nil {
+		s.upgradeResult("auth_rejected")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -158,15 +169,18 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		cpID = id.CPID
 	}
 	if !validCPID(cpID) {
+		s.upgradeResult("bad_request")
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
 		return
 	}
 	if s.cfg.duplicatePolicy == DuplicatePolicyRejectNew && s.hasConn(cpID) {
+		s.upgradeResult("bad_request")
 		http.Error(w, "duplicate charge point id", http.StatusConflict)
 		return
 	}
 
 	if s.cfg.checkOrigin != nil && !s.cfg.checkOrigin(r) {
+		s.upgradeResult("bad_request")
 		http.Error(w, "forbidden origin", http.StatusForbidden)
 		return
 	}
@@ -189,6 +203,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	res, release, ok := s.reserveSlot(cpID)
 	if !ok {
 		w.Header().Set("Retry-After", "30")
+		s.upgradeResult("full")
 		http.Error(w, "too many connections", http.StatusServiceUnavailable)
 		return
 	}
@@ -237,6 +252,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Subprotocol() == "" {
+		s.upgradeResult("subprotocol")
 		_ = c.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return
 	}
@@ -264,7 +280,9 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		dconn.SetAttachment(&sessionRef{s: sess, srv: s})
 	case s.cfg.sessionAttrs != nil:
 		// Not clustered (or unclaimed): attributes still travel with the connection.
-		dconn.SetAttachment(&sessionRef{s: storage.Session{CPID: cpID, ConnectedAt: time.Now(), Attrs: attrs}, srv: s})
+		local := storage.Session{CPID: cpID, ConnectedAt: time.Now()}
+		local.Meta, _ = storage.MergeAttrs(nil, attrs)
+		dconn.SetAttachment(&sessionRef{s: local, srv: s})
 	}
 	conn := &Conn{inner: dconn, gone: make(chan struct{})}
 	// gone is closed by connCleanup once the connection is registered; every
@@ -295,6 +313,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		dconn.Abort(ocppj.ErrConnClosed)
 	}
 	registeredSession = true
+	s.upgradeResult("ok")
 	s.handleConnected(conn)
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
 	dconn.ReleaseInbound()
@@ -316,8 +335,10 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 func (s *Server) connCleanup(cpID string, conn *Conn) {
 	defer close(conn.gone)
 	dconn := conn.inner
-	s.handleDisconnected(conn, context.Cause(dconn.Context()))
+	cause := context.Cause(dconn.Context())
+	s.handleDisconnected(conn, cause)
 	_ = dconn.Close(nil)
+	s.sessionClosed(dconn, cause)
 	if s.removeConn(cpID, conn) {
 		_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
 		// Compare-and-delete on the epoch: a newer connection of the same id,
@@ -577,4 +598,34 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *Server) upgradeResult(result string) {
+	if s.sessMetrics != nil {
+		s.sessMetrics.UpgradeResult(result)
+	}
+}
+
+// sessionClosed reports a finished connection to SessionMetrics. The close code
+// is the one the server sent for its own causes; a drop is reported as 1006.
+func (s *Server) sessionClosed(c *dispatcher.Conn, cause error) {
+	if s.sessMetrics == nil {
+		return
+	}
+	code, label := "1006", "other"
+	switch {
+	case errors.Is(cause, ocppj.ErrGatewayDraining):
+		code, label = "1012", "drain"
+	case errors.Is(cause, ocppj.ErrDrainTimeout):
+		code, label = "1012", "drain_timeout"
+	case errors.Is(cause, ocppj.ErrConnReplaced):
+		code, label = "1008", "replaced"
+	case errors.Is(cause, ocppj.ErrConnClosedByServer):
+		code, label = "1000", "server_close"
+	case errors.Is(cause, ocppj.ErrConnDropped):
+		label = "dropped"
+	case cause == nil || errors.Is(cause, ocppj.ErrConnClosed):
+		code, label = "1000", "other"
+	}
+	s.sessMetrics.SessionClosed(string(c.Version()), time.Since(c.Stats().ConnectedAt), code, label)
 }

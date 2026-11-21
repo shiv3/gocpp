@@ -39,14 +39,22 @@ All notable changes to this project are documented here. The format is based on
   at the end of the window the rest are closed with `ocppj.ErrDrainTimeout`.
   `dispatcher.Conn.TryDrain` / `Quiesce` / `ForceDrain` / `Draining` are the
   per-connection primitives.
-- Session attributes and release: `storage.Session` gains `Attrs`, `GatewayVersion`,
-  `GatewayLabel` (and `GatewayInfo` `Version`, `Label`); `SessionRegistry.SetAttrs`
-  (compare-and-set on the epoch); `csms.SessionConfig.Version/Label`,
-  `csms.WithSessionAttributes`, `Conn.Attrs/SetAttrs`, `Server.SetSessionAttrs`.
-  Lookups return them (memory and Redis).
-- Targeted drain for rollouts: `DrainOptions.CPIDs/Attrs/Select/Count/Fraction`
-  close only the selected sessions (idle first, paced, 1012) while the server keeps
-  accepting; `Server.DrainStatus` reports progress.
+- Session attributes and gateway labels (aligned with docs/design/gateway.md section 5):
+  attributes live in `storage.Session.Meta` under the reserved prefix `attr.`
+  (`Session.Attrs()`, `storage.MergeAttrs`; `route.` is reserved for gateway routing
+  decisions), `SessionRegistry.SetAttrs` merges (empty value deletes) with a compare
+  on the epoch, `Session.GatewayVersion`, `GatewayInfo.Labels` stored in the lease
+  (`version`, `policy_rev`, ...; memory and Redis), `csms.SessionConfig.Version/Labels`,
+  `Server.SetGatewayLabel`, `csms.WithSessionAttributes`, `Conn.Attrs/SetAttrs`
+  (1 KiB cap, `ErrAttrsTooLarge`), `Server.SetSessionAttrs`.
+- Targeted drain for rollouts: `DrainOptions.CPIDs/Attrs/Select/Filter/Max/Fraction/
+  RefuseDuring` close only the selected sessions (idle first, paced, 1012) while the
+  server keeps serving (lease stays `serving`, `ReadyHandler` not-ready meanwhile);
+  `Server.DrainStatus` reports progress.
+- `csms.WithSoftMaxConnections` / `Server.SetSoftMaxConnections`: `ReadyHandler`
+  reports not-ready at or above the soft cap; upgrades and sessions are unaffected.
+- `observability.SessionMetrics` (Prometheus and OTel): session duration, closes by
+  code and cause, upgrade results.
 - `csms.WithAcceptRateLimit(rate, burst)` (token bucket in front of the upgrade,
   `503` + jittered `Retry-After`), `csms.RateLimitListener` (shed connections at TCP
   accept, before TLS), `Server.AdmissionStats`.

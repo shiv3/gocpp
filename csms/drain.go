@@ -58,14 +58,23 @@ type DrainOptions struct {
 	//
 	// CPIDs limits the drain to these charge point ids, Attrs to sessions whose
 	// attributes equal all of these pairs (see WithSessionAttributes), Select to
-	// sessions it returns true for (all three must hold). Count and Fraction (0 to
-	// 1) then take at most that many, or that share, of the matching sessions, in
-	// a stable pseudo-random order by id so repeated calls pick the same ones first.
-	CPIDs    []string
-	Attrs    map[string]string
-	Select   func(storage.Session) bool
-	Count    int
-	Fraction float64
+	// sessions whose registry record it accepts, Filter to connections it accepts
+	// (all must hold). Max and Fraction (0 to 1) then take at most that many, or
+	// that share, of the matching sessions, in a stable pseudo-random order by id
+	// so repeated calls pick the same ones first. Max > 0 alone makes the drain
+	// partial ("close at most Max sessions, idle first, paced, then return").
+	//
+	// During a partial drain the lease stays "serving" and upgrades are still
+	// accepted, but ReadyHandler reports not-ready so a load balancer does not
+	// refill the process while it sheds; set RefuseDuring to also answer new
+	// upgrades with 503.
+	CPIDs        []string
+	Attrs        map[string]string
+	Select       func(storage.Session) bool
+	Filter       func(*Conn) bool
+	Max          int
+	Fraction     float64
+	RefuseDuring bool
 	// OnProgress, if set, is called about once a second and when the drain ends.
 	OnProgress func(DrainProgress)
 }
@@ -83,7 +92,7 @@ type DrainProgress struct {
 }
 
 func (o DrainOptions) partial() bool {
-	return len(o.CPIDs) > 0 || len(o.Attrs) > 0 || o.Select != nil || o.Count > 0 || o.Fraction > 0
+	return len(o.CPIDs) > 0 || len(o.Attrs) > 0 || o.Select != nil || o.Filter != nil || o.Max > 0 || o.Fraction > 0
 }
 
 // DrainStatus is the state of the current or last drain, for metrics and rollout
@@ -158,8 +167,9 @@ func (s *Server) selectSessions(opts DrainOptions) []*Conn {
 			sess.CPID = c.ID()
 		}
 		match := true
+		have := sess.Attrs()
 		for k, v := range opts.Attrs {
-			if got, ok := sess.Attrs[k]; !ok || got != v {
+			if got, ok := have[k]; !ok || got != v {
 				match = false
 				break
 			}
@@ -167,18 +177,21 @@ func (s *Server) selectSessions(opts DrainOptions) []*Conn {
 		if match && opts.Select != nil && !opts.Select(sess) {
 			match = false
 		}
+		if match && opts.Filter != nil && !opts.Filter(c) {
+			match = false
+		}
 		if match {
 			out = append(out, c)
 		}
 	}
-	if opts.Count > 0 || opts.Fraction > 0 {
+	if opts.Max > 0 || opts.Fraction > 0 {
 		sort.Slice(out, func(i, j int) bool { return idHash(out[i].ID()) < idHash(out[j].ID()) })
 		n := len(out)
 		if opts.Fraction > 0 {
 			n = min(n, int(math.Ceil(opts.Fraction*float64(len(out)))))
 		}
-		if opts.Count > 0 {
-			n = min(n, opts.Count)
+		if opts.Max > 0 {
+			n = min(n, opts.Max)
 		}
 		out = out[:n]
 	}
@@ -213,12 +226,20 @@ func (o DrainOptions) withDefaults(sessions int) DrainOptions {
 // while it is true so the load balancer stops sending upgrades.
 func (s *Server) Draining() bool { return s.draining.Load() }
 
-// ReadyHandler returns a readiness handler: 200 while the server accepts new
-// connections, 503 once Drain or Shutdown has begun.
+// ReadyHandler returns a readiness handler: 200 while the server wants new
+// connections, 503 once Drain or Shutdown has begun, while a partial drain runs,
+// and while the number of sessions is at or above the soft cap (see
+// WithSoftMaxConnections). Established sessions are never affected by readiness;
+// the soft cap does not refuse upgrades, it only asks the load balancer to stop
+// sending more.
 func (s *Server) ReadyHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if s.draining.Load() || s.stopping.Load() || s.ctx.Err() != nil {
+		switch {
+		case s.draining.Load() || s.partialDrain.Load() || s.stopping.Load() || s.ctx.Err() != nil:
 			http.Error(w, "draining", http.StatusServiceUnavailable)
+			return
+		case s.overSoftMax():
+			http.Error(w, "at soft connection limit", http.StatusServiceUnavailable)
 			return
 		}
 		_, _ = w.Write([]byte("ok"))
@@ -270,10 +291,17 @@ func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 	defer s.drainActive.Store(false)
 	if !partial {
 		s.draining.Store(true)
+	} else {
+		s.partialDrain.Store(true)
+		defer s.partialDrain.Store(false)
+		if opts.RefuseDuring {
+			s.draining.Store(true)
+			defer s.draining.Store(false)
+		}
 	}
 	conns := s.selectSessions(opts)
 	opts = opts.withDefaults(len(conns))
-	if !partial {
+	if !partial || opts.RefuseDuring {
 		s.drainRetryAfter.Store(int64(opts.RetryAfter))
 	}
 	targets := make([]drainTarget, len(conns))
@@ -528,4 +556,26 @@ func (l *limitListener) Accept() (net.Conn, error) {
 		}
 		_ = c.Close()
 	}
+}
+
+// WithSoftMaxConnections makes ReadyHandler report not-ready at or above n
+// sessions, while upgrades are still accepted up to WithMaxConnections and
+// existing sessions are kept. A canary gateway uses it to fill only its share of
+// the fleet. n <= 0 removes the cap; change it at runtime with
+// SetSoftMaxConnections.
+func WithSoftMaxConnections(n int) Option {
+	return optionFunc(func(c *serverConfig) { c.softMax = n })
+}
+
+// SetSoftMaxConnections changes the soft cap at runtime (0 removes it).
+func (s *Server) SetSoftMaxConnections(n int) { s.softMax.Store(int64(n)) }
+
+func (s *Server) overSoftMax() bool {
+	n := s.softMax.Load()
+	if n <= 0 {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return int64(len(s.conns)+s.reserved) >= n
 }

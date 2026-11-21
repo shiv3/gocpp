@@ -76,16 +76,48 @@ srv := csms.NewServer(
 // move a tenth of site "s2" at 5 sessions per second
 err := srv.Drain(ctx, csms.DrainOptions{
     Attrs: map[string]string{"site": "s2"}, Fraction: 0.1, Rate: 5, Window: 10 * time.Minute})
+// or: close at most 50 sessions of canary-labelled chargers
+err = srv.Drain(ctx, csms.DrainOptions{Max: 50, Attrs: map[string]string{"label.canary": "1"}, Rate: 5})
 st := srv.DrainStatus() // Total, Closed, Forced, Remaining, Rate, Elapsed
 ```
 
-Selectors: `CPIDs`, `Attrs` (all pairs equal), `Select` (any predicate on
-`storage.Session`), then `Count` / `Fraction` pick a stable subset by id hash.
-Attributes are set at connect (`WithSessionAttributes`) and can be replaced later
-(`Conn.SetAttrs`, `Server.SetSessionAttrs`) when they become known, such as the
-firmware version from BootNotification. With a session registry they are stored in
-the record together with the owning gateway's `Version` and `Label`, so other
-processes see them in `Lookup`.
+Selectors: `CPIDs`, `Attrs` (all pairs equal), `Select` (predicate on the
+registry record), `Filter` (predicate on the `*Conn`), then `Max` / `Fraction` pick
+a stable subset by id hash. During a partial drain the lease stays `serving` and
+upgrades are accepted, but `ReadyHandler` reports not-ready so the load balancer
+does not refill the process (`RefuseDuring` also answers upgrades with 503).
+
+**Attributes.** Set at connect (`WithSessionAttributes`) and updated later with
+`Conn.SetAttrs` / `Server.SetSessionAttrs` when they become known (firmware
+from BootNotification). `SetAttrs` *merges*: a key replaces its value, an empty
+value deletes the key, other keys stay; the total size is capped at 1 KiB
+(`ErrAttrsTooLarge`). In the registry record they are `Session.Meta` keys with the
+reserved prefix `attr.` (`Session.Attrs()` returns them without it); the prefix
+`route.` is reserved for routing decisions written by a gateway (`route.pool`).
+Attribute keys starting with `gocpp.` are interpreted by a gateway (`gocpp.busy`),
+not by this library. The record also has `GatewayVersion`; the lease
+(`SessionRegistry.Gateways`) carries `Labels`: `version` from
+`SessionConfig.Version`, your own via `SessionConfig.Labels` / `Server.SetGatewayLabel`,
+and `policy_rev` (reserved: the routing policy revision a gateway has applied).
+
+## Soft connection cap
+
+`WithSoftMaxConnections(n)` / `Server.SetSoftMaxConnections(n)`: at or above n
+sessions `ReadyHandler` answers 503 so the load balancer stops sending more, but
+upgrades are still accepted (up to `WithMaxConnections`) and existing sessions are
+never touched. A canary process uses it to fill only its share of the fleet.
+
+## Metrics
+
+A `Metrics` implementation that also implements `observability.SessionMetrics`
+(the Prometheus and OpenTelemetry adapters do) receives, for canary comparison:
+`gocpp_session_duration_seconds{version}` (histogram at close),
+`gocpp_closes_total{version,code,cause}` (code `1000`/`1008`/`1012`/`1006`; cause
+`server_close`, `replaced`, `drain`, `drain_timeout`, `dropped`, `other`) and
+`gocpp_accepts_total{result}` (`ok`, `rate_limited`, `draining`, `shutting_down`,
+`full`, `auth_rejected`, `bad_request`, `subprotocol`). Add `gateway_id` /
+`gateway_version` constant labels with `prometheus.WrapRegistererWith`. TLS
+handshake failures happen before the handler and are not visible here.
 
 ## Admission control
 

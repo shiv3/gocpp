@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -24,17 +25,73 @@ type Session struct {
 	// Version is the negotiated OCPP version.
 	Version     string
 	ConnectedAt time.Time
-	// GatewayVersion and GatewayLabel describe the owning process (release
-	// version, canary label), copied from it at Claim so lookups can tell which
-	// release holds a charge point.
-	GatewayVersion, GatewayLabel string
-	// Attrs are selectable attributes of the charge point (site, vendor, model,
-	// firmware, tenant, ...) used by rollout tooling to pick sessions. Set at
-	// connect and replaceable later with SetAttrs.
-	Attrs map[string]string
+	// GatewayVersion is the release version of the owning process, copied from
+	// its lease label "version" at Claim so a lookup tells which release holds a
+	// charge point.
+	GatewayVersion string
 	// Meta carries optional connection details (remote address, selected
-	// headers, ...). The registry stores it opaquely.
+	// headers, ...) as strings. The registry stores it opaquely, except that two
+	// key prefixes are reserved:
+	//
+	//   attr.<key>  a session attribute (site, vendor, model, firmware, tenant,
+	//               label.<name>, ...): a copy kept for operators and rollout
+	//               tools, set from WithSessionAttributes / SetAttrs. See
+	//               Session.Attrs.
+	//   route.<key> routing decisions written by a gateway, currently route.pool.
+	//               Not interpreted by the registry or the CSMS server.
+	//
+	// Attribute keys with the prefix "gocpp." are interpreted by a gateway
+	// (gocpp.busy holds a session's routing while a transaction runs); they are
+	// stored like any other.
 	Meta map[string]string
+}
+
+// Reserved prefixes of Session.Meta keys.
+const (
+	AttrPrefix  = "attr."
+	RoutePrefix = "route."
+	// MaxAttrBytes caps the total size of keys and values of one session's
+	// attributes.
+	MaxAttrBytes = 1024
+)
+
+// Attrs returns the session attributes (Meta keys with the "attr." prefix, prefix
+// removed). It returns nil when there are none.
+func (s Session) Attrs() map[string]string {
+	var out map[string]string
+	for k, v := range s.Meta {
+		if strings.HasPrefix(k, AttrPrefix) {
+			if out == nil {
+				out = make(map[string]string)
+			}
+			out[k[len(AttrPrefix):]] = v
+		}
+	}
+	return out
+}
+
+// MergeAttrs applies delta to the attributes in meta, in place semantics on a
+// copy: a key in delta replaces the attribute, and an empty value deletes it. It
+// returns the new Meta, and false if the attributes would exceed MaxAttrBytes.
+func MergeAttrs(meta, delta map[string]string) (map[string]string, bool) {
+	out := make(map[string]string, len(meta)+len(delta))
+	for k, v := range meta {
+		out[k] = v
+	}
+	for k, v := range delta {
+		if v == "" {
+			delete(out, AttrPrefix+k)
+		} else {
+			out[AttrPrefix+k] = v
+		}
+	}
+	n := 0
+	for k, v := range out {
+		if strings.HasPrefix(k, AttrPrefix) {
+			n += len(k) - len(AttrPrefix) + len(v)
+		}
+	}
+	return out, n <= MaxAttrBytes
 }
 
 // Gateway lease states.
@@ -51,8 +108,11 @@ type GatewayInfo struct {
 	Address string
 	// State is GatewayServing or GatewayDraining.
 	State string
-	// Version and Label are the process's release version and canary label.
-	Version, Label string
+	// Labels describe the process: "version" (release), and by convention
+	// "policy_rev" (the routing policy revision it has applied), "caps". Labels
+	// are stored in the lease and returned by Gateways, so rollout tooling can
+	// compare gateways and see which revision each runs.
+	Labels map[string]string
 	// Sessions is the number of sessions the process currently holds.
 	Sessions int
 }
@@ -80,8 +140,9 @@ type SessionRegistry interface {
 	// epoch): the caller's socket has been superseded and should be closed.
 	Reassert(ctx context.Context, s Session) (ok bool, err error)
 	// Lookup returns the live session of cpID.
-	// SetAttrs replaces the attributes of the record if it still has this epoch
-	// and reports whether it did.
+	// SetAttrs merges attrs into the attributes of the record (see MergeAttrs: an
+	// empty value deletes a key) if it still has this epoch, and reports whether
+	// it did.
 	SetAttrs(ctx context.Context, cpID string, epoch uint64, attrs map[string]string) (ok bool, err error)
 	Lookup(ctx context.Context, cpID string) (Session, bool, error)
 	// LookupMany returns the live sessions among cpIDs; ids without one are

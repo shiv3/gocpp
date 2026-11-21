@@ -70,16 +70,31 @@ func (s *Server) claimSession(r *http.Request, cpID string, attrs map[string]str
 		return storage.Session{}, false
 	}
 	meta := map[string]string{"remote_addr": r.RemoteAddr}
+	for k, v := range attrs {
+		if v != "" {
+			meta[storage.AttrPrefix+k] = v
+		}
+	}
 	return s.sessions.claim(r.Context(), storage.Session{
-		CPID: cpID, ConnectedAt: time.Now(), Meta: meta, Attrs: attrs,
+		CPID: cpID, ConnectedAt: time.Now(), Meta: meta,
 	}), true
 }
 
-// SetSessionAttrs replaces the attributes of the connected charge point id, in
+// SetGatewayLabel sets (or, with an empty value, removes) a label in this
+// server's lease and renews the lease, so rollout tooling sees it in
+// SessionRegistry.Gateways at once. A no-op without a session registry.
+func (s *Server) SetGatewayLabel(ctx context.Context, key, value string) {
+	if s.sessions != nil {
+		s.sessions.setLabel(ctx, key, value)
+	}
+}
+
+// SetSessionAttrs merges attrs into the attributes of the connected charge point id, in
 // the local session and (for a clustered server) in the registry, so rollout
 // tooling can select it by them. Use it when an attribute becomes known after
 // connect (firmware version from BootNotification, say). It returns
-// ocppj.ErrNotConnected when the charge point is not connected here.
+// ocppj.ErrNotConnected when the charge point is not connected here. See
+// Conn.SetAttrs for the merge rules.
 func (s *Server) SetSessionAttrs(ctx context.Context, id string, attrs map[string]string) error {
 	c, ok := s.Get(id)
 	if !ok {
