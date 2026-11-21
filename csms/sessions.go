@@ -17,6 +17,9 @@ type SessionConfig struct {
 	// GatewayID names this process in the registry. Default: WithInstanceID, else
 	// a random id (fine for a registry that is not shared).
 	GatewayID string
+	// Version and Label identify this process's release and canary group in the
+	// registry (informational; copied into every session and the lease).
+	Version, Label string
 	// Address is informational: where other processes can reach this one.
 	Address string
 	// LeaseTTL is how long the gateway lease lives without a heartbeat; sessions
@@ -100,6 +103,7 @@ func (m *sessionManager) info() storage.GatewayInfo {
 	}
 	return storage.GatewayInfo{
 		ID: m.cfg.GatewayID, Boot: m.boot, Address: m.cfg.Address, State: state,
+		Version: m.cfg.Version, Label: m.cfg.Label,
 		Sessions: len(m.holders()),
 	}
 }
@@ -168,6 +172,7 @@ func (m *sessionManager) run(ctx context.Context) {
 // (unclaimed): the connection is served and the reconcile loop claims it later.
 func (m *sessionManager) claim(ctx context.Context, s storage.Session) storage.Session {
 	s.GatewayID, s.Boot, s.Epoch = m.cfg.GatewayID, m.boot, 0
+	s.GatewayVersion, s.GatewayLabel = m.cfg.Version, m.cfg.Label
 	m.waitLease(ctx)
 	cctx, cancel := context.WithTimeout(ctx, m.cfg.ClaimTimeout)
 	defer cancel()

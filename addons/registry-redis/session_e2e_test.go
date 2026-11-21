@@ -37,6 +37,7 @@ func TestServersShareRoutesThroughRedis(t *testing.T) {
 			return c
 		}
 		old := dial(tsA)
+		require.Eventually(t, func() bool { _, ok := a.Get("CP_1"); return ok }, 2*time.Second, 5*time.Millisecond)
 		conn, ok := a.Get("CP_1")
 		require.True(t, ok)
 		s1, _ := conn.Session()

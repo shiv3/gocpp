@@ -58,3 +58,15 @@ Output is deterministic: `make codegen && git diff --exit-code` must stay clean.
 `core/storage`, `core/auth`, `core/observability` define interfaces with in-memory / NoOp
 defaults, wired into the CSMS via options. Real adapters (Redis/NATS/Postgres) are
 post-v1.0; the interfaces are the frozen candidates.
+
+## Sessions across instances, and deploys
+
+A server that takes part in clustering (`WithInstanceID` or `WithSessionRegistry`)
+records each connection in a `storage.SessionRegistry` under a registry-assigned
+epoch: it claims the session before it accepts the WebSocket upgrade, releases it
+by compare-and-delete on the epoch when the connection ends, keeps a per-process
+lease, and runs a reconcile loop that closes sockets superseded elsewhere. See
+[clustering](clustering.md). `Server.Drain` and the accept rate limiters move
+charge points off a process at a controlled pace for deploys; see
+[draining](draining.md). Both work in a single process and are independent of any
+gateway topology.

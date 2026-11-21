@@ -29,6 +29,30 @@ All notable changes to this project are documented here. The format is based on
   re-asserts lost records. `csms.Conn.Session()` returns the record.
   `dispatcher.Conn.SetAttachment/Attachment`.
 - `addons/registry-redis`: `storage.SessionRegistry` on Redis with Lua scripts.
+- `csms.Server.Drain(ctx, DrainOptions)`: moves every charge point off a server
+  without a reconnect storm. New upgrades get `503` with a jittered
+  `Retry-After` (`Server.Draining`, `Server.ReadyHandler` for readiness), sessions
+  are closed at a fixed rate (default sessions / (0.9 x window), window 5 min),
+  idle first, with close code 1012 (service restart) and cause
+  `ocppj.ErrGatewayDraining`; a busy session stops taking new calls (they fail
+  unsent with `ErrGatewayDraining`) and is closed when idle or after its grace;
+  at the end of the window the rest are closed with `ocppj.ErrDrainTimeout`.
+  `dispatcher.Conn.TryDrain` / `Quiesce` / `ForceDrain` / `Draining` are the
+  per-connection primitives.
+- Session attributes and release: `storage.Session` gains `Attrs`, `GatewayVersion`,
+  `GatewayLabel` (and `GatewayInfo` `Version`, `Label`); `SessionRegistry.SetAttrs`
+  (compare-and-set on the epoch); `csms.SessionConfig.Version/Label`,
+  `csms.WithSessionAttributes`, `Conn.Attrs/SetAttrs`, `Server.SetSessionAttrs`.
+  Lookups return them (memory and Redis).
+- Targeted drain for rollouts: `DrainOptions.CPIDs/Attrs/Select/Count/Fraction`
+  close only the selected sessions (idle first, paced, 1012) while the server keeps
+  accepting; `Server.DrainStatus` reports progress.
+- `csms.WithAcceptRateLimit(rate, burst)` (token bucket in front of the upgrade,
+  `503` + jittered `Retry-After`), `csms.RateLimitListener` (shed connections at TCP
+  accept, before TLS), `Server.AdmissionStats`.
+- `transport.SharedTicketKeys` / `RotateSharedTicketKeys`: TLS session ticket keys
+  derived from a shared secret so a charge point reconnecting to another pod
+  resumes its TLS session.
 - `observability.SchemaSoftViolationMetrics` (optional extension of `Metrics`).
   The Prometheus (`gocpp_schema_soft_violations_total{version,action,kind,keyword}`)
   and OpenTelemetry (`gocpp.schema_soft_violations`) adapters implement it, and the

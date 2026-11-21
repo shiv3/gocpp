@@ -28,12 +28,14 @@ type serverConfig struct {
 	cpIDExtractor   CPIDExtractor
 	instanceID      string
 	sessionReg      storage.SessionRegistry
+	sessionAttrs    func(r *http.Request, cpID string) map[string]string
 	sessionCfg      SessionConfig
 	registry        *schema.Registry
 	duplicatePolicy DuplicatePolicy
 
 	globalConcurrencyLimit int
 	maxConnections         int
+	acceptLimit            *tokenBucket
 	ioReadBuffer           int
 	ioWriteBuffer          int
 
@@ -438,6 +440,16 @@ func WithSessionRegistry(reg storage.SessionRegistry, cfg ...SessionConfig) Opti
 			c.sessionCfg = cfg[0]
 		}
 	})
+}
+
+// WithSessionAttributes sets a function that derives the session attributes
+// (site, vendor, model, firmware, tenant, ...) from the upgrade request, e.g. from
+// the authenticated identity or headers. They are stored in the session record
+// and can be matched by DrainOptions.Select and by rollout tooling reading the
+// registry; update them later with Conn.SetAttrs or Server.SetSessionAttrs. The
+// function must not retain the returned map.
+func WithSessionAttributes(fn func(r *http.Request, cpID string) map[string]string) Option {
+	return optionFunc(func(c *serverConfig) { c.sessionAttrs = fn })
 }
 
 // WithConnectionRegistry sets the connection registry (default in-memory).

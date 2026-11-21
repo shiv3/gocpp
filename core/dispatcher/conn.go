@@ -25,6 +25,12 @@ type Conn struct {
 	version ocppj.Version
 	meta    ConnMetadata
 
+	// calls counts outbound calls that have started and not yet returned
+	// (queued for the slot, awaiting a reply). drainBit is set once the
+	// connection is draining: no call may start any more. Both live in one word
+	// so that "idle and mark draining" is a single compare-and-swap.
+	calls atomic.Int64
+
 	// attachment is owner-defined data hung on the connection (see SetAttachment).
 	attachment atomic.Value
 
@@ -256,6 +262,10 @@ func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 // was superseded by a newer one with the same id.
 const replacedCloseReason = "replaced by a new connection with the same ID"
 
+// drainingCloseReason is the WebSocket close reason of a connection closed by a
+// drain (close code 1012, service restart).
+const drainingCloseReason = "gateway draining"
+
 // closedByServerReason is the WebSocket close reason sent when the server
 // closes the connection on purpose.
 const closedByServerReason = "closed by the server"
@@ -274,6 +284,9 @@ func (c *Conn) closeWS(code transport.StatusCode, reason string) {
 func (c *Conn) closeForCause() {
 	cause := context.Cause(c.ctx)
 	switch {
+	case errors.Is(cause, ocppj.ErrGatewayDraining), errors.Is(cause, ocppj.ErrDrainTimeout):
+		c.closeWS(transport.StatusServiceRestart, drainingCloseReason)
+
 	case errors.Is(cause, ocppj.ErrConnReplaced):
 		c.closeWS(transport.StatusPolicyViolation, replacedCloseReason)
 	case errors.Is(cause, ocppj.ErrConnClosedByServer):
@@ -364,6 +377,75 @@ func (c *Conn) SetAttachment(v any) { c.attachment.Store(v) }
 
 // Attachment returns the value stored by SetAttachment, or nil.
 func (c *Conn) Attachment() any { return c.attachment.Load() }
+
+// drainBit marks Conn.calls as draining.
+const drainBit = int64(1) << 62
+
+// beginCall registers an outbound call. It fails once the connection is
+// draining, before anything was written.
+func (c *Conn) beginCall() bool {
+	if c.calls.Add(1)&drainBit != 0 {
+		c.calls.Add(-1)
+		return false
+	}
+	return true
+}
+
+func (c *Conn) endCall() { c.calls.Add(-1) }
+
+// Draining reports whether the connection stopped accepting new outbound calls
+// because a drain began (TryDrain or ForceDrain).
+func (c *Conn) Draining() bool { return c.calls.Load()&drainBit != 0 }
+
+// Quiesce stops the connection from starting new outbound calls (they fail with
+// ocppj.ErrGatewayDraining before anything is written) without closing it, so
+// calls already started can finish. Call TryDrain afterwards to close it once
+// it is idle.
+func (c *Conn) Quiesce() { c.calls.Or(drainBit) }
+
+// TryDrain closes the connection for a drain if it is idle: no inbound handler
+// running or queued, no outbound call queued, in flight or awaiting a reply. It
+// is atomic with respect to new outbound calls, which from then on fail with
+// ocppj.ErrGatewayDraining before anything is written. On success the close
+// frame (1012, service restart) is sent in the background and TryDrain reports
+// true; a busy connection is left untouched and TryDrain reports false. A frame
+// the charge point sends at the same moment may still be lost, as with any
+// disconnect.
+func (c *Conn) TryDrain() bool {
+	c.inMu.Lock()
+	busy := c.running > 0 || len(c.inQ) > 0
+	c.inMu.Unlock()
+	if busy {
+		return false
+	}
+	c.slot.mu.Lock()
+	queued := len(c.slot.q)
+	c.slot.mu.Unlock()
+	if queued > 0 {
+		return false
+	}
+	// Idle means no call counted besides the drain bit itself; swap to exactly
+	// the bit so that no call can slip in between the check and the close.
+	for {
+		v := c.calls.Load()
+		if v&^drainBit != 0 {
+			return false
+		}
+		if c.calls.CompareAndSwap(v, drainBit) {
+			break
+		}
+	}
+	c.Abort(ocppj.ErrGatewayDraining)
+	return true
+}
+
+// ForceDrain closes the connection for a drain whatever it is doing, at the end
+// of the drain window. Calls in flight fail with ocppj.ErrDrainTimeout, which
+// (unlike ErrGatewayDraining) does not prove they were not executed.
+func (c *Conn) ForceDrain() {
+	c.calls.Or(drainBit)
+	c.Abort(ocppj.ErrDrainTimeout)
+}
 
 // Abort cancels the connection with cause without waiting for teardown. The
 // socket is then closed in the background with a close frame matching cause

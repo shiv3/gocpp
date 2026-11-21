@@ -24,6 +24,14 @@ type Session struct {
 	// Version is the negotiated OCPP version.
 	Version     string
 	ConnectedAt time.Time
+	// GatewayVersion and GatewayLabel describe the owning process (release
+	// version, canary label), copied from it at Claim so lookups can tell which
+	// release holds a charge point.
+	GatewayVersion, GatewayLabel string
+	// Attrs are selectable attributes of the charge point (site, vendor, model,
+	// firmware, tenant, ...) used by rollout tooling to pick sessions. Set at
+	// connect and replaceable later with SetAttrs.
+	Attrs map[string]string
 	// Meta carries optional connection details (remote address, selected
 	// headers, ...). The registry stores it opaquely.
 	Meta map[string]string
@@ -43,6 +51,8 @@ type GatewayInfo struct {
 	Address string
 	// State is GatewayServing or GatewayDraining.
 	State string
+	// Version and Label are the process's release version and canary label.
+	Version, Label string
 	// Sessions is the number of sessions the process currently holds.
 	Sessions int
 }
@@ -70,6 +80,9 @@ type SessionRegistry interface {
 	// epoch): the caller's socket has been superseded and should be closed.
 	Reassert(ctx context.Context, s Session) (ok bool, err error)
 	// Lookup returns the live session of cpID.
+	// SetAttrs replaces the attributes of the record if it still has this epoch
+	// and reports whether it did.
+	SetAttrs(ctx context.Context, cpID string, epoch uint64, attrs map[string]string) (ok bool, err error)
 	Lookup(ctx context.Context, cpID string) (Session, bool, error)
 	// LookupMany returns the live sessions among cpIDs; ids without one are
 	// omitted. The result order is unspecified.

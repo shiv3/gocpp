@@ -47,6 +47,11 @@ func (l legacyRegistry) Reassert(ctx context.Context, s storage.Session) (bool, 
 	return true, l.reg.PutGlobal(ctx, s.CPID, l.instanceID)
 }
 
+// SetAttrs does nothing: the legacy table stores only the owner.
+func (legacyRegistry) SetAttrs(context.Context, string, uint64, map[string]string) (bool, error) {
+	return true, nil
+}
+
 func (l legacyRegistry) Lookup(ctx context.Context, cpID string) (storage.Session, bool, error) {
 	owner, ok, err := l.reg.LookupGlobal(ctx, cpID)
 	if err != nil || !ok {

@@ -202,3 +202,28 @@ func TestStaleWriterCannotOverwriteNewerConnection(t *testing.T) {
 		require.False(t, ok)
 	})
 }
+
+func TestAttrsAndGatewayRelease(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		r, _ := newReg(t, b)
+		e, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a", GatewayVersion: "v2", GatewayLabel: "canary",
+			Attrs: map[string]string{"site": "x"}})
+		require.NoError(t, err)
+		require.NoError(t, r.Heartbeat(ctx, storage.GatewayInfo{ID: "A", Boot: "a", Version: "v2", Label: "canary"}, time.Minute))
+		s, found, _ := r.Lookup(ctx, "CP")
+		require.True(t, found)
+		require.Equal(t, map[string]string{"site": "x"}, s.Attrs)
+		require.Equal(t, "v2", s.GatewayVersion)
+		require.Equal(t, "canary", s.GatewayLabel)
+		ok, err := r.SetAttrs(ctx, "CP", e, map[string]string{"site": "y", "fw": "1"})
+		require.NoError(t, err)
+		require.True(t, ok)
+		ok, _ = r.SetAttrs(ctx, "CP", e+1, nil)
+		require.False(t, ok)
+		s, _, _ = r.Lookup(ctx, "CP")
+		require.Equal(t, map[string]string{"site": "y", "fw": "1"}, s.Attrs)
+		gws, _ := r.Gateways(ctx)
+		require.Equal(t, "canary", gws[0].Label)
+	})
+}

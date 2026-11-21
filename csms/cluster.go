@@ -65,14 +65,27 @@ func (s *Server) holders() []sessionHolder {
 
 // claimSession records an upgrade that is about to be accepted. The zero Session
 // is returned when the server is not clustered.
-func (s *Server) claimSession(r *http.Request, cpID string) (storage.Session, bool) {
+func (s *Server) claimSession(r *http.Request, cpID string, attrs map[string]string) (storage.Session, bool) {
 	if s.sessions == nil {
 		return storage.Session{}, false
 	}
 	meta := map[string]string{"remote_addr": r.RemoteAddr}
 	return s.sessions.claim(r.Context(), storage.Session{
-		CPID: cpID, ConnectedAt: time.Now(), Meta: meta,
+		CPID: cpID, ConnectedAt: time.Now(), Meta: meta, Attrs: attrs,
 	}), true
+}
+
+// SetSessionAttrs replaces the attributes of the connected charge point id, in
+// the local session and (for a clustered server) in the registry, so rollout
+// tooling can select it by them. Use it when an attribute becomes known after
+// connect (firmware version from BootNotification, say). It returns
+// ocppj.ErrNotConnected when the charge point is not connected here.
+func (s *Server) SetSessionAttrs(ctx context.Context, id string, attrs map[string]string) error {
+	c, ok := s.Get(id)
+	if !ok {
+		return ocppj.ErrNotConnected
+	}
+	return c.SetAttrs(ctx, attrs)
 }
 
 // releaseSession removes the session's record while it is still the current one.
@@ -137,6 +150,8 @@ var remoteSentinels = map[string]error{
 	"call_cancelled":     ocppj.ErrCallCancelled,
 	"queue_full":         ocppj.ErrQueueFull,
 	"concurrent_limit":   ocppj.ErrConcurrentCallLimit,
+	"gateway_draining":   ocppj.ErrGatewayDraining,
+	"drain_timeout":      ocppj.ErrDrainTimeout,
 }
 
 func encodeRemoteError(err error) *remoteError {
