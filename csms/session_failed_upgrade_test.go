@@ -129,3 +129,30 @@ func TestSession_LegacyRegistryFailedUpgradeKeepsLiveRoute(t *testing.T) {
 	require.True(t, ok, "the live connection's global route was deleted")
 	require.Equal(t, "A", owner)
 }
+
+// deadRegistry never answers Heartbeat or Claim (until their context ends).
+type deadRegistry struct{ storage.SessionRegistry }
+
+func (deadRegistry) Heartbeat(ctx context.Context, _ storage.GatewayInfo, _ time.Duration) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (deadRegistry) Claim(ctx context.Context, _ storage.Session) (uint64, *storage.Session, error) {
+	<-ctx.Done()
+	return 0, nil, ctx.Err()
+}
+
+// During a registry outage the connect path waits ClaimTimeout once for the lease
+// and the claim together, not once for each (design: 2 s, review NIT: 4 s).
+func TestSession_RegistryOutageWaitsClaimTimeoutOnce(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	const claimTimeout = 400 * time.Millisecond
+	a := newSessNode(t, deadRegistry{memory.NewSessionRegistry()}, "A", csms.SessionConfig{ClaimTimeout: claimTimeout})
+	start := time.Now()
+	a.dial(ctx, t)
+	took := time.Since(start)
+	require.GreaterOrEqual(t, took, claimTimeout-50*time.Millisecond, "the connect should wait for the registry")
+	require.Less(t, took, claimTimeout*3/2, "waited for the lease and for the claim one after the other")
+}

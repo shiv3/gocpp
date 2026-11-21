@@ -144,13 +144,10 @@ func ConnFromContext(ctx context.Context) (*Conn, bool) {
 // per-handler deadline (HandlerTimeout) is what bounds a stuck handler.
 //
 // The detached base context (c.handlerBase) is built once per connection; each
-// message adds only its message id and, with HandlerTimeout, the deadline.
-func (c *Conn) handlerContext(msgID string) (context.Context, context.CancelFunc) {
-	ctx := ocppj.ContextWithMessageID(c.handlerBase, msgID)
-	if c.cfg.HandlerTimeout > 0 {
-		return context.WithTimeout(ctx, c.cfg.HandlerTimeout)
-	}
-	return ctx, func() {}
+// message adds only its message id. HandlerTimeout is applied by the pipeline
+// once the payload has been verified and validated, right before the handler runs.
+func (c *Conn) handlerContext(msgID string) context.Context {
+	return ocppj.ContextWithMessageID(c.handlerBase, msgID)
 }
 
 func (c *Conn) runHandler(frame ocppj.Frame) {
@@ -188,8 +185,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	if h, ok := c.reg.Resolve(frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) ([]byte, error) { return h(ctx, c, payload) }
 	}
-	hctx, cancelHandler := c.handlerContext(frame.MsgID)
-	defer cancelHandler()
+	hctx := c.handlerContext(frame.MsgID)
 	out := c.pipe.RunCall(hctx, &frame, run)
 	status = out.Status
 	switch {
@@ -208,8 +204,7 @@ func (c *Conn) runSendHandler(frame ocppj.Frame) {
 	if h, ok := c.reg.ResolveSend(frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) error { return h(ctx, c, payload) }
 	}
-	hctx, cancelHandler := c.handlerContext(frame.MsgID)
-	defer cancelHandler()
+	hctx := c.handlerContext(frame.MsgID)
 	c.pipe.RunSend(hctx, &frame, run)
 }
 

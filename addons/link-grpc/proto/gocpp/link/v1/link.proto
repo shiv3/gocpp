@@ -161,6 +161,9 @@ message CallRequest {
   bytes payload = 4;
   int64 deadline_unix_nano = 5;
   string trace = 6;
+  // Time left when the request was made; the receiver applies it from its own
+  // clock (deadline_unix_nano is then ignored). 0 = not set.
+  int64 budget_nanos = 7;
 }
 
 message CallReply {

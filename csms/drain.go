@@ -337,6 +337,27 @@ func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 	return err
 }
 
+// Undrain ends a full drain that was cancelled before the process stopped: the
+// server accepts upgrades again, ReadyHandler reports ready, and the gateway
+// lease goes back to serving. Sessions a cancelled Drain quiesced already accept
+// new calls again when it returns. It returns ErrDrainInProgress while a Drain
+// is running and is a no-op on a server that is not draining. After Shutdown it
+// has no effect.
+func (s *Server) Undrain(ctx context.Context) error {
+	if s.drainActive.Load() {
+		return ErrDrainInProgress
+	}
+	if s.stopping.Load() || s.ctx.Err() != nil {
+		return nil
+	}
+	s.draining.Store(false)
+	if s.sessions != nil {
+		s.sessions.draining.Store(false)
+		s.sessions.heartbeat(ctx)
+	}
+	return nil
+}
+
 // drainTarget is one session as the drain pacer sees it.
 type drainTarget interface {
 	// closeIfIdle closes the session if nothing is in flight, reporting whether it
@@ -349,6 +370,11 @@ type drainTarget interface {
 	// done is closed when the session is gone (torn down).
 	done() <-chan struct{}
 }
+
+// unquiescer is implemented by drain targets that can take back quiesce, so a
+// drain that ends early (its context was cancelled) does not leave sessions
+// that refuse every new call.
+type unquiescer interface{ unquiesce() }
 
 type busyTarget struct {
 	t        drainTarget
@@ -441,6 +467,15 @@ func runDrain(ctx context.Context, targets []drainTarget, opts DrainOptions, st 
 		return false
 	}
 
+	// A drain that ends before every session was closed (its context ended)
+	// leaves the sessions it quiesced open: let them place calls again.
+	defer func() {
+		for _, b := range busy {
+			if u, ok := b.t.(unquiescer); ok {
+				u.unquiesce()
+			}
+		}
+	}()
 	ticker := time.NewTicker(drainTick)
 	defer ticker.Stop()
 	for len(queue) > 0 || len(busy) > 0 {
@@ -484,6 +519,7 @@ type connTarget struct{ c *Conn }
 func (t connTarget) closeIfIdle() bool     { return t.c.inner.TryDrain() }
 func (t connTarget) quiesce()              { t.c.inner.Quiesce() }
 func (t connTarget) forceClose()           { t.c.inner.ForceDrain() }
+func (t connTarget) unquiesce()            { t.c.inner.Unquiesce() }
 func (t connTarget) done() <-chan struct{} { return t.c.gone }
 
 // jitterRetryAfter renders a Retry-After value spread over 0.5x to 1.5x of base,

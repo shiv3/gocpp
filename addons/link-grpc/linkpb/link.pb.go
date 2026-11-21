@@ -1287,8 +1287,11 @@ type CallRequest struct {
 	Payload          []byte                 `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
 	DeadlineUnixNano int64                  `protobuf:"varint,5,opt,name=deadline_unix_nano,json=deadlineUnixNano,proto3" json:"deadline_unix_nano,omitempty"`
 	Trace            string                 `protobuf:"bytes,6,opt,name=trace,proto3" json:"trace,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Time left when the request was made; the receiver applies it from its own
+	// clock (deadline_unix_nano is then ignored). 0 = not set.
+	BudgetNanos   int64 `protobuf:"varint,7,opt,name=budget_nanos,json=budgetNanos,proto3" json:"budget_nanos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CallRequest) Reset() {
@@ -1361,6 +1364,13 @@ func (x *CallRequest) GetTrace() string {
 		return x.Trace
 	}
 	return ""
+}
+
+func (x *CallRequest) GetBudgetNanos() int64 {
+	if x != nil {
+		return x.BudgetNanos
+	}
+	return 0
 }
 
 type CallReply struct {
@@ -2532,14 +2542,15 @@ const file_gocpp_link_v1_link_proto_rawDesc = "" +
 	"\n" +
 	"AttrsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcf\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf2\x01\n" +
 	"\vCallRequest\x121\n" +
 	"\x06target\x18\x01 \x01(\v2\x19.gocpp.link.v1.SessionRefR\x06target\x12\x17\n" +
 	"\acall_id\x18\x02 \x01(\tR\x06callId\x12\x16\n" +
 	"\x06action\x18\x03 \x01(\tR\x06action\x12\x18\n" +
 	"\apayload\x18\x04 \x01(\fR\apayload\x12,\n" +
 	"\x12deadline_unix_nano\x18\x05 \x01(\x03R\x10deadlineUnixNano\x12\x14\n" +
-	"\x05trace\x18\x06 \x01(\tR\x05trace\"\x9e\x01\n" +
+	"\x05trace\x18\x06 \x01(\tR\x05trace\x12!\n" +
+	"\fbudget_nanos\x18\a \x01(\x03R\vbudgetNanos\"\x9e\x01\n" +
 	"\tCallReply\x12\x18\n" +
 	"\apayload\x18\x01 \x01(\fR\apayload\x12.\n" +
 	"\x05error\x18\x02 \x01(\v2\x18.gocpp.link.v1.WireErrorR\x05error\x12\x12\n" +

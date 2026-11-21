@@ -496,9 +496,12 @@ func (d edgeDownstream) call(ctx context.Context, c *Conn, req gateway.CallReque
 	var sent atomic.Bool
 	cctx := context.WithoutCancel(ctx)
 	var cancel context.CancelFunc
-	if !req.Deadline.IsZero() {
+	switch {
+	case req.Budget > 0:
+		cctx, cancel = context.WithTimeout(cctx, req.Budget)
+	case !req.Deadline.IsZero():
 		cctx, cancel = context.WithDeadline(cctx, req.Deadline)
-	} else {
+	default:
 		cctx, cancel = context.WithCancel(cctx)
 	}
 	cctx = dispatcher.WithSentHook(cctx, func() { sent.Store(true) })
@@ -533,10 +536,17 @@ func (d edgeDownstream) call(ctx context.Context, c *Conn, req gateway.CallReque
 		return reply(r), nil
 	case <-ctx.Done():
 		if !sent.Load() {
+			// Cancel and classify from what the call really did: the frame may
+			// have been written between the check above and the cancel, and then
+			// the caller must not be told "not sent" (it would retry a command the
+			// charger already holds).
 			cancel()
-			<-resCh
-			return gateway.CallReply{Sent: gateway.NotSent, Session: c.gw.ref,
-				Error: gateway.EncodeError(ctx.Err())}, nil
+			r := <-resCh
+			rep := reply(r)
+			if rep.Sent == gateway.NotSent {
+				rep.Error = gateway.EncodeError(ctx.Err())
+			}
+			return rep, nil
 		}
 		// Written, caller gone: wait for the answer in the background.
 		go func() {
@@ -572,6 +582,10 @@ func (d edgeDownstream) Send(ctx context.Context, req gateway.CallRequest) error
 }
 
 func (d edgeDownstream) Control(ctx context.Context, req gateway.ControlRequest) error {
+	if req.Op == gateway.ControlInvalidateAuth {
+		d.e.s.InvalidateAuthCache(req.Target.CPID)
+		return nil
+	}
 	c, err := d.session(req.Target)
 	if err != nil {
 		return err

@@ -56,9 +56,7 @@ func TestHandlerCtx_NotCancelledByDisconnect(t *testing.T) {
 }
 
 func handlerCtxProbe(c *Conn) context.Context {
-	ctx, cancel := c.handlerContext("probe")
-	_ = cancel
-	return ctx
+	return c.handlerContext("probe")
 }
 
 func TestHandlerCtx_TimeoutSendsInternalError(t *testing.T) {
@@ -133,4 +131,32 @@ func handlersIdle(c *Conn) bool {
 	c.inMu.Lock()
 	defer c.inMu.Unlock()
 	return c.running == 0 && len(c.inQ) == 0
+}
+
+// HandlerTimeout bounds the handler, not the checks before it: a slow signature
+// or schema validation must not eat the handler's budget (review NIT; it started
+// before validation on the gateway branch).
+func TestHandlerCtx_TimeoutStartsAfterValidation(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	f := transport.NewFakeWS("ocpp1.6")
+	left := make(chan time.Duration, 1)
+	reg := NewHandlerRegistry()
+	reg.Register("X", func(ctx context.Context, c *Conn, p []byte) ([]byte, error) {
+		dl, _ := ctx.Deadline()
+		left <- time.Until(dl)
+		return []byte(`{}`), nil
+	})
+	cfg := DefaultConfig()
+	cfg.HandlerTimeout = 400 * time.Millisecond
+	cfg.SchemaMode = SchemaModeStrict
+	cfg.SchemaValidate = func(ocppj.Version, string, string, []byte) error {
+		time.Sleep(300 * time.Millisecond)
+		return nil
+	}
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+	f.Inject([]byte(`[2,"x","X",{}]`))
+	<-f.Sent()
+	require.Greater(t, <-left, 300*time.Millisecond, "the timeout started before validation")
 }
