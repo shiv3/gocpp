@@ -653,3 +653,607 @@ and gain deploys without disconnects first, then move handlers to
    production CSMS, decide separately, with its maintainers, whether it
    attaches to the gateway through the raw contract before any handler port;
    this design does not presuppose a refactor of that service.
+
+## 5. Staged releases: backend canary and gateway canary (addendum)
+
+Status: addendum to sections 0-4, 2026-11-21. Written against `integ/gateway`
+at `a75ff87` (phases 0 and 1 merged) and the in-flight phase 2 (`csms/drain.go`)
+and phase 3 (`gateway/types.go`, `gateway/pool.go`) branches; type names below
+are the ones those branches use.
+
+Source note: the GKE and Cloud DNS behaviours in 5.2 (passthrough load balancer
+keeping established connections to a not-ready pod, weighted DNS records) are
+from memory of the public documentation and are listed as items to verify in
+phase 5, not as measured facts.
+
+### 5.0 Summary
+
+- **Backend canary = a routing decision at the gateway.** Backends attach with
+  a *pool* name and a version. For every inbound message the gateway asks a
+  `Router` which pool serves it. The decision is a pure function of
+  `(policy revision, charge point id, session attributes, action)`, so it is
+  sticky per charger by construction, needs no shared state, and changes only
+  when the policy or the attributes change. Promote and rollback are a policy
+  revision swap: no socket is touched.
+- **Routing attributes come from the processing tier.** `ConnectReply.Attrs`
+  and `Control(SetAttrs)` put labels (site, tenant, vendor, model, firmware,
+  any label the application has) on the session; rules match on them. A
+  label-based staged release ("chargers/sites labelled X go first") is one
+  rule on `label.X`, followed by percentage steps. An external label source is
+  a pluggable `AttrSource`.
+- **Gateway canary = the highest StatefulSet ordinal first, a capped share,
+  and a partial drain to fill it.** An L4 load balancer cannot steer a
+  charger to a pod, so the fraction is controlled with a soft session cap
+  that drives readiness, and sessions are moved with the phase 2 drain
+  (idle-first, paced, 1012) limited to a count.
+- **Version skew is handled by a negotiated link protocol.** Every `Attach`
+  starts with a hello carrying a protocol range and capability names, in both
+  directions. Adjacent protocol versions must interoperate; new behaviour is
+  gated on capabilities, never on build versions.
+- **What the in-flight phases must include** is small and listed in 5.5: pool
+  and version in the attach hello, protocol range and capabilities, the rule
+  "no policy: only the default pool gets work", `SetAttrs`, partial drain, soft
+  cap readiness, version labels on metrics and in the lease. The policy engine,
+  tooling and automatic promotion are a new phase 7.
+
+### 5.1 Backend canary
+
+#### 5.1.1 Pools and backend identity
+
+A backend declares who it is when it attaches. This is part of the link
+contract from the first release, because gateways are the tier that is rarely
+redeployed.
+
+```go
+package gateway
+
+// DefaultPool is the pool of a backend that names none, and the only pool a
+// gateway without a routing policy sends work to.
+const DefaultPool = "default"
+
+// BackendInfo is sent by a backend in the attach hello.
+type BackendInfo struct {
+    ID      string            // pod name; unique per process
+    Pool    string            // "" = DefaultPool; e.g. "canary", "v0-9-3"
+    Version string            // build version; a metric label, never used for routing
+    Role    Role              // RoleWorker (takes inbound work) | RoleCaller (Call/Control only)
+    Proto   ProtoRange        // link protocol versions it speaks (5.3)
+    Caps    []string          // capability names (5.3)
+    Actions []string          // optional: actions it has handlers for; empty = all
+    Labels  map[string]string // free form, exported in status output only
+}
+
+// csms option on the processing tier:
+//   csms.WithBackendInfo(gateway.BackendInfo{Pool: os.Getenv("GOCPP_POOL"), Version: buildVersion})
+```
+
+`gateway.Pool` (phase 3) stays the unit of selection: power-of-two-choices,
+hold, Nack redispatch, drain, all *within one pool*. A new `PoolSet` holds one
+`Pool` per pool name and creates/removes them as members attach and leave:
+
+```go
+type PoolSet struct{ /* map[string]*Pool, guarded; DefaultPool always exists */ }
+
+func (s *PoolSet) Add(info BackendInfo, up Upstream) *Member // replaces Pool.Add(id, up) at link level
+func (s *PoolSet) Pool(name string) *Pool                    // nil when no member has ever attached
+func (s *PoolSet) Available(name string) bool                // >= 1 attached, non-draining member
+func (s *PoolSet) Status() []PoolStatus                      // name, members (id, version, in-flight, draining)
+```
+
+Fail-safe rule, in force from phase 4: **a gateway sends inbound work only to
+pools its routing policy names; without a policy that is `DefaultPool` only.**
+A backend that attaches with `Pool: "canary"` to a gateway that has no policy
+receives nothing (it can still issue CSMS calls). Starting a canary Deployment
+is therefore never a traffic change by itself.
+
+On GKE a canary is a second Deployment of the same image family
+(`backend-canary`, 1-2 replicas, env `GOCPP_POOL=canary`); both Deployments
+dial every gateway as today.
+
+#### 5.1.2 Router and policy
+
+```go
+// RouteInput is what the gateway knows about a message without opening the payload.
+type RouteInput struct {
+    CPID   string
+    Action string            // OCPP action, or "$connect", "$opened", "$closed" for session events
+    Kind   Kind
+    OCPP   ocppj.Version
+    Attrs  map[string]string // session attributes
+}
+
+type RouteDecision struct {
+    Pool     string // where to send
+    Fallback string // pool to use when Pool is unavailable; "" = fail (hold, then CALLERROR)
+    Rule     string // name of the rule that matched, "" = default; for metrics and traces
+    Rev      uint64 // policy revision that produced the decision
+}
+
+// Router decides per message. Route must be pure, non-blocking and
+// deterministic: same input and same policy give the same decision.
+type Router interface {
+    Route(in RouteInput) RouteDecision
+}
+
+// PolicySource delivers policy revisions. Implementations: static file,
+// session registry, anything else (HTTP, CRD) outside the main module.
+type PolicySource interface {
+    // Watch calls apply with the current policy and then with every newer
+    // revision until ctx ends. apply returns an error for an invalid policy;
+    // the previous one stays in force.
+    Watch(ctx context.Context, apply func(RoutePolicy) error) error
+}
+
+// csms.NewGatewayServer option:
+//   csms.WithRouter(r gateway.Router)              // custom
+//   csms.WithRoutePolicy(src gateway.PolicySource) // built-in policy router
+```
+
+The built-in router interprets a declarative policy (JSON or YAML):
+
+```yaml
+revision: 42            # strictly increasing; a gateway ignores revisions <= its current one
+default: default        # pool for everything no rule matches
+salt: rollout-0-9-3     # hash salt; change it per rollout to pick a different sample
+rules:                  # first match wins
+  - name: lab
+    pool: canary
+    match:
+      attrs: { label.canary: ["1"] }           # AND across keys, OR across values, "*" suffix = prefix match
+  - name: step
+    pool: canary
+    match:
+      attrs: { tenant: ["t1"], vendor: ["Acme"], firmware: ["2.1.*"] }
+      ocpp: ["ocpp1.6"]
+      cp_ids: []                                # non-empty: only these ids (all matchers are AND-ed)
+      percent: 5                                # of the chargers that pass the matchers above
+    actions: []                                 # empty = all actions; else only these
+    on_unavailable: fallback                    # fallback (to `default`) | error
+    hold: busy                                  # none | busy (5.1.4)
+```
+
+Semantics, fixed now so that tools can reproduce them:
+
+- **Percentage.** `bucket = uint64_be(SHA-256(salt || 0x00 || cpID)[0:8]) mod 10000`;
+  the charger is in when `bucket < percent * 100`. Raising the percentage only
+  adds chargers (a charger at 5% is still in at 10%); lowering only removes.
+  The same salt across steps of one rollout keeps the sample stable; a new salt
+  for the next rollout spreads the risk over different chargers.
+- **Stickiness.** Rule membership (everything except `actions`) is evaluated
+  once per session per policy revision and cached on the session
+  (`sessionRoute{rev, matched bitset}`); per message the router only checks the
+  action set. With an unchanged policy and unchanged attributes one charger's
+  messages for one action always go to one pool. There is no random or
+  load-based choice between pools, only within a pool.
+- **By action.** A rule with `actions` routes only those actions to the pool;
+  the charger's other actions fall through to later rules. The policy loader
+  refuses, unless `allow_split: true` is set on the rule, an action set that
+  separates the members of a transaction group
+  (1.6: `Authorize`, `StartTransaction`, `StopTransaction`, `MeterValues`,
+  `StatusNotification`; 2.x: `Authorize`, `TransactionEvent`, `MeterValues`,
+  `StatusNotification`). The gateway stays payload-opaque: it compares action
+  strings only.
+- **Session events.** `Connect` is routed with action `$connect` and empty
+  attributes, so id-list and percentage rules apply to it and attribute rules
+  do not (attributes do not exist before the reply). `SessionOpened` /
+  `SessionClosed` go to the pool of the session's `$opened` / `$closed`
+  decision. `OrphanResult` goes to the pool of the caller that issued the
+  call, falling back to the session's default decision.
+- **Route in the envelope.** `Envelope.Route` (`Pool`, `Rule`, `Rev`) tells
+  the backend why it received the message; it is copied into the handler span.
+
+Policy sources shipped by gocpp:
+
+| Source | Package | Propagation | Use |
+|---|---|---|---|
+| Static file (re-read on change and every 30 s) | `gateway/routepolicy` (main module) | ConfigMap sync time, about a minute on Kubernetes | Development, single gateway, GitOps-only setups |
+| Session registry | `storage.PolicyStore`, implemented by `core/storage/memory` and `addons/registry-redis` | Push (Redis pub/sub) with a 5 s poll as backstop: under 1 s normally | Production: instant promote/rollback, compare-and-set writes, convergence visible in the gateway leases |
+
+```go
+package storage
+
+type PolicyStore interface {
+    // PutPolicy stores data as revision rev if the stored revision equals prevRev (CAS).
+    PutPolicy(ctx context.Context, prevRev, rev uint64, data []byte) (ok bool, err error)
+    Policy(ctx context.Context) (rev uint64, data []byte, err error)
+    WatchPolicy(ctx context.Context, fn func(rev uint64, data []byte)) error
+}
+```
+
+Every gateway publishes the revision it applied in its lease
+(`GatewayInfo.Labels["policy_rev"]`), so a controller or `gocppctl route status`
+can state "revision 42 is active on 4/4 gateways" instead of assuming it.
+A gateway that cannot reach the source keeps its last policy; a gateway that
+starts without any policy routes everything to `DefaultPool` (fail to stable)
+and raises `gocpp_gateway_route_policy_missing`.
+
+#### 5.1.3 Attributes and the label-based staged release
+
+Sources of session attributes, merged in this order (later wins per key):
+
+1. `ConnectReply.Attrs`: the backend already authenticates the charger at
+   connect and knows its record; it returns `tenant`, `site`, and any release
+   labels as `label.<name>=1`. This is the default and needs no gateway
+   configuration.
+2. `Control(SetAttrs)`: after BootNotification the backend adds `vendor`,
+   `model`, `firmware`; an admin API (a `RoleCaller` link client) calls it
+   with `Epoch: 0` when an operator changes a label of a connected charger.
+   Keys with an empty value are deleted. The 1 KiB cap from 2.2 applies.
+3. `gateway.AttrSource` (optional, phase 7):
+   `Attrs(ctx, cpID) (map[string]string, error)`, resolved at connect with a
+   timeout (default 200 ms, failure = no attributes, counted) and refreshed on
+   an interval. For deployments where labels live in a system the backend does
+   not own. Its keys are prefixed `ext.` and cannot override 1 and 2.
+
+Reserved keys: the prefix `gocpp.` is interpreted by the gateway
+(`gocpp.busy`, 5.1.4); everything else is opaque to it.
+
+The registry keeps a copy for operators and tools, not for the hot path: on
+claim and on each reconcile pass the gateway writes the attributes as
+`Session.Meta["attr.<key>"]` and the current default decision as
+`Session.Meta["route.pool"]`. `Server.Sessions(ctx)` can then list "which
+chargers are on the canary" across gateways. Attributes are still a cache:
+after a reconnect they are rebuilt from `ConnectReply` and the next
+`SetAttrs`, so until the charger's BootNotification has been processed, rules
+on `vendor`/`firmware` do not match it. Rules meant to hold across reconnects
+should use connect-time attributes (labels, tenant, site) or the id.
+
+Mapping of an existing "label-based staged release" in the application: the
+labels on sites and chargers stay where they are (the application's database);
+the backend's connect handler copies the release-relevant ones into
+`Attrs`; the rollout is a sequence of policy revisions:
+`label.canary` (internal and friendly sites) → `percent: 1` → `10` → `50` →
+`100` → promote. gocpp only sees key/value attributes; what a label means
+stays in the application.
+
+#### 5.1.4 Promotion, rollback, transactions
+
+- **Rollback** = a revision that removes the rule or sets `percent: 0`. Effect
+  from the next message of each charger. Handlers already running on the
+  canary finish and their replies are written; nothing is redispatched
+  (2.5 is unchanged). Rollback ignores `hold`.
+- **Promotion**, rolling form (default): raise to `percent: 100`, roll the
+  stable Deployment to the new version (Nack + redispatch, zero disconnects,
+  as for any backend deploy), then delete the rule and scale the canary to 0.
+  Blue/green form: set `default: canary` in one revision, then retire the old
+  pool. In both, chargers never notice.
+- **Forward moves and `hold: busy`.** A percentage increase moves chargers
+  from stable to canary. With `hold: busy`, a session whose attribute
+  `gocpp.busy` is non-empty keeps its previous decision until the attribute is
+  cleared, the session ends, or `max_hold` (default 4 h) passes. The backend
+  sets `gocpp.busy=1` when a transaction starts and clears it when it ends,
+  through `SetAttrs`. The gateway learns nothing about OCPP transactions.
+  Default is `hold: none`: holding is a comfort, not the correctness
+  mechanism.
+- **The correctness mechanism is compatibility.** Backends are stateless and
+  share the application's stores, so a transaction can always span versions:
+  through a rollback, through a reconnect during a held move (the hold is
+  lost at reconnect), through an action-scoped rule. Required of the
+  application during a canary: version N and N+1 both read what the other
+  writes (expand/contract migrations: add in N+1, stop using in N+2), and
+  content-based idempotency for transaction messages as already required by
+  2.5. The canary runbook states this as an entry criterion.
+- **New message handling.** When only the canary understands an action (or a
+  DataTransfer vendor id handled by a new code path keyed by action), use an
+  action rule with `on_unavailable: error`, so the stable pool never answers
+  `NotImplemented` for chargers in the rule. `BackendInfo.Actions` lets the
+  gateway check this: a policy that routes an action to a pool where no
+  member lists it is flagged in `route status` and counted
+  (`gocpp_gateway_route_unhandled_total`).
+
+#### 5.1.5 CSMS-initiated calls
+
+Unchanged and pool-independent: every backend of every pool dials every
+gateway, so `csms.Call` from stable or canary reaches the charger through the
+owning gateway and the reply returns on the caller's stream. The charger's
+follow-up messages (for example StatusNotification after a RemoteStart issued
+by the canary) go to the pool the *charger* is routed to; that is the
+compatibility requirement above again. A caller that wants to follow the
+routing reads the charger's pool from `Envelope.Route` of its last message or
+from `Session.Meta["route.pool"]`. The gateway records the caller's pool and
+version with each pending call for metrics and for `OrphanResult` routing.
+
+#### 5.1.6 When the canary pool is unavailable
+
+| Situation | `on_unavailable: fallback` (default) | `on_unavailable: error` |
+|---|---|---|
+| Pool has no attached, non-draining member at dispatch | Send to `default` immediately (no hold) | Hold up to `UpstreamWait`, then CALLERROR `InternalError` (as 2.5) |
+| Every member Nacks (proof of non-execution) | Redispatch to `default` within the deadline, `Attempt+1` | CALLERROR `InternalError` |
+| Stream breaks after dispatch | CALLERROR `InternalError`, no redispatch (as 2.5) | same |
+| Pool flaps (crash loop) | After a fallback the rule is *suspended* on that gateway for `suspend_for` (default 60 s): its chargers stay on `default` for that time, so a charger changes pool at most once per window instead of per message | n/a |
+| Guard trips (below) | Rule suspended until the next policy revision | Rule suspended; affected actions get CALLERROR |
+
+Gateway-local guard (automatic rollback without a controller): per rule,
+`guard: {min_requests: 200, max_error_ratio: 0.05, window: 60s}`. If the
+pool's ratio of failed outcomes (`timeout`, `stream_broken`, CALLERROR
+`InternalError`) exceeds the limit in the window, the gateway suspends the
+rule and reports `Labels["suspended"]` in its lease. It is deliberately
+crude; the comparison against stable belongs to the controller (5.4).
+
+### 5.2 Gateway canary
+
+#### 5.2.1 Rollout shape on GKE
+
+Constraints from 2.4: sockets cannot move between pods; the load balancer is
+L4 passthrough, which spreads *new* connections over ready pods and offers no
+per-pod weight; a freshly restarted gateway is empty.
+
+Procedure (StatefulSet `gateway`, `G` replicas, `updateStrategy.rollingUpdate.partition`):
+
+1. **Canary pod.** Set `partition: G-1`. Pod `gw-(G-1)` drains (phase 2:
+   lease `draining`, not ready, idle-first paced 1012) and restarts on the new
+   version. Its chargers reconnect to the other pods under the admission
+   limiter.
+2. **Pre-flight.** The new pod stays not-ready until `gocpp-gateway probe`
+   (startup probe) has succeeded: against its own listener it performs, for
+   each enabled OCPP version and security profile, upgrade → BootNotification
+   → Heartbeat with a reserved probe identity (`$probe-<gateway id>`, which
+   backends answer without business side effects), and attaches to at least
+   one backend with a negotiated protocol. A gateway that cannot complete a
+   handshake never receives a charger.
+3. **Capped share.** The canary runs with `--soft-max-sessions = share x fleet`
+   (for example 5%). At or above the soft cap the pod reports not-ready, so
+   the load balancer stops sending it new connections; it keeps the sessions
+   it has. (`WithMaxConnections` remains the hard cap that answers 503.)
+4. **Fill.** `gocppctl gateway shed --count N` on the old gateways, one at a
+   time: a partial drain (`DrainOptions.Max = N`, optionally
+   `Filter` = sessions whose attributes match, so labelled lab chargers move
+   first), during which the shedding gateway reports not-ready. Displaced
+   chargers land on the remaining ready pods, the canary among them, until it
+   reaches its cap. Churn to move `X` sessions to the canary is about
+   `X x (G-1)` reconnects, all paced at the drain rate and admitted through
+   the accept limiter; with `G = 4` and a 5% canary that is 15% of the fleet
+   reconnecting once over the configured window.
+5. **Observe** (5.2.4) for the soak time, then lower `partition` one ordinal at
+   a time. Each step is an ordinary drain. Remove the soft cap.
+6. **Rebalance.** After the last step, pods are uneven (the last one restarted
+   empty). `gocppctl gateway rebalance` computes the fair share from the
+   leases (`Gateways()` already reports session counts) and sheds the excess
+   from pods above `fair x 1.1`, which are not-ready while shedding. This
+   command is useful after any gateway rollout or crash, canary or not.
+
+Variant for targeted testing or finer weights: a second StatefulSet
+`gateway-canary` behind its own Service and load balancer address. Lab
+chargers are pointed at its hostname; or the public hostname becomes a weighted
+DNS record set (stable address, canary address), which sends a fraction of
+*new resolutions* to the canary. It costs a second address and depends on
+charger DNS caching, so it is the variant, not the default (open decision 2).
+
+Unchanged requirements: capacity so that `G-1` gateways hold the fleet, PDB
+`maxUnavailable: 1`, `terminationGracePeriodSeconds` above the drain window,
+`minReadySeconds` so a crash-looping new pod stops the rollout.
+
+Additions to `csms` for this (small, phase 2 scope):
+
+```go
+type DrainOptions struct {
+    // ... existing fields ...
+    // Max > 0 makes the drain partial: close at most Max sessions (idle first,
+    // paced), then return. The server keeps serving, the lease state stays
+    // "serving", and new upgrades are refused only while the partial drain runs
+    // if RefuseDuring is set (default: not refused, only ReadyHandler reports
+    // not-ready).
+    Max    int
+    // Filter restricts a drain to matching sessions (nil = all).
+    Filter func(*Conn) bool
+}
+
+// WithSoftMaxConnections makes ReadyHandler report not-ready at or above n
+// sessions while upgrades are still accepted up to WithMaxConnections.
+func WithSoftMaxConnections(n int) Option
+func (s *Server) SetSoftMaxConnections(n int) // runtime change (canary cap removal, rebalance)
+```
+
+To verify in phase 5 on the actual load balancer type: that a pod turning
+not-ready keeps its established connections (connection persistence on
+unhealthy backends), and how new connections are spread when every pod is
+not-ready (expected: fail open across all pods).
+
+#### 5.2.2 Sessions moving between gateway versions
+
+A move is a reconnect: the new gateway `Claim`s, the registry assigns the next
+epoch, callers with a stale `SessionRef` get `ErrSessionStale` and look up
+again. None of this depends on the gateway build, because the registry, not
+the gateway, assigns epochs. What mixed versions add:
+
+- **Registry format.** Old and new gateways read and write the same records.
+  Rule: record and lease encodings change additively only (the Redis addon
+  stores JSON blobs, so unknown fields are ignored by old readers; writers
+  must not drop fields they do not know when they rewrite a record: `Reassert`
+  rewrites only its own record, which satisfies this). The Lua scripts are
+  loaded per process by hash, so two script versions coexist; a script change
+  must keep the key layout. A layout change is a two-release migration
+  (release A reads both and writes old, release B writes new), gated on every
+  lease reporting `Labels["reg"] >= n`. `GatewayInfo.Labels["version"]` makes
+  the mix visible.
+- **Attributes and holds** do not survive the move; they are rebuilt from
+  `ConnectReply` (5.1.3). A charger moving between gateways therefore gets the
+  same routing decision as before for connect-time attributes and ids, on any
+  gateway version that has the same policy revision.
+- **Policy support.** A gateway that does not implement routing (no `route.v1`
+  capability, 5.3) sends everything to `DefaultPool`. During a gateway canary
+  that introduces routing, do not start a backend canary; `gocppctl route put`
+  refuses a policy with rules while any lease lacks the capability.
+- **Ping-pong.** A charger that is shed from an old gateway, lands on the
+  canary, and is drained back by a rollback has reconnected twice; epochs make
+  both moves safe. The shed filter skips sessions younger than
+  `MinSessionAge` (default 10 min) so one charger is not moved repeatedly.
+
+#### 5.2.3 Rollback
+
+Raise `partition` back (or roll the canary StatefulSet back). The canary pod
+drains like any gateway; because its share was capped, the reconnect volume is
+bounded by the cap. If the canary is harming sessions (corrupt frames, stuck
+writes), drain with a short window (`--drain-window 30s`) or delete the pod:
+the lease expires within 15 s and the accept limiter paces the return. If the
+canary never passed pre-flight it holds no charger and rollback is free.
+
+#### 5.2.4 Verifying a gateway canary
+
+Every gateway metric carries the constant labels `gateway_id` and
+`gateway_version`. Compared between canary and stable gateways:
+
+| Signal | Metric | Gate (canary vs stable, same window) |
+|---|---|---|
+| Handshake errors | `gocpp_gateway_accepts_total{result}` with `result` = `ok`, `tls_error`, `auth_rejected`, `subprotocol`, `rate_limited`, `full`, `draining`, `upstream_error` | `tls_error + subprotocol + upstream_error` ratio not above stable + 0.5 pp |
+| Connection churn | `gocpp_gateway_session_duration_seconds` (histogram at close), `gocpp_gateway_claims_total{prev="none\|dead\|live"}`, `gocpp_gateway_reclaim_interval_seconds` (time since the displaced session's `ConnectedAt`) | share of sessions closed within 10 min not above stable x 1.5; no charger reconnecting more than 3 times in 10 min |
+| Close mix | `gocpp_gateway_closes_total{code,cause}` | abnormal (1006, ping timeout, write timeout) ratio not above stable x 1.5 |
+| Liveness of sockets | ping RTT histogram, `pong_timeouts_total`, `write_errors_total` | p99 RTT within 2x |
+| Inbound path | `gocpp_gateway_upstream_seconds{action}`, `gocpp_gateway_upstream_requests_total{outcome}` | CALLERROR mix equal within noise; p99 within 1.5x |
+| CSMS calls | `gocpp_gateway_downstream_calls_total{outcome}`, callSlot wait | `timeout` ratio not above stable |
+| Link | `gocpp_gateway_link_attach_total{proto,result}`, `link_unsupported_total{kind}` | every backend attached; zero rejects |
+| Registry | `reconcile_corrections_total`, `registry_errors_total` | zero corrections after the fill settles |
+| Resources | RSS per session, goroutines, fds | within the 2.7 targets |
+
+Plus the synthetic probe from 5.2.1 running continuously against each gateway
+pod through the headless Service, so an idle canary is still exercised.
+
+### 5.3 Link protocol versioning and capability negotiation
+
+Applies to every networked link (`addons/link-grpc` first). The in-process
+link has one build on both sides and skips it.
+
+```go
+type ProtoRange struct{ Min, Max uint32 } // inclusive; phase 4 ships {1, 1}
+
+// First message on every Attach stream, backend → gateway.
+type Hello struct {
+    Backend BackendInfo // includes Proto and Caps
+}
+
+// Answer, gateway → backend. Proto 0 means rejected (Reason set), stream closes.
+type HelloAck struct {
+    Proto   uint32      // min(backend.Max, gateway.Max), valid if >= both Min
+    Caps    []string    // intersection of both sides' capabilities
+    Gateway GatewayPeer // ID, Boot, Version, PolicyRev
+    Reason  string
+}
+```
+
+Rules:
+
+1. **Negotiated per stream.** `Envelope.Proto` carries the negotiated value;
+   a side never sends a message kind, control op or field semantics that the
+   stream did not negotiate. Different streams of one gateway may run
+   different protocols during a rollout.
+2. **Support window.** Every release speaks its own protocol and the previous
+   one (`Min = Max - 1` after the first bump). Skipping a release on one tier
+   is therefore safe; skipping two is not, and attach fails loudly
+   (`link_attach_total{result="proto_mismatch"}`, backend not ready) instead of
+   degrading.
+3. **Additive within a protocol version.** New protobuf fields are optional
+   and ignored by old peers. A protocol bump is needed only when ignoring a
+   field would be wrong.
+4. **Capabilities gate behaviour.** Named, independent of the number:
+   `attrs.set`, `route.v1`, `send.21`, `cancel`, `orphan`, `actions.list`.
+   Callers ask `link.Has(cap)`; the typed API returns
+   `gateway.ErrUnsupported` (a `WireError` kind) when the peer lacks one.
+5. **Unknown is an answer, not a failure.** A peer that receives an unknown
+   `Kind` or `ControlOp` replies `ErrUnsupported` and keeps the stream.
+   Breaking the stream on unknown input would turn skew into an outage.
+6. **Capability-aware selection.** `Pool.pick` skips members that lack the
+   capability a message needs (for example `KindSend` requires `send.21`); if
+   no member of the pool has it, the outcome is `no_backend` after the hold.
+7. **Order of deployment for a feature needing both tiers:** gateways first
+   (the capability is advertised but unused), then backends start using it;
+   removal in the reverse order. Old backend ↔ new gateway always works by
+   rule 1; new backend ↔ old gateway works by rules 4 and 5.
+
+CI enforces the window: a compatibility job builds the gateway and the parity
+backend from the previous release tag and runs the link integration suite in
+both mixed combinations.
+
+### 5.4 Observability per backend version, and promotion
+
+Gateway metrics for routing (the gateway is the only place that sees both
+versions on identical terms; labels are bounded: pools and attached versions
+are few, actions are those of the OCPP version):
+
+- `gocpp_gateway_upstream_requests_total{pool, backend_version, action, outcome}`
+  with `outcome` = `result`, `callerror_<Code>` (the code is in
+  `Reply.Error.Code`, no payload parsing), `timeout`, `nack`, `stream_broken`,
+  `no_backend`
+- `gocpp_gateway_upstream_seconds{pool, backend_version, action}` (histogram)
+- `gocpp_gateway_route_decisions_total{rule, pool}`,
+  `gocpp_gateway_route_fallback_total{rule, reason}`,
+  `gocpp_gateway_route_suspended{rule}`, `gocpp_gateway_route_unhandled_total{pool, action}`
+- `gocpp_gateway_route_sessions{pool}` (sessions whose default decision is the
+  pool), `gocpp_gateway_route_held_sessions{rule}`
+- `gocpp_gateway_route_policy_revision`, `gocpp_gateway_route_policy_missing`,
+  `gocpp_gateway_route_policy_rejected_total`
+- `gocpp_gateway_pool_members{pool, backend_version, state}`
+- `gocpp_gateway_downstream_calls_total{caller_pool, caller_version, action, outcome}`
+- `gocpp_gateway_late_replies_total{pool}`, `gocpp_gateway_orphan_results_total{pool}`
+
+Backends add a constant `version` label and the `pool` to their existing
+handler metrics and put `Envelope.Route` on the handler span, so traces can be
+filtered by rule.
+
+Promotion criteria (same actions, canary pool vs default pool, same window,
+minimum 500 canary requests per evaluated action group):
+
+- failed-outcome ratio (`timeout`, `stream_broken`, `callerror_InternalError`)
+  not above stable + 0.5 pp;
+- CALLERROR code distribution: no code whose share exceeds stable's by more
+  than 1 pp (catches a new `FormationViolation` / `PropertyConstraintViolation`
+  / `NotImplemented` pattern);
+- p99 `upstream_seconds` not above 1.5x stable (and under the 2.7 budget);
+- `late_replies` and `orphan_results` not above stable;
+- application-level checks supplied by the user as extra queries (for example
+  transactions started per connected charger).
+
+Manual first: `gocppctl route status|put|set-percent|promote|rollback` writes
+revisions through `PolicyStore` with compare-and-set and waits for all leases
+to report the revision. Automatic promotion is a controller that runs a stage
+list (`label → 1% → 10% → 50% → 100%`, soak time per stage), evaluates the
+criteria from Prometheus, and calls the same store; it rolls back by writing
+one revision. It lives outside the gateway (`addons/rollout`, also usable as a
+library or driven by an existing progressive-delivery tool through the CLI).
+The gateway-local guard (5.1.6) is the only automatic action inside the hot
+path.
+
+### 5.5 Phase plan update
+
+Additions to the phases already planned. Phases 0 and 1 are merged, so their
+additions go into the PRs named below; all of them are additive.
+
+| Phase | Addition (exactly this, nothing more) | Why it cannot wait |
+|---|---|---|
+| **1** (follow-up, ride with the phase 2 PR) | `storage.GatewayInfo.Labels map[string]string`, stored in the lease by the memory registry and `registry-redis` (new JSON field `labels`); gateways set `version`. Document the reserved `Session.Meta` prefixes `attr.` and `route.`. | Lease format is shared by gateway versions; adding it later is a mixed-format rollout. |
+| **2** | `DrainOptions.Max` and `DrainOptions.Filter` (partial drain: server keeps serving, lease stays `serving`); `WithSoftMaxConnections` / `SetSoftMaxConnections` feeding `ReadyHandler`; `ReadyHandler` not-ready while a partial drain runs; metrics `session_duration_seconds`, `closes_total{code,cause}`, `accepts_total{result}`. | Gateway canary fill and rebalance are built from these; they also serve embedded users. |
+| **3** | `gateway.BackendInfo`, `DefaultPool`, `Role`; `PoolSet` wrapping `Pool`; `BackendLink.Serve` and the in-process hub take a `BackendInfo` (`csms.WithBackendInfo`); `gateway.Router`, `RouteInput`, `RouteDecision`, `csms.WithRouter`, with the built-in default router returning `DefaultPool`; the edge forwarder calls `Router.Route` and dispatches through `PoolSet` (including the fallback and the "only named pools get work" rule); `Envelope.Route`; `ControlSetAttrs` with `ControlRequest.Attrs` (merge, delete on empty value, 1 KiB cap, re-evaluate the session's cached route); `ErrUnsupported` in the `WireError` kinds. Test: split-mode conformance with two pools and a 50% test router gives identical wire output; a backend in a non-default pool receives nothing without a router. | These are the seams. The policy engine later plugs into `Router` without touching the forwarder or the links. |
+| **4** | Proto: `Hello` / `HelloAck` as in 5.3 (protocol range, capabilities, `BackendInfo`, `GatewayPeer`), field numbers reserved for `Envelope.route`, unknown kind/op → `ErrUnsupported` without closing the stream, capability-aware `Pool.pick`; labels `pool`, `backend_version`, `gateway_version` on the gateway metrics of 5.4 that exist without a policy (`upstream_*`, `pool_members`, `downstream_calls`, `link_attach_total`); `cmd/gocpp-gateway`: `--soft-max-sessions`, `/readyz` from `ReadyHandler` plus "at least one worker attached to the default pool", lease labels `version`, `caps`; `probe` subcommand and the reserved `$probe-` identity; manifests with `partition`, `minReadySeconds`, startup probe. Chaos test added: a stub peer speaking an unknown kind and a peer with a disjoint protocol range. CI: the previous-release compatibility job (active from the second release; the job exists and is skipped until a tag has the binary). | The wire contract and the gateway binary are what get deployed rarely; they must be forward-compatible on day one. |
+| **5** | Harness: `-backend-pools default:3,canary:1`, `-restart-target` accepts a pool; a scenario for partial drain + soft cap (gateway canary fill) recording reconnect rate and churn; verification on GKE of the two load balancer behaviours listed in 5.2.1. | Gates for phase 7 need the topology. |
+| **6** | "Session attributes" leaves this phase (moved to 3 and 7). The rest is unchanged. | |
+
+New phase:
+
+| Phase | Content | Kind | Acceptance criteria and tests |
+|---|---|---|---|
+| **7a. Routing policy** (2 PRs) | `gateway/routepolicy`: `RoutePolicy` schema, validation (transaction-group lint, unknown pools, capability check), compiled router with per-session cache, percentage hash, `on_unavailable`, suspend, `hold: busy`, guard; `PolicySource` static file; `storage.PolicyStore` + memory + `registry-redis` (CAS, pub/sub watch); lease `policy_rev`; registry copy of attributes and route; routing metrics of 5.4; `gocppctl route ...`; `docs/staged-releases.md` (canary runbook, compatibility entry criteria). | L + A + B | Property tests (`rapid`): `Route` is deterministic; percentage is monotonic and within ±1 pp of nominal over 100k ids; with a fixed revision and arbitrary interleavings of messages, member attach/detach and Nacks, a `(charger, action)` pair changes pool only at a suspend edge and at most once per `suspend_for`. Split-mode conformance with a policy at 50% is wire-identical. Load test, 4,000 chargers: `label → 10% → 50% → 100% → rollback`, zero disconnects, zero CALLERRORs attributable to the changes, every gateway on the new revision within 2 s. Chaos during a canary: kill -9 all canary backends mid-handler (in-flight get `InternalError` once, following messages reach `default` without the 20 s hold); canary crash loop every 5 s (bounded pool changes per charger); guard trips on an error-injecting canary within its window; policy store down (last policy kept; a restarted gateway fails to `DefaultPool`); one gateway partitioned from the store while the revision advances (lag visible in leases, CLI refuses to report success); invalid policy pushed (rejected, previous kept); held session survives a percentage increase and moves after `gocpp.busy` clears; rollback ignores the hold; CSMS calls from each pool to chargers routed to the other; orphan result when the calling canary backend dies. |
+| **7b. Gateway canary tooling** (1-2 PRs) | `gocppctl gateway status\|shed\|rebalance` (drives `Drain` with `Max`/`Filter` through an admin endpoint of `cmd/gocpp-gateway`), `MinSessionAge`, continuous probe, gateway comparison dashboards/queries for 5.2.4, runbook for the partition procedure and the separate-Service variant; `gateway.AttrSource`. | B + docs | Real-process test with 3 gateways (one built from the previous tag once it exists): canary pod, 5% soft cap, shed, observe, complete, rebalance: reconnect rate never above the configured pace, final session counts within 10% of fair share, epochs strictly increasing per charger, no `NotSent` call lost. Chaos: kill -9 the canary gateway during fill; rollback drain of the canary while another gateway sheds; registry outage during shed. |
+| **7c. Automatic promotion** (1 PR, optional) | `addons/rollout`: stage list, Prometheus analysis with the 5.4 criteria, promote/rollback through `PolicyStore`, dry-run mode, Kubernetes events/log of every decision. Default off. | A | Simulation tests with recorded metric series (healthy, error spike, latency regression, too few samples → no decision); end to end on the load-test topology with an error-injecting canary: rolled back automatically within one evaluation interval + guard window. |
+
+### 5.6 Open decisions
+
+1. **Who promotes automatically.** Recommendation: the gateway only ever
+   suspends (local guard); promotion steps come from outside it. Ship the CLI
+   and metrics (7a) first and operate canaries manually for a few releases;
+   add `addons/rollout` (7c) afterwards, and prefer driving the CLI from an
+   existing progressive-delivery tool where one is already in use. The
+   alternative, a controller inside the gateway binary, puts a Prometheus
+   dependency and release logic into the tier that must stay thin.
+2. **How a gateway canary gets its share.** Recommendation: same Service,
+   highest ordinal first, soft cap + partial drain (5.2.1): no extra
+   infrastructure, exact cap, and the same primitives rebalance after every
+   rollout. The alternative, a separate Service with weighted DNS, gives
+   finer steering of new connections and a dedicated hostname for lab
+   chargers at the cost of a second load balancer address and reliance on
+   charger DNS behaviour; keep it documented for the lab-charger case.
+3. **Where the routing policy lives at runtime.** Recommendation: the session
+   registry (`PolicyStore`, compare-and-set, sub-second watch, applied
+   revision visible per gateway), with the file source for development and
+   with Git as the declarative origin applied by `gocppctl route put` in the
+   delivery pipeline. The alternative, a ConfigMap only, is simpler but makes
+   rollback take as long as ConfigMap propagation (about a minute) and gives
+   no convergence signal.
