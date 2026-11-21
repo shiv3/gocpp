@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Staged releases, phase 7c (docs/rollout.md part 4): `addons/rollout` (own module),
+  the optional, default-off automatic promotion controller: stage plan, gates
+  (failed-outcome ratio, CALLERROR code shares, p99 latency, minimum samples, your
+  own Prometheus checks), auto-rollback in one revision, yield on manual changes,
+  dry-run mode, `PromSource` and `ScrapeSource` (the gateways' own `/metrics`),
+  log and Kubernetes event notifiers; `gocppctl rollout validate|run`.
 - Staged releases, phase 7b (docs/rollout.md): `gateway/admin` (per-gateway admin
   API: status, paced `shed` by count / min age / attributes, soft cap; client and
   rebalance planner), `gocppctl gateway status|shed|cap|rebalance`,

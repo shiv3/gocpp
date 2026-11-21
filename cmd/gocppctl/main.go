@@ -8,6 +8,7 @@
 //	gocppctl route rollback [--to REV]
 //	gocppctl route status
 //	gocppctl gateway status|shed|cap|rebalance
+//	gocppctl rollout validate|run
 //
 // Connection flags (before the subcommand's own): --redis-addr (env
 // GOCPPCTL_REDIS_ADDR), --redis-password (GOCPPCTL_REDIS_PASSWORD), --prefix
@@ -73,6 +74,8 @@ commands:
   gateway shed               close sessions of one gateway at a paced rate (partial drain)
   gateway cap                set or remove a gateway's soft session cap (canary share)
   gateway rebalance          shed the excess from gateways above their fair share
+  rollout validate FILE      check an automatic rollout plan
+  rollout run FILE           run the plan: stages, gates, auto-rollback (--dry-run to only report)
   version
 
 run "gocppctl <command> -h" for flags.
@@ -88,6 +91,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer) int {
 	switch args[0] {
 	case "route":
 		err = routeCmd(ctx, args[1:], out)
+	case "rollout":
+		err = rolloutCmd(ctx, args[1:], out)
 	case "gateway":
 		err = gatewayCmd(ctx, args[1:], out)
 	case "version":
