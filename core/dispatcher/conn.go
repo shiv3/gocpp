@@ -477,6 +477,8 @@ func (c *Conn) Quiesce() { c.calls.Or(drainBit) }
 // Unquiesce undoes Quiesce: the connection accepts new outbound calls again. Use
 // it when a drain that quiesced the connection ends without closing it. It has no
 // effect on a connection TryDrain or ForceDrain has already closed.
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) Unquiesce() {
 	if c.Context().Err() != nil {
 		return

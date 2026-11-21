@@ -221,12 +221,12 @@ func TestGateway_ReconnectViaOtherGatewayClosesOldSocketAtOnce(t *testing.T) {
 		return c
 	}
 	old := dial(tsA)
-	defer old.CloseNow()
+	defer func() { _ = old.CloseNow() }()
 	require.Eventually(t, func() bool { _, ok := gwA.Get("CP_1"); return ok }, 2*time.Second, 5*time.Millisecond)
 	// The backend must have seen A's session before B's arrives.
 	require.Eventually(t, func() bool { _, err := be.Lookup(ctx, "CP_1"); return err == nil }, 2*time.Second, 5*time.Millisecond)
 	nw := dial(tsB)
-	defer nw.CloseNow()
+	defer func() { _ = nw.CloseNow() }()
 
 	rctx, rcancel := context.WithTimeout(ctx, 3*time.Second)
 	defer rcancel()
@@ -329,4 +329,35 @@ func TestGateway_InvalidateGatewayAuthCache(t *testing.T) {
 	require.EqualValues(t, 1, decisions.Load())
 	require.NoError(t, r.be.InvalidateGatewayAuthCache(context.Background(), "CP_1"))
 	require.Equal(t, 401, dial(), "invalidated: the backend decides again")
+}
+
+// A full gateway refuses an upgrade before asking the backend to authenticate it
+// (review NIT: the backend's credential store was hit even when no slot was free).
+func TestGateway_FullGatewayDoesNotAskBackendToAuthenticate(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	var decisions atomic.Int64
+	r := newRig(t, []csms.Option{csms.WithMaxConnections(1)},
+		[]csms.Option{csms.WithAuthenticator(auth.BasicAuth(func(cpID, _ string) (auth.Identity, error) {
+			decisions.Add(1)
+			return auth.Identity{CPID: cpID}, nil
+		}))})
+	defer r.close()
+	r.serve()
+	dial := func(id string) (*websocket.Conn, int) {
+		h := http.Header{}
+		h.Set("Authorization", "Basic "+basic(id, "pw"))
+		c, resp, err := websocket.Dial(context.Background(), r.url+id, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}, HTTPHeader: h})
+		if err != nil {
+			return nil, resp.StatusCode
+		}
+		return c, http.StatusSwitchingProtocols
+	}
+	c1, st := dial("CP_1")
+	require.Equal(t, 101, st)
+	defer func() { _ = c1.CloseNow() }()
+	require.Eventually(t, func() bool { _, ok := r.gw.Get("CP_1"); return ok }, 2*time.Second, 5*time.Millisecond)
+	require.EqualValues(t, 1, decisions.Load())
+	_, st = dial("CP_2")
+	require.Equal(t, 503, st)
+	require.EqualValues(t, 1, decisions.Load(), "the backend authenticated a charger the gateway had no slot for")
 }

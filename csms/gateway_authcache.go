@@ -156,6 +156,8 @@ func (s *Server) InvalidateAuthCache(cpID string) {
 // a registry the request goes to the link's only gateway (the in-process link).
 // It reports the first failure after trying every gateway; a gateway that is
 // down misses the request and recovers when its entries expire.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) InvalidateGatewayAuthCache(ctx context.Context, cpID string) error {
 	if s.backend == nil {
 		return ErrNoGatewayLink

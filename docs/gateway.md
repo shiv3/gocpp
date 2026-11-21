@@ -464,8 +464,28 @@ path, `Authorization`, offered subprotocols and client certificate). Within `TTL
 (default 5 minutes) a reconnect skips the backend; after it the backend decides
 again, and if it cannot be reached an accepted decision up to `StaleIfError`
 (default 1 hour) old is reused. Rejections are never cached.
-`Server.InvalidateAuthCache(cpID)` drops entries after a credential change. Leave
-it off when the backend decides on other request headers.
+`Server.InvalidateAuthCache(cpID)` drops the entries of one gateway after a
+credential change; on the processing tier `Server.InvalidateGatewayAuthCache(ctx,
+cpID)` sends the request to every gateway with a lease in the session registry
+(without a registry: to the in-process link's only gateway), so a revoked
+credential stops being admitted at once instead of after `TTL` (and, with the
+backend unreachable, `StaleIfError`). A gateway that is down misses the request.
+Leave the cache off when the backend decides on other request headers.
+
+### Reconnect through another gateway
+
+When a charger reconnects through gateway B while its old socket is still open on
+gateway A, the processing tier that sees the newer session (registry epochs order
+the two) asks A to close the old socket at once (`ControlReplaced`, close code
+1008); A's reconcile pass (every 30 s) is the fallback. The sender is the backend,
+not B: gateways have no channel to each other.
+
+### Deadlines across hosts
+
+Deadlines are never compared across hosts. An inbound message carries its
+`ReceivedAt` and `Deadline` from the gateway's clock and the backend uses the
+difference as the handler's budget; a CSMS call carries `CallRequest.Budget`, the
+time left, which the gateway applies from its own clock.
 
 ## Testing
 

@@ -420,3 +420,19 @@ func TestStoreSourceAndCAS(t *testing.T) {
 	require.Len(t, h, 2)
 	require.EqualValues(t, 2, h[0].Rev)
 }
+
+// A session that is already busy when it is first evaluated under a hold: busy
+// rule (the previous revision had no hold, so no memory of it exists) must stay
+// where the previous revision had it (review NIT: it moved mid-transaction).
+func TestHoldBusyHoldsOnTheFirstEvaluation(t *testing.T) {
+	e := routepolicy.NewEngine()
+	require.NoError(t, e.Apply(canaryPolicy(1, func(r *routepolicy.Rule) { r.Match.Percent = pct(0) })))
+	in := gateway.RouteInput{CPID: "cp", Action: "MeterValues", Attrs: map[string]string{routepolicy.BusyAttr: "1"}}
+	require.Equal(t, "default", e.Route(in).Pool)
+	// rev 2 sends everyone to the canary and holds busy sessions; this one has
+	// never been evaluated under a hold rule, but it is on the default pool.
+	require.NoError(t, e.Apply(canaryPolicy(2, func(r *routepolicy.Rule) { r.Hold = "busy" })))
+	require.Equal(t, "default", e.Route(in).Pool, "a busy session moved on its first evaluation")
+	delete(in.Attrs, routepolicy.BusyAttr)
+	require.Equal(t, "canary", e.Route(in).Pool)
+}

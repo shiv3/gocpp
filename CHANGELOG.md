@@ -203,6 +203,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Gateway pre-merge review fixes (session core): a CSMS call whose caller gave up while the frame was written is no longer reported `NotSent` when the charger got it (S1);
+  a cancelled `Drain` gives quiesced sessions their calls back, and `Server.Undrain` takes a cancelled full drain back into service (S2); the backend orders sessions
+  across gateways by registry epoch (a late `SessionOpened{A,5}` after `{B,6}` is ignored, S3); session events are serialized per charger instead of per 1/64 stripe, so a blocked
+  `OnConnect` stalls only its own charger (S4); a reconnect through another gateway closes the old socket at once through `ControlReplaced` sent by the backend (S5); when every member of a
+  routed pool refuses a CALL and a fallback pool is usable the message falls back immediately instead of being held for `UpstreamWait` (S6); `Pool.Drain`/`Remove` can no longer lose a race
+  with `pick` and hand a request to a drained member (S8); deadlines are not compared across hosts: `Envelope.Deadline-ReceivedAt` and the new `CallRequest.Budget` (link-grpc proto field
+  `budget_nanos`) carry relative budgets (S9); `ControlInvalidateAuth` and `Server.InvalidateGatewayAuthCache` invalidate gateway auth caches cluster-wide (S10).
+  Also: `HandlerTimeout` starts after signature/schema validation again, the registry-outage connect wait is `ClaimTimeout` once (not twice), `Conn.SetAttrs` no longer races
+  the reconcile loop (epoch could go back), the processing tier forgets idle cached sessions, a full gateway refuses before asking the backend to authenticate, and a busy session
+  met for the first time under a `hold: busy` rule is held where the previous revision had it.
+
 - Gateway pre-merge fixes: a `RoleCaller` backend sending `Drain` no longer crashes the
   gateway (nil pool member); a write error met while flushing another goroutine's
   frame on a link stream is no longer returned to the goroutine whose own frame was

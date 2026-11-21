@@ -343,6 +343,8 @@ func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 // new calls again when it returns. It returns ErrDrainInProgress while a Drain
 // is running and is a no-op on a server that is not draining. After Shutdown it
 // has no effect.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) Undrain(ctx context.Context) error {
 	if s.drainActive.Load() {
 		return ErrDrainInProgress

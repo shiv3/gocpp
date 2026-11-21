@@ -215,6 +215,15 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 	var edgeReply gateway.ConnectReply
 	if s.edge != nil {
+		// A full gateway refuses before asking the processing tier to authenticate
+		// the charger, so a reconnect storm into a full gateway costs the backend
+		// nothing. The slot itself is still reserved later, atomically.
+		if s.atCapacity(cpID) {
+			w.Header().Set("Retry-After", "30")
+			s.upgradeResult("full")
+			http.Error(w, "too many connections", http.StatusServiceUnavailable)
+			return
+		}
 		// The processing tier decides the upgrade (authentication, admission,
 		// connection timing).
 		var status int
@@ -568,6 +577,22 @@ func (s *Server) hasConn(id string) bool {
 	defer s.mu.RUnlock()
 	_, ok := s.conns[id]
 	return ok
+}
+
+// atCapacity reports whether an upgrade for id would be refused by
+// WithMaxConnections right now (an id that is already connected replaces its
+// connection and takes no slot). It is a hint for refusing early; reserveSlot
+// decides.
+func (s *Server) atCapacity(id string) bool {
+	if s.cfg.maxConnections <= 0 {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, replacing := s.conns[id]; replacing {
+		return false
+	}
+	return len(s.conns)+s.reserved >= s.cfg.maxConnections
 }
 
 // slotReservation is a connection slot held between admission and registration.

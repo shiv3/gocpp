@@ -48,6 +48,13 @@ type backend struct {
 
 	mu       sync.Mutex
 	sessions map[string]*gwSession // newest session seen per charge point
+	// seen is when each cached session was last used or announced, to drop
+	// entries nothing has touched for cacheIdle: a SessionClosed that went to
+	// another backend would otherwise leave this backend's entry forever (bounded
+	// by the number of charge point ids, but not by the connected ones).
+	seen      map[string]time.Time
+	lastSweep time.Time
+	cacheIdle time.Duration
 
 	// events serializes the session events of one charge point: observing a
 	// session and running the application's connect/disconnect hooks for it must
@@ -87,8 +94,13 @@ func (b *backend) lockEvents(cpID string) (unlock func()) {
 	}
 }
 
+// sessionCacheIdle is how long a cached session may go unused before the
+// backend forgets it. A session that is still connected is simply cached again
+// by its next message.
+const sessionCacheIdle = time.Hour
+
 func newBackend(s *Server, link gateway.BackendLink) *backend {
-	return &backend{s: s, link: link, sessions: make(map[string]*gwSession), events: make(map[string]*cpLock)}
+	return &backend{s: s, link: link, sessions: make(map[string]*gwSession), seen: make(map[string]time.Time), cacheIdle: sessionCacheIdle, events: make(map[string]*cpLock)}
 }
 
 // Upstream returns the server's gateway.Upstream: what a link delivers the
@@ -127,6 +139,9 @@ func (s *Server) ServeGateway(ctx context.Context) error {
 func (b *backend) observe(ref gateway.SessionRef, version ocppj.Version, info *gateway.SessionInfo) (cur, displaced *gwSession, stale bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	now := time.Now()
+	b.sweepLocked(now)
+	b.seen[ref.CPID] = now
 	old := b.sessions[ref.CPID]
 	if old != nil {
 		switch {
@@ -145,6 +160,22 @@ func (b *backend) observe(ref gateway.SessionRef, version ocppj.Version, info *g
 	cur = newGwSession(ref, version, info)
 	b.sessions[ref.CPID] = cur
 	return cur, old, false
+}
+
+// sweepLocked drops sessions unused for cacheIdle, at most once per minute (or
+// per tenth of cacheIdle when that is shorter).
+func (b *backend) sweepLocked(now time.Time) {
+	every := min(time.Minute, b.cacheIdle/10)
+	if now.Sub(b.lastSweep) < every {
+		return
+	}
+	b.lastSweep = now
+	for id, t := range b.seen {
+		if now.Sub(t) >= b.cacheIdle {
+			delete(b.seen, id)
+			delete(b.sessions, id)
+		}
+	}
 }
 
 // newerSession reports whether a is a newer session of the same charger than
@@ -178,11 +209,13 @@ func (b *backend) forget(ref gateway.SessionRef) (fire bool) {
 		return true
 	case cur.ref == ref:
 		delete(b.sessions, ref.CPID)
+		delete(b.seen, ref.CPID)
 		return true
 	case b.newerSession(ref, cur.ref):
 		// The cache holds an older session of this charger whose own close went
 		// elsewhere; ref supersedes it.
 		delete(b.sessions, ref.CPID)
+		delete(b.seen, ref.CPID)
 		return true
 	}
 	return false
@@ -195,7 +228,11 @@ func sameSessionOwner(a, b gateway.SessionRef) bool {
 func (b *backend) cached(cpID string) *gwSession {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.sessions[cpID]
+	if sess := b.sessions[cpID]; sess != nil {
+		b.seen[cpID] = time.Now()
+		return sess
+	}
+	return nil
 }
 
 func (b *backend) handle(sess *gwSession) *Conn {
