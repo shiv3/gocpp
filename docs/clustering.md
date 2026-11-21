@@ -9,6 +9,8 @@ For the split deployment (a connection tier that holds the sockets and a statele
 
 ## Setup
 
+> `WithMessageRouter` and the router addons are deprecated in favour of the gateway link; see [Moving to the gateway link](#moving-to-the-gateway-link). This page describes the cluster mode that remains supported until then.
+
 ```go
 srv := csms.NewServer(
     csms.WithInstanceID("csms-2"),            // unique per running instance; enables clustering
@@ -109,3 +111,35 @@ handle supports `Call`, `CallRaw`, `CallAsync` and `CallRawAsync`; `Close` and
   socket only; they are not forwarded.
 * Remote serving starts when the server is created; calls forwarded during the
   first moments may fail with `ErrNotConnected`.
+
+## Moving to the gateway link
+
+`storage.MessageRouter` and `csms.WithMessageRouter` are deprecated in favour of
+`gateway.Downstream`, the contract every CSMS-initiated call travels over in a
+split deployment (`Call`, `Send` and `Control`, with session epochs, `Sent`
+semantics, deadlines and typed errors; `docs/gateway.md`). Nothing breaks: the
+router, its three addons and the `WithInstanceID` cluster mode keep working
+exactly as documented above, and they are removed no earlier than v0.4. New
+deployments should use `csms.NewGatewayServer` for the connection tier and
+`csms.WithGatewayLink` for the processing tier over `addons/link-grpc` or
+`addons/link-nats`; the registry (`WithSessionRegistry`) is shared as before.
+
+| Today | Replacement |
+|---|---|
+| `WithInstanceID` + `WithConnectionRegistry` + `WithMessageRouter(router-*)` | gateway tier + processing tier over a link, `WithSessionRegistry` |
+| `Server.Lookup(id)` then `Call` (forwarded by the router) | the same call; the link carries it as `Downstream.Call` to the gateway holding the session |
+| `router.CallRemote(cpID, action, payload)` in your own code | `Downstream.Call(ctx, CallRequest{Target: SessionRef{CPID: cpID}, ...})` |
+| `router-redis` / `router-nats` / `router-temporal` | `addons/link-grpc` (default) or `addons/link-nats` |
+
+To migrate in steps, two adapters in `csms` speak the router's call envelope:
+
+- `csms.RouterDownstream(router)` presents an existing router as a
+  `gateway.Downstream` (calls only; `Send` and `Control` return
+  `gateway.ErrUnsupported`; the target's epoch is ignored). A service written
+  against `Downstream` can run on today's cluster and move to a link later.
+- `csms.DownstreamRouter(downstream)` presents a `Downstream` as the router of a
+  clustered server, so calls for chargers held elsewhere travel as
+  `Downstream.Call` requests while everything else stays as it is.
+
+What does not carry over is deliberate: a `Downstream` call names a session
+epoch and reports `Sent`, which a router never could.

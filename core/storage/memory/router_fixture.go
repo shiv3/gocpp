@@ -37,7 +37,7 @@ func (h *InProcessHub) Registry() storage.ConnectionRegistry {
 }
 
 // Router returns a MessageRouter for the given instance.
-func (h *InProcessHub) Router(instanceID string) storage.MessageRouter {
+func (h *InProcessHub) Router(instanceID string) storage.MessageRouter { //nolint:staticcheck // legacy interface, kept for compatibility (deprecated in favour of gateway.Downstream)
 	return &hubRouter{hub: h, instanceID: instanceID}
 }
 

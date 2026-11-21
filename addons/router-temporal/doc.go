@@ -14,4 +14,11 @@
 // MessageRouter request/response contract. It does not provide exactly-once OCPP
 // delivery semantics; handler errors can be retried by Temporal and callers
 // should make forwarded calls idempotent where possible.
+//
+// Deprecated: storage.MessageRouter is superseded by gateway.Downstream; for new
+// deployments use the gateway link (addons/link-grpc or addons/link-nats) instead
+// of WithInstanceID plus a router. This package keeps working and is removed
+// no earlier than v0.4. csms.RouterDownstream and csms.DownstreamRouter convert
+// between the two while migrating (docs/clustering.md, "Moving to the gateway
+// link").
 package routertemporal
