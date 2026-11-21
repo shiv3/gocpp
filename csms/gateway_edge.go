@@ -15,6 +15,7 @@ import (
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/gateway"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -40,6 +41,8 @@ const edgeNotifyClosing = 20 * time.Millisecond
 // Options that belong to the processing tier are ignored here: schema
 // validation, time encoding, handlers and the OnConnect/OnDisconnect callbacks,
 // so one option list can configure both tiers. See docs/gateway.md.
+//
+// Experimental: this API may change before v1.0.
 func NewGatewayServer(link gateway.GatewayLink, opts ...Option) *Server {
 	opts = append(opts[:len(opts):len(opts)], optionFunc(func(c *serverConfig) {
 		c.edgeLink = link
@@ -73,7 +76,16 @@ type edge struct {
 
 	callsMu sync.Mutex
 	calls   map[string]*edgeCall
+
+	// routeWrites bounds the registry writes of route.pool in flight (a policy
+	// step changes the pool of every session at once).
+	routeWrites chan struct{}
 }
+
+// routePoolKey is the key of the routing copy: Session.Meta["route.pool"].
+const routePoolKey = "pool"
+
+const edgeRouteWrites = 32
 
 func randHex(n int) string {
 	b := make([]byte, n)
@@ -96,7 +108,7 @@ func newEdge(s *Server, link gateway.GatewayLink, id string) *edge {
 		router = gateway.DefaultRouter{}
 	}
 	e := &edge{s: s, link: link, id: id, boot: boot, router: router, calls: make(map[string]*edgeCall),
-		responders: s.cfg.buildEdgeResponders()}
+		routeWrites: make(chan struct{}, edgeRouteWrites), responders: s.cfg.buildEdgeResponders()}
 	e.edgeMetric, _ = s.cfg.metrics.(observability.EdgeMetrics)
 	if c := s.cfg.gwAuthCache; c != nil {
 		e.auth = newAuthCache(*c)
@@ -123,9 +135,13 @@ func applyEdgeConfig(c *serverConfig) {
 	c.instanceID = ""
 	c.link = nil
 	c.splitInProcess = false
+	c.splitLink = nil
 	if c.dispatcher.HandlerTimeout == 0 {
 		c.dispatcher.HandlerTimeout = defaultGatewayHandlerTimeout
 	}
+	// A gateway's handler is the forward path (pool selection, the link
+	// transport's send path, its encoder): about 10 KB deep.
+	c.dispatcher.DeepHandlerStack = true
 }
 
 // newSession allocates the reference of a session being accepted. With a
@@ -232,6 +248,7 @@ func (e *edge) opened(conn *Conn, r *http.Request, rep gateway.ConnectReply) {
 		ReceivedAt: time.Now(), Open: info, Attrs: rep.Attrs,
 		Route: e.route(gateway.KindSessionOpened, sess.ref.CPID, "$opened", sess.version, rep.Attrs),
 	}
+	e.noteRoute(conn.inner, sess, env.Route.Pool)
 	e.notify(env)
 }
 
@@ -261,6 +278,11 @@ func (e *edge) notify(env gateway.Envelope) {
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(e.s.ctx), timeout)
 	defer cancel()
+	// A server that starts closing while this notify waits for a backend (an
+	// empty pool holds for seconds) must not leave the goroutine behind: give the
+	// delivery the closing bound from that moment.
+	stop := context.AfterFunc(e.s.ctx, func() { time.AfterFunc(edgeNotifyClosing, cancel) })
+	defer stop()
 	if err := e.link.Notify(ctx, env); err != nil {
 		e.s.cfg.dispatcher.Logger.Warn("gateway: session event not delivered",
 			"cp_id", env.Session.CPID, "kind", env.Kind.String(), "error", err)
@@ -300,8 +322,61 @@ func (e *edge) envelope(ctx context.Context, dc *dispatcher.Conn, kind gateway.K
 		Proto: gateway.ProtoVersion, Session: sess.ref, Version: sess.version, Kind: kind,
 		DeliveryID: e.deliveryID(), Attempt: 1, MsgID: msgID, Action: action, Payload: payload,
 		ReceivedAt: time.Now(), Deadline: dl, Trace: traceparent(ctx), Attrs: sess.attrs(),
-		Route: e.route(kind, sess.ref.CPID, action, sess.version, sess.attrs()),
+		Route: e.routeFor(dc, sess, kind, action),
 	}, true
+}
+
+// routeFor routes one message of sess and keeps the registry copy of the
+// decision (Session.Meta["route.pool"]) current.
+func (e *edge) routeFor(dc *dispatcher.Conn, sess *gwSession, kind gateway.Kind, action string) *gateway.Route {
+	r := e.route(kind, sess.ref.CPID, action, sess.version, sess.attrs())
+	e.noteRoute(dc, sess, r.Pool)
+	return r
+}
+
+// noteRoute copies the pool a session is routed to into its registry record
+// when it differs from the last copy, asynchronously and best effort: the hot
+// path never waits for the registry, a failed or skipped write is retried by the
+// next message, and the record also gets the value at the next claim. With a
+// rule limited to some actions the copy follows the action of the latest
+// message.
+func (e *edge) noteRoute(dc *dispatcher.Conn, sess *gwSession, pool string) {
+	if pool == "" || pool == gateway.PoolReject || e.s.sessions == nil {
+		return
+	}
+	if p := sess.routePool.Load(); p != nil && *p == pool {
+		return
+	}
+	rw, ok := e.s.sessions.reg.(storage.RouteWriter)
+	if !ok {
+		return
+	}
+	ref, _ := dc.Attachment().(*sessionRef)
+	if ref == nil || ref.s.Epoch == 0 {
+		return // not claimed yet: the claim carries the value
+	}
+	if !sess.routeBusy.CompareAndSwap(false, true) {
+		return // a write for this session is in flight; the next message tries again
+	}
+	select {
+	case e.routeWrites <- struct{}{}:
+	default:
+		sess.routeBusy.Store(false)
+		return // busy; the next message tries again
+	}
+	go func() {
+		defer func() { <-e.routeWrites; sess.routeBusy.Store(false) }()
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(e.s.ctx), edgeNotifyTimeout)
+		defer cancel()
+		written, err := rw.SetRoute(ctx, ref.s.CPID, ref.s.Epoch, map[string]string{routePoolKey: pool})
+		if err != nil {
+			e.s.cfg.dispatcher.Logger.Debug("gateway: route copy failed", "cp_id", ref.s.CPID, "error", err)
+			return
+		}
+		if written {
+			sess.routePool.Store(&pool)
+		}
+	}()
 }
 
 // forward is the catch-all CALL handler: it hands the call to the processing
@@ -428,9 +503,12 @@ func (d edgeDownstream) call(ctx context.Context, c *Conn, req gateway.CallReque
 	var sent atomic.Bool
 	cctx := context.WithoutCancel(ctx)
 	var cancel context.CancelFunc
-	if !req.Deadline.IsZero() {
+	switch {
+	case req.Budget > 0:
+		cctx, cancel = context.WithTimeout(cctx, req.Budget)
+	case !req.Deadline.IsZero():
 		cctx, cancel = context.WithDeadline(cctx, req.Deadline)
-	} else {
+	default:
 		cctx, cancel = context.WithCancel(cctx)
 	}
 	cctx = dispatcher.WithSentHook(cctx, func() { sent.Store(true) })
@@ -460,30 +538,52 @@ func (d edgeDownstream) call(ctx context.Context, c *Conn, req gateway.CallReque
 		}
 		return out
 	}
+	// orphan reports the answer of a call whose caller is gone.
+	orphan := func(r result) {
+		if r.err != nil && !errors.As(r.err, new(*ocppj.CallError)) {
+			return // no answer arrived; nothing to report
+		}
+		env := gateway.Envelope{
+			Proto: gateway.ProtoVersion, Session: c.gw.ref, Version: c.gw.version,
+			Kind: gateway.KindOrphanResult, DeliveryID: d.e.deliveryID(), Attempt: 1,
+			CallID: req.CallID, Action: req.Action, Payload: r.payload, ReceivedAt: time.Now(),
+			Error: gateway.EncodeError(r.err),
+		}
+		if req.CallerPool != "" {
+			// The answer goes back to the pool that asked, not to wherever the
+			// charger is routed now; if that pool has no backend left (the
+			// caller died, say) the default pool takes it.
+			env.Route = &gateway.Route{Pool: req.CallerPool, Fallback: gateway.DefaultPool, Rule: "$orphan"}
+		}
+		d.e.notify(env)
+	}
 	select {
 	case r := <-resCh:
+		if ctx.Err() != nil && sent.Load() {
+			// The caller went away and the answer came in at the same moment (the
+			// select above picks at random when both are ready): the caller is
+			// gone, so the answer is an orphan, not a reply nobody reads.
+			orphan(r)
+			return gateway.CallReply{Sent: gateway.SentNoResponse, Session: c.gw.ref,
+				Error: gateway.EncodeError(ctx.Err())}, nil
+		}
 		return reply(r), nil
 	case <-ctx.Done():
 		if !sent.Load() {
+			// Cancel and classify from what the call really did: the frame may
+			// have been written between the check above and the cancel, and then
+			// the caller must not be told "not sent" (it would retry a command the
+			// charger already holds).
 			cancel()
-			<-resCh
-			return gateway.CallReply{Sent: gateway.NotSent, Session: c.gw.ref,
-				Error: gateway.EncodeError(ctx.Err())}, nil
+			r := <-resCh
+			rep := reply(r)
+			if rep.Sent == gateway.NotSent {
+				rep.Error = gateway.EncodeError(ctx.Err())
+			}
+			return rep, nil
 		}
 		// Written, caller gone: wait for the answer in the background.
-		go func() {
-			r := <-resCh
-			if r.err != nil && !errors.As(r.err, new(*ocppj.CallError)) {
-				return // no answer arrived; nothing to report
-			}
-			env := gateway.Envelope{
-				Proto: gateway.ProtoVersion, Session: c.gw.ref, Version: c.gw.version,
-				Kind: gateway.KindOrphanResult, DeliveryID: d.e.deliveryID(), Attempt: 1,
-				CallID: req.CallID, Action: req.Action, Payload: r.payload, ReceivedAt: time.Now(),
-				Error: gateway.EncodeError(r.err),
-			}
-			d.e.notify(env)
-		}()
+		go func() { orphan(<-resCh) }()
 		return gateway.CallReply{Sent: gateway.SentNoResponse, Session: c.gw.ref,
 			Error: gateway.EncodeError(ctx.Err())}, nil
 	}
@@ -498,6 +598,10 @@ func (d edgeDownstream) Send(ctx context.Context, req gateway.CallRequest) error
 }
 
 func (d edgeDownstream) Control(ctx context.Context, req gateway.ControlRequest) error {
+	if req.Op == gateway.ControlInvalidateAuth {
+		d.e.s.InvalidateAuthCache(req.Target.CPID)
+		return nil
+	}
 	c, err := d.session(req.Target)
 	if err != nil {
 		return err

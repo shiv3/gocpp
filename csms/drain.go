@@ -30,6 +30,8 @@ const (
 var ErrDrainInProgress = errors.New("csms: drain already in progress")
 
 // DrainOptions tunes Server.Drain. Zero values select the defaults.
+//
+// Experimental: this API may change before v1.0.
 type DrainOptions struct {
 	// Window is the time in which every session is closed, and the hard limit:
 	// sessions still open when it ends are closed regardless of what they are
@@ -80,6 +82,8 @@ type DrainOptions struct {
 }
 
 // DrainProgress is a snapshot reported by DrainOptions.OnProgress.
+//
+// Experimental: this API may change before v1.0.
 type DrainProgress struct {
 	// Total is the number of sessions the drain started with.
 	Total int
@@ -97,6 +101,8 @@ func (o DrainOptions) partial() bool {
 
 // DrainStatus is the state of the current or last drain, for metrics and rollout
 // controllers (see Server.DrainStatus).
+//
+// Experimental: this API may change before v1.0.
 type DrainStatus struct {
 	Active  bool
 	Partial bool
@@ -127,6 +133,8 @@ func (d *drainState) set(f func(*DrainStatus)) {
 }
 
 // DrainStatus returns the state of the running drain, or of the last one.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) DrainStatus() DrainStatus {
 	s.drainSt.mu.Lock()
 	defer s.drainSt.mu.Unlock()
@@ -224,6 +232,8 @@ func (o DrainOptions) withDefaults(sessions int) DrainOptions {
 
 // Draining reports whether Drain has been called. A readiness probe should fail
 // while it is true so the load balancer stops sending upgrades.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) Draining() bool { return s.draining.Load() }
 
 // ReadyHandler returns a readiness handler: 200 while the server wants new
@@ -232,6 +242,8 @@ func (s *Server) Draining() bool { return s.draining.Load() }
 // WithSoftMaxConnections). Established sessions are never affected by readiness;
 // the soft cap does not refuse upgrades, it only asks the load balancer to stop
 // sending more.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) ReadyHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		switch {
@@ -283,6 +295,8 @@ func (s *Server) AdmissionStats() AdmissionStats {
 // ctx.Err() if ctx ends first (sessions not yet closed stay open). It does not
 // stop the HTTP server or the Server; call Shutdown afterwards. Only one Drain
 // can run at a time (ErrDrainInProgress).
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 	partial := opts.partial()
 	if !s.drainActive.CompareAndSwap(false, true) {
@@ -323,6 +337,29 @@ func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 	return err
 }
 
+// Undrain ends a full drain that was cancelled before the process stopped: the
+// server accepts upgrades again, ReadyHandler reports ready, and the gateway
+// lease goes back to serving. Sessions a cancelled Drain quiesced already accept
+// new calls again when it returns. It returns ErrDrainInProgress while a Drain
+// is running and is a no-op on a server that is not draining. After Shutdown it
+// has no effect.
+//
+// Experimental: this API may change before v1.0.
+func (s *Server) Undrain(ctx context.Context) error {
+	if s.drainActive.Load() {
+		return ErrDrainInProgress
+	}
+	if s.stopping.Load() || s.ctx.Err() != nil {
+		return nil
+	}
+	s.draining.Store(false)
+	if s.sessions != nil {
+		s.sessions.draining.Store(false)
+		s.sessions.heartbeat(ctx)
+	}
+	return nil
+}
+
 // drainTarget is one session as the drain pacer sees it.
 type drainTarget interface {
 	// closeIfIdle closes the session if nothing is in flight, reporting whether it
@@ -335,6 +372,11 @@ type drainTarget interface {
 	// done is closed when the session is gone (torn down).
 	done() <-chan struct{}
 }
+
+// unquiescer is implemented by drain targets that can take back quiesce, so a
+// drain that ends early (its context was cancelled) does not leave sessions
+// that refuse every new call.
+type unquiescer interface{ unquiesce() }
 
 type busyTarget struct {
 	t        drainTarget
@@ -427,6 +469,15 @@ func runDrain(ctx context.Context, targets []drainTarget, opts DrainOptions, st 
 		return false
 	}
 
+	// A drain that ends before every session was closed (its context ended)
+	// leaves the sessions it quiesced open: let them place calls again.
+	defer func() {
+		for _, b := range busy {
+			if u, ok := b.t.(unquiescer); ok {
+				u.unquiesce()
+			}
+		}
+	}()
 	ticker := time.NewTicker(drainTick)
 	defer ticker.Stop()
 	for len(queue) > 0 || len(busy) > 0 {
@@ -470,6 +521,7 @@ type connTarget struct{ c *Conn }
 func (t connTarget) closeIfIdle() bool     { return t.c.inner.TryDrain() }
 func (t connTarget) quiesce()              { t.c.inner.Quiesce() }
 func (t connTarget) forceClose()           { t.c.inner.ForceDrain() }
+func (t connTarget) unquiesce()            { t.c.inner.Unquiesce() }
 func (t connTarget) done() <-chan struct{} { return t.c.gone }
 
 // jitterRetryAfter renders a Retry-After value spread over 0.5x to 1.5x of base,

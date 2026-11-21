@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -356,4 +357,101 @@ func TestPool_PicksOnlyMembersThatServeTheAction(t *testing.T) {
 	require.EqualValues(t, 0, old.Load())
 	require.EqualValues(t, 30, cur.Load())
 	require.Empty(t, s.Unhandled())
+}
+
+// When every member of the routed pool refuses and a fallback pool is usable, the
+// message goes to the fallback at once; it is not held for the pool's wait
+// (review S6: 20 s per message).
+func TestPoolSet_AllNackFallsBackWithoutHolding(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ps := gateway.NewPoolSet(3 * time.Second)
+	stable := &fakeUp{handle: ok}
+	nack := &fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) { return gateway.Reply{Nack: true}, nil }}
+	ps.Add(gateway.BackendInfo{ID: "s"}, stable)
+	ps.Add(gateway.BackendInfo{ID: "c1", Pool: "canary"}, nack)
+	ps.Add(gateway.BackendInfo{ID: "c2", Pool: "canary"}, nack)
+	start := time.Now()
+	_, err := ps.Handle(context.Background(), gateway.Envelope{Route: &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}})
+	require.NoError(t, err)
+	require.Less(t, time.Since(start), 500*time.Millisecond, "held for the pool wait although every member refused")
+	require.EqualValues(t, 1, stable.calls.Load())
+	require.EqualValues(t, 2, nack.calls.Load())
+}
+
+// A member must not receive a request after its Drain has returned (review S8).
+func TestPool_DrainNeverRacesWithPick(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	for round := 0; round < 1500; round++ {
+		p := gateway.NewPool(50 * time.Millisecond)
+		var drained atomic.Bool
+		var late atomic.Int32
+		doomed := &fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) {
+			if drained.Load() {
+				late.Add(1)
+			}
+			return gateway.Reply{Payload: []byte(`{}`)}, nil
+		}}
+		m := p.Add(gateway.BackendInfo{ID: "doomed"}, doomed)
+		p.Add(gateway.BackendInfo{ID: "other"}, &fakeUp{handle: ok})
+		stop := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					_, _ = p.Handle(context.Background(), gateway.Envelope{})
+				}
+			}()
+		}
+		time.Sleep(time.Duration(round%5) * 20 * time.Microsecond)
+		require.NoError(t, p.Drain(context.Background(), m))
+		drained.Store(true)
+		time.Sleep(500 * time.Microsecond)
+		close(stop)
+		wg.Wait()
+		require.Zero(t, late.Load(), "round %d: a request reached a member after its Drain returned", round)
+	}
+}
+
+// NIT: Attempt never goes back when the fallback pool takes over after the
+// routed pool's members all Nacked.
+func TestPoolSet_AttemptIsMonotonicAcrossFallback(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ps := gateway.NewPoolSet(50 * time.Millisecond)
+	nack := func(context.Context, gateway.Envelope) (gateway.Reply, error) { return gateway.Reply{Nack: true}, nil }
+	for _, id := range []string{"n1", "n2", "n3"} {
+		ps.Add(gateway.BackendInfo{ID: id, Pool: "canary"}, &fakeUp{handle: nack})
+	}
+	var got atomic.Uint32
+	ps.Add(gateway.BackendInfo{ID: "s"}, &fakeUp{handle: func(_ context.Context, env gateway.Envelope) (gateway.Reply, error) {
+		got.Store(env.Attempt)
+		return gateway.Reply{}, nil
+	}})
+	_, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}, Deadline: time.Now().Add(time.Second)})
+	require.NoError(t, err)
+	require.EqualValues(t, 4, got.Load(), "three Nacked attempts, then attempt 4 on the fallback")
+}
+
+// S12: charger-chosen action names must not grow the unhandled map (or a metric
+// label) without bound.
+func TestPoolSet_UnhandledActionsAreBounded(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	s := gateway.NewPoolSet(50 * time.Millisecond)
+	s.Add(gateway.BackendInfo{ID: "s", Pool: gateway.DefaultPool, Actions: []string{"Heartbeat", "VendorThing"}}, &fakeUp{handle: ok})
+	s.Add(gateway.BackendInfo{ID: "c", Pool: "canary", Actions: []string{"Heartbeat"}}, &fakeUp{handle: ok})
+	route := &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}
+	for i := 0; i < 500; i++ {
+		_, _ = s.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Action: fmt.Sprintf("Junk%d", i), Route: route})
+	}
+	_, _ = s.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Action: "VendorThing", Route: route})
+	_, _ = s.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Action: "Reset", Route: route})
+	require.Equal(t, map[[2]string]uint64{{"canary", "other"}: 500, {"canary", "VendorThing"}: 1, {"canary", "Reset"}: 1}, s.Unhandled())
+	require.Equal(t, "other", gateway.LabelAction("Junk1"))
+	require.Equal(t, "BootNotification", gateway.LabelAction("BootNotification"))
 }

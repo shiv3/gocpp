@@ -17,6 +17,7 @@ import (
 	"github.com/shiv3/gocpp/gateway"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/protobuf/proto"
 )
 
 // Resolver lists the gateway addresses (host:port) a backend should be attached
@@ -53,6 +54,7 @@ type Backend struct {
 	metrics      Metrics
 	resolveEvery time.Duration
 	drainTimeout time.Duration
+	linger       time.Duration
 	keepalive    keepalive.ClientParameters
 	proto        gateway.ProtoRange // link versions spoken (SupportedProto)
 	caps         []string           // capabilities offered (supportedCaps)
@@ -95,6 +97,13 @@ func WithDrainTimeout(d time.Duration) BackendOption { return func(b *Backend) {
 // (default: ping after 10 s idle, 5 s to answer).
 func WithClientKeepalive(p keepalive.ClientParameters) BackendOption {
 	return func(b *Backend) { b.keepalive = p }
+}
+
+// WithBackendWriteLinger is WithGatewayWriteLinger for the frames this backend
+// writes to a gateway (replies above all): a busy stream gathers frames for up
+// to d before writing them as one batch. The default, 0, never delays a write.
+func WithBackendWriteLinger(d time.Duration) BackendOption {
+	return func(b *Backend) { b.linger = clampLinger(d) }
 }
 
 // NewBackend returns the backend end of the link for the gateways resolve names.
@@ -143,6 +152,8 @@ func (s *stream) send(f *linkpb.BackendFrame) error { return s.out.push(f) }
 
 func (s *stream) initSend() {
 	s.out.write = s.st.Send
+	s.out.linger = s.b.linger
+	s.out.size = func(f *linkpb.BackendFrame) int { return proto.Size(f) }
 	if slices.Contains(s.caps, gateway.CapBatch) {
 		s.out.batch = func(fs []*linkpb.BackendFrame) error {
 			return s.st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Batch{Batch: &linkpb.BackendBatch{Frames: fs}}})
@@ -323,10 +334,10 @@ func (b *Backend) attachOnce(ctx context.Context, addr string, up gateway.Upstre
 		s.unary.close()
 		s.drainOne.Do(func() { close(s.drained) }) // a dead stream needs no acknowledgement
 	}()
-	return s.readLoop(sctx, up, info)
+	return s.readLoop(sctx, up)
 }
 
-func (s *stream) readLoop(ctx context.Context, up gateway.Upstream, info gateway.BackendInfo) error {
+func (s *stream) readLoop(ctx context.Context, up gateway.Upstream) error {
 	for {
 		f, err := s.st.Recv()
 		if err != nil {
@@ -386,8 +397,7 @@ func (s *stream) spawn(fn func()) {
 	s.inflight.Add(1)
 	go func() {
 		defer s.inflight.Add(-1)
-		var reserve [handlerStack]byte
-		reserveStack(&reserve)
+		growStack()
 		fn()
 	}()
 }
@@ -401,7 +411,7 @@ func (s *stream) handle(ctx context.Context, up gateway.Upstream, id uint64, pb 
 	env := linkconv.EnvFromPB(pb)
 	hctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s.cancels.Store(id, context.CancelFunc(cancel))
+	s.cancels.Store(id, cancel)
 	defer s.cancels.Delete(id)
 	rep, err := up.Handle(hctx, env)
 	if err != nil {

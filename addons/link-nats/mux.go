@@ -31,9 +31,25 @@ var (
 	// errNoAccept: no peer acknowledged the request in time; it may or may not
 	// have reached one, so it is not redispatched.
 	errNoAccept = errors.New("linknats: request not acknowledged by any backend")
+	// ErrPayloadTooLarge: the message exceeds the NATS server's max_payload. Nothing
+	// was sent, but another member or a retry would fail the same way, so it is
+	// not ErrNotDelivered (which means "try elsewhere").
+	ErrPayloadTooLarge = errors.New("linknats: message exceeds the NATS server's max payload")
 	// errConnLost: the NATS connection dropped while the request was out.
 	errConnLost = errors.New("linknats: connection to NATS lost")
 )
+
+// Pending limits of the link's subscriptions. NATS core is at most once and has
+// no flow control: a consumer that cannot keep up must drop (counted by the
+// client, reported to its error handler) rather than buffer without bound until
+// the process runs out of memory. The per-backend in-flight cap keeps a healthy
+// peer far below these.
+const (
+	pendingMsgs  = 65536
+	pendingBytes = 64 << 20
+)
+
+func setPendingLimits(sub *nats.Subscription) { _ = sub.SetPendingLimits(pendingMsgs, pendingBytes) }
 
 // token makes s usable as one subject token.
 func token(s string) string {
@@ -83,7 +99,7 @@ func newMux(nc *nats.Conn, subjectPrefix, owner string) (*mux, error) {
 	if err != nil {
 		return nil, err
 	}
-	sub.SetPendingLimits(-1, -1)
+	setPendingLimits(sub)
 	x.sub = sub
 	x.wg.Add(1)
 	go x.watchConn()
@@ -201,6 +217,9 @@ func (x *mux) request(ctx context.Context, subject string, hdr nats.Header, data
 	defer x.drop(id)
 	msg := &nats.Msg{Subject: subject, Reply: x.prefix + strconv.FormatUint(id, 10), Header: hdr, Data: data}
 	if err := x.nc.PublishMsg(msg); err != nil {
+		if errors.Is(err, nats.ErrMaxPayload) {
+			return nil, "", fmt.Errorf("%w: %w", ErrPayloadTooLarge, err)
+		}
 		return nil, "", fmt.Errorf("%w: %w", errNotPublished, err)
 	}
 	var accept <-chan time.Time

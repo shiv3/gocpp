@@ -11,4 +11,8 @@
 // on Redis Cluster. Lookups and Gateways read several keys without a script;
 // Gateways scans for lease keys and is meant for a single Redis (or Memorystore)
 // endpoint.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package registryredis

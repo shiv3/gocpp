@@ -4,7 +4,7 @@ Two kinds of release, two procedures. This page is the checklist; the semantics
 are in [staged-releases.md](staged-releases.md) (routing policy) and
 [design/gateway.md](design/gateway.md) section 5. Commands are `gocppctl`
 (`--redis-addr` or `GOCPPCTL_REDIS_ADDR` names the session registry; add
-`--admin-token` or `GOCPPCTL_ADMIN_TOKEN` for the `gateway` commands).
+`--admin-token-file` or `GOCPPCTL_ADMIN_TOKEN` for the `gateway` commands).
 
 Promotion is **external**: a person, a pipeline or the optional
 `addons/rollout` controller runs the steps. A gateway never promotes itself; it
@@ -65,7 +65,7 @@ a soft session cap (readiness) and filled by a paced partial drain of the others
 Entry criteria: capacity so that `G-1` gateways hold the fleet, PDB
 `maxUnavailable: 1`, `terminationGracePeriodSeconds` above `--drain-window`,
 `minReadySeconds` so a crash-looping pod stops the rollout; each pod has
-`--advertise-admin $(POD).gateway-link:9100` and an admin token
+`--advertise-admin $(POD).gateway-link:9443` and an admin token
 (`examples/gke-gateway/gateway.yaml`).
 
 1. **Canary pod.** `kubectl patch statefulset gateway -p '{"spec":{"updateStrategy":{"rollingUpdate":{"partition":G-1}}}}'`
@@ -139,6 +139,71 @@ rules:
 
 Library: `csms.WithAttrSource(src, csms.AttrSourceOptions{...})` with any
 `gateway.AttrSource`; `gateway/attrsource` has the file and HTTP sources.
+
+## Part 4. Automatic promotion (optional, off by default)
+
+The manual path above is the supported default; operate canaries by hand for a few
+releases first. `addons/rollout` automates the same steps through the same
+compare-and-set path (`gocppctl rollout run PLAN`, or the library). Nothing runs
+unless you start it, and `--dry-run` only reports.
+
+```yaml
+rule: step                 # the rule the controller steers
+base:                      # the policy to start from; the rule's percent is set per stage
+  salt: rollout-2026-11
+  rules:
+    - name: step
+      pool: canary
+      hold: busy
+stages:
+  - {name: one, percent: 1,   soak: 30m}
+  - {name: ten, percent: 10,  soak: 1h}
+  - {name: half, percent: 50, soak: 2h}
+  - {name: all, percent: 100, soak: 1h}
+interval: 1m               # evaluation period
+window: 5m                 # metric window (shorter right after a stage starts)
+fail_evaluations: 1        # consecutive failing evaluations that roll back
+gates:                     # defaults shown
+  min_requests: 500        # fewer canary requests than this: no decision
+  max_failed_delta: 0.005  # failed ratio (timeout, stream_broken, InternalError) <= stable + 0.5 pp
+  max_code_share_delta: 0.01   # no CALLERROR code more than 1 pp above its stable share
+  max_p99_ratio: 1.5       # canary p99 upstream latency <= 1.5 x stable
+  late_orphan: false       # opt in: late_replies / orphan_results per request <= stable + max_late_orphan_delta
+  max_late_orphan_delta: 0.001
+  checks:                  # application queries (Prometheus only), each must stay <= max
+    - {name: start-failures, query: 'sum(rate(app_transaction_start_failed_total{pool="{{.Canary}}"}[{{.Window}}]))', max: 0.01}
+```
+
+What it does each interval: wait until every gateway lease reports the stage's
+revision; evaluate the gates over the window; **advance** after the soak time when
+all pass; **roll back** (one revision restoring the policy from before the rollout,
+holds ignored) when a gate fails, or a gateway reports the rule suspended by its
+guard; make **no decision** while samples are too few. It **yields** (stops, writes
+nothing) as soon as somebody else changes the policy, so a manual rollback always
+wins. After the last stage it reports `done: ready to promote`; rolling the stable
+Deployment and removing the rule stays a deliberate step.
+
+Metrics: `--prometheus URL` (the queries of docs/design/gateway.md 5.4 over
+`gocpp_gateway_upstream_requests_total` and `gocpp_gateway_upstream_seconds`, plus
+your `checks`) or, without Prometheus, `--scrape` (default: the `/metrics` of every
+gateway lease's admin address), where the controller differences the counters
+itself. Every decision is logged; `--kube-events Deployment/backend-canary` also
+posts a Kubernetes Event for each apply, advance, rollback, done and yield (holds
+are not events). Prefer driving `gocppctl route` from an existing
+progressive-delivery tool where you already run one.
+
+**Restarts and timeouts.** The controller stores its state (stage, the revision
+stored before the rollout, the revision it waits for, the soak timer) in the
+registry after every change, under `<prefix>:ctl:rollout/<rule>`. If
+`gocppctl rollout run` is restarted with the same plan file it resumes where it
+was, and a later rollback restores the revision from before the rollout, not the
+previous stage. A different plan file, or `--fresh`, starts from stage 0; a stored
+finished run (done, rolled back, yielded) is reported as finished until `--fresh`.
+While gateways have not yet reported the new revision the gates and the guard are
+evaluated as usual; if some are still behind after `converge_timeout` (default
+30 s) the controller rolls back. A crash in the instant between writing a stage and
+storing the state makes the resumed controller yield (the revision is not the one it
+expects): check the policy and restart with `--fresh`.
 
 ## Checklists
 

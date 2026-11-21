@@ -89,16 +89,16 @@ type backendNode struct {
 
 func (tp *topology) addBackend(info gateway.BackendInfo, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
 	tp.t.Helper()
-	return tp.addBackendWith(info, nil, []csms.Option{csms.WithSessionRegistry(tp.reg)}, handler)
+	return tp.addBackendWith(info, []csms.Option{csms.WithSessionRegistry(tp.reg)}, handler)
 }
 
-// addBackendWith is addBackend with extra link options and server options (the
+// addBackendWith is addBackend with extra server options (the
 // session registry is not implied).
-func (tp *topology) addBackendWith(info gateway.BackendInfo, beOpts []linkgrpc.BackendOption, srvOpts []csms.Option, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
+func (tp *topology) addBackendWith(info gateway.BackendInfo, srvOpts []csms.Option, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
 	tp.t.Helper()
-	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(tp.addr), append([]linkgrpc.BackendOption{
+	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(tp.addr),
 		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
-		linkgrpc.WithResolveInterval(50 * time.Millisecond), linkgrpc.WithDrainTimeout(5 * time.Second)}, beOpts...)...)
+		linkgrpc.WithResolveInterval(50*time.Millisecond), linkgrpc.WithDrainTimeout(5*time.Second))
 	srv := csms.NewServer(append([]csms.Option{csms.WithGatewayLink(be), csms.WithBackendInfo(info)}, srvOpts...)...)
 	require.NoError(tp.t, csms.On(srv, bootMsg, handler))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -129,7 +129,8 @@ func (n *backendNode) shutdown() {
 	})
 }
 
-func (tp *topology) client(id string) *cp.Client {
+func (tp *topology) client() *cp.Client {
+	const id = "CP_1"
 	c := cp.NewClient(id, tp.wsURL+id, cp.WithSubProtocols("ocpp1.6"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -165,7 +166,7 @@ func TestLink_InboundCallAndCSMSCallOverGRPC(t *testing.T) {
 		return ok(ctx, c, r)
 	})
 
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) { return resetResp{Status: "Accepted"}, nil }))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -205,7 +206,7 @@ func TestLink_BackendDrainLosesNothing(t *testing.T) {
 		}
 		return ok(ctx, c, r)
 	})
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -261,7 +262,7 @@ func TestLink_BrokenStreamAfterDispatchIsNotRetried(t *testing.T) {
 		other.Add(1)
 		return ok(ctx, c, r)
 	})
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	defer tp.close() // gateway first: the client's disconnect is reported to nobody
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -356,8 +357,8 @@ func TestLink_LocateWithoutSessionRegistry(t *testing.T) {
 	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
 	tp := newTopology(t)
 	defer tp.close()
-	n := tp.addBackendWith(gateway.BackendInfo{}, nil, nil, ok)
-	c := tp.client("CP_1")
+	n := tp.addBackendWith(gateway.BackendInfo{}, nil, ok)
+	c := tp.client()
 	defer c.Close()
 	require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) { return resetResp{Status: "Accepted"}, nil }))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -433,7 +434,7 @@ func TestLink_ProtocolSkew(t *testing.T) {
 			}
 			require.Equal(t, tc.wantCap, slices.Contains(caps, "fake.v2"), "caps %v", caps)
 			// Traffic flows whatever the negotiated version.
-			c := tp.client("CP_1")
+			c := tp.client()
 			defer c.Close()
 			cctx, ccancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer ccancel()
@@ -473,7 +474,7 @@ func TestLink_UnhandledActionInRoutedPoolFallsBack(t *testing.T) {
 	}
 	require.Equal(t, []string{"BootNotification"}, announced, "filled from the registered handlers")
 
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -540,4 +541,229 @@ func TestLink_BatchNegotiation(t *testing.T) {
 	require.EqualValues(t, 7, f.Id)
 	require.NotNil(t, f.GetUnsupported())
 	_ = old.CloseSend()
+}
+
+type routingRecorder struct {
+	linkgrpc.NopMetrics
+	mu       sync.Mutex
+	late     map[string]int
+	orphaned map[string]int
+	calls    map[string]int // outcome of CSMS calls served for backends
+}
+
+func (r *routingRecorder) DownstreamCall(_, _, _, outcome string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.calls == nil {
+		r.calls = map[string]int{}
+	}
+	r.calls[outcome]++
+}
+
+func (r *routingRecorder) callsN(outcome string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls[outcome]
+}
+
+func (r *routingRecorder) LateReply(pool string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.late == nil {
+		r.late = map[string]int{}
+	}
+	r.late[pool]++
+}
+
+func (r *routingRecorder) OrphanResult(pool, outcome string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.orphaned == nil {
+		r.orphaned = map[string]int{}
+	}
+	r.orphaned[pool+"/"+outcome]++
+}
+
+func (r *routingRecorder) lateN(k string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.late[k]
+}
+
+func (r *routingRecorder) orphanN(k string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.orphaned[k]
+}
+
+// A backend answer that arrives after the gateway's deadline is dropped and
+// counted per pool.
+func TestLink_LateReplyIsCounted(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	rec := &routingRecorder{}
+	tp := newTopologyWith(t, []csms.Option{csms.WithHandlerTimeout(150 * time.Millisecond)}, linkgrpc.WithGatewayMetrics(rec))
+	defer tp.close()
+	tp.addBackend(gateway.BackendInfo{}, func(ctx context.Context, c *csms.Conn, r bootReq) (bootResp, error) {
+		time.Sleep(500 * time.Millisecond)
+		return ok(ctx, c, r)
+	})
+	c := tp.client()
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := cp.Call(ctx, c, bootMsg, bootReq{ChargePointVendor: "x"})
+	require.Error(t, err)
+	require.Eventually(t, func() bool { return rec.lateN(gateway.DefaultPool) == 1 }, 3*time.Second, 10*time.Millisecond)
+}
+
+// The answer to a CSMS call whose caller (a canary backend) is gone goes back to
+// the canary pool when another canary backend is there, else to the default pool,
+// not to wherever the charger is routed.
+func TestLink_OrphanResultGoesToCallerPool(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		secondCanary bool
+		outcome      string
+	}{{"another canary backend", true, "canary/delivered"}, {"canary pool empty", false, "canary/fallback"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+			rec := &routingRecorder{}
+			tp := newTopologyWith(t, nil, linkgrpc.WithGatewayMetrics(rec))
+			defer tp.close()
+			stableOrphans := make(chan struct{}, 2)
+			canaryOrphans := make(chan struct{}, 2)
+			regOpt := csms.WithSessionRegistry(tp.reg)
+			tp.addBackendWith(gateway.BackendInfo{}, []csms.Option{regOpt,
+				csms.WithOnOrphanResult(func(string, string, string, []byte, error) { stableOrphans <- struct{}{} })}, ok)
+			canary := tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, []csms.Option{regOpt}, ok)
+			if tc.secondCanary {
+				tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, []csms.Option{regOpt,
+					csms.WithOnOrphanResult(func(string, string, string, []byte, error) { canaryOrphans <- struct{}{} })}, ok)
+			}
+			c := tp.client()
+			defer c.Close()
+			got := make(chan struct{}, 1)
+			gate := make(chan struct{})
+			require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) {
+				got <- struct{}{}
+				<-gate
+				return resetResp{Status: "Accepted"}, nil
+			}))
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			h, err := canary.srv.Lookup(ctx, "CP_1")
+			require.NoError(t, err)
+			errCh := make(chan error, 1)
+			go func() { _, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Soft"}); errCh <- err }()
+			<-got
+			canary.srv.Close() // the caller (its stream) goes away after the frame was written
+			require.Error(t, <-errCh, "the abandoned call fails")
+			// The gateway must have seen the caller go before the charger answers: an
+			// answer that races the gateway noticing the broken stream is written to
+			// the dead stream and is not an orphan. The abandoned call's outcome
+			// (reported when the gateway stops waiting for it) shows it did.
+			require.Eventually(t, func() bool { return rec.callsN("no_response") == 1 }, 5*time.Second, time.Millisecond)
+			close(gate)
+			want, other := canaryOrphans, stableOrphans
+			if !tc.secondCanary {
+				want, other = stableOrphans, canaryOrphans
+			}
+			select {
+			case <-want:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the orphan result did not arrive where it belongs")
+			}
+			require.Empty(t, other)
+			require.Eventually(t, func() bool { return rec.orphanN(tc.outcome) == 1 }, 2*time.Second, 10*time.Millisecond)
+		})
+	}
+}
+
+// B3: a RoleCaller backend (no pool member) that sends Drain must not crash the
+// gateway; it gets its DrainAck and the stream stays usable.
+func TestLink_CallerBackendDrainDoesNotCrashGateway(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	tp := newTopology(t)
+	defer tp.close()
+	cc, err := grpc.NewClient(tp.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { _ = cc.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	st, err := linkpb.NewLinkClient(cc).Attach(ctx)
+	require.NoError(t, err)
+	require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{
+		Backend: &linkpb.BackendInfo{Id: "admin", Role: uint32(gateway.RoleCaller), Proto: &linkpb.ProtoRange{Min: 1, Max: 1}},
+	}}}))
+	f, err := st.Recv()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, f.GetHelloAck().GetProto())
+	require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Drain{Drain: &linkpb.Drain{}}}))
+	f, err = st.Recv()
+	require.NoError(t, err)
+	require.NotNil(t, f.GetDrainAck())
+	_ = st.CloseSend()
+}
+
+// NIT: Cancel is only sent to a backend that negotiated the cancel capability.
+func TestLink_CancelNeedsCapability(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	tp := newTopology(t)
+	defer tp.close()
+	cc, err := grpc.NewClient(tp.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { _ = cc.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for _, tc := range []struct {
+		pool string
+		caps []string
+		want bool
+	}{{"nocancel", nil, false}, {"cancel", []string{gateway.CapCancel}, true}} {
+		st, err := linkpb.NewLinkClient(cc).Attach(ctx)
+		require.NoError(t, err)
+		require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{
+			Backend: &linkpb.BackendInfo{Id: "stub-" + tc.pool, Pool: tc.pool, Proto: &linkpb.ProtoRange{Min: 1, Max: 1}, Caps: tc.caps},
+		}}}))
+		_, err = st.Recv() // HelloAck
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return tp.link.Available(tc.pool) }, 2*time.Second, 10*time.Millisecond)
+
+		hctx, hcancel := context.WithTimeout(ctx, 150*time.Millisecond)
+		_, err = tp.link.Handle(hctx, gateway.Envelope{Kind: gateway.KindCall, Action: "Heartbeat", Route: &gateway.Route{Pool: tc.pool}, Deadline: time.Now().Add(150 * time.Millisecond)})
+		hcancel()
+		require.Error(t, err)
+
+		frames := make(chan *linkpb.GatewayFrame, 4)
+		go func() {
+			for {
+				f, err := st.Recv()
+				if err != nil {
+					close(frames)
+					return
+				}
+				frames <- f
+			}
+		}()
+		var sawCancel bool
+		timeout := time.After(500 * time.Millisecond)
+	loop:
+		for {
+			select {
+			case f, ok := <-frames:
+				if !ok {
+					break loop
+				}
+				if f.GetCancel() != nil {
+					sawCancel = true
+					break loop
+				}
+			case <-timeout:
+				break loop
+			}
+		}
+		require.Equal(t, tc.want, sawCancel, "pool %s", tc.pool)
+		_ = st.CloseSend()
+	}
 }

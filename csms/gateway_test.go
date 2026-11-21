@@ -16,6 +16,7 @@ import (
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/gateway"
@@ -792,4 +793,86 @@ func TestGateway_RoutePolicyEngineWireIdentical(t *testing.T) {
 	require.Equal(t, embedded, split)
 	require.Zero(t, served[0].Load())
 	require.NotZero(t, served[1].Load(), "CP_1 is in the 50% sample: the canary served")
+}
+
+// Session events are delivered by Notify, at-least-once and without a total
+// order. The consumer must still run the application's hooks in the order the
+// epochs imply: the replaced session's disconnect before the new session's
+// connect, even when SessionClosed(old) and SessionOpened(new) arrive
+// concurrently.
+func TestGateway_ConcurrentSessionEventsKeepHookOrder(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	for round := 0; round < 300; round++ {
+		var mu sync.Mutex
+		var evs []string
+		rec := func(s string) { mu.Lock(); evs = append(evs, s); mu.Unlock() }
+		hub := inproc.New()
+		be := csms.NewServer(csms.WithGatewayLink(hub.Backend()), csms.WithSubProtocols("ocpp1.6"),
+			csms.WithOnConnect(func(c *csms.Conn) { ref, _ := c.GatewaySession(); rec("connect"); _ = ref }),
+			csms.WithOnDisconnect(func(c *csms.Conn, _ error) { rec("disconnect") }))
+		up := be.Upstream()
+		ref := func(epoch uint64) gateway.SessionRef {
+			return gateway.SessionRef{CPID: "CP_1", GatewayID: "gw-1", Boot: "b", Epoch: epoch}
+		}
+		env := func(k gateway.Kind, epoch uint64) gateway.Envelope {
+			e := gateway.Envelope{Proto: gateway.ProtoVersion, Session: ref(epoch), Version: ocppj.V16, Kind: k, Attempt: 1}
+			if k == gateway.KindSessionOpened {
+				e.Open = &gateway.SessionInfo{}
+			}
+			if k == gateway.KindSessionClosed {
+				e.Close = &gateway.CloseInfo{Cause: gateway.SentinelName(ocppj.ErrConnReplaced)}
+			}
+			return e
+		}
+		ctx := context.Background()
+		require.NoError(t, up.Notify(ctx, env(gateway.KindSessionOpened, 1)))
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); _ = up.Notify(ctx, env(gateway.KindSessionClosed, 1)) }()
+		go func() { defer wg.Done(); _ = up.Notify(ctx, env(gateway.KindSessionOpened, 2)) }()
+		wg.Wait()
+		mu.Lock()
+		require.Equal(t, []string{"connect", "disconnect", "connect"}, evs, "round %d", round)
+		mu.Unlock()
+		be.Close()
+	}
+}
+
+// The gateway copies the pool a session is routed to into the registry record
+// (Session.Meta["route.pool"]) when it changes, and the orphan result of a CSMS
+// call goes to the pool that issued the call.
+func TestGateway_RoutePoolRegistryCopy(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	reg := memory.NewSessionRegistry()
+	var pool atomic.Value
+	pool.Store("default")
+	router := gateway.RouterFunc(func(gateway.RouteInput) gateway.RouteDecision {
+		return gateway.RouteDecision{Pool: pool.Load().(string), Fallback: gateway.DefaultPool}
+	})
+	r := newRig(t, []csms.Option{csms.WithRouter(router), csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: "gw-1"})}, nil)
+	defer r.close()
+	r.serve()
+	canary := r.hub.AttachBackend(r.be.Upstream(), gateway.BackendInfo{Pool: "canary"})
+	defer func() { _ = canary(context.Background()) }()
+	client := r.client()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	routePool := func() string {
+		s, ok, err := reg.Lookup(ctx, "CP_1")
+		if err != nil || !ok {
+			return ""
+		}
+		return s.Meta["route.pool"]
+	}
+	require.NoError(t, csms.On(r.be, gwBootMsg, func(context.Context, *csms.Conn, gwBoot) (gwBootResp, error) {
+		return gwBootResp{Status: "Accepted"}, nil
+	}))
+	_, err := cp.Call(ctx, client, gwBootMsg, gwBoot{ChargePointVendor: "x"})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return routePool() == "default" }, 2*time.Second, 10*time.Millisecond)
+	pool.Store("canary")
+	require.Eventually(t, func() bool {
+		_, _ = cp.Call(ctx, client, gwBootMsg, gwBoot{ChargePointVendor: "x"})
+		return routePool() == "canary"
+	}, 2*time.Second, 10*time.Millisecond)
 }

@@ -205,14 +205,14 @@ func ConnectRepFromPB(pb *linkpb.ConnectReply) gateway.ConnectReply {
 func CallReqToPB(r gateway.CallRequest) *linkpb.CallRequest {
 	return &linkpb.CallRequest{
 		Target: RefToPB(r.Target), CallId: r.CallID, Action: r.Action, Payload: r.Payload,
-		DeadlineUnixNano: Nanos(r.Deadline), Trace: r.Trace,
+		DeadlineUnixNano: Nanos(r.Deadline), BudgetNanos: int64(r.Budget), Trace: r.Trace,
 	}
 }
 
 func CallReqFromPB(r *linkpb.CallRequest) gateway.CallRequest {
 	return gateway.CallRequest{
 		Target: RefFromPB(r.Target), CallID: r.CallId, Action: r.Action, Payload: r.Payload,
-		Deadline: FromNanos(r.DeadlineUnixNano), Trace: r.Trace,
+		Deadline: FromNanos(r.DeadlineUnixNano), Budget: time.Duration(r.BudgetNanos), Trace: r.Trace,
 	}
 }
 

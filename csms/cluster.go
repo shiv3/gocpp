@@ -66,9 +66,9 @@ func (s *Server) holders() []sessionHolder {
 
 // claimSession records an upgrade that is about to be accepted. The zero Session
 // is returned when the server is not clustered.
-func (s *Server) claimSession(r *http.Request, cpID string, attrs map[string]string) (storage.Session, bool) {
+func (s *Server) claimSession(r *http.Request, cpID string, attrs map[string]string) (storage.Session, *storage.Session, bool) {
 	if s.sessions == nil {
-		return storage.Session{}, false
+		return storage.Session{}, nil, false
 	}
 	meta := map[string]string{"remote_addr": r.RemoteAddr}
 	for k, v := range attrs {
@@ -76,14 +76,17 @@ func (s *Server) claimSession(r *http.Request, cpID string, attrs map[string]str
 			meta[storage.AttrPrefix+k] = v
 		}
 	}
-	return s.sessions.claim(r.Context(), storage.Session{
+	sess, prev := s.sessions.claimPrev(r.Context(), storage.Session{
 		CPID: cpID, ConnectedAt: time.Now(), Meta: meta, Version: s.offeredVersion(r),
-	}), true
+	})
+	return sess, prev, true
 }
 
 // SetGatewayLabel sets (or, with an empty value, removes) a label in this
 // server's lease and renews the lease, so rollout tooling sees it in
 // SessionRegistry.Gateways at once. A no-op without a session registry.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) SetGatewayLabel(ctx context.Context, key, value string) {
 	if s.sessions != nil {
 		s.sessions.setLabel(ctx, key, value)
@@ -96,6 +99,8 @@ func (s *Server) SetGatewayLabel(ctx context.Context, key, value string) {
 // connect (firmware version from BootNotification, say). It returns
 // ocppj.ErrNotConnected when the charge point is not connected here. See
 // Conn.SetAttrs for the merge rules.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) SetSessionAttrs(ctx context.Context, id string, attrs map[string]string) error {
 	c, ok := s.Get(id)
 	if !ok && s.backend != nil {
@@ -119,6 +124,45 @@ func (s *Server) releaseSession(sess storage.Session) {
 	ctx, cancel := s.globalCtx()
 	defer cancel()
 	s.sessions.release(ctx, sess)
+}
+
+// abandonClaim undoes a claim whose upgrade failed. It removes the claimed
+// record and then puts back what the claim displaced: the record of a live
+// connection of the same id held by this server, else (a session held by
+// another gateway) the record the claim overwrote. Without it a failed upgrade
+// request for a connected charge point would delete that charge point's route.
+func (s *Server) abandonClaim(cpID string, sess storage.Session, prev *storage.Session) {
+	if s.sessions == nil {
+		return
+	}
+	ctx, cancel := s.globalCtx()
+	defer cancel()
+	s.sessions.release(ctx, sess)
+	s.mu.RLock()
+	cur := s.conns[cpID]
+	s.mu.RUnlock()
+	var restore *storage.Session
+	switch {
+	case cur != nil:
+		if hs := cur.holderSession(); hs.Epoch != 0 {
+			restore = &hs
+		}
+	case prev != nil && prev.Epoch != 0 && prev.Boot != "":
+		restore = prev
+	}
+	if restore == nil {
+		return
+	}
+	if _, err := s.sessions.reg.Reassert(ctx, *restore); err != nil {
+		s.cfg.dispatcher.Logger.Error("csms: restoring session after failed upgrade failed",
+			"cp_id", cpID, "epoch", restore.Epoch, "error", err)
+		return
+	}
+	if cur != nil && !cur.alive() {
+		// The connection ended meanwhile; its teardown may have run before the
+		// record came back.
+		s.sessions.release(ctx, *restore)
+	}
 }
 
 // serveRemote runs the router's ServeRemote for the lifetime of the server,

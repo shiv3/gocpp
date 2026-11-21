@@ -14,6 +14,7 @@ import (
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/gateway"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 // SupportedProto is the link protocol range this build speaks. Every release
@@ -40,6 +41,7 @@ type Gateway struct {
 	metrics      Metrics
 	helloTimeout time.Duration
 	maxInFlight  int
+	linger       time.Duration
 	gwID         atomic.Value // string: id of the attached csms gateway server
 	boot         string
 	proto        gateway.ProtoRange // link versions spoken (SupportedProto)
@@ -72,6 +74,22 @@ func WithRouteObserver(o gateway.RouteObserver) GatewayOption {
 
 // WithMaxInFlight caps the requests in flight per backend stream (default 4096).
 func WithMaxInFlight(n int) GatewayOption { return func(g *Gateway) { g.maxInFlight = n } }
+
+// WithGatewayWriteLinger makes a busy stream gather frames for up to d before
+// writing them to the backend as one batch, which saves CPU (system calls and
+// wake-ups on both ends) at the price of latency. The default, 0, never delays
+// a write. The linger is adaptive: it applies only while frames follow each
+// other on the stream at intervals of at most d/2 on average (so at least two
+// more are expected within the wait); a stream below that rate writes every
+// frame at once, exactly as without the option. While it applies, a frame
+// waits d/2 on average and d at most, plus timer latency: when the process is
+// otherwise idle, as after the last frame of a burst, the Go runtime may fire a
+// sub-millisecond timer up to about 1 ms late. The wait ends early when a batch
+// is full. d is clamped to [0, MaxWriteLinger]. Each end sets its own
+// direction: see WithBackendWriteLinger for replies.
+func WithGatewayWriteLinger(d time.Duration) GatewayOption {
+	return func(g *Gateway) { g.linger = clampLinger(d) }
+}
 
 // NewGateway returns the gateway end of the link.
 func NewGateway(opts ...GatewayOption) *Gateway {
@@ -111,7 +129,22 @@ func (g *Gateway) Handle(ctx context.Context, env gateway.Envelope) (gateway.Rep
 
 // Notify implements gateway.Upstream.
 func (g *Gateway) Notify(ctx context.Context, env gateway.Envelope) error {
-	return g.pools.Notify(ctx, env)
+	fellBack, err := g.pools.NotifyRouted(ctx, env)
+	if env.Kind == gateway.KindOrphanResult {
+		pool := gateway.DefaultPool
+		if env.Route != nil && env.Route.Pool != "" {
+			pool = env.Route.Pool
+		}
+		outcome := "delivered"
+		switch {
+		case err != nil:
+			outcome = "dropped"
+		case fellBack:
+			outcome = "fallback"
+		}
+		ReportOrphanResult(g.metrics, pool, outcome)
+	}
+	return err
 }
 
 // Attach implements gateway.GatewayLink: it makes the gateway's Downstream
@@ -198,6 +231,9 @@ func (s *service) Attach(stream linkpb.Link_AttachServer) error {
 		return errors.New("linkgrpc: Hello without backend info")
 	}
 	info := linkconv.InfoBackendFromPB(hello.Backend)
+	if info.Pool == "" {
+		info.Pool = gateway.DefaultPool // metric labels and caller pools name it
+	}
 	proto := min(info.Proto.Max, g.proto.Max)
 	if info.Proto.Max == 0 || proto < info.Proto.Min || proto < g.proto.Min {
 		g.metrics.AttachResult(info.Proto.Max, "proto_mismatch")
@@ -251,6 +287,8 @@ func (p *peer) send(f *linkpb.GatewayFrame) error { return p.out.push(f) }
 
 func (p *peer) initSend() {
 	p.out.write = p.stream.Send
+	p.out.linger = p.g.linger
+	p.out.size = func(f *linkpb.GatewayFrame) int { return proto.Size(f) }
 	if slices.Contains(p.info.Caps, gateway.CapBatch) {
 		p.out.batch = func(fs []*linkpb.GatewayFrame) error {
 			return p.stream.Send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Batch{Batch: &linkpb.GatewayBatch{Frames: fs}}})
@@ -280,7 +318,11 @@ func (p *peer) dispatch(f *linkpb.BackendFrame) {
 		if u, ok := b.(*linkpb.BackendFrame_Unsupported); ok {
 			p.g.metrics.Unsupported("sent", u.Unsupported.GetWhat())
 		}
-		p.unary.resolve(f.Id, f)
+		if !p.unary.resolve(f.Id, f) {
+			if _, isReply := b.(*linkpb.BackendFrame_Reply); isReply {
+				ReportLateReply(p.g.metrics, p.info.Pool)
+			}
+		}
 	case *linkpb.BackendFrame_Call:
 		go p.serveCall(f.Id, b.Call, false)
 	case *linkpb.BackendFrame_Send:
@@ -294,6 +336,8 @@ func (p *peer) dispatch(f *linkpb.BackendFrame) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
+			// A RoleCaller backend has no pool member (p.member is nil); there is
+			// nothing to drain, but it still gets its acknowledgement.
 			if err := p.g.pools.Drain(ctx, p.member); err == nil {
 				_ = p.send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_DrainAck{DrainAck: &linkpb.DrainAck{}}})
 			}
@@ -329,6 +373,7 @@ func (p *peer) serveCall(id uint64, req *linkpb.CallRequest, isSend bool) {
 	d, ok := p.g.downstream(req.GetTarget().GetGatewayId())
 	ctx := p.stream.Context()
 	cr := linkconv.CallReqFromPB(req)
+	cr.CallerPool, cr.CallerVersion = p.info.Pool, p.info.Version
 	if !isSend {
 		var rep gateway.CallReply
 		var err error
@@ -344,7 +389,7 @@ func (p *peer) serveCall(id uint64, req *linkpb.CallRequest, isSend bool) {
 		_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_CallReply{CallReply: linkconv.CallRepToPB(rep)}})
 		return
 	}
-	var err error = ocppj.ErrNotConnected
+	err := ocppj.ErrNotConnected
 	if ok {
 		err = d.Send(ctx, cr)
 	}
@@ -408,7 +453,9 @@ func (p *peer) request(ctx context.Context, body *linkpb.GatewayFrame) (*linkpb.
 		return f, nil
 	case <-ctx.Done():
 		p.unary.drop(id)
-		_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_Cancel{Cancel: &linkpb.Cancel{}}})
+		if slices.Contains(p.info.Caps, gateway.CapCancel) { // an older backend would answer Unsupported
+			_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_Cancel{Cancel: &linkpb.Cancel{}}})
+		}
 		return nil, ctx.Err()
 	}
 }

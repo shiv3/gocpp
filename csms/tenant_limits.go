@@ -49,6 +49,8 @@ type TenantLimit struct {
 }
 
 // TenantLimits configures per-tenant limits (WithTenantLimits).
+//
+// Experimental: this API may change before v1.0.
 type TenantLimits struct {
 	// Resolver names the tenant of an upgrade request. When it is nil or finds
 	// none, the tenant is the session attribute AttrKey as set by the processing
@@ -95,6 +97,8 @@ type TenantLimits struct {
 // and one tenant never consumes another's budget. Without this option nothing
 // changes; a gateway and an embedded server use it the same way (on a gateway it
 // is applied at the edge, before the backend hop).
+//
+// Experimental: this API may change before v1.0.
 func WithTenantLimits(l TenantLimits) Option {
 	return optionFunc(func(c *serverConfig) { c.tenantLimits = &l })
 }
@@ -104,9 +108,13 @@ type tenants struct {
 	cfg     TenantLimits
 	metrics observability.TenantMetrics
 
-	mu      sync.Mutex
-	byID    map[string]*tenantState
-	labeled int
+	mu   sync.Mutex
+	byID map[string]*tenantState
+	// labels are the tenants that got their own metric label (at most
+	// MaxMetricTenants, never given back, so evicting an idle tenant does not
+	// let the label cardinality grow).
+	labels    map[string]struct{}
+	nextSweep int // len(byID) at which state() next drops idle tenants
 
 	// active is the set of tenants with at least one session and the sum of their
 	// weights, replaced (never mutated) when it changes; the in-flight pool reads it
@@ -134,6 +142,11 @@ type tenantState struct {
 	last   time.Time
 }
 
+// tenantSweepMin is the table size at which idle tenants are first dropped;
+// after a sweep the next one waits until the table has doubled, so a sweep costs
+// O(1) per new tenant.
+const tenantSweepMin = 256
+
 func newTenants(cfg TenantLimits, m observability.Metrics) *tenants {
 	if cfg.AttrKey == "" {
 		cfg.AttrKey = "tenant"
@@ -147,7 +160,7 @@ func newTenants(cfg TenantLimits, m observability.Metrics) *tenants {
 	if cfg.MaxMetricTenants <= 0 {
 		cfg.MaxMetricTenants = 100
 	}
-	t := &tenants{cfg: cfg, byID: make(map[string]*tenantState)}
+	t := &tenants{cfg: cfg, byID: make(map[string]*tenantState), labels: make(map[string]struct{}), nextSweep: tenantSweepMin}
 	t.metrics, _ = m.(observability.TenantMetrics)
 	return t
 }
@@ -180,12 +193,42 @@ func (t *tenants) state(id string) *tenantState {
 		w = 1
 	}
 	s := &tenantState{id: id, label: "other", limit: lim, weight: w, tokens: float64(lim.MessageBurst)}
-	if t.labeled < t.cfg.MaxMetricTenants {
-		t.labeled++
+	if _, ok := t.labels[id]; ok {
 		s.label = id
+	} else if len(t.labels) < t.cfg.MaxMetricTenants {
+		t.labels[id] = struct{}{}
+		s.label = id
+	}
+	if len(t.byID) >= t.nextSweep {
+		t.sweepLocked(time.Now())
 	}
 	t.byID[id] = s
 	return s
+}
+
+// sweepLocked drops the tenants nobody is connected as and nothing is in flight
+// for, whose message bucket has refilled (so forgetting it loses nothing): without
+// it the table would keep one entry per tenant id ever seen. Callers hold t.mu;
+// admit's 0->1 session step runs under it too, so a tenant cannot be dropped
+// while a session is being admitted to it.
+func (t *tenants) sweepLocked(now time.Time) {
+	for id, o := range t.byID {
+		if o.sessions.Load() > 0 || o.inflight.Load() > 0 || !o.bucketIdle(now) {
+			continue
+		}
+		delete(t.byID, id)
+	}
+	t.nextSweep = max(tenantSweepMin, 2*len(t.byID))
+}
+
+// bucketIdle reports whether the tenant's message bucket is full again.
+func (s *tenantState) bucketIdle(now time.Time) bool {
+	if s.limit.MessageRate <= 0 {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.last.IsZero() || s.tokens+now.Sub(s.last).Seconds()*s.limit.MessageRate >= float64(s.limit.MessageBurst)
 }
 
 // admit reserves a session slot of tenant id. It fails when the tenant is at
@@ -193,8 +236,8 @@ func (t *tenants) state(id string) *tenantState {
 // charger, which is let through: the old one is about to go). release gives the
 // slot back and is idempotent.
 func (t *tenants) admit(id string, replacing bool) (s *tenantState, release func(), ok bool) {
-	s = t.state(id)
 	for {
+		s = t.state(id)
 		cur := s.sessions.Load()
 		if lim := int64(s.limit.MaxSessions); lim > 0 && cur >= lim && !replacing {
 			if t.metrics != nil {
@@ -202,10 +245,18 @@ func (t *tenants) admit(id string, replacing bool) (s *tenantState, release func
 			}
 			return s, nil, false
 		}
-		if s.sessions.CompareAndSwap(cur, cur+1) {
-			if cur == 0 {
-				t.setActive()
+		if cur == 0 {
+			// The first session of an idle tenant: not while a sweep may drop it.
+			t.mu.Lock()
+			ok := t.byID[id] == s && s.sessions.CompareAndSwap(0, 1)
+			t.mu.Unlock()
+			if !ok {
+				continue
 			}
+			t.setActive()
+			break
+		}
+		if s.sessions.CompareAndSwap(cur, cur+1) {
 			break
 		}
 	}

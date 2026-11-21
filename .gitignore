@@ -19,3 +19,7 @@
 /interop/loadtest/results/*/*/events.log
 /interop/loadtest/results/*/*/dumps/
 /interop/loadtest/results/*/*/run.log
+
+# built binaries of the reference commands
+/cmd/gocpp-gateway/gocpp-gateway
+/cmd/gocppctl/gocppctl

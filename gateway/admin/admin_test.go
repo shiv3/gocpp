@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"sync/atomic"
@@ -163,4 +164,34 @@ func TestPlanRebalance(t *testing.T) {
 	require.Equal(t, []admin.Shed{{ID: "a", Count: 6}, {ID: "b", Count: 5}}, admin.PlanRebalance(skew, 1.15))
 	require.Empty(t, admin.PlanRebalance(nil, 1.1))
 	require.Empty(t, admin.PlanRebalance([]admin.Load{{ID: "x", Sessions: 5, Serving: false}}, 1.1))
+}
+
+// A bare token without the "Bearer " scheme must not authenticate (NIT: the old
+// check trimmed the prefix if present and compared the rest).
+func TestAuthRequiresBearerScheme(t *testing.T) {
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+	f := newFixture(t, "s3cret")
+	for _, h := range []string{"s3cret", "Basic s3cret", "Bearer ", "Bearer wrong"} {
+		req, err := http.NewRequest(http.MethodGet, f.adminTS.URL+"/admin/status", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", h)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode, "Authorization: %q", h)
+	}
+	req, _ := http.NewRequest(http.MethodGet, f.adminTS.URL+"/admin/status", nil)
+	req.Header.Set("Authorization", "bearer s3cret")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "the scheme is case-insensitive")
+}
+
+func TestClientRefusesPlaintextTokenToRemoteHost(t *testing.T) {
+	cl := admin.Client{Token: "s3cret"}
+	_, err := cl.Status(context.Background(), "10.1.2.3:9101")
+	require.ErrorContains(t, err, "refusing to send the admin token over plain HTTP")
+	_, err = cl.Status(context.Background(), "http://gateway-0.gateway:9101")
+	require.ErrorContains(t, err, "refusing to send the admin token over plain HTTP")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,8 @@ const DefaultUpstreamWait = 20 * time.Second
 // attached, non-draining members; a hold of up to UpstreamWait while the set is
 // empty; redispatch to another member on Nack or ErrNotDelivered, within the
 // envelope's deadline, and never after a request may have been executed.
+//
+// Experimental: this API may change before v1.0.
 type Pool struct {
 	wait time.Duration
 
@@ -88,6 +91,18 @@ func (p *Pool) Handles(action string) bool {
 	return false
 }
 
+// advertises reports whether a member explicitly lists action.
+func (p *Pool) advertises(action string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, m := range p.members {
+		if slices.Contains(m.info.Actions, action) {
+			return true
+		}
+	}
+	return false
+}
+
 // Add attaches a backend that announced itself with info. The returned Member
 // can be drained with Drain.
 func (p *Pool) Add(info BackendInfo, up Upstream) *Member {
@@ -119,7 +134,7 @@ func (p *Pool) Len() int {
 // finished or ctx ends, then removes it. It returns ctx.Err() if work was still
 // in flight.
 func (p *Pool) Drain(ctx context.Context, m *Member) error {
-	m.draining.Store(true)
+	p.markDraining(m)
 	if m.inflight.Load() == 0 {
 		m.idleOnce.Do(func() { close(m.idle) })
 	}
@@ -133,10 +148,20 @@ func (p *Pool) Drain(ctx context.Context, m *Member) error {
 	return err
 }
 
+// markDraining flags m under the pool lock. pick checks the flag and reserves
+// its in-flight slot under the same lock, so a request either sees m draining
+// or is counted in m.inflight before Drain looks at it; without the lock a
+// request could be handed to a member whose Drain had already returned.
+func (p *Pool) markDraining(m *Member) {
+	p.mu.Lock()
+	m.draining.Store(true)
+	p.mu.Unlock()
+}
+
 // Remove detaches m at once.
 func (p *Pool) Remove(m *Member) {
-	m.draining.Store(true)
 	p.mu.Lock()
+	m.draining.Store(true)
 	for i, x := range p.members {
 		if x == m {
 			p.members = append(p.members[:i], p.members[i+1:]...)
@@ -155,7 +180,12 @@ func (m *Member) done() {
 
 // pick chooses a member not in tried by power of two choices, waiting up to
 // until for one to appear.
-func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]bool, until time.Time) (*Member, error) {
+//
+// With failFast, a pick that finds no eligible member left to try (all of them
+// refused, or vanished since the pool was chosen) returns ErrNoBackend at once
+// instead of waiting for another member to attach: the caller has somewhere else
+// to send the message.
+func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]bool, until time.Time, failFast bool) (*Member, error) {
 	for {
 		p.mu.Lock()
 		var cand [2]*Member
@@ -163,7 +193,10 @@ func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]
 		// Reservoir-sample two eligible members.
 		seen := 0
 		for _, m := range p.members {
-			if m.draining.Load() || tried[m] || (need != "" && !m.info.Has(need)) || (action != "" && !m.info.Handles(action)) {
+			if m.draining.Load() || (need != "" && !m.info.Has(need)) || (action != "" && !m.info.Handles(action)) {
+				continue
+			}
+			if tried[m] {
 				continue
 			}
 			seen++
@@ -199,6 +232,9 @@ func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]
 		p.mu.Unlock()
 		if chosen != nil {
 			return chosen, nil
+		}
+		if failFast {
+			return nil, ErrNoBackend
 		}
 		wait := time.Until(until)
 		if wait <= 0 {
@@ -239,7 +275,7 @@ func needCap(env Envelope) string {
 // Connect implements Upstream.
 func (p *Pool) Connect(ctx context.Context, req ConnectRequest) (ConnectReply, error) {
 	var out ConnectReply
-	err := p.dispatch(ctx, "", "", time.Time{}, func(m *Member) (bool, error) {
+	err := p.dispatch(ctx, "", "", time.Time{}, false, func(m *Member) (bool, error) {
 		r, err := m.up.Connect(ctx, req)
 		out = r
 		return false, err
@@ -249,17 +285,27 @@ func (p *Pool) Connect(ctx context.Context, req ConnectRequest) (ConnectReply, e
 
 // Handle implements Upstream.
 func (p *Pool) Handle(ctx context.Context, env Envelope) (Reply, error) {
-	return p.handle(ctx, env, "")
+	rep, _, err := p.handle(ctx, env, "")
+	return rep, err
 }
 
 // handle is Handle restricted to members that serve action ("" = any member).
-func (p *Pool) handle(ctx context.Context, env Envelope, action string) (Reply, error) {
+func (p *Pool) handle(ctx context.Context, env Envelope, action string) (Reply, uint32, error) {
+	return p.handleFast(ctx, env, action, false)
+}
+
+// handleFast is handle; with failFast it gives up with ErrNoBackend as soon as
+// every eligible member has refused the message, rather than holding it for a
+// member to attach (the caller redispatches on a fallback pool). next is the
+// Attempt number a further dispatch of env (to another pool) must carry, so the
+// number never goes back.
+func (p *Pool) handleFast(ctx context.Context, env Envelope, action string, failFast bool) (rep Reply, next uint32, err error) {
 	var out Reply
 	attempt := env.Attempt
 	if attempt == 0 {
 		attempt = 1
 	}
-	err := p.dispatch(ctx, "", action, env.Deadline, func(m *Member) (bool, error) {
+	err = p.dispatch(ctx, "", action, env.Deadline, failFast, func(m *Member) (bool, error) {
 		e := env
 		e.Attempt = attempt
 		attempt++
@@ -273,27 +319,27 @@ func (p *Pool) handle(ctx context.Context, env Envelope, action string) (Reply, 
 		out = r
 		return false, nil
 	})
-	return out, err
+	return out, attempt, err
 }
 
 // Notify implements Upstream.
 func (p *Pool) Notify(ctx context.Context, env Envelope) error {
-	return p.notify(ctx, env, "")
+	return p.notify(ctx, env, "", false)
 }
 
-func (p *Pool) notify(ctx context.Context, env Envelope, action string) error {
-	return p.dispatch(ctx, needCap(env), action, env.Deadline, func(m *Member) (bool, error) {
+func (p *Pool) notify(ctx context.Context, env Envelope, action string, failFast bool) error {
+	return p.dispatch(ctx, needCap(env), action, env.Deadline, failFast, func(m *Member) (bool, error) {
 		return false, m.up.Notify(ctx, env)
 	})
 }
 
 // dispatch runs fn on a member, moving to another one when fn asks to retry
 // (Nack) or fails with ErrNotDelivered.
-func (p *Pool) dispatch(ctx context.Context, need, action string, deadline time.Time, fn func(m *Member) (retry bool, err error)) error {
+func (p *Pool) dispatch(ctx context.Context, need, action string, deadline time.Time, failFast bool, fn func(m *Member) (retry bool, err error)) error {
 	until := p.holdUntil(deadline)
 	var tried map[*Member]bool
 	for {
-		m, err := p.pick(ctx, need, action, tried, until)
+		m, err := p.pick(ctx, need, action, tried, until, failFast)
 		if err != nil {
 			return err
 		}

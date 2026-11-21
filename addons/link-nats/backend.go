@@ -173,6 +173,7 @@ type server struct {
 	info    gateway.BackendInfo
 	ctx     context.Context // outlives Serve's own context: work in flight finishes
 	closing atomic.Bool
+	admitMu sync.Mutex // orders begin's wg.Add before drain's wg.Wait
 	sem     chan struct{}
 	wg      sync.WaitGroup // work in flight
 
@@ -210,7 +211,7 @@ func (b *Backend) Serve(ctx context.Context, up gateway.Upstream, info gateway.B
 		if err != nil {
 			return err
 		}
-		sub.SetPendingLimits(-1, -1)
+		setPendingLimits(sub)
 		subs = append(subs, sub)
 		if queue {
 			queueSubs = append(queueSubs, sub)
@@ -297,7 +298,9 @@ func (b *Backend) Serve(ctx context.Context, up gateway.Upstream, info gateway.B
 
 func (s *server) drain(_ context.Context, queueSubs []*nats.Subscription) error {
 	b := s.b
+	s.admitMu.Lock()
 	s.closing.Store(true)
+	s.admitMu.Unlock()
 	// Stop taking work: the server stops routing to this backend; what it had
 	// already buffered is Nacked (nothing ran, the gateway asks again).
 	for _, sub := range queueSubs {
@@ -345,7 +348,18 @@ func (s *server) begin(m *nats.Msg, nack func()) bool {
 		nack()
 		return false
 	}
+	// WaitGroup rule: an Add that may run while drain waits must happen before
+	// the Wait. drain sets closing under admitMu before it waits, so either
+	// this Add precedes the Wait or the request is refused here.
+	s.admitMu.Lock()
+	if s.closing.Load() {
+		s.admitMu.Unlock()
+		<-s.sem
+		nack()
+		return false
+	}
 	s.wg.Add(1)
+	s.admitMu.Unlock()
 	return true
 }
 
@@ -380,7 +394,7 @@ func (s *server) onHandle(m *nats.Msg) {
 		hctx, cancel := context.WithCancel(s.ctx)
 		defer cancel()
 		if env.DeliveryID != "" {
-			s.cancels.Store(env.DeliveryID, context.CancelFunc(cancel))
+			s.cancels.Store(env.DeliveryID, cancel)
 			defer s.cancels.Delete(env.DeliveryID)
 		}
 		rep, err := s.up.Handle(hctx, env)
@@ -480,6 +494,8 @@ func (b *Backend) Call(ctx context.Context, req gateway.CallRequest) (gateway.Ca
 	switch {
 	case errors.Is(err, gateway.ErrNotDelivered):
 		return gateway.CallReply{Sent: gateway.NotSent, Error: gateway.EncodeError(ocppj.ErrNotConnected)}, nil
+	case errors.Is(err, ErrPayloadTooLarge):
+		return gateway.CallReply{Sent: gateway.NotSent}, err // nothing left this process; retrying cannot help
 	case err != nil:
 		return gateway.CallReply{Sent: gateway.SentNoResponse}, err
 	}

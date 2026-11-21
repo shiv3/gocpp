@@ -108,6 +108,8 @@ func (c *Conn) Attrs() map[string]string {
 // reconcile pass to repair the record. Attribute keys starting with "gocpp." are
 // reserved for a gateway to interpret (gocpp.busy) and are stored like any other.
 // Not supported on a remote handle (ErrRemoteConn).
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
 	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
 		return c.srv.setAttrsGateway(ctx, c, attrs)
@@ -115,21 +117,34 @@ func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
 	if c.inner == nil {
 		return ErrRemoteConn
 	}
-	ref, _ := c.inner.Attachment().(*sessionRef)
-	if ref == nil {
-		ref = &sessionRef{s: storage.Session{CPID: c.inner.ID()}, srv: c.srv}
-	}
-	s := ref.s
-	meta, ok := storage.MergeAttrs(s.Meta, attrs)
-	if !ok {
+	// The read-modify-write is atomic with the reconcile loop's epoch update
+	// (setHolderSession): an attribute change computed from an old snapshot must
+	// not write the old epoch back.
+	var merged storage.Session
+	var srv *Server
+	var tooLarge bool
+	c.inner.UpdateAttachment(func(old any) any {
+		ref, _ := old.(*sessionRef)
+		if ref == nil {
+			ref = &sessionRef{s: storage.Session{CPID: c.inner.ID()}, srv: c.srv}
+		}
+		meta, ok := storage.MergeAttrs(ref.s.Meta, attrs)
+		if !ok {
+			tooLarge = true
+			return ref
+		}
+		s := ref.s
+		s.Meta = meta
+		merged, srv = s, ref.srv
+		return &sessionRef{s: s, srv: ref.srv}
+	})
+	if tooLarge {
 		return ErrAttrsTooLarge
 	}
-	s.Meta = meta
-	c.inner.SetAttachment(&sessionRef{s: s, srv: ref.srv})
-	if ref.srv == nil || ref.srv.sessions == nil || s.Epoch == 0 {
+	if srv == nil || srv.sessions == nil || merged.Epoch == 0 {
 		return nil
 	}
-	_, err := ref.srv.sessions.reg.SetAttrs(ctx, s.CPID, s.Epoch, attrs)
+	_, err := srv.sessions.reg.SetAttrs(ctx, merged.CPID, merged.Epoch, attrs)
 	return err
 }
 
@@ -139,15 +154,34 @@ func (c *Conn) holderID() string { return c.inner.ID() }
 
 func (c *Conn) holderSession() storage.Session {
 	s, _ := c.Session()
+	if c.gw != nil {
+		// A gateway's record also carries its routing decision, so a re-claim or
+		// a reassert after a registry loss restores it.
+		if p := c.gw.routePool.Load(); p != nil {
+			meta := make(map[string]string, len(s.Meta)+1)
+			for k, v := range s.Meta {
+				meta[k] = v
+			}
+			meta[storage.RoutePrefix+routePoolKey] = *p
+			s.Meta = meta
+		}
+	}
 	return s
 }
 
+// setHolderSession adopts the epoch the registry assigned to s (a late claim of
+// an unclaimed socket, or a re-claim). Only the epoch is taken: the attributes
+// may have changed since s was read.
 func (c *Conn) setHolderSession(s storage.Session) {
-	var srv *Server
-	if ref, _ := c.inner.Attachment().(*sessionRef); ref != nil {
-		srv = ref.srv
-	}
-	c.inner.SetAttachment(&sessionRef{s: s, srv: srv})
+	c.inner.UpdateAttachment(func(old any) any {
+		ref, _ := old.(*sessionRef)
+		if ref == nil {
+			return &sessionRef{s: s}
+		}
+		cur := ref.s
+		cur.Epoch = s.Epoch
+		return &sessionRef{s: cur, srv: ref.srv}
+	})
 }
 
 // sessionRef is what the server hangs on a dispatcher connection: the session

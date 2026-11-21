@@ -126,6 +126,8 @@ type sentHookKey struct{}
 // never sent and is safe to retry; one that fails after may have been executed
 // by the peer. The gateway uses it to report that distinction to the processing
 // tier.
+//
+// Experimental: this API may change before v1.0.
 func WithSentHook(ctx context.Context, fn func()) context.Context {
 	return context.WithValue(ctx, sentHookKey{}, fn)
 }

@@ -10,6 +10,8 @@ import (
 
 // PolicyStore is an in-memory storage.PolicyStore (and PolicyHistory). Gateways
 // sharing one process (tests, the in-process split) share one instance.
+//
+// Experimental: this API may change before v1.0.
 type PolicyStore struct {
 	mu      sync.Mutex
 	rev     uint64

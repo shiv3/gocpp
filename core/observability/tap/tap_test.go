@@ -105,22 +105,40 @@ func TestExporter_NeverBlocksTheHotPath(t *testing.T) {
 	sink := &memSink{gate: make(chan struct{})}
 	e := tap.New(sink, tap.WithBuffer(8), tap.WithBatch(1, time.Hour))
 	obs := e.FrameObserver()
-	start := time.Now()
-	for i := 0; i < 10_000; i++ {
-		obs(context.Background(), frame("Heartbeat", "[]"))
+	// The sink is stuck for the whole loop, so a blocking observer would hang
+	// here forever; the generous deadline only turns that hang into a failure
+	// and does not make the test timing dependent.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 10_000; i++ {
+			obs(context.Background(), frame("Heartbeat", "[]"))
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Minute):
+		t.Fatal("10k observations blocked on the stuck sink")
 	}
-	require.Less(t, time.Since(start), 2*time.Second, "10k observations did not wait for the stuck sink")
 	st := e.Stats()
 	require.Greater(t, st.Dropped, uint64(9_000))
 	// One batch is stuck in the sink and the buffer holds the rest.
 	require.LessOrEqual(t, st.Queued, 8)
 
 	close(sink.gate)
+	// Once the buffer has drained, the next event is exported with a Seq that
+	// skips the dropped ones, which is how a consumer sees the gap.
+	require.Eventually(t, func() bool { return e.Stats().Queued == 0 }, 30*time.Second, time.Millisecond)
+	obs(context.Background(), frame("Heartbeat", "[]"))
 	require.NoError(t, e.Close(context.Background()))
 	st = e.Stats()
-	require.EqualValues(t, 10_000, st.Exported+st.Dropped, "every event is exported or counted as dropped")
+	require.EqualValues(t, 10_001, st.Exported+st.Dropped, "every event is exported or counted as dropped")
 	// Seq counts dropped events too, so the consumer sees the gaps.
 	ev := sink.all()
+	for i := 1; i < len(ev); i++ {
+		require.Greater(t, ev[i].Seq, ev[i-1].Seq)
+	}
+	require.EqualValues(t, 10_001, ev[len(ev)-1].Seq, "the last event follows the dropped ones")
 	require.Greater(t, ev[len(ev)-1].Seq, uint64(len(ev)))
 }
 
@@ -230,4 +248,28 @@ func BenchmarkFrameObserver(b *testing.B) {
 	}
 	b.StopTimer()
 	_ = e.Close(ctx)
+}
+
+// NIT: a frame flood must not push session events out of the buffer; they have
+// their own.
+func TestExporter_SessionEventsSurviveAFrameFlood(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	sink := &memSink{gate: make(chan struct{})}
+	e := tap.New(sink, tap.WithBuffer(8), tap.WithBatch(1, time.Hour))
+	fobs, sobs := e.FrameObserver(), e.SessionObserver()
+	for i := 0; i < 10_000; i++ {
+		fobs(context.Background(), frame("MeterValues", "[]"))
+	}
+	for i := 0; i < 200; i++ {
+		sobs(context.Background(), observability.SessionEvent{CPID: "CP1", Kind: observability.SessionOpened, Time: time.Now()})
+	}
+	close(sink.gate)
+	require.NoError(t, e.Close(context.Background()))
+	var sessions int
+	for _, ev := range sink.all() {
+		if ev.Kind == tap.KindSession {
+			sessions++
+		}
+	}
+	require.Equal(t, 200, sessions, "no session event was dropped")
 }

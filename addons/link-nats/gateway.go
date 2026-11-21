@@ -181,7 +181,22 @@ func (g *Gateway) Handle(ctx context.Context, env gateway.Envelope) (gateway.Rep
 
 // Notify implements gateway.Upstream.
 func (g *Gateway) Notify(ctx context.Context, env gateway.Envelope) error {
-	return g.pools.Notify(ctx, env)
+	fellBack, err := g.pools.NotifyRouted(ctx, env)
+	if env.Kind == gateway.KindOrphanResult {
+		pool := gateway.DefaultPool
+		if env.Route != nil && env.Route.Pool != "" {
+			pool = env.Route.Pool
+		}
+		outcome := "delivered"
+		switch {
+		case err != nil:
+			outcome = "dropped"
+		case fellBack:
+			outcome = "fallback"
+		}
+		linkgrpc.ReportOrphanResult(g.metrics, pool, outcome)
+	}
+	return err
 }
 
 func (g *Gateway) peerID() string {
@@ -202,7 +217,7 @@ func (g *Gateway) Attach(id string, d gateway.Downstream) (detach func()) {
 	g.gwID.Store(id)
 	var sub *nats.Subscription
 	if s, err := g.nc.Subscribe(g.prefix+".gw."+token(id)+".*", g.serveDownstream(id)); err == nil {
-		s.SetPendingLimits(-1, -1)
+		setPendingLimits(s)
 		sub = s
 	}
 	_ = g.nc.Publish(g.prefix+".who", nil)
@@ -337,9 +352,8 @@ func (g *Gateway) onDrain(m *nats.Msg) {
 		g.refreshProtoLocked(e.info.Pool)
 	}
 	g.mu.Unlock()
-	g.wg.Add(1)
-	go func() {
-		defer g.wg.Done()
+	// While closing nothing is started; the backend's drain wait gives up on its own.
+	g.goWork(func() {
 		if e != nil {
 			ctx, cancel := context.WithTimeout(g.ctx, 10*time.Minute)
 			defer cancel()
@@ -353,6 +367,22 @@ func (g *Gateway) onDrain(m *nats.Msg) {
 			}
 		}
 		respond(g.nc, m, nil, nil)
+	})
+}
+
+// goWork runs fn on a goroutine that Close waits for. It does nothing once
+// Close has begun: a WaitGroup Add must not race the Wait, and Close sets
+// closed under g.mu before it waits.
+func (g *Gateway) goWork(fn func()) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return
+	}
+	g.wg.Add(1)
+	go func() {
+		defer g.wg.Done()
+		fn()
 	}()
 }
 
@@ -524,9 +554,7 @@ func (p *poolUpstream) Notify(ctx context.Context, env gateway.Envelope) error {
 func (g *Gateway) serveDownstream(id string) nats.MsgHandler {
 	return func(m *nats.Msg) {
 		op := m.Subject[lastDot(m.Subject)+1:]
-		g.wg.Add(1)
-		go func() {
-			defer g.wg.Done()
+		g.goWork(func() {
 			d, ok := g.downstream(id)
 			switch op {
 			case "call":
@@ -541,7 +569,7 @@ func (g *Gateway) serveDownstream(id string) nats.MsgHandler {
 				g.metrics.Unsupported("recv", "op_"+op)
 				respondUnsupported(g.nc, m, op)
 			}
-		}()
+		})
 	}
 }
 
@@ -580,6 +608,7 @@ func (g *Gateway) serveCall(d gateway.Downstream, ok bool, m *nats.Msg, isSend b
 		return
 	}
 	cr := linkconv.CallReqFromPB(&req)
+	cr.CallerPool, cr.CallerVersion = g.callerOf(m)
 	ctx, cancel := context.WithCancel(g.ctx)
 	defer cancel()
 	if !isSend {
@@ -596,7 +625,7 @@ func (g *Gateway) serveCall(d gateway.Downstream, ok bool, m *nats.Msg, isSend b
 		respond(g.nc, m, data, nil)
 		return
 	}
-	var err error = ocppj.ErrNotConnected
+	err := ocppj.ErrNotConnected
 	if ok {
 		err = d.Send(ctx, cr)
 	}

@@ -8,6 +8,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -34,6 +36,12 @@ type bootResp struct {
 	CurrentTime string `json:"currentTime"`
 	Interval    int    `json:"interval"`
 }
+type resetReq struct {
+	Type string `json:"type"`
+}
+type resetResp struct {
+	Status string `json:"status"`
+}
 type hbReq struct{}
 type hbResp struct {
 	CurrentTime string `json:"currentTime"`
@@ -46,6 +54,7 @@ func main() {
 	linkKind := flag.String("link", "grpc", "grpc|nats")
 	redisAddr := flag.String("redis", "", "registry address")
 	failHB := flag.Bool("fail-heartbeat", false, "answer every Heartbeat with an InternalError CALLERROR (an error-injecting canary)")
+	admin := flag.String("admin", "", "listen address of the test control API (GET /call?cp=ID issues a CSMS Reset to the charger from this backend)")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -65,7 +74,10 @@ func main() {
 			linkgrpc.WithResolveInterval(100*time.Millisecond), linkgrpc.WithDrainTimeout(20*time.Second))
 	}
 	opts := []csms.Option{csms.WithGatewayLink(be), csms.WithSubProtocols("ocpp1.6"),
-		csms.WithBackendInfo(gateway.BackendInfo{ID: *id, Pool: *pool, Version: "test"})}
+		csms.WithBackendInfo(gateway.BackendInfo{ID: *id, Pool: *pool, Version: "test"}),
+		csms.WithOnOrphanResult(func(cpID, callID, action string, payload []byte, err error) {
+			fmt.Printf("ORPHAN %s %s %s %s err=%v\n", *id, cpID, callID, action, err)
+		})}
 	if *redisAddr != "" {
 		opts = append(opts, csms.WithSessionRegistry(registryredis.New(redis.NewClient(&redis.Options{Addr: *redisAddr}))))
 	}
@@ -74,6 +86,10 @@ func main() {
 		func(ctx context.Context, c *csms.Conn, r bootReq) (bootResp, error) {
 			fmt.Printf("HANDLED BootNotification %s %s %s\n", *id, c.ID(), r.ChargePointVendor)
 			switch r.ChargePointVendor {
+			case "busy": // the charger starts a transaction: hold its routing (gocpp.busy)
+				_ = c.SetAttrs(ctx, map[string]string{"gocpp.busy": "1"})
+			case "idle":
+				_ = c.SetAttrs(ctx, map[string]string{"gocpp.busy": ""})
 			case "hold": // a handler that runs until the process is killed
 				time.Sleep(time.Hour)
 			case "slow":
@@ -89,6 +105,29 @@ func main() {
 			}
 			return hbResp{CurrentTime: time.Now().UTC().Format(time.RFC3339)}, nil
 		}))
+	if *admin != "" {
+		l, err := net.Listen("tcp", *admin)
+		must(err)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/call", func(w http.ResponseWriter, r *http.Request) {
+			cpID := r.URL.Query().Get("cp")
+			cctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer cancel()
+			h, err := srv.Lookup(cctx, cpID)
+			if err != nil {
+				fmt.Fprintf(w, "ERR not_sent %v\n", err)
+				return
+			}
+			fmt.Printf("CALLING Reset %s %s\n", *id, cpID)
+			resp, err := csms.Call(cctx, h, ocppj.Message[resetReq, resetResp]{Action: "Reset", Direction: ocppj.SentByCSMS}, resetReq{Type: "Soft"})
+			if err != nil {
+				fmt.Fprintf(w, "ERR %s %v\n", gateway.SentOf(err), err)
+				return
+			}
+			fmt.Fprintf(w, "OK %s\n", resp.Status)
+		})
+		go func() { _ = http.Serve(l, mux) }()
+	}
 	fmt.Println("READY", *id)
 	if err := srv.ServeGateway(ctx); err != nil {
 		fmt.Println("DRAIN", err)

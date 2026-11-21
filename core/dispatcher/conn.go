@@ -33,6 +33,9 @@ type Conn struct {
 
 	// attachment is owner-defined data hung on the connection (see SetAttachment).
 	attachment atomic.Value
+	// attMu serialises read-modify-write updates of the attachment
+	// (UpdateAttachment).
+	attMu sync.Mutex
 	// inboundGate, when set, filters inbound CALL/SEND before they are scheduled.
 	inboundGate InboundGate
 	// inboundDone, when set, is called once for every frame the gate admitted, after
@@ -116,6 +119,8 @@ type Conn struct {
 type ConnMetadata struct {
 	// Owner is opaque data of whoever creates the connection (the CSMS server
 	// keeps its gateway session here), returned by Conn.Owner. It is not cloned.
+	//
+	// Experimental: this API may change before v1.0.
 	Owner         any
 	RemoteAddr    string
 	RequestHeader http.Header
@@ -191,6 +196,8 @@ func (c *Conn) Version() ocppj.Version { return c.version }
 func (c *Conn) Subprotocol() string { return c.ws.Subprotocol() }
 
 // Owner returns the ConnMetadata.Owner the connection was created with.
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) Owner() any { return c.meta.Owner }
 
 // RemoteAddr returns the peer network address from the HTTP upgrade request, if
@@ -386,7 +393,27 @@ func (c *Conn) Start(parent context.Context) {
 // the *Conn (a handler reaching it through ConnFromContext) can find it. The
 // stored values must all have the same concrete type. The CSMS server keeps the
 // connection's registry session here.
-func (c *Conn) SetAttachment(v any) { c.attachment.Store(v) }
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) SetAttachment(v any) {
+	c.attMu.Lock()
+	c.attachment.Store(v)
+	c.attMu.Unlock()
+}
+
+// UpdateAttachment replaces the attachment with f(current) atomically with
+// respect to other UpdateAttachment and SetAttachment calls, so two owners that
+// each derive a new value from the old one (a session's attributes and its
+// epoch, say) cannot overwrite each other's change. f runs under a lock and must
+// not block or call back into the connection. Like SetAttachment, the result
+// must have the same concrete type as every earlier value.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) UpdateAttachment(f func(old any) any) {
+	c.attMu.Lock()
+	c.attachment.Store(f(c.attachment.Load()))
+	c.attMu.Unlock()
+}
 
 // Attachment returns the value stored by SetAttachment, or nil.
 func (c *Conn) Attachment() any { return c.attachment.Load() }
@@ -398,10 +425,14 @@ func (c *Conn) Attachment() any { return c.attachment.Load() }
 // Nothing about the frame has been validated or decoded when the gate runs, so it
 // must be cheap and must not block. It is called on the connection's reader
 // goroutine, one frame at a time.
+//
+// Experimental: this API may change before v1.0.
 type InboundGate func(f ocppj.Frame) *ocppj.CallError
 
 // SetInboundGate installs g (nil removes it). Call it before Start: the reader
 // reads the field without synchronisation.
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) SetInboundGate(g InboundGate) { c.inboundGate = g }
 
 // SetInboundDone installs a callback that runs after the handler of every inbound
@@ -410,6 +441,8 @@ func (c *Conn) SetInboundGate(g InboundGate) { c.inboundGate = g }
 // admitted but that never reach a handler because the connection ended are not
 // reported: the owner reconciles its count when it tears the connection down.
 // Call it before Start. It runs on the handler goroutine and must not block.
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) SetInboundDone(f func(ocppj.Frame)) { c.inboundDone = f }
 
 // drainBit marks Conn.calls as draining.
@@ -429,13 +462,29 @@ func (c *Conn) endCall() { c.calls.Add(-1) }
 
 // Draining reports whether the connection stopped accepting new outbound calls
 // because a drain began (TryDrain or ForceDrain).
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) Draining() bool { return c.calls.Load()&drainBit != 0 }
 
 // Quiesce stops the connection from starting new outbound calls (they fail with
 // ocppj.ErrGatewayDraining before anything is written) without closing it, so
 // calls already started can finish. Call TryDrain afterwards to close it once
 // it is idle.
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) Quiesce() { c.calls.Or(drainBit) }
+
+// Unquiesce undoes Quiesce: the connection accepts new outbound calls again. Use
+// it when a drain that quiesced the connection ends without closing it. It has no
+// effect on a connection TryDrain or ForceDrain has already closed.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) Unquiesce() {
+	if c.Context().Err() != nil {
+		return
+	}
+	c.calls.And(^drainBit)
+}
 
 // TryDrain closes the connection for a drain if it is idle: no inbound handler
 // running or queued, no outbound call queued, in flight or awaiting a reply. It
@@ -445,6 +494,8 @@ func (c *Conn) Quiesce() { c.calls.Or(drainBit) }
 // true; a busy connection is left untouched and TryDrain reports false. A frame
 // the charge point sends at the same moment may still be lost, as with any
 // disconnect.
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) TryDrain() bool {
 	c.inMu.Lock()
 	busy := c.running > 0 || len(c.inQ) > 0
@@ -476,6 +527,8 @@ func (c *Conn) TryDrain() bool {
 // ForceDrain closes the connection for a drain whatever it is doing, at the end
 // of the drain window. Calls in flight fail with ocppj.ErrDrainTimeout, which
 // (unlike ErrGatewayDraining) does not prove they were not executed.
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) ForceDrain() {
 	c.calls.Or(drainBit)
 	c.Abort(ocppj.ErrDrainTimeout)

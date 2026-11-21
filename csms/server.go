@@ -3,6 +3,7 @@ package csms
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"strings"
@@ -85,10 +86,17 @@ func NewServer(opts ...Option) *Server {
 	if cfg.gatewayID != "" && cfg.sessionCfg.GatewayID == "" {
 		cfg.sessionCfg.GatewayID = cfg.gatewayID
 	}
-	var splitHub *inproc.Hub
-	if cfg.splitInProcess && cfg.link == nil {
-		splitHub = inproc.New()
-		cfg.link = splitHub.Backend()
+	var splitHub SplitLink
+	if cfg.link == nil {
+		switch {
+		case cfg.splitLink != nil:
+			splitHub = cfg.splitLink
+		case cfg.splitInProcess:
+			splitHub = inproc.New()
+		}
+		if splitHub != nil {
+			cfg.link = splitHub.Backend()
+		}
 	}
 	if cfg.registry != nil && !cfg.timeEncoding.IsZero() {
 		cfg.dispatcher.OutboundTransform = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, error) {
@@ -207,6 +215,15 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 	var edgeReply gateway.ConnectReply
 	if s.edge != nil {
+		// A full gateway refuses before asking the processing tier to authenticate
+		// the charger, so a reconnect storm into a full gateway costs the backend
+		// nothing. The slot itself is still reserved later, atomically.
+		if s.atCapacity(cpID) {
+			w.Header().Set("Retry-After", "30")
+			s.upgradeResult("full")
+			http.Error(w, "too many connections", http.StatusServiceUnavailable)
+			return
+		}
 		// The processing tier decides the upgrade (authentication, admission,
 		// connection timing).
 		var status int
@@ -287,6 +304,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// cannot succeed (not a WebSocket request, no common subprotocol) claims
 	// nothing; one that fails after the claim releases it.
 	var sess storage.Session
+	var prevSess *storage.Session
 	claimed, registeredSession := false, false
 	var attrs map[string]string
 	if s.edge != nil {
@@ -313,13 +331,18 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
-	if s.sessions != nil && s.upgradeWillSucceed(r) {
-		sess, claimed = s.claimSession(r, cpID, attrs)
-		defer func() {
-			if claimed && !registeredSession {
-				s.releaseSession(sess)
-			}
-		}()
+	abandon := func() {
+		if claimed && !registeredSession {
+			s.abandonClaim(cpID, sess, prevSess)
+		}
+	}
+	// The legacy adapter (a ConnectionRegistry without sessions) has no epochs
+	// to order and no way to restore what a claim overwrote, so it claims only
+	// after the upgrade has succeeded, as before sessions existed.
+	preClaim := s.sessions != nil && s.sessions.loops
+	if preClaim && s.upgradeWillSucceed(r) {
+		sess, prevSess, claimed = s.claimSession(r, cpID, attrs)
+		defer abandon()
 	}
 
 	var dconn *dispatcher.Conn
@@ -350,6 +373,10 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		_ = c.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return
 	}
+	if s.sessions != nil && !preClaim {
+		sess, prevSess, claimed = s.claimSession(r, cpID, attrs)
+		defer abandon()
+	}
 
 	ws := transport.NewCoderWSWithLimit(c, dcfg.MaxMessageSize)
 
@@ -357,7 +384,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// connection override hook it is shared by every connection of a version.
 	var dcfgp *dispatcher.Config
 	if perConn {
-		dcfg.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, c.Subprotocol())
+		dcfg.Metrics = dispatcher.MetricsHookBounded(s.cfg.metrics, c.Subprotocol(), s.knownAction())
 		dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
 		dcfgp = &dcfg
 	} else {
@@ -479,7 +506,7 @@ func (s *Server) versionConfig(sub string) *dispatcher.Config {
 		return v.(*dispatcher.Config)
 	}
 	d := s.cfg.dispatcher
-	d.Metrics = dispatcher.MetricsHookFrom(s.cfg.metrics, sub)
+	d.Metrics = dispatcher.MetricsHookBounded(s.cfg.metrics, sub, s.knownAction())
 	d.Tracer = observability.NewTracer(s.cfg.tracerProvider)
 	v, _ := s.verCfg.LoadOrStore(sub, &d)
 	return v.(*dispatcher.Config)
@@ -498,9 +525,23 @@ func (s *Server) extractCPID(r *http.Request) (string, bool) {
 }
 
 // upgradeWillSucceed is a cheap pre-check, run before a session is claimed, that
-// the request is a WebSocket upgrade offering a subprotocol this server speaks.
+// the request will pass websocket.Accept: a GET carrying the upgrade headers (a
+// token "upgrade" in Connection, Upgrade: websocket, Sec-WebSocket-Version 13, a
+// Sec-WebSocket-Key that decodes to 16 bytes) and offering a subprotocol this
+// server speaks. A request that fails here claims nothing, so it cannot disturb
+// the record of a connected charge point. A failure after the claim (the origin
+// check, say) is undone by Server.abandonClaim.
 func (s *Server) upgradeWillSucceed(r *http.Request) bool {
-	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	if !headerHasToken(r.Header, "Connection", "upgrade") || !headerHasToken(r.Header, "Upgrade", "websocket") {
+		return false
+	}
+	if r.Header.Get("Sec-WebSocket-Version") != "13" {
+		return false
+	}
+	if key, err := base64.StdEncoding.DecodeString(r.Header.Get("Sec-WebSocket-Key")); err != nil || len(key) != 16 {
 		return false
 	}
 	for _, h := range r.Header.Values("Sec-WebSocket-Protocol") {
@@ -516,6 +557,17 @@ func (s *Server) upgradeWillSucceed(r *http.Request) bool {
 	return false
 }
 
+func headerHasToken(h http.Header, name, token string) bool {
+	for _, v := range h.Values(name) {
+		for _, t := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(t), token) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func validCPID(cpID string) bool {
 	return cpID != "" && !strings.Contains(cpID, "/")
 }
@@ -525,6 +577,22 @@ func (s *Server) hasConn(id string) bool {
 	defer s.mu.RUnlock()
 	_, ok := s.conns[id]
 	return ok
+}
+
+// atCapacity reports whether an upgrade for id would be refused by
+// WithMaxConnections right now (an id that is already connected replaces its
+// connection and takes no slot). It is a hint for refusing early; reserveSlot
+// decides.
+func (s *Server) atCapacity(id string) bool {
+	if s.cfg.maxConnections <= 0 {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, replacing := s.conns[id]; replacing {
+		return false
+	}
+	return len(s.conns)+s.reserved >= s.cfg.maxConnections
 }
 
 // slotReservation is a connection slot held between admission and registration.
@@ -823,4 +891,28 @@ func (s *Server) waitSplit() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = s.splitDrain(ctx)
+}
+
+// knownAction returns the predicate that bounds the action label of metrics: the
+// standard OCPP actions (gateway.LabelAction), the actions with a registered
+// handler and the actions the gateway answers itself. Any other action a charge
+// point sends is reported as "other", so invented action names cannot grow the
+// metric series.
+func (s *Server) knownAction() func(string) bool {
+	return func(action string) bool {
+		if _, ok := s.handlers.call(action); ok {
+			return true
+		}
+		if _, ok := s.handlers.send(action); ok {
+			return true
+		}
+		if gateway.LabelAction(action) != gateway.OtherAction {
+			return true // a standard OCPP action
+		}
+		if s.edge != nil {
+			_, ok := s.edge.responders[action]
+			return ok
+		}
+		return false
+	}
 }

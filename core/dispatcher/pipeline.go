@@ -19,6 +19,8 @@ import (
 //
 // A Pipeline is a small value; copy it freely. The Config is shared and must
 // not be modified after the pipeline is created.
+//
+// Experimental: this API may change before v1.0.
 type Pipeline struct {
 	cfg     *Config
 	version ocppj.Version
@@ -36,6 +38,8 @@ func (p *Pipeline) Version() ocppj.Version { return p.version }
 
 // InboundOutcome is the result of RunCall: what to send back for an inbound
 // CALL, without having sent it.
+//
+// Experimental: this API may change before v1.0.
 type InboundOutcome struct {
 	// Status is the metrics status label: ok, panic, signature_invalid,
 	// not_implemented, schema_invalid, timeout or error.
@@ -86,6 +90,10 @@ func (p *Pipeline) RunCall(ctx context.Context, frame *ocppj.Frame, h func(ctx c
 		return out
 	}
 
+	// HandlerTimeout bounds the handler itself: it starts here, after the
+	// signature and schema checks, as it always did.
+	ctx, cancel := p.handlerTimeout(ctx)
+	defer cancel()
 	hctx, span := p.cfg.Tracer.Start(ctx, "ocpp.handler")
 	if span.IsRecording() {
 		span.SetAttributes(
@@ -114,6 +122,14 @@ func (p *Pipeline) RunCall(ctx context.Context, frame *ocppj.Frame, h func(ctx c
 	}
 	out.Payload = respPayload
 	return out
+}
+
+// handlerTimeout applies Config.HandlerTimeout, if set, to ctx.
+func (p *Pipeline) handlerTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if p.cfg.HandlerTimeout > 0 {
+		return context.WithTimeout(ctx, p.cfg.HandlerTimeout)
+	}
+	return ctx, func() {}
 }
 
 // handlerFailed turns a handler error into an outcome.
@@ -154,6 +170,8 @@ func (p *Pipeline) builtin(out *InboundOutcome, status string, src ErrorSource, 
 // wire code is used as is (no ErrorCodeMapper, no re-spelling for the version)
 // and NoReply suppresses the reply. A gateway's forwarder returns it for an
 // error the processing tier decided.
+//
+// Experimental: this API may change before v1.0.
 type RawCallError struct {
 	Err     *ocppj.CallError
 	Wire    string
@@ -295,6 +313,8 @@ func (p *Pipeline) RunSend(ctx context.Context, frame *ocppj.Frame, h func(ctx c
 			"cp_id", p.cpID, "action", frame.Action, "err", err)
 		return
 	}
+	ctx, cancel := p.handlerTimeout(ctx)
+	defer cancel()
 	if err := h(ctx, reqPayload); err != nil {
 		p.cfg.Logger.WarnContext(ctx, "SEND handler error",
 			"cp_id", p.cpID, "action", frame.Action, "err", err)

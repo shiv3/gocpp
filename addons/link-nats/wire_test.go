@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,7 +98,13 @@ func TestLink_WireIdenticalToEmbedded(t *testing.T) {
 		nc := connect(t, ns.ClientURL())
 		bl, err := linknats.NewBackend(nc, linknats.WithHelloInterval(helloEvery))
 		require.NoError(t, err)
-		be := csms.NewServer(append(common[:len(common):len(common)], csms.WithGatewayLink(bl))...)
+		// The gateway reports the end of the session to the backend asynchronously;
+		// shutting the backend down before that event is delivered leaves the
+		// gateway's notifier waiting for a backend that is gone (a goroutine that
+		// outlives the test), so the teardown waits for it.
+		var disconnects atomic.Int32
+		be := csms.NewServer(append(common[:len(common):len(common)], csms.WithGatewayLink(bl),
+			csms.WithOnDisconnect(func(*csms.Conn, error) { disconnects.Add(1) }))...)
 		require.NoError(t, csms.On(be, bootMsg, handler))
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -105,6 +112,7 @@ func TestLink_WireIdenticalToEmbedded(t *testing.T) {
 		require.Eventually(t, func() bool { return link.Available(gateway.DefaultPool) }, 5*time.Second, 10*time.Millisecond)
 		return gw.Handler(), func() {
 			gw.Close()
+			require.Eventually(t, func() bool { return disconnects.Load() >= 1 }, 5*time.Second, 5*time.Millisecond)
 			cancel()
 			<-done
 			be.Close()

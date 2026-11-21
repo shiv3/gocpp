@@ -7,6 +7,8 @@ import (
 )
 
 // Session is the registry's record of one live charge point connection.
+//
+// Experimental: this API may change before v1.0.
 type Session struct {
 	// CPID is the charge point identity.
 	CPID string
@@ -44,6 +46,17 @@ type Session struct {
 	// (gocpp.busy holds a session's routing while a transaction runs); they are
 	// stored like any other.
 	Meta map[string]string
+}
+
+// RouteWriter is implemented by registries that can store the routing decisions
+// a gateway keeps next to a session record: SetRoute merges route into the
+// Meta keys with the prefix RoutePrefix (key "pool" is stored as "route.pool";
+// an empty value deletes the key) if the record still has this epoch. A
+// registry without it simply keeps no routing copy.
+//
+// Experimental: this API may change before v1.0.
+type RouteWriter interface {
+	SetRoute(ctx context.Context, cpID string, epoch uint64, route map[string]string) (ok bool, err error)
 }
 
 // Reserved prefixes of Session.Meta keys.
@@ -101,6 +114,8 @@ const (
 )
 
 // GatewayInfo describes a process holding a lease in the registry.
+//
+// Experimental: this API may change before v1.0.
 type GatewayInfo struct {
 	ID   string
 	Boot string
@@ -127,6 +142,8 @@ type GatewayInfo struct {
 // LookupMany report a session only while its gateway's lease (see Heartbeat)
 // exists and carries the same Boot as the record (records with an empty Boot
 // excepted).
+//
+// Experimental: this API may change before v1.0.
 type SessionRegistry interface {
 	// Claim atomically assigns the next epoch for s.CPID and records the caller
 	// as owner. s.Epoch is ignored. It returns the new epoch and the session it

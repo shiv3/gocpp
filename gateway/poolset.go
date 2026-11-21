@@ -15,6 +15,8 @@ import (
 // choices, with the hold and Nack redispatch of Pool. A pool that has no
 // available member falls back to Route.Fallback immediately; a pool that was
 // never named by a router receives nothing.
+//
+// Experimental: this API may change before v1.0.
 type PoolSet struct {
 	wait time.Duration
 	obs  atomic.Pointer[RouteObserver]
@@ -91,6 +93,11 @@ func (s *PoolSet) Unhandled() map[[2]string]uint64 {
 }
 
 func (s *PoolSet) noteUnhandled(pool, action string) {
+	// The name is the charger's choice: bound the map. Standard actions and
+	// those some backend advertises (a vendor extension) keep their name.
+	if LabelAction(action) == OtherAction && !s.advertised(action) {
+		action = OtherAction
+	}
 	s.mu.Lock()
 	if s.unhandled == nil {
 		s.unhandled = make(map[[2]string]uint64)
@@ -103,11 +110,33 @@ func (s *PoolSet) noteUnhandled(pool, action string) {
 	}
 }
 
+// advertised reports whether any member of any pool lists action in its Actions.
+func (s *PoolSet) advertised(action string) bool {
+	s.mu.Lock()
+	ps := make([]*Pool, 0, len(s.pools))
+	for _, p := range s.pools {
+		ps = append(ps, p)
+	}
+	s.mu.Unlock()
+	for _, p := range ps {
+		if p.advertises(action) {
+			return true
+		}
+	}
+	return false
+}
+
 // Pool returns the pool called name, or nil when no member has ever attached.
 func (s *PoolSet) Pool(name string) *Pool { return s.get(name, false) }
 
 // Drain drains m out of its pool.
+//
+// A nil member (a RoleCaller backend has none) is a no-op: it has no pool to
+// leave and takes no dispatched work.
 func (s *PoolSet) Drain(ctx context.Context, m *Member) error {
+	if m == nil {
+		return nil
+	}
 	return s.get(m.info.Pool, true).Drain(ctx, m)
 }
 
@@ -229,14 +258,21 @@ func (s *PoolSet) Handle(ctx context.Context, env Envelope) (Reply, error) {
 	}
 	p, restrict, reason := s.chooseFor(env.Route, env.Kind, env.Action)
 	s.fellBack(env.Route, reason)
-	rep, err := p.handle(ctx, env, restrict)
+	// With a usable fallback pool, a routed pool whose members all refuse gives
+	// the message up at once instead of holding it for a member to attach.
+	failFast := false
+	if env.Route != nil && env.Route.Fallback != "" {
+		fp := s.get(env.Route.Fallback, false)
+		failFast = fp != nil && fp != p && fp.Available()
+	}
+	rep, next, err := p.handleFast(ctx, env, restrict, failFast)
 	if err != nil && env.Route != nil && env.Route.Fallback != "" && isNoBackend(err) {
 		// Every member of the routed pool refused (Nack) or vanished: redispatch
 		// on the fallback pool within the deadline. Never after a dispatch that
 		// may have run (that error is not ErrNoBackend).
 		if fp := s.get(env.Route.Fallback, false); fp != nil && fp != p && fp.Available() {
 			s.fellBack(env.Route, "nack")
-			env.Attempt++
+			env.Attempt = max(next, env.Attempt+1) // never back: the routed pool may have used several
 			return fp.Handle(ctx, env)
 		}
 	}
@@ -270,12 +306,37 @@ func Outcome(rep Reply, err error) string {
 
 // Notify implements Upstream.
 func (s *PoolSet) Notify(ctx context.Context, env Envelope) error {
+	_, err := s.NotifyRouted(ctx, env)
+	return err
+}
+
+// NotifyRouted is Notify that also reports whether the message was given to the
+// route's fallback pool instead of the pool it names. That is decided by where
+// the message really went, not by which pool looked available when it was
+// chosen: a member can vanish between the choice and the delivery (its stream
+// broke), and the message then moves to the fallback pool like a CALL does.
+func (s *PoolSet) NotifyRouted(ctx context.Context, env Envelope) (fellBack bool, err error) {
 	if env.Route != nil && env.Route.Pool == PoolReject {
-		return ErrNoBackend
+		return false, ErrNoBackend
 	}
 	p, restrict, reason := s.chooseFor(env.Route, env.Kind, env.Action)
 	s.fellBack(env.Route, reason)
-	return p.notify(ctx, env, restrict)
+	fellBack = reason != ""
+	// With a usable fallback pool, a routed pool whose members all refuse or
+	// vanish gives the message up at once instead of holding it for a member to
+	// attach.
+	var fp *Pool
+	if env.Route != nil && env.Route.Fallback != "" {
+		if c := s.get(env.Route.Fallback, false); c != nil && c != p && c.Available() {
+			fp = c
+		}
+	}
+	err = p.notify(ctx, env, restrict, fp != nil)
+	if err != nil && fp != nil && isNoBackend(err) {
+		s.fellBack(env.Route, "nack")
+		return true, fp.notify(ctx, env, restrict, false)
+	}
+	return fellBack, err
 }
 
 func isNoBackend(err error) bool { return errors.Is(err, ErrNoBackend) }

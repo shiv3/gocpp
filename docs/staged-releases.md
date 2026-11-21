@@ -156,6 +156,8 @@ Metrics on every gateway (constant labels `gateway_id`, `gateway_version`):
 |---|---|
 | `gocpp_gateway_upstream_requests_total{pool,backend_version,action,outcome}` | canary vs stable failed-outcome ratio and CALLERROR mix |
 | `gocpp_gateway_upstream_seconds{pool,backend_version,action}` | latency p99 per pool |
+| `gocpp_gateway_late_replies_total{pool}` | backend answers that arrived after the gateway gave up (dropped); canary above stable is a latency or hang signal (rollout gate `late_orphan`) |
+| `gocpp_gateway_orphan_results_total{pool,outcome}` | answers to CSMS calls whose caller was gone, by caller pool; `fallback`/`dropped` mean the caller pool had no backend (canary crashed) |
 | `gocpp_gateway_route_decisions_total{rule,pool,rev}` | how much traffic each rule moves |
 | `gocpp_gateway_route_fallback_total{rule,reason}` | canary unavailable (`unavailable`) or refusing (`nack`) |
 | `gocpp_gateway_route_suspended{rule}` | 1 while a rule is suspended on this gateway |
@@ -166,9 +168,34 @@ Metrics on every gateway (constant labels `gateway_id`, `gateway_version`):
 Promotion criteria (same actions, canary vs default, same window, at least 500
 canary requests per evaluated action group): failed-outcome ratio not above stable
 + 0.5 pp; no CALLERROR code whose share exceeds stable's by more than 1 pp; p99
-`upstream_seconds` not above 1.5x stable; plus your own application checks.
+`upstream_seconds` not above 1.5x stable; plus your own application checks. The
+controller can also require `late_replies` and `orphan_results` per request not above
+stable (`late_orphan: true` in the plan, docs/rollout.md).
 
-## 7. Library use
+## 7. Measured: rollout under load
+
+The load-test harness (branch `test/loadtest-4k`, `interop/loadtest/rollout/run.sh`) ran
+the whole procedure on the split topology: 4,000 chargers (40% mute, 15% transactions),
+2 gateways, backend pools `default` x3 and `canary` x2, 50 CSMS calls/s, pinned to 6
+cores. Full report with per-phase tables:
+`interop/loadtest/results/rollout-2026-11-21/report.md`.
+
+| | result |
+|---|---|
+| manual steps 1% -> 10% -> 50% -> 100%, then back (`route apply --wait`) | canary share 0.9 / 9.4 / 48.7 / 100% (within 3 sigma of nominal); each charger changed pool exactly once on the way up, none went back before the rollback, all 4,000 were back on `default` after it |
+| time until every gateway reported the new revision | 14-140 ms |
+| disconnects, connect errors, charger-visible errors (manual and healthy auto rollout) | none; 4,000 chargers up throughout |
+| `gocppctl rollout run`, healthy canary | four stages, `done: ready to promote` in about 5 minutes (60 s soak per stage) |
+| `gocppctl rollout run`, canary answering 30% of requests with `InternalError` | rolled back 20 s after the 1% stage was applied: 40 CALLERRORs on the 33 chargers that were on the canary, none after the rollback |
+| upstream latency as the gateway sees it | p50 0.25-0.28 ms in both pools, no difference between canary and default |
+| cost of the policy on the gateway | evaluation 130-185 ns per message and 0 allocations (`BenchmarkRoute`), `hold: busy` 183 ns single-core and about 280 ns per decision when 6 cores contend for the session-state lock; end to end the gateway's CPU per request (about 0.4 ms) did not change between no policy, 1%, 10%, 50% and 100% |
+
+Caveats: the machine was shared, so isolated 10 s windows show a Heartbeat p99 of 18-32 ms
+in every kind of phase (none at a policy step; the median window p99 is about 1 ms); the
+healthy canary is the same binary as stable, so the run shows the mechanics and the safety net,
+not what your new version will do. Entry criteria and the rest of the runbook above still apply.
+
+## 8. Library use
 
 ```go
 engine := routepolicy.NewEngine(routepolicy.WithMetrics(m),

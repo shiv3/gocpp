@@ -161,7 +161,7 @@ func (m *sessionManager) heartbeat(ctx context.Context) {
 }
 
 // waitLease waits until the first heartbeat succeeded (a record without a lease
-// is not routable) or the claim timeout passes.
+// is not routable) or ctx ends.
 func (m *sessionManager) waitLease(ctx context.Context) {
 	if !m.loops {
 		return
@@ -169,7 +169,6 @@ func (m *sessionManager) waitLease(ctx context.Context) {
 	select {
 	case <-m.leaseReady:
 	case <-ctx.Done():
-	case <-time.After(m.cfg.ClaimTimeout):
 	}
 }
 
@@ -212,12 +211,20 @@ func (m *sessionManager) run(ctx context.Context) {
 // registry does not answer in time the session is returned with epoch 0
 // (unclaimed): the connection is served and the reconcile loop claims it later.
 func (m *sessionManager) claim(ctx context.Context, s storage.Session) storage.Session {
+	s, _ = m.claimPrev(ctx, s)
+	return s
+}
+
+// claimPrev is claim that also returns the record the claim displaced.
+func (m *sessionManager) claimPrev(ctx context.Context, s storage.Session) (storage.Session, *storage.Session) {
 	s.GatewayID, s.Boot, s.Epoch = m.cfg.GatewayID, m.boot, 0
 	s.GatewayVersion = m.cfg.Version
-	m.waitLease(ctx)
+	// One budget for the whole registry wait (lease, then claim), so an outage
+	// delays the handshake by ClaimTimeout, not twice that.
 	cctx, cancel := context.WithTimeout(ctx, m.cfg.ClaimTimeout)
 	defer cancel()
-	epoch, _, err := m.reg.Claim(cctx, s)
+	m.waitLease(cctx)
+	epoch, prev, err := m.reg.Claim(cctx, s)
 	if err != nil {
 		m.log.Error("csms: claim session failed; serving unclaimed",
 			"cp_id", s.CPID, "gateway", m.cfg.GatewayID, "error", err)
@@ -227,10 +234,10 @@ func (m *sessionManager) claim(ctx context.Context, s storage.Session) storage.S
 			default:
 			}
 		}
-		return s
+		return s, nil
 	}
 	s.Epoch = epoch
-	return s
+	return s, prev
 }
 
 // release removes the session's record if it is still the current one.

@@ -77,3 +77,115 @@ func TestSendQueue_OrderBatchingAndError(t *testing.T) {
 		t.Fatalf("sticky error: %v", err)
 	}
 }
+
+// B4: a write error met while flushing other goroutines' frames must not be
+// returned to the owner whose own frame was written.
+func TestSendQueue_ForeignWriteErrorNotAttributedToOwner(t *testing.T) {
+	boom := errors.New("boom")
+	gate := make(chan struct{})
+	q := &sendQueue[int]{write: func(i int) error {
+		if i == 0 {
+			<-gate
+			return nil
+		}
+		return boom // every later frame fails
+	}}
+	res := make(chan error, 1)
+	go func() { res <- q.push(0) }()
+	for {
+		q.mu.Lock()
+		a := q.active
+		q.mu.Unlock()
+		if a {
+			break
+		}
+	}
+	if err := q.push(1); err != nil { // queued behind the owner: nil
+		t.Fatalf("queued push: %v", err)
+	}
+	close(gate)
+	if err := <-res; err != nil {
+		t.Fatalf("owner's frame 0 was written, but push returned %v", err)
+	}
+	if err := q.push(2); !errors.Is(err, boom) {
+		t.Fatalf("stream must stay broken: %v", err)
+	}
+}
+
+func TestSendQueue_BatchByteCap(t *testing.T) {
+	var sizes []int
+	gate := make(chan struct{})
+	q := &sendQueue[int]{
+		write: func(i int) error {
+			if i == 0 {
+				<-gate
+			}
+			return nil
+		},
+		batch: func(b []int) error { sizes = append(sizes, len(b)); return nil },
+		size:  func(int) int { return maxBatchBytes / 4 },
+	}
+	done := make(chan struct{})
+	go func() { _ = q.push(0); close(done) }()
+	for {
+		q.mu.Lock()
+		a := q.active
+		q.mu.Unlock()
+		if a {
+			break
+		}
+	}
+	for i := 1; i <= 10; i++ {
+		_ = q.push(i)
+	}
+	close(gate)
+	<-done
+	for {
+		q.mu.Lock()
+		a := q.active
+		q.mu.Unlock()
+		if !a {
+			break
+		}
+	}
+	for _, n := range sizes {
+		if n > 4 {
+			t.Fatalf("batch of %d frames exceeds the byte cap: %v", n, sizes)
+		}
+	}
+}
+
+//go:noinline
+func deepFrames(n int, sink *[256]byte) int {
+	var pad [256]byte
+	pad[n%256] = byte(n)
+	if n == 0 {
+		return int(pad[0]) + int(sink[0])
+	}
+	return deepFrames(n-1, &pad) + int(pad[n%256])
+}
+
+// BenchmarkGrowStack shows what growStack buys a fresh goroutine that goes on
+// to use about 10 KB of stack in 32 frames: one growth while the stack is
+// empty instead of three with ever more frames to copy.
+func BenchmarkGrowStack(b *testing.B) {
+	for _, pre := range []bool{false, true} {
+		name := "grow-as-needed"
+		if pre {
+			name = "growStack-first"
+		}
+		b.Run(name, func(b *testing.B) {
+			done := make(chan int)
+			for i := 0; i < b.N; i++ {
+				go func() {
+					if pre {
+						growStack()
+					}
+					var sink [256]byte
+					done <- deepFrames(32, &sink)
+				}()
+				<-done
+			}
+		})
+	}
+}

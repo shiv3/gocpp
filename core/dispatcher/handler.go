@@ -144,13 +144,10 @@ func ConnFromContext(ctx context.Context) (*Conn, bool) {
 // per-handler deadline (HandlerTimeout) is what bounds a stuck handler.
 //
 // The detached base context (c.handlerBase) is built once per connection; each
-// message adds only its message id and, with HandlerTimeout, the deadline.
-func (c *Conn) handlerContext(msgID string) (context.Context, context.CancelFunc) {
-	ctx := ocppj.ContextWithMessageID(c.handlerBase, msgID)
-	if c.cfg.HandlerTimeout > 0 {
-		return context.WithTimeout(ctx, c.cfg.HandlerTimeout)
-	}
-	return ctx, func() {}
+// message adds only its message id. HandlerTimeout is applied by the pipeline
+// once the payload has been verified and validated, right before the handler runs.
+func (c *Conn) handlerContext(msgID string) context.Context {
+	return ocppj.ContextWithMessageID(c.handlerBase, msgID)
 }
 
 func (c *Conn) runHandler(frame ocppj.Frame) {
@@ -188,8 +185,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	if h, ok := c.reg.Resolve(frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) ([]byte, error) { return h(ctx, c, payload) }
 	}
-	hctx, cancelHandler := c.handlerContext(frame.MsgID)
-	defer cancelHandler()
+	hctx := c.handlerContext(frame.MsgID)
 	out := c.pipe.RunCall(hctx, &frame, run)
 	status = out.Status
 	switch {
@@ -208,8 +204,7 @@ func (c *Conn) runSendHandler(frame ocppj.Frame) {
 	if h, ok := c.reg.ResolveSend(frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) error { return h(ctx, c, payload) }
 	}
-	hctx, cancelHandler := c.handlerContext(frame.MsgID)
-	defer cancelHandler()
+	hctx := c.handlerContext(frame.MsgID)
 	c.pipe.RunSend(hctx, &frame, run)
 }
 
@@ -302,3 +297,22 @@ const stackReserve = 600
 
 //go:noinline
 func reserveStack(*[stackReserve]byte) {}
+
+// deepStackFrame is the frame size of growDeepStack: large enough that the
+// runtime, which doubles a stack until the frame fits, takes a fresh
+// goroutine's 2 KB straight to 16 KB.
+const deepStackFrame = 8 << 10
+
+// growDeepStack grows the calling goroutine's stack by having a large frame of
+// its own (Config.DeepHandlerStack). The frame is gone when it returns; the
+// stack stays grown, all of it free for what the caller calls next. On a stack
+// that is already large (a HandlerPool worker) it does nothing.
+//
+//go:noinline
+func growDeepStack() {
+	var frame [deepStackFrame]byte
+	touchDeepStack(&frame)
+}
+
+//go:noinline
+func touchDeepStack(*[deepStackFrame]byte) {}

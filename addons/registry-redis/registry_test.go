@@ -203,6 +203,29 @@ func TestStaleWriterCannotOverwriteNewerConnection(t *testing.T) {
 	})
 }
 
+func TestSetRoute(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		r, _ := newReg(t, b)
+		e, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a", Meta: map[string]string{"attr.site": "x"}})
+		require.NoError(t, err)
+		require.NoError(t, r.Heartbeat(ctx, storage.GatewayInfo{ID: "A", Boot: "a"}, time.Minute))
+		var _ storage.RouteWriter = r
+		ok, err := r.SetRoute(ctx, "CP", e, map[string]string{"pool": "canary"})
+		require.NoError(t, err)
+		require.True(t, ok)
+		s, _, _ := r.Lookup(ctx, "CP")
+		require.Equal(t, "canary", s.Meta["route.pool"])
+		require.Equal(t, map[string]string{"site": "x"}, s.Attrs(), "attributes untouched")
+		ok, _ = r.SetRoute(ctx, "CP", e+1, map[string]string{"pool": "other"})
+		require.False(t, ok, "a stale epoch is refused")
+		ok, _ = r.SetRoute(ctx, "CP", e, map[string]string{"pool": ""})
+		require.True(t, ok)
+		s, _, _ = r.Lookup(ctx, "CP")
+		require.NotContains(t, s.Meta, "route.pool")
+	})
+}
+
 func TestAttrsMergeAndLeaseLabels(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b backend) {
 		ctx := context.Background()
@@ -232,5 +255,52 @@ func TestAttrsMergeAndLeaseLabels(t *testing.T) {
 		require.Equal(t, "y", prev.Attrs()["site"])
 		s, _, _ = r.Lookup(ctx, "CP")
 		_ = s
+	})
+}
+
+// B5: the epoch counter expiring or being evicted while the record lives must
+// not make the next claim reuse a lower epoch (fencing would break).
+func TestEpochCounterLossDoesNotResetEpoch(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		r, c := newReg(t, b)
+		_, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a"})
+		require.NoError(t, err)
+		e2, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "B", Boot: "b"})
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), e2)
+
+		require.NoError(t, c.Del(ctx, b.prefix+":{CP}:e").Err()) // eviction / expiry
+		e3, prev, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a"})
+		require.NoError(t, err)
+		require.NotNil(t, prev)
+		require.Greater(t, e3, e2, "the epoch must stay above the record's")
+		// A stale writer of epoch 2 stays fenced out.
+		ok, err := r.Reassert(ctx, storage.Session{CPID: "CP", GatewayID: "B", Boot: "b", Epoch: e2})
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+}
+
+func TestReassertKeepsEpochCounterAlive(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		if b.fastForward == nil {
+			t.Skip("needs TTL control")
+		}
+		ctx := context.Background()
+		c := b.client(t)
+		defer func() { _ = c.Close() }()
+		r := registryredis.New(c, registryredis.WithKeyPrefix(b.prefix), registryredis.WithEpochTTL(10*time.Second), registryredis.WithRecordTTL(time.Hour))
+		e, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a"})
+		require.NoError(t, err)
+		for i := 0; i < 3; i++ { // the reconcile pass refreshes the record; the counter must follow
+			b.fastForward(6 * time.Second)
+			ok, err := r.Reassert(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a", Epoch: e})
+			require.NoError(t, err)
+			require.True(t, ok)
+		}
+		n, err := c.Exists(ctx, b.prefix+":{CP}:e").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, n, "the epoch counter outlived its TTL because the record was refreshed")
 	})
 }

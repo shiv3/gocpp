@@ -20,6 +20,25 @@ conformance and e2e suites run in both (see "Testing").
 The full design, the failure semantics and the rationale are in
 [design/gateway.md](design/gateway.md); this page is the user guide.
 
+## Stability
+
+Gateway mode is new. Its public API is **experimental**: it may change in minor
+releases before v1.0, and every such symbol says so in its doc comment
+("Experimental: this API may change before v1.0."). Pin the module version and
+read the CHANGELOG when upgrading. Nothing here changes how an embedded
+`csms.Server` behaves.
+
+| Surface | Status |
+|---|---|
+| `csms.NewServer`, `On`, `Call`, `Send`, `Get`, the generated handlers and clients, schema and connection options, `core/ocppj`, `core/schema`, `core/auth` | stable (unchanged by gateway mode) |
+| `csms.NewGatewayServer`, `WithGatewayLink`, `WithSplitInProcess`, `WithSplitLink`, `SplitLink`, `WithRouter`, `WithAttrSource`, `WithTenantLimits`, `TenantLimits`, `DrainOptions`, `Server.Drain`/`DrainStatus`/`ReadyHandler`/`Draining`, `Server.SetGatewayLabel`/`SetSessionAttrs`, `Conn.SetAttrs` | experimental |
+| package `gateway` (the link contract, `Pool`, `PoolSet`, `Router`) and `gateway/inproc`, `gateway/routepolicy`, `gateway/admin`, `gateway/attrsource` | experimental |
+| `core/storage`: `SessionRegistry`, `PolicyStore`, `PolicyHistory`, `RouteWriter`, `StateStore` and their `memory` implementations | experimental (`ConnectionRegistry`, `MessageRouter`, `TransactionStore`, `ConfigStore` keep their status) |
+| `core/dispatcher`: `Pipeline`, `InboundGate`, `Conn.SetAttachment`/`Owner`/`SetInboundGate`/`SetInboundDone`/`Quiesce`/`TryDrain`/`ForceDrain`, `RawCallError`, `WithSentHook`, `ConnMetadata.Owner` | experimental |
+| addons `link-grpc`, `link-nats`, `registry-redis`, `rollout` | experimental |
+| the gRPC link protocol (`gocpp.link.v1`), the registry key layout, the policy document format | experimental: mixed-version fleets are only supported between adjacent releases while this holds |
+| commands `gocpp-gateway`, `gocppctl` (flags, admin API) | experimental |
+
 ## Wiring
 
 ```go
@@ -102,7 +121,11 @@ is byte-identical to embedded mode (`TestGateway_WireIdenticalToEmbedded`).
   whose epoch is not the session it holds (`gateway.ErrSessionStale`).
 - **Orphan results.** If the caller is gone by the time the charger answers a
   command that was already written, the answer is delivered to a backend as an
-  orphan result (`WithOnOrphanResult`) instead of being dropped.
+  orphan result (`WithOnOrphanResult`) instead of being dropped. It goes to the
+  pool of the backend that issued the call (any member), or to the default pool
+  when that pool has no backend left (the caller died);
+  `gocpp_gateway_orphan_results_total{pool,outcome}` counts them (`delivered`,
+  `fallback`, `dropped`).
 - **Idempotency key.** `CallRequest.CallID` makes duplicate requests that arrive
   while the first is in flight share its outcome (the charger sees one CALL).
 
@@ -248,21 +271,67 @@ capability which session it holds for a charge point; an older gateway counts as
 
 Writes on a stream are coalesced: while one write is in progress, frames queued by other
 goroutines wait and are then written together, as a single `Batch` message when both ends
-negotiated the `batch` capability (otherwise as consecutive messages). There is no timer,
-so a frame on an idle stream is written at once and the added latency at low rate is
-zero. `WithStreams(n)` keeps n streams (each on its own connection) to every gateway for
+negotiated the `batch` capability (otherwise as consecutive messages). By default there is
+no timer, so a frame on an idle stream is written at once and the added latency at low rate
+is zero. `WithStreams(n)` keeps n streams (each on its own connection) to every gateway for
 pairs that carry more than one stream can; the default is 1.
+
+### Write linger
+
+Optional and off by default: `linkgrpc.WithGatewayWriteLinger(d)` for the frames a gateway
+writes to a backend (`gocpp-gateway --link-write-linger d`,
+`GOCPP_GATEWAY_LINK_WRITE_LINGER`) and `linkgrpc.WithBackendWriteLinger(d)` for the frames
+a backend writes to a gateway (the replies; an option of your backend program). On a busy
+stream a frame that would be written alone waits up to `d` for the frames about to follow
+and they leave in one write: fewer system calls and thread wake-ups on both ends, paid for
+with latency. Each end sets its own direction and needs nothing from the peer.
+
+- **Adaptive, per stream.** The wait applies only while frames follow each other on that
+  stream at an average interval of at most `d/2` (a moving average over the last few dozen
+  frames), so that two or more further frames are expected within it: from about 10,000
+  frames/s per stream for 200 us, 4,000 for 500 us. Below that rate every frame is written
+  at once, exactly as without the option, and no timer is armed; a single pause of a few
+  `d` switches the wait off for the frames that follow it, and a handful of frames in
+  quick succession does not switch it on. The rate that counts is that of one stream: a
+  gateway that spreads 30k msg/s over ten backends never waits at 200 us.
+- **Bounded.** A frame waits at most `d` (`d/2` on average), plus the lateness of the
+  timer: the Go runtime fires a sub-millisecond timer up to about 1 ms late when the
+  process has nothing else to do, as after the last frames of a burst. A frame that
+  arrives after `d` has passed ends the wait itself, and so does a full batch (128 frames
+  or 1 MiB encoded). `d` is at most 5 ms (`linkgrpc.MaxWriteLinger`; the options clamp,
+  the flag refuses more).
+- **Errors.** A frame accepted into a wait is in the position of a frame queued behind a
+  write in progress: its sender is told nothing until the answer arrives, and it is never
+  reported as "not written" after the fact (which would let a delivered request be sent
+  twice). If the write at the end of the wait fails the stream is broken and every request
+  waiting on it fails as "stream broken"; only the goroutine that writes a batch its own
+  frame is part of sees that write's error. The cost: a request that sat in a wait when
+  the stream broke is answered with an error instead of being redispatched to another
+  backend, as a request queued behind a write always was.
+- **No fixed delay.** A linger that always waits was measured and dropped: at 260 msg/s a
+  fixed 100 us raised the Heartbeat p50 from 0.8 to 2.1 ms (the timer lateness above, once
+  per direction) and total CPU by a quarter (a timer per frame).
+- The NATS link has no such option: the NATS client buffers publishes and flushes them
+  itself.
+
+What it buys and what it costs is in "Performance" below. In short: leave it off unless a
+gateway-backend pair carries more than about 10,000 msg/s and CPU matters more than a
+millisecond of latency; then start with 200 us on both ends.
 
 `cmd/gocpp-gateway` (own module) is the reference gateway: WebSocket listener
 (TLS, optional client-certificate verification, shared TLS ticket keys, accept
-rate limit), the link listener (optional mTLS between tiers), the Redis session
-registry, `/metrics` (labels `gateway_id`, `gateway_version`, `pool`,
-`backend_version`), `/healthz`, `/readyz` (not draining, under
-`--soft-max-sessions`, and a worker attached to the default pool), SIGTERM drain
-(`--drain-window`), and `gocpp-gateway probe` (upgrade + BootNotification +
+rate limit), the link listener (mutual TLS between tiers, required unless
+`--link-insecure`), the Redis session registry (optionally over TLS), `/metrics`
+(labels `gateway_id`, `gateway_version`, `pool`, `backend_version`), `/healthz`,
+`/readyz` on `--metrics-listen` (default `:9100`; not draining, under
+`--soft-max-sessions`, and a worker attached to the default pool), the admin API and
+pprof on their own `--admin` listener (default `127.0.0.1:9101`), SIGTERM drain
+(`--drain-window`), the link write linger (`--link-write-linger`, see above), and `gocpp-gateway probe` (upgrade + BootNotification +
 Heartbeat with the reserved identity `$probe-<id>`; the backend must answer it
 without side effects) for use as a startup probe. Flags have `GOCPP_GATEWAY_*`
-environment equivalents. Example manifests: `examples/gke-gateway`.
+environment equivalents; secrets are not flags (`GOCPP_GATEWAY_ADMIN_TOKEN`,
+`GOCPP_GATEWAY_REDIS_PASSWORD`, `GOCPP_GATEWAY_ATTR_SOURCE_TOKEN`, or the matching
+`--...-file` flag). Example manifests: `examples/gke-gateway`. See "Security" below.
 
 Failure behaviour is exercised with real processes in
 `cmd/gocpp-gateway/chaos` (kill -9 a backend mid-handler, SIGTERM a backend under
@@ -330,6 +399,77 @@ Failure behaviour is exercised by the chaos suite with the NATS link
 (`GOCPP_CHAOS_LINK=nats go test ./chaos`, an embedded `nats-server` per test):
 the same scenarios as for gRPC plus a broker restart.
 
+## Security
+
+The gateway sits between the internet and your processing tier, and the link
+carries every message, including the `Authorization` header of each connect. Treat
+the link, the admin API and Redis as part of the trust boundary.
+
+**The gRPC link requires mutual TLS.** `gocpp-gateway` refuses to start the link
+unless `--link-tls-cert`, `--link-tls-key` and `--link-client-ca` are given: a
+backend must present a certificate signed by that CA to attach. An attacker that
+can attach as a backend sees every `ConnectRequest` (Basic credentials included)
+and every CALL and can send `Reset`, `RemoteStart` or `UpdateFirmware` to any
+charger, so there is no unauthenticated default. `--link-insecure`
+(`GOCPP_GATEWAY_LINK_INSECURE=true`) turns the check off for local development
+and logs a warning at startup. Backends use `linkgrpc.WithDialOptions` with
+`grpc.WithTransportCredentials(credentials.NewTLS(...))` (client certificate,
+the CA, and the server name the gateway certificate carries). A backend with an
+authenticated identity is trusted to send control operations for any session, so
+keep the CA private to the processing tier; `examples/gke-gateway/tls.yaml` issues
+both sides with cert-manager.
+
+**Admin API and pprof** (`/admin/status|shed|soft-max`, `/debug/pprof/*`) listen on
+`--admin`, separate from `/metrics`, `/healthz` and `/readyz` (`--metrics-listen`).
+The default is `127.0.0.1:9101`. Binding it to a non-loopback address requires a
+token (`GOCPP_GATEWAY_ADMIN_TOKEN` or `--admin-token-file`); the process refuses to
+start otherwise. The token guards pprof as well and is sent as
+`Authorization: Bearer <token>`. Use `--admin-tls-cert/--admin-tls-key` (and
+`--admin-tls-client-ca` for mutual TLS) when the listener is reachable over the
+network: the token is otherwise readable on the wire. `POST /admin/shed` can
+disconnect every charger of a gateway; keep the port behind a NetworkPolicy.
+
+**gocppctl** reads the gateways' admin addresses from lease labels in Redis, so
+anyone who can write to Redis can point it elsewhere. It therefore refuses to send
+the token over plain HTTP to a host that is not loopback (`--admin-ca` or
+`--admin-tls` make lease addresses `https://`; `--admin-insecure-token` overrides).
+Secrets are never flags (`ps` shows them): `GOCPPCTL_ADMIN_TOKEN` or
+`--admin-token-file`, `GOCPPCTL_REDIS_PASSWORD` or `--redis-password-file`. Redis
+over TLS: `--redis-tls`, `--redis-ca`, `--redis-cert/--redis-key`; the gateway has
+the same as `--redis-tls`, `--redis-tls-ca`, `--redis-tls-cert/--redis-tls-key`.
+Restrict Redis with ACLs: the registry needs keys under its prefix
+(`gocpp:sess:*`), `EVALSHA`/`EVAL`, and `PUBLISH`/`SUBSCRIBE` on its channels.
+
+**The NATS link** has no gateway-side listener to secure; the broker is the trust
+boundary, so configure it:
+
+- Use TLS (`nats://` with `--nats-tls-ca`, or `tls://`) and authenticate every
+  client (`--nats-creds`, or client certificates `--nats-tls-cert/--nats-tls-key`).
+  The gateway logs a warning when it connects without either.
+- Give gateways and backends separate NATS users with subject permissions (the
+  subjects are listed above; `P` is the prefix, default `gocpp`):
+  - a **gateway** publishes `P.in.>`, `P.connect.>`, `P.notify.>`, `P.who`,
+    `P.cancel`, replies on `P.r.>` and `P.ack.>`/`_INBOX.>` as needed, and
+    subscribes `P.hello`, `P.drain`, `P.gw.>` and its reply subjects `P.r.>`;
+  - a **backend** subscribes `P.in.<pool>.>` (or the per-action subjects),
+    `P.connect.<pool>`, `P.notify.<pool>`, `P.who`, `P.cancel`, `P.ack.>` and its
+    reply subjects `P.r.>`; it publishes `P.hello`, `P.drain`, `P.gw.>` (its CSMS
+    calls and controls) and replies on `P.r.>`.
+  Anyone who may publish `P.gw.*.control` can control any session, and anyone who
+  may subscribe `P.in.>` reads every message: grant backends only their own pool
+  (a canary user gets `P.in.canary.>`, `P.connect.canary`, `P.notify.canary`) and
+  do not give backends `P.hello` subscribe rights. Verify the set against your
+  build with `nats sub 'gocpp.>'` on a test server; a denied subject shows up in
+  the server log as a permissions violation.
+- The tap (`--tap-nats`) publishes `gocpp.tap.>`; give only the consumers
+  `subscribe` there, since frames carry meter values and identity tags.
+
+**Chargers**: terminate TLS in the gateway (`--tls-cert/--tls-key`); with
+`--tls-client-ca` a presented client certificate is verified (Security Profile 3,
+the backend decides whether one is required). `--max-connections`, `--accept-rate`
+and the per-tenant limits bound what an unauthenticated peer can use before the
+backend authenticates it.
+
 ## Links
 
 | Link | Package | Use |
@@ -383,7 +523,7 @@ in well under a second, operated with `gocppctl route`. The runbook is
 The connection tier has its own staged release (a canary gateway: the highest
 StatefulSet ordinal with a soft session cap, filled by a paced partial drain of
 the others, then rebalanced): each gateway serves `/admin/status`, `/admin/shed`
-and `/admin/soft-max` on its admin listener (`gateway/admin`, `--admin-token`,
+and `/admin/soft-max` on its admin listener (`gateway/admin`, `--admin-token-file`,
 `--advertise-admin`), driven by `gocppctl gateway status|shed|cap|rebalance`.
 `probe --interval` is a sidecar that exercises an idle gateway continuously, and
 `--attr-source-file` / `--attr-source-url` (`csms.WithAttrSource`) add labels from
@@ -395,16 +535,18 @@ outside the backend as `ext.*` session attributes. The runbook is
 Measured with the load-test harness (`interop/loadtest` on branch `test/loadtest-4k`,
 `results/gateway-2026-11-21`): 4,000 chargers, loopback, gateway on 2 pinned cores,
 2 backends on 2 cores each, gRPC link, schema off, compared with one embedded server
-on 6 cores. Targets are those of design section 2.7.
+on 6 cores (throughput and memory rows), and the final acceptance run below. Targets are those of design section 2.7.
 
 | Target | Result |
 |---|---|
 | Gateway >= 20,000 inbound CALLs/s per core | 22,700 msg/s per core at 36k msg/s (1.6 cores); the same gateway at 7.7k msg/s used 0.77 cores |
 | Added latency, p50 <= 0.5 ms, p99 <= 2 ms at 5k msg/s | +0.15 ms p50, +0.5 ms p99 at 7.7k msg/s (Heartbeat p50 0.20 -> 0.35 ms, p99 0.49 -> 0.96 ms) |
 | Gateway memory <= 16 KB per idle session | **met for live memory**: 11 KB heap+stack per idle session (`BenchmarkGatewayIdleFootprint`, 2,000 sessions; 14 KB at 10,000 sessions with real clients in the harness: 9.5 KB heap from a post-GC heap profile plus about 4.8 KB stacks). Process RSS is 24-26 KB/session at 10,000 sessions for the gateway and for the embedded server alike (main and integ/gateway measured the same, no regression): about 1.7x the live memory is GC headroom and unreturned idle spans left by the connect storm, see docs/performance.md, "RSS versus live memory" |
-| Backend rollout: 0 disconnects, 0 attributable CALLERRORs | met: 5 SIGTERM and 3 kill -9 restarts under load, 0 disconnects, restart-window Heartbeat p99 0.96 ms |
-| Gateway rollout, reconnects within the pace | drain of one of two gateways (2,000 chargers, 20 s window) moved all sessions through the other gateway; ~9% of chargers were disconnected at the deepest point; no freeze. The 10,000-charger / 5-minute / 3-gateway scale of the design was not run |
+| Backend rollout: 0 disconnects, 0 attributable CALLERRORs | met, in the final acceptance run (4,000 chargers, 25 min, 40% mute, 3 flappers, 2 gateways, 3 backends): 5 backend restarts (3 SIGTERM, 2 SIGKILL) and 2 gateway drains in one run; chargers up never dropped below 3,987 during backend restarts; Heartbeat p99 in restart windows 1.1 ms (embedded server restarts: all 4,000 reconnect, 6-27 s to 99%) |
+| Gateway rollout, reconnects within the pace | met, same run: SIGTERM drain of one of two gateways over 20 s dipped to 3,625 and 3,270 of 4,000 chargers up and was back to 99% within 1.8 s of the replacement being ready, no freeze. 10,000 chargers over 3 gateways, three drains in turn: dips to 9,565 / 9,364 / 9,015, all back within 3.3 s, no freeze (`results/gateway-final-2026-11-21/report.md`) |
 | Gateway crash, accept capacity (500 handshakes/s per core) | not measured here (no TLS in the harness) |
+
+Final acceptance run (`results/gateway-final-2026-11-21` on `test/loadtest-4k`, split and embedded concurrently on pinned cores): Heartbeat steady p50/p99 0.5/1.1 ms against 0.3/0.5 ms embedded (+0.2 ms p50, +0.6 ms p99); at about 300 msg/s the whole split deployment used 0.32 cores against 0.12 embedded, dominated by fixed per-session costs (that run is not CPU bound; the throughput comparison is below).
 
 Cost of the split: total CPU is about 1.4x the embedded server (3.3 vs 2.4 cores at 37k
 msg/s); the gRPC hop is about 25 us of CPU per message over both ends. The profile
@@ -415,6 +557,124 @@ below): in the same harness at 35k msg/s total CPU went from 1.35x to 1.29x of e
 (79.8 to 76.2 us per message against 59.1); a second stream did not change it. When the gateway is the bottleneck (it
 ran at 80% of its 2 cores in the two top steps) p99 grows to tens of milliseconds, which
 is queueing, not hop cost: size gateways below about 70% CPU.
+
+### Write linger and stack growth: CPU against latency
+
+A second round on the cost of the split (same harness and machine, 2026-11-21 evening;
+one gateway, two backends, 4,000 chargers; the machine was shared, so compare the rows of
+a table with each other, not with the tables above). Two changes came out of it.
+
+**Stack growth, always on.** Each inbound CALL runs on a fresh goroutine, and the
+gateway's forward path is about 10 KB deep, so the runtime copied the stack three or four
+times per message: `runtime.newstack` was 9.6% of the gateway's CPU at 35k msg/s. A
+gateway server now grows the handler's stack to 16 KB once, at the start of the goroutine
+(`dispatcher.Config.DeepHandlerStack`, set by `csms.NewGatewayServer`), and the link-grpc
+backend does the same for its request goroutines: `runtime.newstack` is down to 2.3% of the
+gateway's CPU and total CPU per message is 3 to 4% lower (rows "before" and "linger off"
+below). It costs no latency.
+
+**Write linger, opt in** (see "Write linger" above for the semantics). Total CPU of the
+split per message (gateway plus both backends) and Heartbeat latency at the chargers, with
+the linger set on both ends:
+
+Gateway with headroom (4 CPUs, two thirds busy without a linger; backends 4 CPUs; the
+streams carry 250, 2,900 and 18,000 frames/s each way at the three rates). CPU is us per
+message, the median of the undisturbed runs (range in brackets where it matters);
+latency is Heartbeat p50 / p99 in ms:
+
+| | 490 msg/s | 5,900 msg/s | 36,500 msg/s |
+|---|---|---|---|
+| embedded server, for scale | 280 us, 0.3 / 0.5 | 90 us, 0.2 / 0.5 | 57 us, 0.2 / 1.7 |
+| split before this round | 1,210 us, 0.6 / 1.2 | 318 us, 0.5 / 1.1 | 137 us, 0.6 / 21 |
+| split, linger off (the default) | 1,180 us, 0.6 / 1.1 | 306 us, 0.4 / 1.0 | 131 us (128-135), 0.5 / 15-36 |
+| linger 200 us on both ends | 1,150 us, 0.6 / 1.2 | 288 us, 0.4 / 1.0 | 113 us (99-115): -13%, 1.2 / 10-21 |
+| linger 500 us on both ends | 1,170 us, 0.5 / 1.1 | 306 us, 0.4 / 2.4 | 86 us (83-90): -34%, 2.4 / 15-16 |
+
+The p99 of the last column is the harness at its limit on this machine in every row
+(histogram buckets, a shared host); the linger does not show in it. At 5,900 msg/s the
+500 us linger is armed now and then (the streams run at 2,900 frames/s against the 4,000
+at which it applies steadily; arrivals cluster) and the p99 shows it; the p50 and the CPU
+do not.
+
+Gateway on 2 CPUs (the pinning of the measurements further up; 75% busy without a
+linger), 36,000 msg/s, two passes each:
+
+| | CPU us/msg | Heartbeat p50 / p99 ms |
+|---|---|---|
+| embedded server, for scale | 52-60 | 0.2 / 1.1 |
+| split before this round | 89 (88, 90) | 0.9-1.0 / 41-46 |
+| split, linger off (the default) | 87 (86, 88) | 0.6-0.7 / 29-32 |
+| linger 200 us on both ends | 76 (75, 77): -12% | 1.1-1.2 / 21 |
+| linger 500 us on both ends | 60 (58, 62): -31% | 2.4 / 23-26 |
+
+Against the embedded server that is about 1.5-1.6x without a linger, 1.3-1.4x at 200 us and
+1.05-1.15x at 500 us. Ratios to embedded do not carry over between sessions on this
+shared machine: the binaries behind the 1.29x further up, run again in this session with
+the same pinning, measured 91 us per message against 60 embedded (1.5x). The rows of one
+table were measured together and compare.
+
+Reading:
+
+- Below the rate at which it applies the linger changes nothing, CPU or latency, because
+  it is not armed: the first two columns at 200 us, the first at 500 us (the second is
+  close enough to its threshold to show in the p99, as said above).
+- Where it applies it trades latency for CPU, and more of both with a longer linger. The
+  latency it adds to a round trip is not 2 x d but about 0.6 ms at 200 us and 1.8 ms at
+  500 us: both directions wait, and the timers fire late whenever the process has an idle
+  moment (the Go runtime's sub-millisecond timers, see above).
+- The saving comes from fewer write and read system calls and, above all, fewer thread
+  wake-ups on both ends (at 500 us in the first table the two backends together went
+  from 2.1 to 1.2 cores and the gateway from 2.7 to 1.9). It shrinks as a gateway nears saturation, because a saturated gateway batches
+  anyway (frames queue behind the write in progress) and pays for it in queueing: one
+  pass with the gateway at 82% of its 2 CPUs showed -4% at 200 us instead of -12%.
+- It depends on the rate of each stream, not of the gateway: with ten backends behind a
+  gateway instead of two, the same traffic is 3,700 frames/s per stream and a 200 us
+  linger never applies.
+
+`BenchmarkGRPCHopRate` (`addons/link-grpc`) isolates one stream over loopback, both ends
+and 1,000 open-loop senders in one process on 4 cores, and reports CPU per round trip and
+round-trip latency:
+
+| msg/s on the stream | linger | CPU us/msg | p50 ms | p99 ms |
+|---|---|---|---|---|
+| 1,000 | off / 200 us / 500 us | 278 / 293 / 332 (not armed; noise) | 0.17 / 0.19 / 0.22 | 1.1 / 1.5 / 1.2 |
+| 5,000 | off / 200 us | 118 / 114 (not armed) | 0.13 / 0.13 | 0.36 / 0.36 |
+| 5,000 | 500 us | 85 (-28%) | 2.5 | 4.4 |
+| 20,000 | off / 200 us / 500 us | 96 / 50 (-48%) / 37 (-62%) | 0.20 / 1.5 / 2.8 | 2.1 / 3.1 / 3.7 |
+| 40,000 | off / 200 us / 500 us | 66 / 38 (-42%) / 31 (-53%) | 0.23 / 0.87 / 2.5 | 4.1 / 3.7 / 4.7 |
+
+The 5,000 msg/s row at 500 us shows the worst case for latency: just above the rate at
+which the linger applies the process is mostly idle, every wait ends a full timer tick
+late, and a round trip takes 2.5 ms instead of 0.13.
+
+Guidance: leave the linger off (the default) unless one gateway-backend stream carries more
+than about 10,000 msg/s and a millisecond of latency is a fair price for the CPU; then set
+200 us on both ends (`--link-write-linger 200us` on the gateway,
+`linkgrpc.WithBackendWriteLinger` in the backend) and look at 500 us only if the latency
+budget allows 2 ms more. OCPP itself does not care (call timeouts are tens of seconds).
+The latency targets above are stated at 5k msg/s: spread over two or more backends that
+is below the rate of a linger of up to 400 us, which is then not armed and changes
+nothing; a single stream at 5k msg/s with a 500 us linger is the worst case of the
+benchmark table.
+
+Considered in the same round and not done:
+
+- A fixed linger (every frame waits): +1.3 ms on the Heartbeat p50 and a quarter more CPU
+  at 260 msg/s, for the same saving at high rate. Dropped in favour of the adaptive one.
+- Answering the charger from the link's read loop instead of waking the handler goroutine
+  (no goroutine per request on the reply path): the scheduler work around that goroutine
+  is the largest remaining block of the gateway profile after system calls (`runtime.mcall`
+  and `schedule` 13-15%), of which this would remove perhaps a third, 5% of the gateway.
+  It needs an asynchronous handler contract in the dispatcher and puts every charger's
+  socket write on the one goroutine that reads the stream (a slow socket would stall the
+  backend's whole stream), so it is a redesign, not a tuning.
+- Sharing the WebSocket write with the link flush: the reply write is one `write(2)` per
+  charger socket (14% of the gateway) and sockets cannot share a system call; nothing to
+  gain without `io_uring`-style submission, which the Go runtime does not offer.
+- A second stream per backend: measured before, no change.
+- A precise timer for the wait (a thread sleeping in `nanosleep`): would bring the added
+  latency close to 2 x d. Not done; the runtime's timers are good enough for an opt-in
+  throughput setting. Revisit if someone needs the linger with a tight latency budget.
 
 Gates in this repository (they fail the build on a regression, they do not claim the
 numbers above):
@@ -439,15 +699,45 @@ path, `Authorization`, offered subprotocols and client certificate). Within `TTL
 (default 5 minutes) a reconnect skips the backend; after it the backend decides
 again, and if it cannot be reached an accepted decision up to `StaleIfError`
 (default 1 hour) old is reused. Rejections are never cached.
-`Server.InvalidateAuthCache(cpID)` drops entries after a credential change. Leave
-it off when the backend decides on other request headers.
+`Server.InvalidateAuthCache(cpID)` drops the entries of one gateway after a
+credential change; on the processing tier `Server.InvalidateGatewayAuthCache(ctx,
+cpID)` sends the request to every gateway with a lease in the session registry
+(without a registry: to the in-process link's only gateway), so a revoked
+credential stops being admitted at once instead of after `TTL` (and, with the
+backend unreachable, `StaleIfError`). A gateway that is down misses the request.
+Leave the cache off when the backend decides on other request headers.
+
+### Reconnect through another gateway
+
+When a charger reconnects through gateway B while its old socket is still open on
+gateway A, the processing tier that sees the newer session (registry epochs order
+the two) asks A to close the old socket at once (`ControlReplaced`, close code
+1008); A's reconcile pass (every 30 s) is the fallback. The sender is the backend,
+not B: gateways have no channel to each other.
+
+### Deadlines across hosts
+
+Deadlines are never compared across hosts. An inbound message carries its
+`ReceivedAt` and `Deadline` from the gateway's clock and the backend uses the
+difference as the handler's budget; a CSMS call carries `CallRequest.Budget`, the
+time left, which the gateway applies from its own clock.
 
 ## Testing
 
 `GOCPP_TEST_SPLIT=1 go test ./internal/...` runs the conformance and e2e suites
 with every server split through the in-process link (CI does this on every PR).
 Tests create servers with `internal/splitmode.NewServer`, which is
-`csms.NewServer` plus `WithSplitInProcess` when the variable is set. The NATS link
+`csms.NewServer` plus `WithSplitInProcess` when the variable is set. 
+`scripts/split-nats-suite.sh [go test args]` runs the same suites (about 3,100
+tests, ten seconds) with every server split over the NATS link and a real
+`nats-server` on loopback; CI runs it in the `gateway-modules` job. The main
+module must not depend on `addons/link-nats`, so the script builds a throwaway
+`go.work` and an overlay that registers the transport
+(`addons/link-nats/splitharness`, `splitmode.Register` and
+`GOCPP_TEST_SPLIT=nats`); nothing in the tree changes. It skips the e2e goleak
+check, because the suites do not close every server they start (the in-process
+split run keeps that check). Another transport can be run the same way by
+implementing `csms.SplitLink` and registering it. The NATS link
 has its own tests (`addons/link-nats`: the link contract over a real
 `nats-server`, and a wire-identity test that diffs the frames of an embedded
 server against a gateway with a NATS backend) and runs the whole chaos suite.

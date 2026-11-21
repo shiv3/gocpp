@@ -72,9 +72,12 @@ type Envelope struct {
 	Action     string
 	Payload    []byte // raw JSON exactly as received; never re-encoded
 	ReceivedAt time.Time
-	Deadline   time.Time // absolute; the gateway answers the charger at this time
-	Trace      string    // W3C traceparent
-	Attrs      map[string]string
+	// Deadline is when the gateway answers the charger, on the gateway's clock. A
+	// receiver on another host must not compare it with its own clock: it uses
+	// the budget Deadline.Sub(ReceivedAt), both read from the same clock.
+	Deadline time.Time
+	Trace    string // W3C traceparent
+	Attrs    map[string]string
 	// Route says how the gateway routed the message (nil = default pool, no
 	// policy); the backend may put it on its handler span.
 	Route *Route
@@ -272,6 +275,8 @@ type Rejection struct {
 }
 
 // Upstream is what a gateway needs from the processing tier.
+//
+// Experimental: this API may change before v1.0.
 type Upstream interface {
 	// Connect decides an upgrade: authentication, admission, timeouts.
 	Connect(ctx context.Context, req ConnectRequest) (ConnectReply, error)
@@ -318,11 +323,22 @@ type CallRequest struct {
 	Target SessionRef
 	// CallID is a caller-chosen idempotency key: a second request with the same
 	// CallID while the first is in flight shares its outcome.
-	CallID   string
-	Action   string
-	Payload  []byte // already validated and transformed by the caller
+	CallID  string
+	Action  string
+	Payload []byte // already validated and transformed by the caller
+	// Deadline is the caller's absolute deadline, on the caller's clock. Budget is
+	// the time left when the request was made; a receiver on another host
+	// applies Budget from its own receive time and ignores Deadline when Budget
+	// is set, so clock skew between hosts cannot cancel or extend a call.
 	Deadline time.Time
+	Budget   time.Duration
 	Trace    string
+	// CallerPool and CallerVersion name the pool and version of the backend that
+	// issued the call. A link sets them on the gateway side (they are not part of
+	// the wire format); the gateway uses CallerPool to route the OrphanResult of
+	// the call back to the pool that asked.
+	CallerPool    string
+	CallerVersion string
 }
 
 // CallReply is the outcome of a CallRequest.
@@ -345,6 +361,11 @@ const (
 	// ControlSetAttrs merges ControlRequest.Attrs into the session attributes
 	// (an empty value deletes the key; the total is capped at MaxAttrsSize).
 	ControlSetAttrs
+	// ControlInvalidateAuth makes the gateway forget its cached connect decisions
+	// for Target.CPID (all of them when empty), after a credential change. It
+	// needs no session: Target.GatewayID names the gateway, Target.CPID the
+	// charge point.
+	ControlInvalidateAuth
 )
 
 // MaxAttrsSize caps the session attributes (sum of key and value lengths).
@@ -363,6 +384,8 @@ type ControlRequest struct {
 
 // Downstream is what the processing tier (or any other service) needs from
 // gateways. A link routes it to the gateway named by Target.GatewayID.
+//
+// Experimental: this API may change before v1.0.
 type Downstream interface {
 	Call(ctx context.Context, req CallRequest) (CallReply, error)
 	Send(ctx context.Context, req CallRequest) error
@@ -370,6 +393,8 @@ type Downstream interface {
 }
 
 // GatewayLink is the gateway's end of a link.
+//
+// Experimental: this API may change before v1.0.
 type GatewayLink interface {
 	// Upstream sends work to the attached backends.
 	Upstream
@@ -379,6 +404,8 @@ type GatewayLink interface {
 }
 
 // BackendLink is the processing tier's end of a link.
+//
+// Experimental: this API may change before v1.0.
 type BackendLink interface {
 	// Downstream reaches the gateway named by each request's Target.
 	Downstream
@@ -393,6 +420,8 @@ type BackendLink interface {
 // Locator is optionally implemented by a gateway's Downstream so a link can
 // find the session of a charge point without a registry (the in-process link
 // and the gRPC link, which asks every attached gateway, use it).
+//
+// Experimental: this API may change before v1.0.
 type Locator interface {
 	LocateSession(cpID string) (Located, bool)
 }
@@ -526,6 +555,8 @@ type RouteDecision = Route
 // Router decides per message which pool serves it. Route must be pure,
 // non-blocking and deterministic: the same input and policy give the same
 // decision, which makes routing sticky per charger by construction.
+//
+// Experimental: this API may change before v1.0.
 type Router interface {
 	Route(in RouteInput) RouteDecision
 }
@@ -551,6 +582,8 @@ const PoolReject = "$reject"
 // implements it (the routepolicy engine does) is wired to the link with its
 // route-observer option; it drives fallback accounting, rule suspension and the
 // error-rate guard. Methods are called on the dispatch path and must not block.
+//
+// Experimental: this API may change before v1.0.
 type RouteObserver interface {
 	// RouteFallback reports that a message routed by r was sent to r.Fallback
 	// because r.Pool had no available member ("unavailable") or every member
@@ -572,6 +605,8 @@ const ExtAttrPrefix = "ext."
 // Keys are prefixed "ext." by the gateway and can never override attributes the
 // backend set (ConnectReply.Attrs, SetAttrs). Implementations must be safe for
 // concurrent use; see package gateway/attrsource for a file and an HTTP source.
+//
+// Experimental: this API may change before v1.0.
 type AttrSource interface {
 	Attrs(ctx context.Context, cpID string) (map[string]string, error)
 }

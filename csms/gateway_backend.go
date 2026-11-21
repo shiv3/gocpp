@@ -27,6 +27,8 @@ import (
 //
 // On such a server Get and Connections only see nothing (it holds no sockets);
 // use Lookup, which finds a charger through the link. See docs/gateway.md.
+//
+// Experimental: this API may change before v1.0.
 func WithGatewayLink(link gateway.BackendLink) Option {
 	return optionFunc(func(c *serverConfig) { c.link = link })
 }
@@ -46,10 +48,59 @@ type backend struct {
 
 	mu       sync.Mutex
 	sessions map[string]*gwSession // newest session seen per charge point
+	// seen is when each cached session was last used or announced, to drop
+	// entries nothing has touched for cacheIdle: a SessionClosed that went to
+	// another backend would otherwise leave this backend's entry forever (bounded
+	// by the number of charge point ids, but not by the connected ones).
+	seen      map[string]time.Time
+	lastSweep time.Time
+	cacheIdle time.Duration
+
+	// events serializes the session events of one charge point: observing a
+	// session and running the application's connect/disconnect hooks for it must
+	// not interleave with the same for another session of the same charger, or
+	// the old session's disconnect could run after the new one's connect. The lock
+	// is per charger, so a hook that blocks (an OnConnect that makes a Call, say)
+	// delays only that charger's next event, never another charger's.
+	eventsMu sync.Mutex
+	events   map[string]*cpLock
 }
 
+// cpLock is a refcounted mutex, dropped from the map when nobody holds or waits
+// for it.
+type cpLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// lockEvents takes the event lock of cpID and returns its release.
+func (b *backend) lockEvents(cpID string) (unlock func()) {
+	b.eventsMu.Lock()
+	l := b.events[cpID]
+	if l == nil {
+		l = &cpLock{}
+		b.events[cpID] = l
+	}
+	l.refs++
+	b.eventsMu.Unlock()
+	l.mu.Lock()
+	return func() {
+		l.mu.Unlock()
+		b.eventsMu.Lock()
+		if l.refs--; l.refs == 0 {
+			delete(b.events, cpID)
+		}
+		b.eventsMu.Unlock()
+	}
+}
+
+// sessionCacheIdle is how long a cached session may go unused before the
+// backend forgets it. A session that is still connected is simply cached again
+// by its next message.
+const sessionCacheIdle = time.Hour
+
 func newBackend(s *Server, link gateway.BackendLink) *backend {
-	return &backend{s: s, link: link, sessions: make(map[string]*gwSession)}
+	return &backend{s: s, link: link, sessions: make(map[string]*gwSession), seen: make(map[string]time.Time), cacheIdle: sessionCacheIdle, events: make(map[string]*cpLock)}
 }
 
 // Upstream returns the server's gateway.Upstream: what a link delivers the
@@ -81,48 +132,107 @@ func (s *Server) ServeGateway(ctx context.Context) error {
 }
 
 // observe records the newest session seen per charge point. It returns the
-// session to use and, when ref displaces an older one, that older one.
-func (b *backend) observe(ref gateway.SessionRef, version ocppj.Version, info *gateway.SessionInfo) (cur, displaced *gwSession) {
+// session to use and, when ref displaces an older one, that older one. stale
+// reports that ref is an older session than the cached one (a late message of a
+// session that has already been replaced): it is returned for use by the message
+// at hand but not cached, and must not be announced as a connect.
+func (b *backend) observe(ref gateway.SessionRef, version ocppj.Version, info *gateway.SessionInfo) (cur, displaced *gwSession, stale bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	now := time.Now()
+	b.sweepLocked(now)
+	b.seen[ref.CPID] = now
 	old := b.sessions[ref.CPID]
 	if old != nil {
 		switch {
-		case old.ref.Epoch == ref.Epoch && old.ref.GatewayID == ref.GatewayID && old.ref.Boot == ref.Boot:
+		case old.ref == ref:
 			if info != nil && old.info() == nil {
 				n := newGwSession(old.ref, old.version, info)
 				n.setAttrs(old.attrs())
 				b.sessions[ref.CPID] = n
-				return n, nil
+				return n, nil, false
 			}
-			return old, nil
-		case old.ref.Epoch > ref.Epoch && old.ref.GatewayID == ref.GatewayID && old.ref.Boot == ref.Boot:
-			// A late message of an older session of the same gateway.
-			return newGwSession(ref, version, info), nil
+			return old, nil, false
+		case b.newerSession(old.ref, ref):
+			return newGwSession(ref, version, info), nil, true
 		}
 	}
 	cur = newGwSession(ref, version, info)
 	b.sessions[ref.CPID] = cur
-	return cur, old
+	return cur, old, false
 }
 
-// forget drops the cached session if it is exactly ref. It reports whether it
-// was the newest one.
-func (b *backend) forget(ref gateway.SessionRef) bool {
+// sweepLocked drops sessions unused for cacheIdle, at most once per minute (or
+// per tenth of cacheIdle when that is shorter).
+func (b *backend) sweepLocked(now time.Time) {
+	every := min(time.Minute, b.cacheIdle/10)
+	if now.Sub(b.lastSweep) < every {
+		return
+	}
+	b.lastSweep = now
+	for id, t := range b.seen {
+		if now.Sub(t) >= b.cacheIdle {
+			delete(b.seen, id)
+			delete(b.sessions, id)
+		}
+	}
+}
+
+// newerSession reports whether a is a newer session of the same charger than
+// b. Epochs order sessions of one gateway; with a session registry they are
+// assigned by it and order sessions across gateways as well. Without one
+// (epochs numbered per gateway) sessions of different gateways cannot be
+// compared and the one seen last wins.
+func (b *backend) newerSession(a, other gateway.SessionRef) bool {
+	if a.Epoch <= other.Epoch {
+		return false
+	}
+	if sameSessionOwner(a, other) {
+		return true
+	}
+	return b.s.cfg.sessionReg != nil && other.Epoch != 0
+}
+
+// forget handles the close of session ref. It drops the cached session when it
+// is ref, and reports whether the application should hear about the
+// disconnect. It should unless a newer session of the same charger is known (a
+// late close of a replaced session, already reported when it was replaced).
+// Nothing cached counts as "no newer session": the close may have been routed
+// to a different backend than the open, and that backend must still report it,
+// or the disconnect is lost.
+func (b *backend) forget(ref gateway.SessionRef) (fire bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	cur := b.sessions[ref.CPID]
-	if cur != nil && cur.ref == ref {
+	switch {
+	case cur == nil:
+		return true
+	case cur.ref == ref:
 		delete(b.sessions, ref.CPID)
+		delete(b.seen, ref.CPID)
+		return true
+	case b.newerSession(ref, cur.ref):
+		// The cache holds an older session of this charger whose own close went
+		// elsewhere; ref supersedes it.
+		delete(b.sessions, ref.CPID)
+		delete(b.seen, ref.CPID)
 		return true
 	}
 	return false
 }
 
+func sameSessionOwner(a, b gateway.SessionRef) bool {
+	return a.GatewayID == b.GatewayID && a.Boot == b.Boot
+}
+
 func (b *backend) cached(cpID string) *gwSession {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.sessions[cpID]
+	if sess := b.sessions[cpID]; sess != nil {
+		b.seen[cpID] = time.Now()
+		return sess
+	}
+	return nil
 }
 
 func (b *backend) handle(sess *gwSession) *Conn {
@@ -190,7 +300,7 @@ func (u backendUpstream) Handle(ctx context.Context, env gateway.Envelope) (gate
 	if s.stopping.Load() || s.ctx.Err() != nil {
 		return gateway.Reply{Nack: true}, nil
 	}
-	sess, displaced := u.b.observe(env.Session, env.Version, nil)
+	sess, displaced, _ := u.b.observe(env.Session, env.Version, nil)
 	if displaced != nil {
 		u.b.replaced(displaced, sess)
 	}
@@ -203,9 +313,9 @@ func (u backendUpstream) Handle(ctx context.Context, env gateway.Envelope) (gate
 	// deadline the gateway set.
 	hctx := ocppj.ContextWithMessageID(context.WithoutCancel(ctx), env.MsgID)
 	hctx = withGatewayConn(hctx, conn)
-	if !env.Deadline.IsZero() {
+	if b, ok := envelopeBudget(env); ok {
 		var cancel context.CancelFunc
-		hctx, cancel = context.WithDeadline(hctx, env.Deadline)
+		hctx, cancel = context.WithTimeout(hctx, b)
 		defer cancel()
 	}
 	var run func(ctx context.Context, payload []byte) ([]byte, error)
@@ -225,12 +335,27 @@ func (u backendUpstream) Handle(ctx context.Context, env gateway.Envelope) (gate
 	}}, nil
 }
 
+// envelopeBudget is the time the handler of env has. The gateway's absolute
+// deadline is on its clock, which may differ from this host's, so the budget is
+// the distance between two readings of that one clock (ReceivedAt and Deadline).
+// An envelope from a gateway that does not set ReceivedAt falls back to the
+// absolute deadline.
+func envelopeBudget(env gateway.Envelope) (time.Duration, bool) {
+	switch {
+	case env.Deadline.IsZero():
+		return 0, false
+	case !env.ReceivedAt.IsZero():
+		return max(env.Deadline.Sub(env.ReceivedAt), 0), true
+	}
+	return max(time.Until(env.Deadline), 0), true
+}
+
 // Notify handles SEND, session events and orphan results.
 func (u backendUpstream) Notify(ctx context.Context, env gateway.Envelope) error {
 	s := u.b.s
 	switch env.Kind {
 	case gateway.KindSend:
-		sess, displaced := u.b.observe(env.Session, env.Version, nil)
+		sess, displaced, _ := u.b.observe(env.Session, env.Version, nil)
 		if displaced != nil {
 			u.b.replaced(displaced, sess)
 		}
@@ -246,15 +371,19 @@ func (u backendUpstream) Notify(ctx context.Context, env gateway.Envelope) error
 		frame := ocppj.Frame{Type: ocppj.Send, MsgID: env.MsgID, Action: env.Action, Payload: env.Payload}
 		pipe.RunSend(hctx, &frame, run)
 	case gateway.KindSessionOpened:
-		sess, displaced := u.b.observe(env.Session, env.Version, env.Open)
+		defer u.b.lockEvents(env.Session.CPID)()
+		sess, displaced, stale := u.b.observe(env.Session, env.Version, env.Open)
+		if stale {
+			return nil // a late open of a session that was already replaced
+		}
 		if displaced != nil {
 			u.b.replaced(displaced, sess)
 		}
 		s.handleConnected(u.b.handle(sess))
 	case gateway.KindSessionClosed:
-
+		defer u.b.lockEvents(env.Session.CPID)()
 		if !u.b.forget(env.Session) {
-			return nil // stale: a newer session of this charger is known
+			return nil // a newer session of this charger is known
 		}
 		cause := closeCause(env.Close)
 		s.handleDisconnected(u.b.handle(&gwSession{ref: env.Session, version: env.Version}), cause)
@@ -267,9 +396,26 @@ func (u backendUpstream) Notify(ctx context.Context, env gateway.Envelope) error
 }
 
 // replaced fires the disconnect of a session a newer one displaced, so the
-// application sees the old one go before the new one is announced.
-func (b *backend) replaced(old, _ *gwSession) {
+// application sees the old one go before the new one is announced. When the old
+// session is held by another gateway (the charger reconnected elsewhere) and a
+// session registry orders the two, it also asks that gateway to close the old
+// socket at once (Control, ErrConnReplaced), instead of leaving it to the
+// gateway's reconcile pass (design 2.4, rule 4). The gateway fences the request
+// by epoch, so a request that arrives late is harmless.
+func (b *backend) replaced(old, cur *gwSession) {
 	b.s.handleDisconnected(b.handle(old), ocppj.ErrConnReplaced)
+	if b.s.cfg.sessionReg == nil || old.ref.GatewayID == cur.ref.GatewayID || old.ref.Epoch == 0 {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(b.s.ctx, 5*time.Second)
+		defer cancel()
+		err := b.link.Control(ctx, gateway.ControlRequest{Target: old.ref, Op: gateway.ControlReplaced, Reason: "replaced by a newer session"})
+		if err != nil && !errors.Is(err, gateway.ErrSessionStale) && !errors.Is(err, ocppj.ErrNotConnected) {
+			b.s.cfg.dispatcher.Logger.Debug("csms: closing the replaced session on its gateway failed",
+				"cp_id", old.ref.CPID, "gateway", old.ref.GatewayID, "epoch", old.ref.Epoch, "error", err)
+		}
+	}()
 }
 
 // lookupGateway resolves a handle for a charger through the session cache and,
@@ -288,7 +434,7 @@ func (s *Server) lookupGateway(ctx context.Context, id string) (*Conn, error) {
 		if !found {
 			return nil, ocppj.ErrNotConnected
 		}
-		sess, _ := s.backend.observe(fromStorage(rec).ref, fromStorage(rec).version, nil)
+		sess, _, _ := s.backend.observe(fromStorage(rec).ref, fromStorage(rec).version, nil)
 		return s.backend.handle(sess), nil
 	}
 	loc, ok, err := s.backend.link.Locate(ctx, id)
@@ -298,7 +444,7 @@ func (s *Server) lookupGateway(ctx context.Context, id string) (*Conn, error) {
 	if !ok {
 		return nil, ocppj.ErrNotConnected
 	}
-	sess, _ := s.backend.observe(loc.Ref, loc.Version, loc.Info)
+	sess, _, _ := s.backend.observe(loc.Ref, loc.Version, loc.Info)
 	return s.backend.handle(sess), nil
 }
 
@@ -350,7 +496,7 @@ func (s *Server) callGatewayOnce(ctx context.Context, sess *gwSession, action st
 	}
 	rep, err := s.backend.link.Call(ctx, gateway.CallRequest{
 		Target: sess.ref, CallID: msgID, Action: action, Payload: payload,
-		Deadline: dl, Trace: traceparent(ctx),
+		Deadline: dl, Budget: max(time.Until(dl), time.Millisecond), Trace: traceparent(ctx),
 	})
 	if err != nil {
 		sent := rep.Sent
@@ -445,7 +591,7 @@ func (s *Server) relocate(ctx context.Context, old *gwSession) (*gwSession, erro
 	if ref == old.ref {
 		return nil, ocppj.ErrNotConnected
 	}
-	cur, _ := s.backend.observe(ref, version, info)
+	cur, _, _ := s.backend.observe(ref, version, info)
 	return cur, nil
 }
 

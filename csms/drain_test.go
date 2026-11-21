@@ -503,3 +503,40 @@ func TestSessionMetrics_ClosesAndAccepts(t *testing.T) {
 	require.Equal(t, 3, m.results["ok"])
 	require.Equal(t, 1, m.results["draining"])
 }
+
+// A drain whose context ends while a session is busy must not leave that session
+// refusing every new call, and Undrain makes the server accept upgrades again
+// (review S2).
+func TestDrain_CancelledDrainRestoresQuiescedSessionsAndUndrain(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	srv, ts := newDrainServer(t)
+	cps := connectAll(ctx, t, srv, ts.URL, 1)
+	cp := cps[0]
+	cp.delay.Store(int64(600 * time.Millisecond))
+	conn, ok := srv.Get(cp.id)
+	require.True(t, ok)
+	first := make(chan error, 1)
+	go func() {
+		_, err := csms.Call(ctx, conn, profiles.Reset, messages.ResetRequest{Type: messages.ResetRequestTypeSoft})
+		first <- err
+	}()
+	require.Eventually(t, func() bool { return cp.received.Load() == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	dctx, dcancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer dcancel()
+	err := srv.Drain(dctx, csms.DrainOptions{Window: 20 * time.Second, Rate: 50, IdleGrace: 10 * time.Second})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NoError(t, <-first)
+
+	cp.delay.Store(0)
+	_, err = csms.Call(ctx, conn, profiles.Reset, messages.ResetRequest{Type: messages.ResetRequestTypeSoft})
+	require.NoError(t, err, "a session quiesced by a cancelled drain must accept calls again")
+
+	require.True(t, srv.Draining())
+	require.NoError(t, srv.Undrain(ctx))
+	require.False(t, srv.Draining())
+	c2, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CP_NEW", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+	require.NoError(t, err)
+	_ = c2.CloseNow()
+}
