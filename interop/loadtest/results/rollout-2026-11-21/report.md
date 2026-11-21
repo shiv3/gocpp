@@ -50,7 +50,8 @@ Read-outs, in short:
   (one core), 0 allocations.
 - A shared machine: isolated 10 s windows show a Heartbeat p99 of 18-32 ms (manual 570 s and 580 s; auto-healthy 220, 390, 410, 560 s). They fall on no policy step and in
   both pools; the machine carried other agents' builds and tests (load average up to 6.6). The median window p99 is 1.0-1.1 ms in every phase. They are not attributed to the gateway.
-- Harness notes: `not_connected` in the call table is the harness pre-check (the control backend only knows chargers whose session events reached it);
+- Harness notes: `not_connected` in the call table is the harness pre-check (the control backend only knows chargers whose session events reached it; fixed on this branch
+  by `Recorder.AssumeConnected` after these runs were made, so those counts are an artifact and `ok` is a lower bound);
   the CALLERROR counting was added to the charger after the first auto-error run (its controller log is kept as `hook-0.run1-before-callerror-counting.log`; that run rolled back at 30 s with 59 failed requests).
   A first manual run overlapped with another acceptance run on cores 2-5 and was discarded; all three runs here ran on cores 14-19 with no other load test running.
 
@@ -138,7 +139,7 @@ Connect errors (whole run): none; freezes: None; final chargers up: 4000.
 | policy 100% | 1209 | 0.86 | 22.2 | 799 | 4005 |
 | policy 0 (none) | 1225 | 0.78 | 2.9 | 758 | 4020 |
 
-Whole run: calls {'not_connected': 26141, 'ok': 7801, 'timeout': 4866}, delivered {'muted_dropped': 5012, 'unmuted': 7801} (a timeout is a call to a muted charger, which drops it by design; not_connected is the harness' own pre-check: the control backend only knows the chargers whose session events it received, a third to a half of the fleet in split mode, so it is not a CSMS failure).
+Whole run: calls {'not_connected': 26141, 'ok': 7801, 'timeout': 4866}, delivered {'muted_dropped': 5012, 'unmuted': 7801} (a timeout is a call to a muted charger, which drops it by design; not_connected is the harness' own pre-check, fixed later by Recorder.AssumeConnected: the control backend only knew the chargers whose session events it received, so it is not a CSMS failure).
 
 #### Gateway CPU per phase (added cost of policy evaluation, end to end)
 
@@ -266,7 +267,7 @@ Connect errors (whole run): none; freezes: None; final chargers up: 4000.
 | stage 3 100% | 792 | 0.86 | 31.3 | 529 | 2676 |
 | done | 1042 | 1.32 | 39.8 | 738 | 3716 |
 
-Whole run: calls {'not_connected': 20374, 'ok': 5643, 'timeout': 3759}, delivered {'muted_dropped': 3921, 'unmuted': 5643} (a timeout is a call to a muted charger, which drops it by design; not_connected is the harness' own pre-check: the control backend only knows the chargers whose session events it received, a third to a half of the fleet in split mode, so it is not a CSMS failure).
+Whole run: calls {'not_connected': 20374, 'ok': 5643, 'timeout': 3759}, delivered {'muted_dropped': 3921, 'unmuted': 5643} (a timeout is a call to a muted charger, which drops it by design; not_connected is the harness' own pre-check, fixed later by Recorder.AssumeConnected: the control backend only knew the chargers whose session events it received, so it is not a CSMS failure).
 
 #### Gateway CPU per phase (added cost of policy evaluation, end to end)
 
@@ -351,7 +352,7 @@ Connect errors (whole run): none; freezes: None; final chargers up: 4000.
 | stage 0 1% | 283 | 0.80 | 1.4 | 182 | 1024 |
 | rolled back | 2645 | 0.82 | 7.5 | 1713 | 9141 |
 
-Whole run: calls {'not_connected': 16304, 'ok': 4643, 'other': 2, 'timeout': 2853}, delivered {'muted_dropped': 3015, 'unmuted': 4643} (a timeout is a call to a muted charger, which drops it by design; not_connected is the harness' own pre-check: the control backend only knows the chargers whose session events it received, a third to a half of the fleet in split mode, so it is not a CSMS failure).
+Whole run: calls {'not_connected': 16304, 'ok': 4643, 'other': 2, 'timeout': 2853}, delivered {'muted_dropped': 3015, 'unmuted': 4643} (a timeout is a call to a muted charger, which drops it by design; not_connected is the harness' own pre-check, fixed later by Recorder.AssumeConnected: the control backend only knew the chargers whose session events it received, so it is not a CSMS failure).
 
 #### Gateway CPU per phase (added cost of policy evaluation, end to end)
 
