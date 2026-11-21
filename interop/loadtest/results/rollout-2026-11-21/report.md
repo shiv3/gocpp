@@ -42,8 +42,8 @@ Read-outs, in short:
 - Routing is sticky and correct: each charger moved from `default` to `canary` exactly once as the percentage grew (the hash is monotonic), no charger moved back
   before the rollback, the observed share is within 3 sigma of the nominal percentage at every stage, and one revision back to an empty policy moved all 4,000 back.
 - Applying a revision is cheap: `gocppctl route apply --wait` reports every gateway on the new revision within 14-140 ms at 4,000 sessions.
-- The injected-error canary is caught at the smallest stage: 1% of the fleet (33 chargers) saw 40 CALLERRORs in 20 s; the controller rolled back at its second
-  evaluation after the stage was applied (the first is the warm-up interval), and no charger saw an error after that.
+- The injected-error canary is caught at the smallest stage: 1% of the fleet (33 chargers) saw 40 CALLERRORs in 20 s; the controller rolled back 20 s after it applied the stage
+  (two 10 s evaluation intervals: the first waits for the gateways to run the revision, the second evaluated the gates), and no charger saw an error after that.
 - Policy evaluation is not visible end to end. Gateway CPU per request is 370-410 core-us in every phase with and without a policy (noise level;
   the 100% phase of the manual run read 450 and shares a window with an external latency spike); the CSMS call latency and the charger-side Heartbeat latency
   (p50 0.5 ms, median window p99 1.1 ms) do not change with the percentage. The micro-benchmark below puts the evaluation itself at 130-185 ns per message
