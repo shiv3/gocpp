@@ -13,6 +13,7 @@ import (
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/core/transport"
+	"github.com/shiv3/gocpp/gateway"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -54,6 +55,15 @@ type serverConfig struct {
 	originPatterns           []string
 	insecureSkipVerifyOrigin bool
 	checkOrigin              func(r *http.Request) bool
+
+	// Gateway mode (see gateway_edge.go, gateway_backend.go).
+	edgeLink       gateway.GatewayLink // set: this server is a gateway
+	gatewayID      string
+	link           gateway.BackendLink // set: this server is a processing tier
+	splitInProcess bool
+	backendInfo    gateway.BackendInfo
+	gwRouter       gateway.Router
+	onOrphan       func(cpID, callID, action string, payload []byte, err error)
 }
 
 func defaultServerConfig() serverConfig {
@@ -550,4 +560,33 @@ func WithOCPPGoCompat() Option {
 			o.apply(c)
 		}
 	})
+}
+
+// WithSplitInProcess makes the server run both tiers of a split deployment in
+// this process: an internal gateway terminates the WebSockets (Handler returns
+// its handler) and forwards every message over the in-process link to this
+// server, which acts as the processing tier. The wire behaviour is identical to
+// embedded mode and the same options configure both tiers; the point is the
+// topology: handlers run behind the same contract and session handles as when
+// the tiers are separate processes, which is what the conformance suite checks
+// (GOCPP_TEST_SPLIT=1, see internal/splitmode). Get returns a handle for a
+// connected charger, Connections lists the gateway's sessions.
+func WithSplitInProcess() Option {
+	return optionFunc(func(c *serverConfig) { c.splitInProcess = true })
+}
+
+// WithBackendInfo declares who a processing-tier server is when it attaches to a
+// link: its pool ("" = gateway.DefaultPool), build version, role, labels. A
+// gateway only sends inbound work to pools its router names, and without a
+// router that is the default pool only, so starting a server in another pool
+// is never a traffic change by itself. Proto, Caps and ID are filled in.
+func WithBackendInfo(info gateway.BackendInfo) Option {
+	return optionFunc(func(c *serverConfig) { c.backendInfo = info })
+}
+
+// WithRouter sets the routing hook of a gateway (NewGatewayServer): for every
+// message it names the backend pool that serves it, from the charger id, the
+// action and the session attributes. Default gateway.DefaultRouter.
+func WithRouter(r gateway.Router) Option {
+	return optionFunc(func(c *serverConfig) { c.gwRouter = r })
 }

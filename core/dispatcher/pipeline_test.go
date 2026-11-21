@@ -101,7 +101,9 @@ func TestHandlerRegistry_Fallback(t *testing.T) {
 	r := NewHandlerRegistry()
 	_, ok := r.Resolve("A")
 	require.False(t, ok)
-	r.SetFallback(func(context.Context, *Conn, []byte) ([]byte, error) { return []byte(`{"fb":1}`), nil })
+	r.SetFallback(func(_ context.Context, _ *Conn, action string, _ []byte) ([]byte, error) {
+		return []byte(`{"fb":"` + action + `"}`), nil
+	})
 	r.Register("A", func(context.Context, *Conn, []byte) ([]byte, error) { return []byte(`{"a":1}`), nil })
 
 	h, ok := r.Resolve("A")
@@ -111,7 +113,7 @@ func TestHandlerRegistry_Fallback(t *testing.T) {
 	h, ok = r.Resolve("B")
 	require.True(t, ok)
 	b, _ = h(context.Background(), nil, nil)
-	require.JSONEq(t, `{"fb":1}`, string(b))
+	require.JSONEq(t, `{"fb":"B"}`, string(b))
 	_, ok = r.Lookup("B")
 	require.False(t, ok, "Lookup must not see the fallback")
 	r.SetFallback(nil)
@@ -123,11 +125,55 @@ func TestConn_FallbackHandlesUnregisteredAction(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	f := transport.NewFakeWS("ocpp1.6")
 	reg := NewHandlerRegistry()
-	reg.SetFallback(func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) { return []byte(`{"fb":true}`), nil })
+	reg.SetFallback(func(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error) {
+		return []byte(`{"fb":true}`), nil
+	})
 	c := NewConn("CP_1", f, DefaultConfig(), reg)
 	c.Start(context.Background())
 	defer func() { _ = c.Close(nil) }()
 
 	f.Inject([]byte(`[2,"x1","Anything",{}]`))
 	require.JSONEq(t, `[3,"x1",{"fb":true}]`, string(<-f.Sent()))
+}
+
+func TestPipeline_RawCallErrorIsWrittenAsIs(t *testing.T) {
+	p := newTestPipeline(nil)
+	out := p.RunCall(context.Background(), callFrame("X"), func(context.Context, []byte) ([]byte, error) {
+		return nil, &RawCallError{Err: ocppj.NewCallError(ocppj.ErrorCodeNotSupported, "later", nil), Wire: "VendorSpecific"}
+	})
+	require.Equal(t, "VendorSpecific", out.Wire, "the code the processing tier chose reaches the wire untouched")
+	require.Equal(t, "later", out.Err.Description)
+	require.False(t, out.NoReply)
+
+	out = p.RunCall(context.Background(), callFrame("X"), func(context.Context, []byte) ([]byte, error) {
+		return nil, &RawCallError{NoReply: true}
+	})
+	require.True(t, out.NoReply)
+}
+
+func TestHandlerRegistry_SendFallback(t *testing.T) {
+	r := NewHandlerRegistry()
+	_, ok := r.ResolveSend("S")
+	require.False(t, ok)
+	var got string
+	r.SetSendFallback(func(_ context.Context, _ *Conn, action string, _ []byte) error { got = action; return nil })
+	r.RegisterSend("Known", func(context.Context, *Conn, []byte) error { got = "known"; return nil })
+	h, ok := r.ResolveSend("Other")
+	require.True(t, ok)
+	require.NoError(t, h(context.Background(), nil, nil))
+	require.Equal(t, "Other", got)
+	h, _ = r.ResolveSend("Known")
+	require.NoError(t, h(context.Background(), nil, nil))
+	require.Equal(t, "known", got)
+}
+
+func TestSentHook_FiresAfterWrite(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	c := benchConn(true)
+	defer func() { _ = c.Close(nil) }()
+	var n int
+	ctx := WithSentHook(context.Background(), func() { n++ })
+	_, err := DoCall(ctx, c, "Heartbeat", []byte(`{}`))
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
 }

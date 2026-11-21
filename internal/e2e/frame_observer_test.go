@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -29,7 +30,7 @@ func TestE2E_FrameObserverAndMessageID(t *testing.T) {
 		}
 	}
 	handlerID := make(chan string, 1)
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithFrameObserver(collect(&srvEvs)))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithFrameObserver(collect(&srvEvs)))
 	require.NoError(t, csms.On(srv, v16p.BootNotification, func(ctx context.Context, _ *csms.Conn, _ v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
 		id, _ := ocppj.MessageIDFromContext(ctx)
 		handlerID <- id

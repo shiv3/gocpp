@@ -42,9 +42,14 @@ func (c *Conn) send(ctx context.Context, payload []byte) error {
 	if c.ctx.Err() != nil {
 		return context.Cause(c.ctx)
 	}
+	// Stamped before the write and undone if it fails: a peer that reads the
+	// frame immediately must already see LastSentAt set (stamping after the write
+	// raced with it).
+	now := time.Now().UnixNano()
+	prevSent := c.lastSent.Swap(now)
 	err := c.write(payload)
-	if err == nil {
-		c.lastSent.Store(time.Now().UnixNano())
+	if err != nil {
+		c.lastSent.CompareAndSwap(now, prevSent)
 	}
 	c.observeOutbound(payload, err)
 	if err != nil {

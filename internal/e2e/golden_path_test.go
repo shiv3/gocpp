@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestE2E_ChargingSessionGoldenPath(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 
 	require.NoError(t, csms.On(srv, v16p.BootNotification, func(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
 		return v16msg.BootNotificationResponse{Status: v16msg.RegistrationStatusAccepted, CurrentTime: time.Now(), Interval: 300}, nil

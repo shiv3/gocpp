@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ type bootResp struct {
 var bootMsg = ocppj.Message[bootReq, bootResp]{Action: "BootNotification", Direction: ocppj.SentByCP}
 
 func TestE2E_BootNotificationRoundTrip(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	require.NoError(t, csms.On(srv, bootMsg, func(ctx context.Context, c *csms.Conn, req bootReq) (bootResp, error) {
 		require.Equal(t, "Acme", req.ChargePointVendor)
 		return bootResp{Status: "Accepted", CurrentTime: "2026-06-15T00:00:00Z", Interval: 300}, nil

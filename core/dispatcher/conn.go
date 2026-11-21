@@ -108,6 +108,9 @@ type Conn struct {
 // Fields are empty for connections that were not created from an inbound HTTP
 // upgrade request.
 type ConnMetadata struct {
+	// Owner is opaque data of whoever creates the connection (the CSMS server
+	// keeps its gateway session here), returned by Conn.Owner. It is not cloned.
+	Owner         any
 	RemoteAddr    string
 	RequestHeader http.Header
 	TLS           *tls.ConnectionState
@@ -181,6 +184,9 @@ func (c *Conn) Version() ocppj.Version { return c.version }
 // Subprotocol returns the negotiated WebSocket subprotocol.
 func (c *Conn) Subprotocol() string { return c.ws.Subprotocol() }
 
+// Owner returns the ConnMetadata.Owner the connection was created with.
+func (c *Conn) Owner() any { return c.meta.Owner }
+
 // RemoteAddr returns the peer network address from the HTTP upgrade request, if
 // available.
 func (c *Conn) RemoteAddr() string { return c.meta.RemoteAddr }
@@ -248,6 +254,7 @@ func (c *Conn) NoteActivity() {
 
 func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 	cloned := ConnMetadata{
+		Owner:         meta.Owner,
 		RemoteAddr:    meta.RemoteAddr,
 		RequestHeader: meta.RequestHeader.Clone(),
 	}

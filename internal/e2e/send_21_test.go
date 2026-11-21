@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ import (
 func TestE2E_21NotifyPeriodicEventStreamSend(t *testing.T) {
 	got := make(chan v21msg.NotifyPeriodicEventStream, 1)
 
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.1"))
 	require.NoError(t, csms.OnSend(srv, v21p.NotifyPeriodicEventStream,
 		func(_ context.Context, _ *csms.Conn, req v21msg.NotifyPeriodicEventStream) error {
 			got <- req

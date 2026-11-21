@@ -45,6 +45,9 @@ func CallRaw(ctx context.Context, c *Conn, action string, payload []byte) ([]byt
 // doCall sends on the local connection, or forwards through the router when c is
 // a handle for a charge point held by another instance.
 func doCall(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error) {
+	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
+		return c.srv.callGateway(ctx, c, action, payload)
+	}
 	if c.inner == nil {
 		return c.srv.callRemote(ctx, c.remoteID, action, payload)
 	}
@@ -54,6 +57,10 @@ func doCall(ctx context.Context, c *Conn, action string, payload []byte) ([]byte
 // doCallAsync is the asynchronous form of doCall. A remote call has no outbound
 // queue on this instance, so it simply runs in its own goroutine.
 func doCallAsync(ctx context.Context, c *Conn, action string, payload []byte, cb func([]byte, error)) error {
+	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
+		go func() { cb(c.srv.callGateway(ctx, c, action, payload)) }()
+		return nil
+	}
 	if c.inner == nil {
 		go func() { cb(c.srv.callRemote(ctx, c.remoteID, action, payload)) }()
 		return nil

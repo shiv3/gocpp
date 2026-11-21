@@ -21,7 +21,8 @@ type SendHandlerFunc func(ctx context.Context, c *Conn, payload []byte) error
 type HandlerRegistry struct {
 	mu    sync.RWMutex
 	hs    map[string]HandlerFunc
-	fb    HandlerFunc
+	fb    FallbackFunc
+	sfb   SendFallbackFunc
 	sends map[string]SendHandlerFunc
 }
 
@@ -39,13 +40,27 @@ func (r *HandlerRegistry) Lookup(action string) (HandlerFunc, bool) {
 	return h, ok
 }
 
+// FallbackFunc is a catch-all inbound CALL handler: it receives the action as
+// well, because it serves actions nothing was registered for.
+type FallbackFunc func(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error)
+
+// SendFallbackFunc is FallbackFunc for an inbound SEND.
+type SendFallbackFunc func(ctx context.Context, c *Conn, action string, payload []byte) error
+
 // SetFallback sets the handler Resolve returns for an action with no
 // registered handler (nil clears it). A gateway uses it as a catch-all that
 // forwards every action upstream; Lookup is unaffected.
-func (r *HandlerRegistry) SetFallback(h HandlerFunc) {
+func (r *HandlerRegistry) SetFallback(h FallbackFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.fb = h
+}
+
+// SetSendFallback is SetFallback for inbound SEND frames (see ResolveSend).
+func (r *HandlerRegistry) SetSendFallback(h SendFallbackFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sfb = h
 }
 
 // Resolve is Lookup that falls back to the handler set by SetFallback when the
@@ -56,7 +71,29 @@ func (r *HandlerRegistry) Resolve(action string) (HandlerFunc, bool) {
 	if h, ok := r.hs[action]; ok {
 		return h, true
 	}
-	return r.fb, r.fb != nil
+	if r.fb == nil {
+		return nil, false
+	}
+	fb := r.fb
+	return func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
+		return fb(ctx, c, action, payload)
+	}, true
+}
+
+// ResolveSend is LookupSend with the SetSendFallback catch-all.
+func (r *HandlerRegistry) ResolveSend(action string) (SendHandlerFunc, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if h, ok := r.sends[action]; ok {
+		return h, true
+	}
+	if r.sfb == nil {
+		return nil, false
+	}
+	fb := r.sfb
+	return func(ctx context.Context, c *Conn, payload []byte) error {
+		return fb(ctx, c, action, payload)
+	}, true
 }
 
 func (r *HandlerRegistry) Register(action string, h HandlerFunc) {
@@ -168,7 +205,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 // (missing handler, schema-invalid, handler error) is logged and dropped.
 func (c *Conn) runSendHandler(frame ocppj.Frame) {
 	var run func(ctx context.Context, payload []byte) error
-	if h, ok := c.reg.LookupSend(frame.Action); ok {
+	if h, ok := c.reg.ResolveSend(frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) error { return h(ctx, c, payload) }
 	}
 	hctx, cancelHandler := c.handlerContext(frame.MsgID)

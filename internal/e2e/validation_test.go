@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestE2E_StrictSchemaRejectsInvalid(t *testing.T) {
 	reg := schema.NewRegistry()
 	require.NoError(t, v16.RegisterSchemas(reg))
 
-	srv := csms.NewServer(
+	srv := splitmode.NewServer(
 		csms.WithSubProtocols("ocpp1.6"),
 		csms.WithSchemaRegistry(reg),
 		csms.WithStrictSchema(true),

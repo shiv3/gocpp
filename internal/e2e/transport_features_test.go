@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
@@ -22,7 +23,7 @@ import (
 // Exercises the real WebSocket handshake path (which FakeWS unit tests bypass):
 // the client sends HTTP Basic credentials and the CSMS authenticates them.
 func TestE2E_ClientBasicAuth(t *testing.T) {
-	srv := csms.NewServer(
+	srv := splitmode.NewServer(
 		csms.WithSubProtocols("ocpp1.6"),
 		csms.WithAuthenticator(auth.BasicAuth(func(cpID, password string) (auth.Identity, error) {
 			if cpID != "CP_1" || password != "s3cret" {
@@ -56,7 +57,7 @@ func TestE2E_ClientBasicAuth(t *testing.T) {
 
 // Exercises the real TLS handshake via WithTLSConfig over wss://.
 func TestE2E_ClientTLS(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	require.NoError(t, csms.On(srv, v16p.Heartbeat, func(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
 		return v16msg.HeartbeatResponse{CurrentTime: time.Now()}, nil
 	}))
@@ -85,7 +86,7 @@ func TestE2E_ClientTLS(t *testing.T) {
 // connection without the application calling Call.
 func TestE2E_ClientHeartbeatAutoSend(t *testing.T) {
 	var beats atomic.Int32
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	require.NoError(t, csms.On(srv, v16p.Heartbeat, func(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
 		beats.Add(1)
 		return v16msg.HeartbeatResponse{CurrentTime: time.Now()}, nil
@@ -112,7 +113,7 @@ func TestE2E_ClientHeartbeatAutoSend(t *testing.T) {
 // idle connection survives well past ReadTimeout. This integration (coder/websocket
 // auto-pong -> OnPongReceived -> NoteActivity) cannot be covered by FakeWS tests.
 func TestE2E_WebSocketPingKeepsIdleConnectionAlive(t *testing.T) {
-	srv := csms.NewServer(
+	srv := splitmode.NewServer(
 		csms.WithSubProtocols("ocpp1.6"),
 		csms.WithWebSocketPingInterval(50*time.Millisecond),
 		csms.WithWebSocketPongWait(time.Second),
@@ -150,7 +151,7 @@ func TestE2E_WebSocketPingKeepsIdleConnectionAlive(t *testing.T) {
 // nothing and never auto-pongs, so the server must reap it via ReadTimeout.
 func TestE2E_WebSocketReadTimeoutReapsSilentPeer(t *testing.T) {
 	disconnected := make(chan error, 1)
-	srv := csms.NewServer(
+	srv := splitmode.NewServer(
 		csms.WithSubProtocols("ocpp1.6"),
 		csms.WithWebSocketPingInterval(0), // passive: rely on the peer to ping
 		csms.WithWebSocketReadTimeout(200*time.Millisecond),

@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestE2E_SubprotocolNegotiation(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.0.1", "ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.0.1", "ocpp1.6"))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	base := "ws" + ts.URL[len("http"):]

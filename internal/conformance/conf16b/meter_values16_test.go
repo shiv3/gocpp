@@ -3,6 +3,7 @@ package conf16b
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"testing"
 	"time"
 
@@ -132,7 +133,7 @@ func TestMeterValues16_ResponseValidation(t *testing.T) {
 }
 
 func TestMeterValues16_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	wrongDirection := ocppj.Message[messages.MeterValuesRequest, messages.MeterValuesResponse]{
 		Action:    v16profiles.MeterValues.Action,
 		Direction: ocppj.SentByCSMS,

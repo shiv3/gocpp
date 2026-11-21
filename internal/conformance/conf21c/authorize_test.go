@@ -3,6 +3,7 @@ package conf21c
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -179,7 +180,7 @@ func setDERControlRequest21() messages.SetDERControlRequest {
 func requireCSMSRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
-	srv := csms.NewServer(csms.WithSubProtocols(subprotocol21))
+	srv := splitmode.NewServer(csms.WithSubProtocols(subprotocol21))
 	defer srv.Close()
 	wrongDirection := ocppj.Message[Req, Resp]{
 		Action:    msg.Action,

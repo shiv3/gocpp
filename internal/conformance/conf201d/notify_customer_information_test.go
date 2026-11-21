@@ -3,6 +3,7 @@ package conf201d
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -117,7 +118,7 @@ func idToken201(tokenType string) messages.IdTokenType {
 func requireCSMSHandlerInvalidDirection201[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
-	srv := csms.NewServer(csms.WithSubProtocols(subprotocol201))
+	srv := splitmode.NewServer(csms.WithSubProtocols(subprotocol201))
 	defer srv.Close()
 	wrongDirection := ocppj.Message[Req, Resp]{
 		Action:    msg.Action,

@@ -4,6 +4,7 @@ package soak
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"os"
 	"runtime"
@@ -32,7 +33,7 @@ func TestSoak_LongRun(t *testing.T) {
 			dur = d
 		}
 	}
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	_ = csms.On(srv, hbMsg, func(ctx context.Context, c *csms.Conn, req hbReq) (hbResp, error) {
 		return hbResp{CurrentTime: time.Now().Format(time.RFC3339)}, nil
 	})
