@@ -116,8 +116,16 @@ func decodeRecord(cp string, f map[string]string) (storage.Session, error) {
 // KEYS: epoch, record. ARGV: gw, boot, data, recordTTL(s), epochTTL(s), then Meta key/value pairs.
 var claimScript = redis.NewScript(`
 local e = redis.call('INCR', KEYS[1])
-redis.call('EXPIRE', KEYS[1], ARGV[5])
 local prev = redis.call('HGETALL', KEYS[2])
+-- The counter can restart at 1 after it expired or was evicted while the record
+-- survives; never hand out an epoch that is not above the record's, or fencing
+-- would accept the previous owner's stale writes.
+local pe = tonumber(redis.call('HGET', KEYS[2], 'epoch') or '0') or 0
+if pe >= e then
+  e = pe + 1
+  redis.call('SET', KEYS[1], tostring(e))
+end
+redis.call('EXPIRE', KEYS[1], ARGV[5])
 redis.call('DEL', KEYS[2])
 redis.call('HSET', KEYS[2], 'gw', ARGV[1], 'boot', ARGV[2], 'epoch', tostring(e), 'data', ARGV[3])
 for i = 6, #ARGV, 2 do redis.call('HSET', KEYS[2], 'm:' .. ARGV[i], ARGV[i + 1]) end
@@ -177,6 +185,11 @@ if cur then
       return 0
     end
     redis.call('EXPIRE', KEYS[2], ARGV[5])
+    -- Keep the counter alive as long as the record is: it must never be shorter
+    -- lived than the epoch it fences. Restore it if it was evicted.
+    local ec2 = tonumber(redis.call('GET', KEYS[1]) or '0')
+    if ec2 < want then redis.call('SET', KEYS[1], ARGV[1]) end
+    redis.call('EXPIRE', KEYS[1], ARGV[6])
     return 1
   end
 end

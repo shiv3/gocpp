@@ -17,6 +17,7 @@ import (
 	"github.com/shiv3/gocpp/gateway"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/protobuf/proto"
 )
 
 // Resolver lists the gateway addresses (host:port) a backend should be attached
@@ -143,6 +144,7 @@ func (s *stream) send(f *linkpb.BackendFrame) error { return s.out.push(f) }
 
 func (s *stream) initSend() {
 	s.out.write = s.st.Send
+	s.out.size = func(f *linkpb.BackendFrame) int { return proto.Size(f) }
 	if slices.Contains(s.caps, gateway.CapBatch) {
 		s.out.batch = func(fs []*linkpb.BackendFrame) error {
 			return s.st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Batch{Batch: &linkpb.BackendBatch{Frames: fs}}})
