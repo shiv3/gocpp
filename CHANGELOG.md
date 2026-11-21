@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `addons/link-grpc` (own module): gRPC link between gateways and backends
+  (protobuf contract `gocpp.link.v1`, backends dial gateways, Hello/HelloAck
+  protocol and capability negotiation, Drain/DrainAck, Unsupported answers).
+- `cmd/gocpp-gateway` (own module): reference gateway binary (`serve`, `probe`),
+  Prometheus metrics, `/readyz`, soft session cap, SIGTERM drain; chaos tests with
+  real processes; `examples/gke-gateway` manifests.
 - Gateway mode (phase 3 of docs/design/gateway.md): `gateway` package (contract:
   `Envelope`, `Upstream`, `Downstream`, `WireError`, `Pool`), `gateway/inproc`
   (in-process link), `csms.NewGatewayServer` (connection tier),

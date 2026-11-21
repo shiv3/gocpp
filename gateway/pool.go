@@ -171,7 +171,11 @@ func (p *Pool) pick(ctx context.Context, need string, tried map[*Member]bool, un
 			chosen = cand[0]
 		case 2:
 			chosen = cand[0]
-			if cand[1].inflight.Load() < chosen.inflight.Load() {
+			a, b := chosen.inflight.Load(), cand[1].inflight.Load()
+			// Ties are broken at random: with an idle pool (one charger, requests
+			// strictly one after another) a fixed order would always pick the
+			// same member.
+			if b < a || (b == a && rand.IntN(2) == 0) {
 				chosen = cand[1]
 			}
 		}

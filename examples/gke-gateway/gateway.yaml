@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: gateway
+spec:
+  serviceName: gateway-link
+  replicas: 4
+  podManagementPolicy: Parallel
+  minReadySeconds: 30            # a crash-looping new pod stops the rollout
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0               # canary: set to replicas-1 and lower step by step
+  selector:
+    matchLabels: {app: gateway}
+  template:
+    metadata:
+      labels: {app: gateway}
+    spec:
+      terminationGracePeriodSeconds: 420   # above --drain-window
+      containers:
+        - name: gateway
+          image: example.invalid/gocpp-gateway:latest
+          args: ["serve", "--drain-window=5m", "--redis-addr=$(REDIS_ADDR)"]
+          env:
+            - {name: GOCPP_GATEWAY_ID, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+            - {name: REDIS_ADDR, value: "redis.example.invalid:6379"}
+            - {name: GOCPP_GATEWAY_TLS_CERT, value: /tls/tls.crt}
+            - {name: GOCPP_GATEWAY_TLS_KEY, value: /tls/tls.key}
+            - {name: GOCPP_GATEWAY_TLS_TICKET_SECRET, valueFrom: {secretKeyRef: {name: gateway-ticket, key: secret}}}
+            - {name: GOCPP_GATEWAY_MAX_CONNECTIONS, value: "20000"}
+            - {name: GOCPP_GATEWAY_ACCEPT_RATE, value: "200"}
+          ports:
+            - {name: ocpp, containerPort: 8080}
+            - {name: link, containerPort: 9090}
+            - {name: admin, containerPort: 9100}
+          startupProbe:          # pre-flight: upgrade + BootNotification + Heartbeat on the gateway's own listener
+            exec:
+              command: ["/gocpp-gateway", "probe", "--insecure", "--url=wss://127.0.0.1:8080/ocpp/"]
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /readyz, port: admin}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: admin}
+          volumeMounts:
+            - {name: tls, mountPath: /tls, readOnly: true}
+          resources:
+            requests: {cpu: "1", memory: 1Gi}
+            limits: {memory: 1Gi}
+      volumes:
+        - name: tls
+          secret: {secretName: gateway-tls}
+---
+# Backends dial every gateway pod through this headless Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-link
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true   # a not-ready (draining) gateway still holds sessions that need its link
+  selector: {app: gateway}
+  ports:
+    - {name: link, port: 9090}
+---
+# Chargers connect here: L4 passthrough, TLS terminates in the gateway.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-ocpp
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector: {app: gateway}
+  ports:
+    - {name: ocpp, port: 443, targetPort: ocpp}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app: gateway}

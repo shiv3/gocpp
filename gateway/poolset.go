@@ -146,3 +146,10 @@ func (s *PoolSet) Notify(ctx context.Context, env Envelope) error {
 }
 
 func isNoBackend(err error) bool { return errors.Is(err, ErrNoBackend) }
+
+// Remove detaches m at once (a broken stream), without waiting for its work.
+func (s *PoolSet) Remove(m *Member) {
+	if m != nil {
+		s.get(m.info.Pool, true).Remove(m)
+	}
+}

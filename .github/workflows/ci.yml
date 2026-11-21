@@ -51,3 +51,46 @@ jobs:
           go-version: "1.26"
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - run: govulncheck ./...
+
+  gateway-modules:
+    # The gRPC link and the reference gateway binary are separate modules.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: go test -race -count=1 ./...
+        working-directory: addons/link-grpc
+      - run: go test -count=1 -timeout 5m ./...
+        working-directory: cmd/gocpp-gateway
+
+  gateway-compat:
+    # Previous-release compatibility (design 5.3): build the gateway and the
+    # test backend from the previous release tag and run the chaos suite in both
+    # mixed combinations. Skipped until a release tag contains cmd/gocpp-gateway.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: previous release with the gateway binary?
+        id: prev
+        run: |
+          tag=$(git tag --list 'v*' --sort=-v:refname | while read t; do
+            if git cat-file -e "$t:cmd/gocpp-gateway/go.mod" 2>/dev/null; then echo "$t"; break; fi
+          done)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: mixed-version chaos suite
+        if: steps.prev.outputs.tag != ''
+        run: |
+          echo "previous release with a gateway: ${{ steps.prev.outputs.tag }}"
+          git worktree add ../prev "${{ steps.prev.outputs.tag }}"
+          # new gateway + old backend, then old gateway + new backend
+          (cd ../prev/cmd/gocpp-gateway && go build -o /tmp/old-gateway . && go build -o /tmp/old-backend ./chaos/testbackend)
+          cd cmd/gocpp-gateway
+          GOCPP_CHAOS_GATEWAY_BIN=/tmp/old-gateway go test -count=1 -timeout 5m ./chaos
+          GOCPP_CHAOS_BACKEND_BIN=/tmp/old-backend go test -count=1 -timeout 5m ./chaos
