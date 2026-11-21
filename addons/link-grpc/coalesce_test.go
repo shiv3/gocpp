@@ -154,3 +154,38 @@ func TestSendQueue_BatchByteCap(t *testing.T) {
 		}
 	}
 }
+
+//go:noinline
+func deepFrames(n int, sink *[256]byte) int {
+	var pad [256]byte
+	pad[n%256] = byte(n)
+	if n == 0 {
+		return int(pad[0]) + int(sink[0])
+	}
+	return deepFrames(n-1, &pad) + int(pad[n%256])
+}
+
+// BenchmarkGrowStack shows what growStack buys a fresh goroutine that goes on
+// to use about 10 KB of stack in 32 frames: one growth while the stack is
+// empty instead of three with ever more frames to copy.
+func BenchmarkGrowStack(b *testing.B) {
+	for _, pre := range []bool{false, true} {
+		name := "grow-as-needed"
+		if pre {
+			name = "growStack-first"
+		}
+		b.Run(name, func(b *testing.B) {
+			done := make(chan int)
+			for i := 0; i < b.N; i++ {
+				go func() {
+					if pre {
+						growStack()
+					}
+					var sink [256]byte
+					done <- deepFrames(32, &sink)
+				}()
+				<-done
+			}
+		})
+	}
+}

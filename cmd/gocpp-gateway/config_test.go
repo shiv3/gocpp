@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -71,4 +72,19 @@ func TestAdminMux_PprofRequiresToken(t *testing.T) {
 		m.ServeHTTP(rec, req)
 		require.Equal(t, want, rec.Code, path)
 	}
+}
+
+func TestParseConfig_LinkWriteLinger(t *testing.T) {
+	c, err := parseConfig([]string{"--id", "g", "--link-insecure"})
+	require.NoError(t, err)
+	require.Zero(t, c.LinkWriteLinger, "the linger is off unless asked for")
+	c, err = parseConfig([]string{"--id", "g", "--link-insecure", "--link-write-linger", "200us"})
+	require.NoError(t, err)
+	require.Equal(t, 200*time.Microsecond, c.LinkWriteLinger)
+	_, err = parseConfig([]string{"--id", "g", "--link-insecure", "--link-write-linger", "100ms"})
+	require.ErrorContains(t, err, "--link-write-linger must be between 0 and 5ms")
+	_, err = parseConfig([]string{"--id", "g", "--link-insecure", "--link-write-linger", "-1ms"})
+	require.ErrorContains(t, err, "--link-write-linger must be between")
+	_, err = parseConfig([]string{"--id", "g", "--link", "nats", "--link-write-linger", "200us"})
+	require.ErrorContains(t, err, "gRPC link only")
 }

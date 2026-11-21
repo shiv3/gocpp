@@ -297,3 +297,22 @@ const stackReserve = 600
 
 //go:noinline
 func reserveStack(*[stackReserve]byte) {}
+
+// deepStackFrame is the frame size of growDeepStack: large enough that the
+// runtime, which doubles a stack until the frame fits, takes a fresh
+// goroutine's 2 KB straight to 16 KB.
+const deepStackFrame = 8 << 10
+
+// growDeepStack grows the calling goroutine's stack by having a large frame of
+// its own (Config.DeepHandlerStack). The frame is gone when it returns; the
+// stack stays grown, all of it free for what the caller calls next. On a stack
+// that is already large (a HandlerPool worker) it does nothing.
+//
+//go:noinline
+func growDeepStack() {
+	var frame [deepStackFrame]byte
+	touchDeepStack(&frame)
+}
+
+//go:noinline
+func touchDeepStack(*[deepStackFrame]byte) {}

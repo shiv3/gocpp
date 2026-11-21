@@ -26,10 +26,11 @@ func (e echoUpstream) Handle(context.Context, gateway.Envelope) (gateway.Reply, 
 }
 func (e echoUpstream) Notify(context.Context, gateway.Envelope) error { return nil }
 
-// hopRig is a gateway link and one backend over loopback gRPC.
-func hopRig(tb testing.TB) (g *linkgrpc.Gateway, stop func()) {
+// hopRig is a gateway link and one backend over loopback gRPC, with the given
+// write linger on both ends (0: none).
+func hopRig(tb testing.TB, linger time.Duration) (g *linkgrpc.Gateway, stop func()) {
 	tb.Helper()
-	g = linkgrpc.NewGateway()
+	g = linkgrpc.NewGateway(linkgrpc.WithGatewayWriteLinger(linger))
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		tb.Fatal(err)
@@ -37,7 +38,7 @@ func hopRig(tb testing.TB) (g *linkgrpc.Gateway, stop func()) {
 	gs := grpc.NewServer()
 	g.Register(gs)
 	go func() { _ = gs.Serve(lis) }()
-	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(lis.Addr().String()),
+	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(lis.Addr().String()), linkgrpc.WithBackendWriteLinger(linger),
 		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())), linkgrpc.WithResolveInterval(50*time.Millisecond))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -65,7 +66,20 @@ func hopEnv() gateway.Envelope {
 // BenchmarkGRPCHop is one inbound CALL forwarded over the gRPC link (300-byte
 // payloads, loopback, trivial backend): the cost of the link alone.
 func BenchmarkGRPCHop(b *testing.B) {
-	g, stop := hopRig(b)
+	benchGRPCHop(b, 0)
+}
+
+// BenchmarkGRPCHopLinger is BenchmarkGRPCHop with a 200 us write linger on both
+// ends. Sequential requests are one frame at a time and must cost the same
+// (the linger never applies); with 256 in flight the frames go out in larger
+// batches. For the CPU saved per message use the load-test harness: ns/op here
+// is elapsed time, which a linger lengthens.
+func BenchmarkGRPCHopLinger(b *testing.B) {
+	benchGRPCHop(b, 200*time.Microsecond)
+}
+
+func benchGRPCHop(b *testing.B, linger time.Duration) {
+	g, stop := hopRig(b, linger)
 	defer stop()
 	ctx := context.Background()
 	b.Run("sequential", func(b *testing.B) {
@@ -93,11 +107,18 @@ func BenchmarkGRPCHop(b *testing.B) {
 // over loopback the added latency must stay far below the design's 2 ms p99 for
 // gateway plus hop (design 2.7). The bound here is 5 ms because CI hosts are
 // shared; the measured value is logged.
-func TestGateGRPCHopLatency(t *testing.T) {
+func TestGateGRPCHopLatency(t *testing.T) { gateGRPCHopLatency(t, 0) }
+
+// TestGateGRPCHopLatencyWithLinger is the same gate with a 200 us write linger
+// configured on both ends: 5,000 msg/s on one stream is below the rate at which
+// the linger applies, so it must not add latency.
+func TestGateGRPCHopLatencyWithLinger(t *testing.T) { gateGRPCHopLatency(t, 200*time.Microsecond) }
+
+func gateGRPCHopLatency(t *testing.T, linger time.Duration) {
 	if testing.Short() || raceEnabled {
 		t.Skip("timing gate: not under -short or -race")
 	}
-	g, stop := hopRig(t)
+	g, stop := hopRig(t, linger)
 	defer stop()
 	const rate, dur = 5000, 3 * time.Second
 	n := int(rate * dur / time.Second)
@@ -135,9 +156,14 @@ func TestGateGRPCHopLatency(t *testing.T) {
 
 // TestStreamsAndBatching drives many concurrent requests over several streams
 // per backend; every one must be answered (batches are unpacked, ids stay
-// correlated).
+// correlated). The second run adds a write linger on both ends.
 func TestStreamsAndBatching(t *testing.T) {
-	g := linkgrpc.NewGateway()
+	t.Run("no linger", func(t *testing.T) { streamsAndBatching(t, 0) })
+	t.Run("linger", func(t *testing.T) { streamsAndBatching(t, 500*time.Microsecond) })
+}
+
+func streamsAndBatching(t *testing.T, linger time.Duration) {
+	g := linkgrpc.NewGateway(linkgrpc.WithGatewayWriteLinger(linger))
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +172,7 @@ func TestStreamsAndBatching(t *testing.T) {
 	g.Register(gs)
 	go func() { _ = gs.Serve(lis) }()
 	defer gs.Stop()
-	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(lis.Addr().String()), linkgrpc.WithStreams(3),
+	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(lis.Addr().String()), linkgrpc.WithStreams(3), linkgrpc.WithBackendWriteLinger(linger),
 		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())), linkgrpc.WithResolveInterval(50*time.Millisecond))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

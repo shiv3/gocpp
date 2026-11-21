@@ -105,6 +105,22 @@ All notable changes to this project are documented here. The format is based on
   lease labels `policy_rev` and `suspended`, and the routing metrics
   (`gocpp_gateway_route_*`).
 
+- `addons/link-grpc`: optional adaptive write linger, `WithGatewayWriteLinger(d)` (frames
+  to a backend; `gocpp-gateway --link-write-linger`, `GOCPP_GATEWAY_LINK_WRITE_LINGER`) and
+  `WithBackendWriteLinger(d)` (frames to a gateway, the replies). Off by default. On a
+  stream whose frames follow each other at an average interval of at most d/2, a frame
+  that would be written alone waits up to d (at most `MaxWriteLinger`, 5 ms) for the
+  frames about to follow and they leave in one write; a stream below that rate writes
+  every frame at once and arms no timer, so nothing changes at low rate. The wait ends
+  early when a batch is full, and a frame accepted into a wait is never reported as not
+  written afterwards (the error attribution of the send queue is unchanged). There is no
+  fixed-delay mode: measured, a fixed 100 us added 1.3 ms to the Heartbeat p50 and a
+  quarter more CPU at 260 msg/s. Numbers and guidance: docs/gateway.md, "Write linger". `BenchmarkGRPCHopRate`
+  (open loop at fixed rates: CPU per message, p50, p99, per linger).
+- `dispatcher.Config.DeepHandlerStack`: grow the stack of the goroutine started for an
+  inbound message to 16 KB once, before the handler runs. `csms.NewGatewayServer` sets
+  it: a gateway's handler is the forward path through the link, about 10 KB deep.
+
 - `addons/link-grpc`: write coalescing on the link stream (frames queued while a write is
   in progress go out together; as one `Batch` message when both ends advertise the new
   `batch` capability, `gateway.CapBatch`; no timer, a lone frame is written at once) and
@@ -195,6 +211,13 @@ All notable changes to this project are documented here. The format is based on
   exported.
 
 ### Changed
+
+- Stack growth on the split path: a gateway's handler goroutines (see
+  `DeepHandlerStack` above) and the request goroutines of a `link-grpc` backend now grow
+  their stack once, by calling a function with a large frame that returns, instead of
+  holding a reserved array in the goroutine's first frame (the callees could not use
+  those bytes, so the stack was still copied again further down). Per goroutine that goes
+  10 KB deep: 0.66 us instead of 2.6 us (`BenchmarkDeepHandlerStack`).
 
 - `gocpp-gateway` secure defaults (pre-merge review of the gateway, not yet released): the gRPC link is
   served only with mutual TLS (`--link-tls-cert`, `--link-tls-key`, `--link-client-ca`) unless

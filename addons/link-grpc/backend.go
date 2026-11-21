@@ -54,6 +54,7 @@ type Backend struct {
 	metrics      Metrics
 	resolveEvery time.Duration
 	drainTimeout time.Duration
+	linger       time.Duration
 	keepalive    keepalive.ClientParameters
 	proto        gateway.ProtoRange // link versions spoken (SupportedProto)
 	caps         []string           // capabilities offered (supportedCaps)
@@ -96,6 +97,13 @@ func WithDrainTimeout(d time.Duration) BackendOption { return func(b *Backend) {
 // (default: ping after 10 s idle, 5 s to answer).
 func WithClientKeepalive(p keepalive.ClientParameters) BackendOption {
 	return func(b *Backend) { b.keepalive = p }
+}
+
+// WithBackendWriteLinger is WithGatewayWriteLinger for the frames this backend
+// writes to a gateway (replies above all): a busy stream gathers frames for up
+// to d before writing them as one batch. The default, 0, never delays a write.
+func WithBackendWriteLinger(d time.Duration) BackendOption {
+	return func(b *Backend) { b.linger = clampLinger(d) }
 }
 
 // NewBackend returns the backend end of the link for the gateways resolve names.
@@ -144,6 +152,7 @@ func (s *stream) send(f *linkpb.BackendFrame) error { return s.out.push(f) }
 
 func (s *stream) initSend() {
 	s.out.write = s.st.Send
+	s.out.linger = s.b.linger
 	s.out.size = func(f *linkpb.BackendFrame) int { return proto.Size(f) }
 	if slices.Contains(s.caps, gateway.CapBatch) {
 		s.out.batch = func(fs []*linkpb.BackendFrame) error {
@@ -388,8 +397,7 @@ func (s *stream) spawn(fn func()) {
 	s.inflight.Add(1)
 	go func() {
 		defer s.inflight.Add(-1)
-		var reserve [handlerStack]byte
-		reserveStack(&reserve)
+		growStack()
 		fn()
 	}()
 }
