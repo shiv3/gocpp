@@ -212,12 +212,18 @@ func (m *sessionManager) run(ctx context.Context) {
 // registry does not answer in time the session is returned with epoch 0
 // (unclaimed): the connection is served and the reconcile loop claims it later.
 func (m *sessionManager) claim(ctx context.Context, s storage.Session) storage.Session {
+	s, _ = m.claimPrev(ctx, s)
+	return s
+}
+
+// claimPrev is claim that also returns the record the claim displaced.
+func (m *sessionManager) claimPrev(ctx context.Context, s storage.Session) (storage.Session, *storage.Session) {
 	s.GatewayID, s.Boot, s.Epoch = m.cfg.GatewayID, m.boot, 0
 	s.GatewayVersion = m.cfg.Version
 	m.waitLease(ctx)
 	cctx, cancel := context.WithTimeout(ctx, m.cfg.ClaimTimeout)
 	defer cancel()
-	epoch, _, err := m.reg.Claim(cctx, s)
+	epoch, prev, err := m.reg.Claim(cctx, s)
 	if err != nil {
 		m.log.Error("csms: claim session failed; serving unclaimed",
 			"cp_id", s.CPID, "gateway", m.cfg.GatewayID, "error", err)
@@ -227,10 +233,10 @@ func (m *sessionManager) claim(ctx context.Context, s storage.Session) storage.S
 			default:
 			}
 		}
-		return s
+		return s, nil
 	}
 	s.Epoch = epoch
-	return s
+	return s, prev
 }
 
 // release removes the session's record if it is still the current one.

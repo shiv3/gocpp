@@ -209,6 +209,11 @@ All notable changes to this project are documented here. The format is based on
   written (it caused a redispatch of a delivered CALL); link batches are capped at
   1 MiB; `registry-redis` never hands out an epoch at or below the surviving record's
   when the epoch counter expired or was evicted, and `Reassert` keeps the counter alive.
+- Session registry: an upgrade request that fails (missing `Sec-WebSocket-Key`, refused origin, aborted handshake) for a charge point id that is
+  connected no longer deletes that connection's route. The pre-check now mirrors `websocket.Accept`, a failure after the claim restores the
+  displaced record, and the legacy `ConnectionRegistry` adapter claims only after the upgrade succeeded (review B1 of the gateway integration).
+- Gateway backend: a `SessionClosed` that reaches a backend which never saw the session's `SessionOpened` now fires `OnDisconnect` (it was dropped
+  as stale with several backends); only a close of a session already replaced by a newer one is suppressed (review B2).
 - Gateway mode: the processing tier runs the connect/disconnect hooks of one charge point's session events one at a time, so a replaced session's disconnect can no longer run after the new session's connect when `SessionClosed(old)` and `SessionOpened(new)` arrive concurrently. A session event still waiting for a backend when the gateway server closes now gives up after the closing bound instead of keeping a goroutine for the pool's hold time.
 - The `ConnectionCount` gauge (`gocpp_connections`) drifted negative when a connection
   was closed twice (a replaced connection is closed by the replacement and by its own

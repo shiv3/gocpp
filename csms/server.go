@@ -3,6 +3,7 @@ package csms
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"strings"
@@ -294,6 +295,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// cannot succeed (not a WebSocket request, no common subprotocol) claims
 	// nothing; one that fails after the claim releases it.
 	var sess storage.Session
+	var prevSess *storage.Session
 	claimed, registeredSession := false, false
 	var attrs map[string]string
 	if s.edge != nil {
@@ -320,13 +322,18 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
-	if s.sessions != nil && s.upgradeWillSucceed(r) {
-		sess, claimed = s.claimSession(r, cpID, attrs)
-		defer func() {
-			if claimed && !registeredSession {
-				s.releaseSession(sess)
-			}
-		}()
+	abandon := func() {
+		if claimed && !registeredSession {
+			s.abandonClaim(cpID, sess, prevSess)
+		}
+	}
+	// The legacy adapter (a ConnectionRegistry without sessions) has no epochs
+	// to order and no way to restore what a claim overwrote, so it claims only
+	// after the upgrade has succeeded, as before sessions existed.
+	preClaim := s.sessions != nil && s.sessions.loops
+	if preClaim && s.upgradeWillSucceed(r) {
+		sess, prevSess, claimed = s.claimSession(r, cpID, attrs)
+		defer abandon()
 	}
 
 	var dconn *dispatcher.Conn
@@ -356,6 +363,10 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		s.upgradeResult("subprotocol")
 		_ = c.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return
+	}
+	if s.sessions != nil && !preClaim {
+		sess, prevSess, claimed = s.claimSession(r, cpID, attrs)
+		defer abandon()
 	}
 
 	ws := transport.NewCoderWSWithLimit(c, dcfg.MaxMessageSize)
@@ -505,9 +516,23 @@ func (s *Server) extractCPID(r *http.Request) (string, bool) {
 }
 
 // upgradeWillSucceed is a cheap pre-check, run before a session is claimed, that
-// the request is a WebSocket upgrade offering a subprotocol this server speaks.
+// the request will pass websocket.Accept: a GET carrying the upgrade headers (a
+// token "upgrade" in Connection, Upgrade: websocket, Sec-WebSocket-Version 13, a
+// Sec-WebSocket-Key that decodes to 16 bytes) and offering a subprotocol this
+// server speaks. A request that fails here claims nothing, so it cannot disturb
+// the record of a connected charge point. A failure after the claim (the origin
+// check, say) is undone by Server.abandonClaim.
 func (s *Server) upgradeWillSucceed(r *http.Request) bool {
-	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	if !headerHasToken(r.Header, "Connection", "upgrade") || !headerHasToken(r.Header, "Upgrade", "websocket") {
+		return false
+	}
+	if r.Header.Get("Sec-WebSocket-Version") != "13" {
+		return false
+	}
+	if key, err := base64.StdEncoding.DecodeString(r.Header.Get("Sec-WebSocket-Key")); err != nil || len(key) != 16 {
 		return false
 	}
 	for _, h := range r.Header.Values("Sec-WebSocket-Protocol") {
@@ -517,6 +542,17 @@ func (s *Server) upgradeWillSucceed(r *http.Request) bool {
 				if p == ours {
 					return true
 				}
+			}
+		}
+	}
+	return false
+}
+
+func headerHasToken(h http.Header, name, token string) bool {
+	for _, v := range h.Values(name) {
+		for _, t := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(t), token) {
+				return true
 			}
 		}
 	}
