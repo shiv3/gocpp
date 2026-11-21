@@ -156,6 +156,8 @@ Metrics on every gateway (constant labels `gateway_id`, `gateway_version`):
 |---|---|
 | `gocpp_gateway_upstream_requests_total{pool,backend_version,action,outcome}` | canary vs stable failed-outcome ratio and CALLERROR mix |
 | `gocpp_gateway_upstream_seconds{pool,backend_version,action}` | latency p99 per pool |
+| `gocpp_gateway_late_replies_total{pool}` | backend answers that arrived after the gateway gave up (dropped); canary above stable is a latency or hang signal (rollout gate `late_orphan`) |
+| `gocpp_gateway_orphan_results_total{pool,outcome}` | answers to CSMS calls whose caller was gone, by caller pool; `fallback`/`dropped` mean the caller pool had no backend (canary crashed) |
 | `gocpp_gateway_route_decisions_total{rule,pool,rev}` | how much traffic each rule moves |
 | `gocpp_gateway_route_fallback_total{rule,reason}` | canary unavailable (`unavailable`) or refusing (`nack`) |
 | `gocpp_gateway_route_suspended{rule}` | 1 while a rule is suspended on this gateway |

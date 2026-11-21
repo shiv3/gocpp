@@ -93,7 +93,13 @@ from BootNotification). `SetAttrs` *merges*: a key replaces its value, an empty
 value deletes the key, other keys stay; the total size is capped at 1 KiB
 (`ErrAttrsTooLarge`). In the registry record they are `Session.Meta` keys with the
 reserved prefix `attr.` (`Session.Attrs()` returns them without it); the prefix
-`route.` is reserved for routing decisions written by a gateway (`route.pool`).
+`route.` is reserved for routing decisions written by a gateway: `route.pool` is the
+pool the session's messages are routed to. A gateway with a registry that implements
+`storage.RouteWriter` (the in-memory registry and `registry-redis` do) writes it
+asynchronously when the decision changes and at claim, so `Server.Sessions` can list
+"which chargers are on the canary" across gateways; it is a copy for operators, not
+read by the routing path, and with a rule limited to some actions it follows the
+latest message.
 Attribute keys starting with `gocpp.` are interpreted by a gateway (`gocpp.busy`),
 not by this library. The record also has `GatewayVersion`; the lease
 (`SessionRegistry.Gateways`) carries `Labels`: `version` from

@@ -168,6 +168,8 @@ gates:                     # defaults shown
   max_failed_delta: 0.005  # failed ratio (timeout, stream_broken, InternalError) <= stable + 0.5 pp
   max_code_share_delta: 0.01   # no CALLERROR code more than 1 pp above its stable share
   max_p99_ratio: 1.5       # canary p99 upstream latency <= 1.5 x stable
+  late_orphan: false       # opt in: late_replies / orphan_results per request <= stable + max_late_orphan_delta
+  max_late_orphan_delta: 0.001
   checks:                  # application queries (Prometheus only), each must stay <= max
     - {name: start-failures, query: 'sum(rate(app_transaction_start_failed_total{pool="{{.Canary}}"}[{{.Window}}]))', max: 0.01}
 ```

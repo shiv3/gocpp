@@ -203,6 +203,29 @@ func TestStaleWriterCannotOverwriteNewerConnection(t *testing.T) {
 	})
 }
 
+func TestSetRoute(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		r, _ := newReg(t, b)
+		e, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a", Meta: map[string]string{"attr.site": "x"}})
+		require.NoError(t, err)
+		require.NoError(t, r.Heartbeat(ctx, storage.GatewayInfo{ID: "A", Boot: "a"}, time.Minute))
+		var _ storage.RouteWriter = r
+		ok, err := r.SetRoute(ctx, "CP", e, map[string]string{"pool": "canary"})
+		require.NoError(t, err)
+		require.True(t, ok)
+		s, _, _ := r.Lookup(ctx, "CP")
+		require.Equal(t, "canary", s.Meta["route.pool"])
+		require.Equal(t, map[string]string{"site": "x"}, s.Attrs(), "attributes untouched")
+		ok, _ = r.SetRoute(ctx, "CP", e+1, map[string]string{"pool": "other"})
+		require.False(t, ok, "a stale epoch is refused")
+		ok, _ = r.SetRoute(ctx, "CP", e, map[string]string{"pool": ""})
+		require.True(t, ok)
+		s, _, _ = r.Lookup(ctx, "CP")
+		require.NotContains(t, s.Meta, "route.pool")
+	})
+}
+
 func TestAttrsMergeAndLeaseLabels(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b backend) {
 		ctx := context.Background()

@@ -541,3 +541,118 @@ func TestLink_BatchNegotiation(t *testing.T) {
 	require.NotNil(t, f.GetUnsupported())
 	_ = old.CloseSend()
 }
+
+type routingRecorder struct {
+	linkgrpc.NopMetrics
+	mu       sync.Mutex
+	late     map[string]int
+	orphaned map[string]int
+}
+
+func (r *routingRecorder) LateReply(pool string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.late == nil {
+		r.late = map[string]int{}
+	}
+	r.late[pool]++
+}
+
+func (r *routingRecorder) OrphanResult(pool, outcome string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.orphaned == nil {
+		r.orphaned = map[string]int{}
+	}
+	r.orphaned[pool+"/"+outcome]++
+}
+
+func (r *routingRecorder) lateN(k string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.late[k]
+}
+
+func (r *routingRecorder) orphanN(k string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.orphaned[k]
+}
+
+// A backend answer that arrives after the gateway's deadline is dropped and
+// counted per pool.
+func TestLink_LateReplyIsCounted(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	rec := &routingRecorder{}
+	tp := newTopologyWith(t, []csms.Option{csms.WithHandlerTimeout(150 * time.Millisecond)}, linkgrpc.WithGatewayMetrics(rec))
+	defer tp.close()
+	tp.addBackend(gateway.BackendInfo{}, func(ctx context.Context, c *csms.Conn, r bootReq) (bootResp, error) {
+		time.Sleep(500 * time.Millisecond)
+		return ok(ctx, c, r)
+	})
+	c := tp.client("CP_1")
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := cp.Call(ctx, c, bootMsg, bootReq{ChargePointVendor: "x"})
+	require.Error(t, err)
+	require.Eventually(t, func() bool { return rec.lateN(gateway.DefaultPool) == 1 }, 3*time.Second, 10*time.Millisecond)
+}
+
+// The answer to a CSMS call whose caller (a canary backend) is gone goes back to
+// the canary pool when another canary backend is there, else to the default pool,
+// not to wherever the charger is routed.
+func TestLink_OrphanResultGoesToCallerPool(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		secondCanary bool
+		outcome      string
+	}{{"another canary backend", true, "canary/delivered"}, {"canary pool empty", false, "canary/fallback"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+			rec := &routingRecorder{}
+			tp := newTopologyWith(t, nil, linkgrpc.WithGatewayMetrics(rec))
+			defer tp.close()
+			stableOrphans := make(chan struct{}, 2)
+			canaryOrphans := make(chan struct{}, 2)
+			regOpt := csms.WithSessionRegistry(tp.reg)
+			tp.addBackendWith(gateway.BackendInfo{}, nil, []csms.Option{regOpt,
+				csms.WithOnOrphanResult(func(string, string, string, []byte, error) { stableOrphans <- struct{}{} })}, ok)
+			canary := tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, nil, []csms.Option{regOpt}, ok)
+			if tc.secondCanary {
+				tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, nil, []csms.Option{regOpt,
+					csms.WithOnOrphanResult(func(string, string, string, []byte, error) { canaryOrphans <- struct{}{} })}, ok)
+			}
+			c := tp.client("CP_1")
+			defer c.Close()
+			got := make(chan struct{}, 1)
+			gate := make(chan struct{})
+			require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) {
+				got <- struct{}{}
+				<-gate
+				return resetResp{Status: "Accepted"}, nil
+			}))
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			h, err := canary.srv.Lookup(ctx, "CP_1")
+			require.NoError(t, err)
+			errCh := make(chan error, 1)
+			go func() { _, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Soft"}); errCh <- err }()
+			<-got
+			canary.srv.Close() // the caller (its stream) goes away after the frame was written
+			<-errCh
+			close(gate)
+			want, other := canaryOrphans, stableOrphans
+			if !tc.secondCanary {
+				want, other = stableOrphans, canaryOrphans
+			}
+			select {
+			case <-want:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the orphan result did not arrive where it belongs")
+			}
+			require.Empty(t, other)
+			require.Eventually(t, func() bool { return rec.orphanN(tc.outcome) == 1 }, 2*time.Second, 10*time.Millisecond)
+		})
+	}
+}

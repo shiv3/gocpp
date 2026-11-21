@@ -28,6 +28,11 @@ type PoolStats struct {
 	// false when there were no observations.
 	P99        float64
 	HasLatency bool
+	// LateReplies and OrphanResults are the counts of gocpp_gateway_late_replies_total
+	// and gocpp_gateway_orphan_results_total of the pool over the window (0 when
+	// the gateways do not export them).
+	LateReplies   float64
+	OrphanResults float64
 }
 
 // Source supplies the metrics of a rollout.
@@ -88,6 +93,12 @@ func (p *PromSource) Stats(ctx context.Context, pool string, window time.Duratio
 	st.ByOutcome = map[string]float64{}
 	for _, s := range vec {
 		st.ByOutcome[s.labels["outcome"]] = s.value
+	}
+	if st.LateReplies, err = p.scalar(ctx, fmt.Sprintf(`sum(increase(gocpp_gateway_late_replies_total{%s}[%s]))`, sel, w)); err != nil {
+		return st, err
+	}
+	if st.OrphanResults, err = p.scalar(ctx, fmt.Sprintf(`sum(increase(gocpp_gateway_orphan_results_total{%s}[%s]))`, sel, w)); err != nil {
+		return st, err
 	}
 	q, err := p.vector(ctx, fmt.Sprintf(`histogram_quantile(0.99, sum by (le) (rate(gocpp_gateway_upstream_seconds_bucket{%s}[%s])))`, sel, w))
 	if err != nil {

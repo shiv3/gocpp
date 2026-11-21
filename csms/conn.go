@@ -139,6 +139,18 @@ func (c *Conn) holderID() string { return c.inner.ID() }
 
 func (c *Conn) holderSession() storage.Session {
 	s, _ := c.Session()
+	if c.gw != nil {
+		// A gateway's record also carries its routing decision, so a re-claim or
+		// a reassert after a registry loss restores it.
+		if p := c.gw.routePool.Load(); p != nil {
+			meta := make(map[string]string, len(s.Meta)+1)
+			for k, v := range s.Meta {
+				meta[k] = v
+			}
+			meta[storage.RoutePrefix+routePoolKey] = *p
+			s.Meta = meta
+		}
+	}
 	return s
 }
 

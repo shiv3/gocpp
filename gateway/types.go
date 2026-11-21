@@ -323,6 +323,12 @@ type CallRequest struct {
 	Payload  []byte // already validated and transformed by the caller
 	Deadline time.Time
 	Trace    string
+	// CallerPool and CallerVersion name the pool and version of the backend that
+	// issued the call. A link sets them on the gateway side (they are not part of
+	// the wire format); the gateway uses CallerPool to route the OrphanResult of
+	// the call back to the pool that asked.
+	CallerPool    string
+	CallerVersion string
 }
 
 // CallReply is the outcome of a CallRequest.

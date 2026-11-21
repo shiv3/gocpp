@@ -43,6 +43,8 @@ type snapshot struct {
 type targetData struct {
 	requests map[string]map[string]float64  // pool -> outcome -> count
 	buckets  map[string]map[float64]float64 // pool -> le -> cumulative count
+	late     map[string]float64             // pool -> late replies
+	orphans  map[string]float64             // pool -> orphan results
 }
 
 func (s *ScrapeSource) now() time.Time {
@@ -116,7 +118,14 @@ func parseMetrics(r io.Reader) (*targetData, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &targetData{requests: map[string]map[string]float64{}, buckets: map[string]map[float64]float64{}}
+	d := &targetData{requests: map[string]map[string]float64{}, buckets: map[string]map[float64]float64{},
+		late: map[string]float64{}, orphans: map[string]float64{}}
+	for _, m := range fams["gocpp_gateway_late_replies_total"].GetMetric() {
+		d.late[labelOf(m, "pool")] += m.GetCounter().GetValue()
+	}
+	for _, m := range fams["gocpp_gateway_orphan_results_total"].GetMetric() {
+		d.orphans[labelOf(m, "pool")] += m.GetCounter().GetValue()
+	}
 	for _, m := range fams["gocpp_gateway_upstream_requests_total"].GetMetric() {
 		pool, outcome := labelOf(m, "pool"), labelOf(m, "outcome")
 		if d.requests[pool] == nil {
@@ -176,6 +185,8 @@ func (s *ScrapeSource) Stats(_ context.Context, pool string, window time.Duratio
 				st.ByOutcome[outcome] += d
 			}
 		}
+		st.LateReplies += counterDelta(now.late[pool], old, func(d *targetData) (float64, bool) { v, ok := d.late[pool]; return v, ok })
+		st.OrphanResults += counterDelta(now.orphans[pool], old, func(d *targetData) (float64, bool) { v, ok := d.orphans[pool]; return v, ok })
 		for le, v := range now.buckets[pool] {
 			d := v
 			if old != nil {
@@ -192,6 +203,17 @@ func (s *ScrapeSource) Stats(_ context.Context, pool string, window time.Duratio
 	}
 	st.P99, st.HasLatency = quantile(0.99, bs)
 	return st, nil
+}
+
+// counterDelta is v minus the older value of the same series; a series that is
+// new or went backwards (a restarted gateway) counts from zero.
+func counterDelta(v float64, old *targetData, get func(*targetData) (float64, bool)) float64 {
+	if old != nil {
+		if o, ok := get(old); ok && v >= o {
+			return v - o
+		}
+	}
+	return v
 }
 
 // Scalar implements Source.
