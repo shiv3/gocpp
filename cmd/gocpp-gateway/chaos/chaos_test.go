@@ -241,6 +241,9 @@ func startGateway(t *testing.T, id, redisAddr string, extra ...string) *gw {
 	}
 	g.proc = start(t, "gocpp-gateway:"+id, append(args, extra...)...)
 	require.Eventually(t, func() bool { return httpOK("http://" + g.admin + "/healthz") }, 10*time.Second, 50*time.Millisecond)
+	attachMu.Lock()
+	gwsOnLink[g.link] = append(gwsOnLink[g.link], g)
+	attachMu.Unlock()
 	return g
 }
 
