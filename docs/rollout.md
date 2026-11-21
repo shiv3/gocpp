@@ -192,6 +192,19 @@ posts a Kubernetes Event for each apply, advance, rollback, done and yield (hold
 are not events). Prefer driving `gocppctl route` from an existing
 progressive-delivery tool where you already run one.
 
+**Restarts and timeouts.** The controller stores its state (stage, the revision
+stored before the rollout, the revision it waits for, the soak timer) in the
+registry after every change, under `<prefix>:ctl:rollout/<rule>`. If
+`gocppctl rollout run` is restarted with the same plan file it resumes where it
+was, and a later rollback restores the revision from before the rollout, not the
+previous stage. A different plan file, or `--fresh`, starts from stage 0; a stored
+finished run (done, rolled back, yielded) is reported as finished until `--fresh`.
+While gateways have not yet reported the new revision the gates and the guard are
+evaluated as usual; if some are still behind after `converge_timeout` (default
+30 s) the controller rolls back. A crash in the instant between writing a stage and
+storing the state makes the resumed controller yield (the revision is not the one it
+expects): check the policy and restart with `--fresh`.
+
 ## Checklists
 
 Before: entry criteria met; canary pool attached everywhere; every gateway

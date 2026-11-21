@@ -118,3 +118,22 @@ func TestWatchPolicyPollBackstop(t *testing.T) {
 		mu.Unlock()
 	})
 }
+
+func TestStateStore(t *testing.T) {
+	eachBackend(t, func(t *testing.T, b backend) {
+		r, _ := newReg(t, b)
+		ctx := context.Background()
+		d, err := r.State(ctx, "rollout/x")
+		require.NoError(t, err)
+		require.Nil(t, d)
+		require.NoError(t, r.PutState(ctx, "rollout/x", []byte("one")))
+		require.NoError(t, r.PutState(ctx, "rollout/x", []byte("two")))
+		d, err = r.State(ctx, "rollout/x")
+		require.NoError(t, err)
+		require.Equal(t, "two", string(d))
+		require.NoError(t, r.DeleteState(ctx, "rollout/x"))
+		require.NoError(t, r.DeleteState(ctx, "rollout/x"))
+		d, _ = r.State(ctx, "rollout/x")
+		require.Nil(t, d)
+	})
+}

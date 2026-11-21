@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format is based on
   `Quiesce`, `TryDrain`, `ForceDrain`) and the addons `link-grpc`, `link-nats`,
   `registry-redis`, `rollout`. docs/gateway.md and the README list what is stable and
   what is experimental.
+- Rollout controller (`addons/rollout`) review fixes: `ConvergeTimeout` is honoured
+  (a revision that does not reach every gateway in time is rolled back, and the
+  gateway guard and the gates are evaluated while waiting), and the controller state
+  (stage, the revision before the rollout, the revision it waits for, timers) is
+  persisted in the new optional `storage.StateStore` (memory and `registry-redis`),
+  so a restarted `gocppctl rollout run` resumes the same plan and a later rollback
+  goes to the right revision. `gocppctl rollout run --fresh` starts over.
 - Staged releases, phase 7 chaos leftovers: real-process tests of CSMS calls issued
   from the canary and the stable pool during a canary, the orphan result when the
   calling canary backend dies (gRPC link), a `hold: busy` session during promotion

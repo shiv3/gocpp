@@ -30,8 +30,10 @@ type Plan struct {
 	// Window is the metric window of an evaluation (default 5m); a stage is
 	// evaluated over min(Window, time since the gateways converged on it).
 	Window routepolicy.Duration `json:"window,omitempty"`
-	// ConvergeTimeout bounds how long a revision may take to reach every gateway
-	// before the controller keeps waiting and reports it (default 30s).
+	// ConvergeTimeout bounds how long a revision may take to reach every gateway;
+	// past it the controller rolls back (default 30s). While it waits, the gates
+	// and the gateway guard are evaluated as usual, so a bad stage is rolled back
+	// before the timeout.
 	ConvergeTimeout routepolicy.Duration `json:"converge_timeout,omitempty"`
 	// FailEvaluations is how many consecutive failing evaluations roll back
 	// (default 1).
