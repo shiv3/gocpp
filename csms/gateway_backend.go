@@ -106,6 +106,8 @@ func newBackend(s *Server, link gateway.BackendLink) *backend {
 // Upstream returns the server's gateway.Upstream: what a link delivers the
 // messages of gateways to. ServeGateway uses it; a custom link, or a test that
 // wires a Hub by hand, can too. It is nil on a server without WithGatewayLink.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) Upstream() gateway.Upstream {
 	if s.backend == nil {
 		return nil
@@ -120,6 +122,8 @@ var ErrNoGatewayLink = errors.New("csms: server has no gateway link (WithGateway
 // ServeGateway serves the gateways attached through the link until ctx ends or
 // the server is closed, like http.Serve. When it ends the backend drains: it
 // takes no new work and returns once the messages in flight have been answered.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) ServeGateway(ctx context.Context) error {
 	if s.backend == nil {
 		return ErrNoGatewayLink

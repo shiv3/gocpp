@@ -468,6 +468,8 @@ func WithAuthenticator(a auth.Authenticator) Option {
 //
 // Servers that share one registry see each other's sessions; use
 // memory.NewSessionRegistry in tests and addons/registry-redis in production.
+//
+// Experimental: this API may change before v1.0.
 func WithSessionRegistry(reg storage.SessionRegistry, cfg ...SessionConfig) Option {
 	return optionFunc(func(c *serverConfig) {
 		c.sessionReg = reg
@@ -673,6 +675,8 @@ type AuthCacheConfig struct {
 // reconnecting through a backend outage. Rejections are never cached and drop
 // the entry. Do not enable it when the backend decides on other request headers;
 // call Server.InvalidateAuthCache after a credential change.
+//
+// Experimental: this API may change before v1.0.
 func WithGatewayAuthCache(cfg AuthCacheConfig) Option {
 	return optionFunc(func(c *serverConfig) { c.gwAuthCache = &cfg })
 }
