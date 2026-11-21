@@ -6,6 +6,43 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
+This release collects everything since v0.1.3 (v0.1.4–v0.1.7 were tagged
+without changelog sections). It contains breaking changes; pre-v1 minor
+versions may break APIs. Read the upgrade notes first.
+
+### Upgrade notes
+
+- **Generated types:** every JSON-Schema `integer` is `int64` (was `int32`);
+  JSON-Schema `number` fields are `types.Decimal` (encoded as JSON numbers);
+  untyped 2.0.1/2.1 properties such as `DataTransfer.data` are
+  `json.RawMessage`; `CustomDataType` keeps unknown properties in `Extra`.
+  `datatransfer.Marshal`/`Unmarshal` work on `json.RawMessage`; use
+  `MarshalString`/`UnmarshalString` for 1.6.
+- **Outbound CALLs are serialized per connection by default** (OCPP-J
+  synchronicity). `WithConcurrentCalls()` restores the old, non-compliant
+  behaviour.
+- **Handler contexts are not cancelled on disconnect**; they carry a per-handler
+  deadline (`WithHandlerTimeout`, default 60 s). Use `csms.ConnFromContext(ctx)` /
+  `cp.ConnDone(ctx)` to observe a disconnect.
+- **Connection model:** one resident goroutine per connection; there is no writer
+  goroutine or outbound queue any more, so `WithOutboundQueueSize` is ignored
+  (deprecated). Writers take a per-connection write lock in FIFO order.
+- **Error codes:** schema/decode rejections use the specific OCPP codes
+  (Occurrence/Property/TypeConstraintViolation); unknown message types get
+  `MessageTypeNotSupported` on 2.0.1/2.1; types 5/6 are only valid on 2.1.
+  `WithOCPPGoCompat()` reproduces ocpp-go's charger-visible behaviour for staged
+  migrations (see docs/migration-from-ocpp-go.md).
+- **Parsed frames** reference the read buffer (`Frame.Payload`/`ErrData` are
+  sub-slices); `NewMsgID` values minted in the same millisecond are unique but not
+  ordered.
+- **Clustering** is wired: with `WithInstanceID` + a message router, calls reach
+  charge points connected to other instances (`Server.Lookup`).
+
+Performance and sizing guidance: docs/performance.md.
+
+
 ### Added
 - `docs/performance.md`: runtime guidance (GOMAXPROCS, GOMEMLIMIT, GOGC with measured tradeoffs), schema-mode and handler-pool cost, current per-connection footprint. `docs/architecture.md` and the README describe the one-reader-goroutine connection model.
 - `dispatcher.HandlerPool` / `NewHandlerPool(n)` with `Config.HandlerPool`, and
@@ -484,6 +521,8 @@ All additions are opt-in and preserve prior default behavior.
 ### OCPP spec compatibility
 - OCPP 1.6 (edition 2 + Security Whitepaper), 2.0.1, 2.1.
 
+[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/shiv3/gocpp/releases/tag/v0.2.0
 [0.1.3]: https://github.com/shiv3/gocpp/releases/tag/v0.1.3
 [0.1.2]: https://github.com/shiv3/gocpp/releases/tag/v0.1.2
 [0.1.1]: https://github.com/shiv3/gocpp/releases/tag/v0.1.1
