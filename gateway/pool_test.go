@@ -357,3 +357,63 @@ func TestPool_PicksOnlyMembersThatServeTheAction(t *testing.T) {
 	require.EqualValues(t, 30, cur.Load())
 	require.Empty(t, s.Unhandled())
 }
+
+// When every member of the routed pool refuses and a fallback pool is usable, the
+// message goes to the fallback at once; it is not held for the pool's wait
+// (review S6: 20 s per message).
+func TestPoolSet_AllNackFallsBackWithoutHolding(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ps := gateway.NewPoolSet(3 * time.Second)
+	stable := &fakeUp{handle: ok}
+	nack := &fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) { return gateway.Reply{Nack: true}, nil }}
+	ps.Add(gateway.BackendInfo{ID: "s"}, stable)
+	ps.Add(gateway.BackendInfo{ID: "c1", Pool: "canary"}, nack)
+	ps.Add(gateway.BackendInfo{ID: "c2", Pool: "canary"}, nack)
+	start := time.Now()
+	_, err := ps.Handle(context.Background(), gateway.Envelope{Route: &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}})
+	require.NoError(t, err)
+	require.Less(t, time.Since(start), 500*time.Millisecond, "held for the pool wait although every member refused")
+	require.EqualValues(t, 1, stable.calls.Load())
+	require.EqualValues(t, 2, nack.calls.Load())
+}
+
+// A member must not receive a request after its Drain has returned (review S8).
+func TestPool_DrainNeverRacesWithPick(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	for round := 0; round < 1500; round++ {
+		p := gateway.NewPool(50 * time.Millisecond)
+		var drained atomic.Bool
+		var late atomic.Int32
+		doomed := &fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) {
+			if drained.Load() {
+				late.Add(1)
+			}
+			return gateway.Reply{Payload: []byte(`{}`)}, nil
+		}}
+		m := p.Add(gateway.BackendInfo{ID: "doomed"}, doomed)
+		p.Add(gateway.BackendInfo{ID: "other"}, &fakeUp{handle: ok})
+		stop := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					_, _ = p.Handle(context.Background(), gateway.Envelope{})
+				}
+			}()
+		}
+		time.Sleep(time.Duration(round%5) * 20 * time.Microsecond)
+		require.NoError(t, p.Drain(context.Background(), m))
+		drained.Store(true)
+		time.Sleep(500 * time.Microsecond)
+		close(stop)
+		wg.Wait()
+		require.Zero(t, late.Load(), "round %d: a request reached a member after its Drain returned", round)
+	}
+}

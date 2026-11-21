@@ -58,6 +58,14 @@ Kubernetes: give the pod a `terminationGracePeriodSeconds` larger than the drain
 window, run `Drain` from a `preStop` hook or the SIGTERM handler, roll one pod at
 a time (`maxUnavailable: 1`) and keep capacity for `N-1` pods.
 
+## Cancelling a drain
+
+If the context passed to `Drain` ends before every session was closed, `Drain`
+returns its error and the sessions it had quiesced (busy ones waiting to become
+idle) accept new calls again. A full drain leaves the server refusing upgrades and
+not ready: call `Server.Undrain(ctx)` to take it back into service (it also
+returns the gateway lease to "serving"), or `Shutdown` to finish the job.
+
 ## Partial drains for rollouts
 
 Give `DrainOptions` a selection and `Drain` becomes a partial drain: only the

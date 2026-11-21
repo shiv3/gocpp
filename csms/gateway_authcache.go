@@ -1,7 +1,9 @@
 package csms
 
 import (
+	"context"
 	"crypto/sha256"
+	"fmt"
 	"maps"
 	"sync"
 	"time"
@@ -143,4 +145,42 @@ func (s *Server) InvalidateAuthCache(cpID string) {
 	if s.edge != nil && s.edge.auth != nil {
 		s.edge.auth.invalidate(cpID)
 	}
+}
+
+// InvalidateGatewayAuthCache tells every gateway to forget its cached connect
+// decisions for cpID (all of them when cpID is ""), for after a credential
+// change: without it a revoked credential keeps admitting reconnects until the
+// cache's TTL (and, while this processing tier is unreachable, StaleIfError)
+// runs out. Call it on a server created with WithGatewayLink. The gateways are
+// the ones holding a lease in the session registry (WithSessionRegistry); without
+// a registry the request goes to the link's only gateway (the in-process link).
+// It reports the first failure after trying every gateway; a gateway that is
+// down misses the request and recovers when its entries expire.
+//
+// Experimental: this API may change before v1.0.
+func (s *Server) InvalidateGatewayAuthCache(ctx context.Context, cpID string) error {
+	if s.backend == nil {
+		return ErrNoGatewayLink
+	}
+	ids := []string{""}
+	if reg := s.cfg.sessionReg; reg != nil {
+		gws, err := reg.Gateways(ctx)
+		if err != nil {
+			return fmt.Errorf("csms: list gateways: %w", err)
+		}
+		ids = ids[:0]
+		for _, g := range gws {
+			ids = append(ids, g.ID)
+		}
+	}
+	var first error
+	for _, id := range ids {
+		err := s.backend.link.Control(ctx, gateway.ControlRequest{
+			Target: gateway.SessionRef{CPID: cpID, GatewayID: id}, Op: gateway.ControlInvalidateAuth,
+		})
+		if err != nil && first == nil {
+			first = fmt.Errorf("csms: invalidate auth cache on gateway %q: %w", id, err)
+		}
+	}
+	return first
 }

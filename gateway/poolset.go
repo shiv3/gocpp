@@ -237,7 +237,14 @@ func (s *PoolSet) Handle(ctx context.Context, env Envelope) (Reply, error) {
 	}
 	p, restrict, reason := s.chooseFor(env.Route, env.Kind, env.Action)
 	s.fellBack(env.Route, reason)
-	rep, err := p.handle(ctx, env, restrict)
+	// With a usable fallback pool, a routed pool whose members all refuse gives
+	// the message up at once instead of holding it for a member to attach.
+	failFast := false
+	if env.Route != nil && env.Route.Fallback != "" {
+		fp := s.get(env.Route.Fallback, false)
+		failFast = fp != nil && fp != p && fp.Available()
+	}
+	rep, err := p.handleFast(ctx, env, restrict, failFast)
 	if err != nil && env.Route != nil && env.Route.Fallback != "" && isNoBackend(err) {
 		// Every member of the routed pool refused (Nack) or vanished: redispatch
 		// on the fallback pool within the deadline. Never after a dispatch that

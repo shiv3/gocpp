@@ -72,9 +72,12 @@ type Envelope struct {
 	Action     string
 	Payload    []byte // raw JSON exactly as received; never re-encoded
 	ReceivedAt time.Time
-	Deadline   time.Time // absolute; the gateway answers the charger at this time
-	Trace      string    // W3C traceparent
-	Attrs      map[string]string
+	// Deadline is when the gateway answers the charger, on the gateway's clock. A
+	// receiver on another host must not compare it with its own clock: it uses
+	// the budget Deadline.Sub(ReceivedAt), both read from the same clock.
+	Deadline time.Time
+	Trace    string // W3C traceparent
+	Attrs    map[string]string
 	// Route says how the gateway routed the message (nil = default pool, no
 	// policy); the backend may put it on its handler span.
 	Route *Route
@@ -320,10 +323,15 @@ type CallRequest struct {
 	Target SessionRef
 	// CallID is a caller-chosen idempotency key: a second request with the same
 	// CallID while the first is in flight shares its outcome.
-	CallID   string
-	Action   string
-	Payload  []byte // already validated and transformed by the caller
+	CallID  string
+	Action  string
+	Payload []byte // already validated and transformed by the caller
+	// Deadline is the caller's absolute deadline, on the caller's clock. Budget is
+	// the time left when the request was made; a receiver on another host
+	// applies Budget from its own receive time and ignores Deadline when Budget
+	// is set, so clock skew between hosts cannot cancel or extend a call.
 	Deadline time.Time
+	Budget   time.Duration
 	Trace    string
 	// CallerPool and CallerVersion name the pool and version of the backend that
 	// issued the call. A link sets them on the gateway side (they are not part of
@@ -353,6 +361,11 @@ const (
 	// ControlSetAttrs merges ControlRequest.Attrs into the session attributes
 	// (an empty value deletes the key; the total is capped at MaxAttrsSize).
 	ControlSetAttrs
+	// ControlInvalidateAuth makes the gateway forget its cached connect decisions
+	// for Target.CPID (all of them when empty), after a credential change. It
+	// needs no session: Target.GatewayID names the gateway, Target.CPID the
+	// charge point.
+	ControlInvalidateAuth
 )
 
 // MaxAttrsSize caps the session attributes (sum of key and value lengths).

@@ -60,6 +60,10 @@ func WithClock(now func() time.Time) Option { return func(e *Engine) { e.now = n
 // An Engine without a policy routes everything to gateway.DefaultPool.
 type Engine struct {
 	cur atomic.Pointer[compiled]
+	// prev is the revision cur replaced: a busy session met for the first time
+	// under a hold: busy rule (no memory of its membership yet) is held where the
+	// previous revision had it.
+	prev atomic.Pointer[compiled]
 
 	metrics   Metrics
 	log       *slog.Logger
@@ -142,6 +146,7 @@ func (e *Engine) Apply(p Policy) error {
 			e.metrics.Suspended(name, false)
 		}
 	}
+	e.prev.Store(e.cur.Load())
 	e.cur.Store(compile(p))
 	if e.metrics != nil {
 		e.metrics.PolicyApplied(p.Revision)
@@ -231,6 +236,20 @@ func (e *Engine) decide(c *compiled, in gateway.RouteInput) gateway.RouteDecisio
 		}
 	}
 	return gateway.RouteDecision{Pool: c.def, Rev: c.p.Revision}
+}
+
+// previousMember reports whether in was a member of rule name in the revision
+// before the current one.
+func (e *Engine) previousMember(name string, in gateway.RouteInput) (member, ok bool) {
+	pc := e.prev.Load()
+	if pc == nil {
+		return false, false
+	}
+	pr := pc.byName[name]
+	if pr == nil {
+		return false, true
+	}
+	return pr.member(in), true
 }
 
 func (e *Engine) state(cpID string) *sessState {
@@ -521,6 +540,16 @@ func (r *rule) matches(in gateway.RouteInput, st *sessState, busy bool, now time
 		st.busySince = now
 	}
 	prev, known := st.in[r.name]
+	if !known {
+		// First evaluation of this busy session under the rule: it has not been
+		// seen idle, so its membership is whatever the previous revision gave it
+		// (not a member when the rule is new). Without a previous revision the
+		// session is evaluated as it is.
+		if pm, ok := e.previousMember(r.name, in); ok {
+			prev, known = pm, true
+			st.in[r.name] = pm
+		}
+	}
 	if now.Sub(st.busySince) > r.maxHold || !known {
 		m := r.member(in)
 		st.in[r.name] = m

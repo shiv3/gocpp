@@ -90,6 +90,10 @@ func (p *Pipeline) RunCall(ctx context.Context, frame *ocppj.Frame, h func(ctx c
 		return out
 	}
 
+	// HandlerTimeout bounds the handler itself: it starts here, after the
+	// signature and schema checks, as it always did.
+	ctx, cancel := p.handlerTimeout(ctx)
+	defer cancel()
 	hctx, span := p.cfg.Tracer.Start(ctx, "ocpp.handler")
 	if span.IsRecording() {
 		span.SetAttributes(
@@ -118,6 +122,14 @@ func (p *Pipeline) RunCall(ctx context.Context, frame *ocppj.Frame, h func(ctx c
 	}
 	out.Payload = respPayload
 	return out
+}
+
+// handlerTimeout applies Config.HandlerTimeout, if set, to ctx.
+func (p *Pipeline) handlerTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if p.cfg.HandlerTimeout > 0 {
+		return context.WithTimeout(ctx, p.cfg.HandlerTimeout)
+	}
+	return ctx, func() {}
 }
 
 // handlerFailed turns a handler error into an outcome.
@@ -301,6 +313,8 @@ func (p *Pipeline) RunSend(ctx context.Context, frame *ocppj.Frame, h func(ctx c
 			"cp_id", p.cpID, "action", frame.Action, "err", err)
 		return
 	}
+	ctx, cancel := p.handlerTimeout(ctx)
+	defer cancel()
 	if err := h(ctx, reqPayload); err != nil {
 		p.cfg.Logger.WarnContext(ctx, "SEND handler error",
 			"cp_id", p.cpID, "action", frame.Action, "err", err)

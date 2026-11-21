@@ -33,6 +33,9 @@ type Conn struct {
 
 	// attachment is owner-defined data hung on the connection (see SetAttachment).
 	attachment atomic.Value
+	// attMu serialises read-modify-write updates of the attachment
+	// (UpdateAttachment).
+	attMu sync.Mutex
 	// inboundGate, when set, filters inbound CALL/SEND before they are scheduled.
 	inboundGate InboundGate
 	// inboundDone, when set, is called once for every frame the gate admitted, after
@@ -392,7 +395,25 @@ func (c *Conn) Start(parent context.Context) {
 // connection's registry session here.
 //
 // Experimental: this API may change before v1.0.
-func (c *Conn) SetAttachment(v any) { c.attachment.Store(v) }
+func (c *Conn) SetAttachment(v any) {
+	c.attMu.Lock()
+	c.attachment.Store(v)
+	c.attMu.Unlock()
+}
+
+// UpdateAttachment replaces the attachment with f(current) atomically with
+// respect to other UpdateAttachment and SetAttachment calls, so two owners that
+// each derive a new value from the old one (a session's attributes and its
+// epoch, say) cannot overwrite each other's change. f runs under a lock and must
+// not block or call back into the connection. Like SetAttachment, the result
+// must have the same concrete type as every earlier value.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) UpdateAttachment(f func(old any) any) {
+	c.attMu.Lock()
+	c.attachment.Store(f(c.attachment.Load()))
+	c.attMu.Unlock()
+}
 
 // Attachment returns the value stored by SetAttachment, or nil.
 func (c *Conn) Attachment() any { return c.attachment.Load() }
@@ -452,6 +473,18 @@ func (c *Conn) Draining() bool { return c.calls.Load()&drainBit != 0 }
 //
 // Experimental: this API may change before v1.0.
 func (c *Conn) Quiesce() { c.calls.Or(drainBit) }
+
+// Unquiesce undoes Quiesce: the connection accepts new outbound calls again. Use
+// it when a drain that quiesced the connection ends without closing it. It has no
+// effect on a connection TryDrain or ForceDrain has already closed.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) Unquiesce() {
+	if c.Context().Err() != nil {
+		return
+	}
+	c.calls.And(^drainBit)
+}
 
 // TryDrain closes the connection for a drain if it is idle: no inbound handler
 // running or queued, no outbound call queued, in flight or awaiting a reply. It
