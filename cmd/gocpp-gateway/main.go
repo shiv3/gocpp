@@ -180,6 +180,24 @@ func serve(args []string) error {
 		}
 		opts = append(opts, csms.WithTenantLimits(tl))
 	}
+	tapEx, err := newTap(cfg, wrapped, log)
+	if err != nil {
+		return err
+	}
+	if tapEx != nil {
+		if !cfg.TapNoFrames {
+			opts = append(opts, csms.WithFrameObserver(tapEx.FrameObserver()))
+		}
+		if !cfg.TapNoSessions {
+			opts = append(opts, csms.WithSessionObserver(tapEx.SessionObserver()))
+		}
+		// Flush last, after the server stopped producing events.
+		defer func() {
+			fctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = tapEx.Close(fctx)
+		}()
+	}
 	var rdb *redis.Client
 	var policyStore storage.PolicyStore
 	if cfg.RedisAddr != "" {

@@ -78,3 +78,38 @@ func SlogFrameObserver(logger *slog.Logger, level slog.Level, maxRaw int) FrameO
 		logger.LogAttrs(ctx, lvl, "ocpp frame", attrs...)
 	}
 }
+
+// SessionEventKind says what happened to a session.
+type SessionEventKind string
+
+const (
+	// SessionOpened is reported once a connection is accepted and registered.
+	SessionOpened SessionEventKind = "opened"
+	// SessionClosed is reported once, when the connection ends for whatever
+	// reason (peer close, error, replacement by a newer connection, shutdown).
+	SessionClosed SessionEventKind = "closed"
+)
+
+// SessionEvent describes the lifecycle of one WebSocket session.
+type SessionEvent struct {
+	Kind    SessionEventKind
+	CPID    string
+	Version ocppj.Version
+	// RemoteAddr is the peer address from the upgrade request.
+	RemoteAddr string
+	// Epoch is the registry epoch of the session (0 without a session registry).
+	Epoch uint64
+	// Attrs are the session attributes at the time of the event (a copy).
+	Attrs map[string]string
+	Time  time.Time
+	// Cause and Duration are set for SessionClosed: the error that ended the
+	// session (empty for a clean close) and how long it lasted.
+	Cause    string
+	Duration time.Duration
+}
+
+// SessionObserver receives session lifecycle events (csms.WithSessionObserver).
+// It runs inline on the goroutine that accepts or tears down the connection and
+// must return quickly; hand work off to a channel if it may block. Panics are
+// recovered and logged.
+type SessionObserver func(ctx context.Context, ev SessionEvent)

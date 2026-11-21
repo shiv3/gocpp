@@ -9,6 +9,7 @@ package chaos
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -776,4 +777,56 @@ func TestChaos_TenantSessionCap(t *testing.T) {
 	c3, _, err := dial("CP_3", "b")
 	require.NoError(t, err)
 	_ = c3.CloseNow()
+}
+
+// --tap-jsonl: the gateway exports frame and session events to a file, and a
+// SIGTERM flushes what is buffered. Heartbeats can be left out.
+func TestChaos_TapJSONL(t *testing.T) {
+	mr := miniredis.RunT(t)
+	file := filepath.Join(t.TempDir(), "tap.jsonl")
+	g := startGateway(t, "gw-1", mr.Addr(), "--tap-jsonl", file, "--tap-skip-heartbeat")
+	b := startBackend(t, "b1", mr.Addr(), g.link)
+	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
+	c := newCharger(t, g.ws, "CP_1")
+	ctx, cancel := ctxT(10 * time.Second)
+	defer cancel()
+	require.NoError(t, c.heartbeat(ctx))
+	require.NoError(t, c.boot(ctx, "x"))
+	c.Close()
+	time.Sleep(200 * time.Millisecond) // the close event is produced after the socket ends
+	b.term()                           // with the gRPC link a gateway waits for its backends' streams before it exits
+	<-b.done
+	g.proc.term()
+	select {
+	case <-g.proc.done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("gateway did not stop")
+	}
+	data, err := os.ReadFile(file)
+	require.NoError(t, err)
+	var boots, hbs, opened, closed int
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var ev struct {
+			Kind    string `json:"kind"`
+			Source  string `json:"source"`
+			Action  string `json:"action"`
+			Session string `json:"session"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(line), &ev), line)
+		require.Equal(t, "gw-1", ev.Source)
+		switch {
+		case ev.Kind == "frame" && ev.Action == "BootNotification":
+			boots++
+		case ev.Kind == "frame" && ev.Action == "Heartbeat":
+			hbs++
+		case ev.Session == "opened":
+			opened++
+		case ev.Session == "closed":
+			closed++
+		}
+	}
+	require.Equal(t, 1, boots)
+	require.Zero(t, hbs)
+	require.Equal(t, 1, opened)
+	require.Equal(t, 1, closed)
 }

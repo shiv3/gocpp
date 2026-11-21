@@ -49,7 +49,16 @@ type config struct {
 	DrainWindow  time.Duration
 	LogLevel     string
 
-	EdgeHeartbeat            bool
+	EdgeHeartbeat bool
+	TapJSONL      string // file receiving frame/session events as JSON lines
+	TapNATS       bool   // publish frame/session events on NATS
+	TapSample     int    // export 1 frame in N
+	TapBuffer     int    // events buffered before dropping
+	TapMaxFrame   int    // bytes of each frame kept (negative: metadata only)
+	TapNoSessions bool
+	TapNoFrames   bool
+	TapSkipHB     bool
+
 	TenantHeader, TenantAttr string
 	TenantMaxSessions        int
 	TenantMessageRate        float64
@@ -128,6 +137,14 @@ func parseConfig(args []string) (config, error) {
 	fs.DurationVar(&c.CallTimeout, "call-timeout", envDur("CALL_TIMEOUT", 30*time.Second), "timeout of CSMS calls to chargers")
 	fs.DurationVar(&c.DrainWindow, "drain-window", envDur("DRAIN_WINDOW", 5*time.Minute), "window in which sessions are closed on SIGTERM")
 	fs.BoolVar(&c.EdgeHeartbeat, "edge-heartbeat", env("EDGE_HEARTBEAT", "") == "true", "answer Heartbeat at the gateway without a backend hop (the backend no longer sees Heartbeats)")
+	fs.StringVar(&c.TapJSONL, "tap-jsonl", env("TAP_JSONL", ""), "append frame and session events to this file as JSON lines (lossy, bounded; never slows connections)")
+	fs.BoolVar(&c.TapNATS, "tap-nats", env("TAP_NATS", "") == "true", "publish frame and session events on NATS (<nats-prefix>.tap.frame.<cp>, .tap.session.<cp>); uses --nats-url")
+	fs.IntVar(&c.TapSample, "tap-sample", envInt("TAP_SAMPLE", 1), "export one frame out of every N (sessions are never sampled)")
+	fs.IntVar(&c.TapBuffer, "tap-buffer", envInt("TAP_BUFFER", 4096), "events buffered for the tap sinks before dropping (counted in gocpp_tap_events_total)")
+	fs.IntVar(&c.TapMaxFrame, "tap-max-frame", envInt("TAP_MAX_FRAME", 2048), "bytes of each frame kept in the tap (negative: metadata only)")
+	fs.BoolVar(&c.TapNoFrames, "tap-no-frames", env("TAP_NO_FRAMES", "") == "true", "tap session events only")
+	fs.BoolVar(&c.TapNoSessions, "tap-no-sessions", env("TAP_NO_SESSIONS", "") == "true", "tap frames only")
+	fs.BoolVar(&c.TapSkipHB, "tap-skip-heartbeat", env("TAP_SKIP_HEARTBEAT", "") == "true", "leave Heartbeat frames out of the tap")
 	fs.StringVar(&c.TenantHeader, "tenant-header", env("TENANT_HEADER", ""), "request header naming the tenant of a charger (per-tenant limits)")
 	fs.StringVar(&c.TenantAttr, "tenant-attr", env("TENANT_ATTR", "tenant"), "session attribute (set by the backend at connect) naming the tenant when the header is absent")
 	fs.IntVar(&c.TenantMaxSessions, "tenant-max-sessions", envInt("TENANT_MAX_SESSIONS", 0), "sessions allowed per tenant (503 above it); 0 = unlimited")

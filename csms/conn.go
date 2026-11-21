@@ -44,6 +44,11 @@ type Conn struct {
 	// concurrent callers until the first call returns, which orders the
 	// replacement's connect notification after the old disconnect.
 	disconnectOnce sync.Once
+
+	// tapOnce makes the session-closed observation fire once; openedAt dates the
+	// session for its duration (WithSessionObserver).
+	tapOnce  sync.Once
+	openedAt time.Time
 }
 
 // ID returns the charge point identifier.
