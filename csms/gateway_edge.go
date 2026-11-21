@@ -398,10 +398,9 @@ func (d edgeDownstream) call(ctx context.Context, c *Conn, req gateway.CallReque
 	}()
 	reply := func(r result) gateway.CallReply {
 		out := gateway.CallReply{Session: c.gw.ref}
-		switch {
-		case r.err == nil:
+		if r.err == nil {
 			out.Payload, out.Sent = r.payload, gateway.Answered
-		default:
+		} else {
 			out.Error = gateway.EncodeError(r.err)
 			var ce *ocppj.CallError
 			out.Sent = gateway.NotSent

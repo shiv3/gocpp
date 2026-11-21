@@ -95,9 +95,9 @@ func (r *rig) close() {
 	r.be.Close()
 }
 
-func (r *rig) client(opts ...cp.Option) *cp.Client {
+func (r *rig) client() *cp.Client {
 	const id = "CP_1"
-	c := cp.NewClient(id, r.url+id, append([]cp.Option{cp.WithSubProtocols("ocpp1.6")}, opts...)...)
+	c := cp.NewClient(id, r.url+id, cp.WithSubProtocols("ocpp1.6"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	require.NoError(r.t, c.Connect(ctx))

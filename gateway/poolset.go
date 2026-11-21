@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -144,4 +145,4 @@ func (s *PoolSet) Notify(ctx context.Context, env Envelope) error {
 	return s.choose(env.Route).Notify(ctx, env)
 }
 
-func isNoBackend(err error) bool { return err == ErrNoBackend }
+func isNoBackend(err error) bool { return errors.Is(err, ErrNoBackend) }
