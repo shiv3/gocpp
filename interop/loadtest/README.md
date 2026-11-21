@@ -44,3 +44,38 @@ GC mark-phase share of wall time per step ("High-rate columns"). `-knee` is the
 preset `-steps 4000:50:150s:160,4000:50:150s:320` (about 30k, then 60k requests/s)
 with `-gctrace`. Pin server and generator to disjoint cores, for example
 `-taskset 14-16 -server-procs 3` for the server and `taskset -c 17-19` for the harness.
+
+## Split topology (gateway mode)
+
+`-gateways G` runs the split deployment instead of one server: G `cmd/gocpp-gateway`
+processes, backends (`../parity/cs-gocpp -mode backend`) in named pools and a
+Redis-compatible session registry (an in-process miniredis in the harness).
+Chargers connect to a random gateway on every (re)connect, like an L4 load
+balancer; the first backend also serves the `/control` API at `-addr`.
+
+```sh
+(cd ../parity/cs-gocpp && go build -o /tmp/lt/cs-gocpp .)
+(cd ../../cmd/gocpp-gateway && go build -o /tmp/lt/gocpp-gateway .)
+go build -o /tmp/lt/loadtest .
+/tmp/lt/loadtest -server-bin /tmp/lt/cs-gocpp -gateway-bin /tmp/lt/gocpp-gateway \
+  -gateways 2 -backend-pools default:3,canary:1 \
+  -gw-taskset 8-9 -be-taskset 10-13 -server-procs 2 -out results/split1 \
+  -steps 4000:50:6m -restarts 5 -restart-target backend -restart-mode term
+```
+
+- `-backend-pools name:count,...`: backends per pool (the `default` pool is the
+  one gateways without a routing policy send work to; other pools attach and
+  receive nothing).
+- `-restart-target server|backend|gateway|pool:NAME` and `-restart-mode term|kill`
+  choose what `-restarts K` acts on: SIGTERM drains (backend: Nack + redispatch,
+  gateway: paced 1012 closes), kill is SIGKILL. The recovery numbers are the same
+  as for a single server (`chargers_up` back to 99%).
+- Per-process resources go to `procs.csv` (`t_s,name,role,pool,pid,rss_mb,cpu_cores,
+  threads,fds`); `timeline.csv` columns keep their meaning, with `server_connected`
+  the sum of the gateways' connection gauges.
+- `-gw-taskset`, `-be-taskset`, `-gw-args`, `-server-args` pin and tune the tiers.
+
+Partial-drain / soft-cap scenarios (a gateway canary fill) are driven with the
+gateway flags `--soft-max-sessions` and the `Server.Drain` options and are not
+automated here; the load balancer behaviours they rely on need a real cluster
+(see `examples/gke-gateway/README.md`).
