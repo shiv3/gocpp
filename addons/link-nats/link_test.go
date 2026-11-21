@@ -3,6 +3,7 @@ package linknats_test
 import (
 	"context"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -45,9 +46,12 @@ var (
 
 const helloEvery = 50 * time.Millisecond // leases lapse after 150 ms
 
-func startNATS(t *testing.T) *natsd.Server {
+func startNATS(t *testing.T) *natsd.Server { return startNATSWith(t, 0) }
+
+// startNATSWith starts a server with the given max_payload (0: the default).
+func startNATSWith(t *testing.T, maxPayload int32) *natsd.Server {
 	t.Helper()
-	ns, err := natsd.NewServer(&natsd.Options{Host: "127.0.0.1", Port: -1, NoLog: true, NoSigs: true})
+	ns, err := natsd.NewServer(&natsd.Options{Host: "127.0.0.1", Port: -1, NoLog: true, NoSigs: true, MaxPayload: maxPayload})
 	require.NoError(t, err)
 	go ns.Start()
 	require.True(t, ns.ReadyForConnections(10*time.Second))
@@ -78,7 +82,12 @@ type topology struct {
 
 func newTopology(t *testing.T, gwOpts ...linknats.GatewayOption) *topology {
 	t.Helper()
-	tp := &topology{t: t, reg: memory.NewSessionRegistry(), ns: startNATS(t)}
+	return newTopologyOn(t, startNATS(t), gwOpts...)
+}
+
+func newTopologyOn(t *testing.T, ns *natsd.Server, gwOpts ...linknats.GatewayOption) *topology {
+	t.Helper()
+	tp := &topology{t: t, reg: memory.NewSessionRegistry(), ns: ns}
 	var err error
 	tp.link, err = linknats.NewGateway(connect(t, tp.ns.ClientURL()), gwOpts...)
 	require.NoError(t, err)
@@ -401,4 +410,41 @@ func TestLink_LocateWithoutRegistry(t *testing.T) {
 	require.Equal(t, "Accepted", got.Status)
 	_, err = srv.Lookup(cctx, "NOPE")
 	require.ErrorIs(t, err, ocppj.ErrNotConnected)
+}
+
+// NIT: a message over the server's max_payload is neither redispatched to other
+// backends (it would fail the same way) nor reported as "charger not connected".
+func TestLink_MaxPayloadIsNotAnUndeliveredRetry(t *testing.T) {
+	leakCheck(t)
+	tp := newTopologyOn(t, startNATSWith(t, 4096))
+	defer tp.close()
+	var handled atomic.Int64
+	h := func(ctx context.Context, c *csms.Conn, r bootReq) (bootResp, error) {
+		handled.Add(1)
+		return ok(ctx, c, r)
+	}
+	n := tp.addBackend(gateway.BackendInfo{ID: "a"}, h)
+	tp.addBackend(gateway.BackendInfo{ID: "b"}, h)
+	c := tp.client("CP_1")
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	// Small messages work.
+	_, err := cp.Call(ctx, c, bootMsg, bootReq{ChargePointVendor: "x"})
+	require.NoError(t, err)
+	before := handled.Load()
+
+	// The oversized CALL fails at once (the default hold is far longer than ctx).
+	start := time.Now()
+	_, err = cp.Call(ctx, c, bootMsg, bootReq{ChargePointVendor: strings.Repeat("v", 8192)})
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 2*time.Second, "not held waiting for another backend")
+	require.Equal(t, before, handled.Load())
+
+	// A CSMS call that does not fit says so; it is not "not connected".
+	hdl, err := n.srv.Lookup(ctx, "CP_1")
+	require.NoError(t, err)
+	_, err = csms.Call(ctx, hdl, resetMsg, resetReq{Type: strings.Repeat("x", 8192)})
+	require.ErrorIs(t, err, linknats.ErrPayloadTooLarge)
+	require.NotErrorIs(t, err, ocppj.ErrNotConnected)
 }

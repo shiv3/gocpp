@@ -119,9 +119,14 @@ func TestExporter_NeverBlocksTheHotPath(t *testing.T) {
 	require.NoError(t, e.Close(context.Background()))
 	st = e.Stats()
 	require.EqualValues(t, 10_000, st.Exported+st.Dropped, "every event is exported or counted as dropped")
-	// Seq counts dropped events too, so the consumer sees the gaps.
+	// Seq counts dropped events too, so the consumer can see gaps. Whether the
+	// exported ones are contiguous depends on how fast the exporter goroutine
+	// drains the buffer, so only the order and the bound are asserted.
 	ev := sink.all()
-	require.Greater(t, ev[len(ev)-1].Seq, uint64(len(ev)))
+	for i := 1; i < len(ev); i++ {
+		require.Greater(t, ev[i].Seq, ev[i-1].Seq)
+	}
+	require.LessOrEqual(t, ev[len(ev)-1].Seq, uint64(10_000))
 }
 
 func TestExporter_SamplingAndFilter(t *testing.T) {
@@ -230,4 +235,28 @@ func BenchmarkFrameObserver(b *testing.B) {
 	}
 	b.StopTimer()
 	_ = e.Close(ctx)
+}
+
+// NIT: a frame flood must not push session events out of the buffer; they have
+// their own.
+func TestExporter_SessionEventsSurviveAFrameFlood(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	sink := &memSink{gate: make(chan struct{})}
+	e := tap.New(sink, tap.WithBuffer(8), tap.WithBatch(1, time.Hour))
+	fobs, sobs := e.FrameObserver(), e.SessionObserver()
+	for i := 0; i < 10_000; i++ {
+		fobs(context.Background(), frame("MeterValues", "[]"))
+	}
+	for i := 0; i < 200; i++ {
+		sobs(context.Background(), observability.SessionEvent{CPID: "CP1", Kind: observability.SessionOpened, Time: time.Now()})
+	}
+	close(sink.gate)
+	require.NoError(t, e.Close(context.Background()))
+	var sessions int
+	for _, ev := range sink.all() {
+		if ev.Kind == tap.KindSession {
+			sessions++
+		}
+	}
+	require.Equal(t, 200, sessions, "no session event was dropped")
 }

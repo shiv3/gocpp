@@ -682,3 +682,66 @@ func TestLink_CallerBackendDrainDoesNotCrashGateway(t *testing.T) {
 	require.NotNil(t, f.GetDrainAck())
 	_ = st.CloseSend()
 }
+
+// NIT: Cancel is only sent to a backend that negotiated the cancel capability.
+func TestLink_CancelNeedsCapability(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	tp := newTopology(t)
+	defer tp.close()
+	cc, err := grpc.NewClient(tp.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { _ = cc.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for _, tc := range []struct {
+		pool string
+		caps []string
+		want bool
+	}{{"nocancel", nil, false}, {"cancel", []string{gateway.CapCancel}, true}} {
+		st, err := linkpb.NewLinkClient(cc).Attach(ctx)
+		require.NoError(t, err)
+		require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{
+			Backend: &linkpb.BackendInfo{Id: "stub-" + tc.pool, Pool: tc.pool, Proto: &linkpb.ProtoRange{Min: 1, Max: 1}, Caps: tc.caps},
+		}}}))
+		_, err = st.Recv() // HelloAck
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return tp.link.Available(tc.pool) }, 2*time.Second, 10*time.Millisecond)
+
+		hctx, hcancel := context.WithTimeout(ctx, 150*time.Millisecond)
+		_, err = tp.link.Handle(hctx, gateway.Envelope{Kind: gateway.KindCall, Action: "Heartbeat", Route: &gateway.Route{Pool: tc.pool}, Deadline: time.Now().Add(150 * time.Millisecond)})
+		hcancel()
+		require.Error(t, err)
+
+		frames := make(chan *linkpb.GatewayFrame, 4)
+		go func() {
+			for {
+				f, err := st.Recv()
+				if err != nil {
+					close(frames)
+					return
+				}
+				frames <- f
+			}
+		}()
+		var sawCancel bool
+		timeout := time.After(500 * time.Millisecond)
+	loop:
+		for {
+			select {
+			case f, ok := <-frames:
+				if !ok {
+					break loop
+				}
+				if f.GetCancel() != nil {
+					sawCancel = true
+					break loop
+				}
+			case <-timeout:
+				break loop
+			}
+		}
+		require.Equal(t, tc.want, sawCancel, "pool %s", tc.pool)
+		_ = st.CloseSend()
+	}
+}

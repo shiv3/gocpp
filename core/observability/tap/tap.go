@@ -93,8 +93,9 @@ type Option func(*Exporter)
 // every event so a consumer of several gateways can tell them apart.
 func WithSource(s string) Option { return func(e *Exporter) { e.source = s } }
 
-// WithBuffer sets how many events may wait for the sink (default 4096). Events
-// beyond it are dropped and counted.
+// WithBuffer sets how many frame events may wait for the sink (default 4096). Frames
+// beyond it are dropped and counted. Session events have extra room of their own
+// (16384), so a frame flood cannot push them out.
 func WithBuffer(n int) Option { return func(e *Exporter) { e.bufSize = n } }
 
 // WithBatch sets the largest batch handed to the sink (default 256) and the
@@ -150,6 +151,12 @@ type Exporter struct {
 	exported, dropped, sampled, failed atomic.Uint64
 }
 
+// sessionReserve is the room in the queue that only session events may use. They
+// are rare next to frames (a few per connection), so it absorbs a reconnect storm
+// of thousands of chargers while the sink is slow and a frame flood has filled
+// the rest.
+const sessionReserve = 16384
+
 // New starts an exporter that writes to sink.
 func New(sink Sink, opts ...Option) *Exporter {
 	e := &Exporter{sink: sink, bufSize: 4096, batch: 256, flushEvery: time.Second, maxFrame: 2048, every: 1}
@@ -164,7 +171,9 @@ func New(sink Sink, opts ...Option) *Exporter {
 	if e.maxFrame == 0 {
 		e.maxFrame = 2048
 	}
-	e.ch = make(chan Event, e.bufSize)
+	// One channel keeps the events in order; its last sessionReserve slots are
+	// only for session events (see enqueueFrame).
+	e.ch = make(chan Event, e.bufSize+sessionReserve)
 	e.wg.Add(1)
 	go e.run()
 	return e
@@ -196,7 +205,7 @@ func (e *Exporter) FrameObserver() observability.FrameObserver {
 		if ev.Err != nil {
 			out.WriteError = ev.Err.Error()
 		}
-		e.enqueue(out)
+		e.enqueueFrame(out)
 	}
 }
 
@@ -212,6 +221,17 @@ func (e *Exporter) SessionObserver() observability.SessionObserver {
 			Cause: ev.Cause, DurationMs: ev.Duration.Milliseconds(),
 		})
 	}
+}
+
+// enqueueFrame drops the event when the frame share of the queue is full, so a
+// frame flood leaves the reserved room to session events.
+func (e *Exporter) enqueueFrame(ev Event) {
+	if len(e.ch) >= e.bufSize {
+		e.seq.Add(1) // keep the gap visible to the consumer, as for any dropped event
+		e.dropped.Add(1)
+		return
+	}
+	e.enqueue(ev)
 }
 
 func (e *Exporter) enqueue(ev Event) {

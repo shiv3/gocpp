@@ -272,24 +272,27 @@ func (p *Pool) Connect(ctx context.Context, req ConnectRequest) (ConnectReply, e
 
 // Handle implements Upstream.
 func (p *Pool) Handle(ctx context.Context, env Envelope) (Reply, error) {
-	return p.handle(ctx, env, "")
+	rep, _, err := p.handle(ctx, env, "")
+	return rep, err
 }
 
 // handle is Handle restricted to members that serve action ("" = any member).
-func (p *Pool) handle(ctx context.Context, env Envelope, action string) (Reply, error) {
+func (p *Pool) handle(ctx context.Context, env Envelope, action string) (Reply, uint32, error) {
 	return p.handleFast(ctx, env, action, false)
 }
 
 // handleFast is handle; with failFast it gives up with ErrNoBackend as soon as
 // every eligible member has refused the message, rather than holding it for a
-// member to attach (the caller redispatches on a fallback pool).
-func (p *Pool) handleFast(ctx context.Context, env Envelope, action string, failFast bool) (Reply, error) {
+// member to attach (the caller redispatches on a fallback pool). next is the
+// Attempt number a further dispatch of env (to another pool) must carry, so the
+// number never goes back.
+func (p *Pool) handleFast(ctx context.Context, env Envelope, action string, failFast bool) (rep Reply, next uint32, err error) {
 	var out Reply
 	attempt := env.Attempt
 	if attempt == 0 {
 		attempt = 1
 	}
-	err := p.dispatch(ctx, "", action, env.Deadline, failFast, func(m *Member) (bool, error) {
+	err = p.dispatch(ctx, "", action, env.Deadline, failFast, func(m *Member) (bool, error) {
 		e := env
 		e.Attempt = attempt
 		attempt++
@@ -303,7 +306,7 @@ func (p *Pool) handleFast(ctx context.Context, env Envelope, action string, fail
 		out = r
 		return false, nil
 	})
-	return out, err
+	return out, attempt, err
 }
 
 // Notify implements Upstream.

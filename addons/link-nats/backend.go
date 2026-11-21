@@ -210,7 +210,7 @@ func (b *Backend) Serve(ctx context.Context, up gateway.Upstream, info gateway.B
 		if err != nil {
 			return err
 		}
-		sub.SetPendingLimits(-1, -1)
+		setPendingLimits(sub)
 		subs = append(subs, sub)
 		if queue {
 			queueSubs = append(queueSubs, sub)
@@ -480,6 +480,8 @@ func (b *Backend) Call(ctx context.Context, req gateway.CallRequest) (gateway.Ca
 	switch {
 	case errors.Is(err, gateway.ErrNotDelivered):
 		return gateway.CallReply{Sent: gateway.NotSent, Error: gateway.EncodeError(ocppj.ErrNotConnected)}, nil
+	case errors.Is(err, ErrPayloadTooLarge):
+		return gateway.CallReply{Sent: gateway.NotSent}, err // nothing left this process; retrying cannot help
 	case err != nil:
 		return gateway.CallReply{Sent: gateway.SentNoResponse}, err
 	}

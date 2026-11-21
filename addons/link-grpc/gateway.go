@@ -436,7 +436,9 @@ func (p *peer) request(ctx context.Context, body *linkpb.GatewayFrame) (*linkpb.
 		return f, nil
 	case <-ctx.Done():
 		p.unary.drop(id)
-		_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_Cancel{Cancel: &linkpb.Cancel{}}})
+		if slices.Contains(p.info.Caps, gateway.CapCancel) { // an older backend would answer Unsupported
+			_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_Cancel{Cancel: &linkpb.Cancel{}}})
+		}
 		return nil, ctx.Err()
 	}
 }

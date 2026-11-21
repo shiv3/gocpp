@@ -218,7 +218,7 @@ func (g *Gateway) Attach(id string, d gateway.Downstream) (detach func()) {
 	g.gwID.Store(id)
 	var sub *nats.Subscription
 	if s, err := g.nc.Subscribe(g.prefix+".gw."+token(id)+".*", g.serveDownstream(id)); err == nil {
-		s.SetPendingLimits(-1, -1)
+		setPendingLimits(s)
 		sub = s
 	}
 	_ = g.nc.Publish(g.prefix+".who", nil)

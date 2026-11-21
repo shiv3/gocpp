@@ -417,3 +417,22 @@ func TestPool_DrainNeverRacesWithPick(t *testing.T) {
 		require.Zero(t, late.Load(), "round %d: a request reached a member after its Drain returned", round)
 	}
 }
+
+// NIT: Attempt never goes back when the fallback pool takes over after the
+// routed pool's members all Nacked.
+func TestPoolSet_AttemptIsMonotonicAcrossFallback(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ps := gateway.NewPoolSet(50 * time.Millisecond)
+	nack := func(context.Context, gateway.Envelope) (gateway.Reply, error) { return gateway.Reply{Nack: true}, nil }
+	for _, id := range []string{"n1", "n2", "n3"} {
+		ps.Add(gateway.BackendInfo{ID: id, Pool: "canary"}, &fakeUp{handle: nack})
+	}
+	var got atomic.Uint32
+	ps.Add(gateway.BackendInfo{ID: "s"}, &fakeUp{handle: func(_ context.Context, env gateway.Envelope) (gateway.Reply, error) {
+		got.Store(env.Attempt)
+		return gateway.Reply{}, nil
+	}})
+	_, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}, Deadline: time.Now().Add(time.Second)})
+	require.NoError(t, err)
+	require.EqualValues(t, 4, got.Load(), "three Nacked attempts, then attempt 4 on the fallback")
+}

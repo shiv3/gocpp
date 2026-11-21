@@ -29,9 +29,11 @@ func (r *Registry) pollEvery() time.Duration {
 	return pollEvery
 }
 
-func (r *Registry) policyKey() string  { return r.prefix + ":policy" }
-func (r *Registry) policyHist() string { return r.prefix + ":policy:h" }
-func (r *Registry) policyChan() string { return r.prefix + ":policy:ch" }
+// The three policy keys are used by one script, so on Redis Cluster they must
+// hash to one slot (CROSSSLOT otherwise): a shared {policy} hash tag.
+func (r *Registry) policyKey() string  { return r.prefix + ":{policy}" }
+func (r *Registry) policyHist() string { return r.prefix + ":{policy}:h" }
+func (r *Registry) policyChan() string { return r.prefix + ":{policy}:ch" }
 
 // KEYS: policy, history, channel. ARGV: prevRev, rev, data, nowMillis, limit.
 // Returns 1 when stored, 0 on a CAS miss.
