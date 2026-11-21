@@ -20,7 +20,7 @@ var SupportedProto = gateway.ProtoRange{Min: 1, Max: 1}
 
 // supportedCaps are the capabilities this build advertises (both ends).
 var supportedCaps = []string{
-	gateway.CapNack, gateway.CapOrphan, gateway.CapAttrsSet, gateway.CapRouteV1, gateway.CapSend21, gateway.CapCancel,
+	gateway.CapNack, gateway.CapOrphan, gateway.CapAttrsSet, gateway.CapRouteV1, gateway.CapSend21, gateway.CapCancel, gateway.CapLocate,
 }
 
 const (
@@ -39,6 +39,8 @@ type Gateway struct {
 	maxInFlight  int
 	gwID         atomic.Value // string: id of the attached csms gateway server
 	boot         string
+	proto        gateway.ProtoRange // link versions spoken (SupportedProto)
+	caps         []string           // capabilities offered (supportedCaps)
 
 	mu    sync.RWMutex
 	downs map[string]gateway.Downstream
@@ -66,7 +68,7 @@ func WithMaxInFlight(n int) GatewayOption { return func(g *Gateway) { g.maxInFli
 func NewGateway(opts ...GatewayOption) *Gateway {
 	g := &Gateway{
 		pools: gateway.NewPoolSet(0), metrics: NopMetrics{}, helloTimeout: defaultHelloTimeout,
-		maxInFlight: defaultMaxInFlight, downs: make(map[string]gateway.Downstream),
+		maxInFlight: defaultMaxInFlight, proto: SupportedProto, caps: supportedCaps, downs: make(map[string]gateway.Downstream),
 	}
 	for _, o := range opts {
 		o(g)
@@ -79,6 +81,10 @@ func (g *Gateway) Register(s grpc.ServiceRegistrar) { linkpb.RegisterLinkServer(
 
 // Pools reports the attached backends by pool.
 func (g *Gateway) Pools() []gateway.PoolStatus { return g.pools.Status() }
+
+// Unhandled counts, per pool and action, the messages a router sent to a pool in
+// which no member serves the action (see gateway.PoolSet.Unhandled).
+func (g *Gateway) Unhandled() map[[2]string]uint64 { return g.pools.Unhandled() }
 
 // Available reports whether pool name has an attached, non-draining backend.
 func (g *Gateway) Available(name string) bool { return g.pools.Available(name) }
@@ -182,17 +188,17 @@ func (s *service) Attach(stream linkpb.Link_AttachServer) error {
 		return errors.New("linkgrpc: Hello without backend info")
 	}
 	info := infoBackendFromPB(hello.Backend)
-	proto := min(info.Proto.Max, SupportedProto.Max)
-	if info.Proto.Max == 0 || proto < info.Proto.Min || proto < SupportedProto.Min {
+	proto := min(info.Proto.Max, g.proto.Max)
+	if info.Proto.Max == 0 || proto < info.Proto.Min || proto < g.proto.Min {
 		g.metrics.AttachResult(info.Proto.Max, "proto_mismatch")
 		_ = stream.Send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_HelloAck{HelloAck: &linkpb.HelloAck{
 			Reason: fmt.Sprintf("no common protocol: backend %d-%d, gateway %d-%d",
-				info.Proto.Min, info.Proto.Max, SupportedProto.Min, SupportedProto.Max),
+				info.Proto.Min, info.Proto.Max, g.proto.Min, g.proto.Max),
 			Gateway: &linkpb.GatewayPeer{Id: g.peerID(), Boot: g.boot, Version: g.version},
 		}}})
 		return nil
 	}
-	caps := intersect(supportedCaps, info.Caps)
+	caps := intersect(g.caps, info.Caps)
 	if err := stream.Send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_HelloAck{HelloAck: &linkpb.HelloAck{
 		Proto: proto, Caps: caps, Gateway: &linkpb.GatewayPeer{Id: g.peerID(), Boot: g.boot, Version: g.version},
 	}}}); err != nil {
@@ -254,6 +260,8 @@ func (p *peer) readLoop() error {
 			go p.serveCall(f.Id, b.Send, true)
 		case *linkpb.BackendFrame_Control:
 			go p.serveControl(f.Id, b.Control)
+		case *linkpb.BackendFrame_Locate:
+			go p.serveLocate(f.Id, b.Locate)
 		case *linkpb.BackendFrame_Drain:
 			// No new work; the stream stays up until the backend closes it.
 			go func() {
@@ -333,6 +341,20 @@ func (p *peer) serveControl(id uint64, req *linkpb.ControlRequest) {
 		})
 	}
 	_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_ControlAck{ControlAck: &linkpb.Ack{Error: errToPB(gateway.EncodeError(err))}}})
+}
+
+// serveLocate answers a backend's question which session this gateway holds
+// for a charge point, through the attached server's gateway.Locator.
+func (p *peer) serveLocate(id uint64, req *linkpb.LocateRequest) {
+	rep := &linkpb.LocateReply{}
+	if d, ok := p.g.downstream(""); ok {
+		if l, ok := d.(gateway.Locator); ok {
+			if loc, found := l.LocateSession(req.GetCpid()); found {
+				rep = &linkpb.LocateReply{Found: true, Session: refToPB(loc.Ref), Version: string(loc.Version), Info: infoToPB(loc.Info)}
+			}
+		}
+	}
+	_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_LocateReply{LocateReply: rep}})
 }
 
 // request sends body to the backend and waits for its answer.

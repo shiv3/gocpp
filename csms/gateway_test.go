@@ -684,3 +684,49 @@ func TestGateway_SetAttrsDrivesRouting(t *testing.T) {
 	v, _ = seen.Load("BootNotification")
 	require.Equal(t, "", v)
 }
+
+func TestGateway_AuthCache(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	var decisions atomic.Int64
+	r := newRig(t, []csms.Option{csms.WithGatewayAuthCache(csms.AuthCacheConfig{TTL: 150 * time.Millisecond, StaleIfError: time.Hour})},
+		[]csms.Option{csms.WithAuthenticator(auth.BasicAuth(func(cpID, pw string) (auth.Identity, error) {
+			decisions.Add(1)
+			if pw != "secret" {
+				return auth.Identity{}, auth.ErrUnauthorized
+			}
+			return auth.Identity{CPID: cpID}, nil
+		}))}, inproc.WithUpstreamWait(100*time.Millisecond))
+	defer r.close()
+	r.serve()
+
+	dial := func(pw string) int {
+		h := http.Header{}
+		h.Set("Authorization", "Basic "+basic("CP_1", pw))
+		c, resp, err := websocket.Dial(context.Background(), r.url+"CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}, HTTPHeader: h})
+		if err != nil {
+			return resp.StatusCode
+		}
+		_ = c.CloseNow()
+		return http.StatusSwitchingProtocols
+	}
+	require.Equal(t, 101, dial("secret"))
+	require.EqualValues(t, 1, decisions.Load())
+	require.Equal(t, 101, dial("secret"), "within the TTL: from the cache")
+	require.EqualValues(t, 1, decisions.Load())
+	require.Equal(t, 401, dial("wrong"), "another credential is another key, and a rejection is final")
+	require.EqualValues(t, 2, decisions.Load())
+
+	time.Sleep(200 * time.Millisecond) // past the TTL: asked again
+	require.Equal(t, 101, dial("secret"))
+	require.EqualValues(t, 3, decisions.Load())
+
+	// Backend gone: the stale accepted decision still admits; an unknown one does not.
+	r.stopFn()
+	r.stopFn = nil
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, 101, dial("secret"))
+	require.Equal(t, 503, dial("other"))
+	// Invalidated (credential changed): no stale decision left.
+	r.gw.InvalidateAuthCache("CP_1")
+	require.Equal(t, 503, dial("secret"))
+}

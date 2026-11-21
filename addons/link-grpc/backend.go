@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -52,6 +53,8 @@ type Backend struct {
 	resolveEvery time.Duration
 	drainTimeout time.Duration
 	keepalive    keepalive.ClientParameters
+	proto        gateway.ProtoRange // link versions spoken (SupportedProto)
+	caps         []string           // capabilities offered (supportedCaps)
 
 	mu      sync.RWMutex
 	streams map[string]*stream // by gateway id
@@ -88,7 +91,7 @@ func NewBackend(resolve Resolver, opts ...BackendOption) *Backend {
 	b := &Backend{
 		resolve: resolve, metrics: NopMetrics{}, resolveEvery: 5 * time.Second, drainTimeout: 30 * time.Second,
 		keepalive: keepalive.ClientParameters{Time: 10 * time.Second, Timeout: 5 * time.Second, PermitWithoutStream: true},
-		streams:   make(map[string]*stream),
+		streams:   make(map[string]*stream), proto: SupportedProto, caps: supportedCaps,
 	}
 	for _, o := range opts {
 		o(b)
@@ -150,8 +153,8 @@ func (b *Backend) stream(id string) (*stream, bool) {
 // gateway to send no new work, work in flight is allowed to finish (up to the
 // drain timeout), and the streams close.
 func (b *Backend) Serve(ctx context.Context, up gateway.Upstream, info gateway.BackendInfo) error {
-	info.Proto = SupportedProto
-	info.Caps = supportedCaps
+	info.Proto = b.proto
+	info.Caps = b.caps
 	runCtx, cancelRun := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelRun()
 
@@ -309,7 +312,7 @@ func (s *stream) readLoop(ctx context.Context, up gateway.Upstream, info gateway
 			return err
 		}
 		switch b := f.Body.(type) {
-		case *linkpb.GatewayFrame_CallReply, *linkpb.GatewayFrame_SendAck, *linkpb.GatewayFrame_ControlAck, *linkpb.GatewayFrame_Unsupported:
+		case *linkpb.GatewayFrame_CallReply, *linkpb.GatewayFrame_SendAck, *linkpb.GatewayFrame_ControlAck, *linkpb.GatewayFrame_LocateReply, *linkpb.GatewayFrame_Unsupported:
 			if u, ok := b.(*linkpb.GatewayFrame_Unsupported); ok {
 				s.b.metrics.Unsupported("sent", u.Unsupported.GetWhat())
 			}
@@ -458,8 +461,59 @@ func (b *Backend) Control(ctx context.Context, req gateway.ControlRequest) error
 	return gateway.ErrUnsupported
 }
 
-// Locate is not provided by this link: the session registry is the directory
-// of sessions across gateways.
-func (b *Backend) Locate(context.Context, string) (gateway.Located, bool, error) {
-	return gateway.Located{}, false, nil
+// Locate asks every attached gateway that supports it which session it holds for
+// cpID, so a backend without a session registry can still address a charger it
+// has not seen a message from. It returns the first answer that has one. A
+// gateway that does not know the question (an older build) counts as not found.
+func (b *Backend) Locate(ctx context.Context, cpID string) (gateway.Located, bool, error) {
+	b.mu.RLock()
+	ss := make([]*stream, 0, len(b.streams))
+	for _, s := range b.streams {
+		if slices.Contains(s.caps, gateway.CapLocate) {
+			ss = append(ss, s)
+		}
+	}
+	b.mu.RUnlock()
+	if len(ss) == 0 {
+		return gateway.Located{}, false, nil
+	}
+	type result struct {
+		loc gateway.Located
+		ok  bool
+		err error
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	res := make(chan result, len(ss))
+	for _, s := range ss {
+		go func() {
+			r, _, err := s.request(ctx, &linkpb.BackendFrame{Body: &linkpb.BackendFrame_Locate{Locate: &linkpb.LocateRequest{Cpid: cpID}}})
+			if err != nil {
+				res <- result{err: err}
+				return
+			}
+			lr, isReply := r.Body.(*linkpb.GatewayFrame_LocateReply)
+			if !isReply || !lr.LocateReply.GetFound() {
+				res <- result{}
+				return
+			}
+			l := lr.LocateReply
+			res <- result{ok: true, loc: gateway.Located{
+				Ref: refFromPB(l.Session), Version: ocppj.Version(l.Version), Info: infoFromPB(l.Info),
+			}}
+		}()
+	}
+	var firstErr error
+	for range ss {
+		r := <-res
+		switch {
+		case r.ok:
+			return r.loc, true, nil
+		case r.err != nil && firstErr == nil:
+			firstErr = r.err
+		}
+	}
+	// Every gateway answered "not here", or some failed: an error only when
+	// nobody could say.
+	return gateway.Located{}, false, firstErr
 }

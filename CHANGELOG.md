@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
+  capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
+  from the registered handlers and honoured by `PoolSet` (unhandled actions fall
+  back to the route's fallback pool and are counted), `csms.WithGatewayAuthCache`
+  and `Server.InvalidateAuthCache`, and link protocol skew tests (v1/v2 ranges).
 - Gateway performance gates and benchmarks (`benchmarks/gateway_hop_test.go`,
   `addons/link-grpc/hop_test.go`), pprof on the `gocpp-gateway` admin listener, and the
   measured results in docs/gateway.md.

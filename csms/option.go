@@ -63,6 +63,7 @@ type serverConfig struct {
 	splitInProcess bool
 	backendInfo    gateway.BackendInfo
 	gwRouter       gateway.Router
+	gwAuthCache    *AuthCacheConfig
 	onOrphan       func(cpID, callID, action string, payload []byte, err error)
 }
 
@@ -589,4 +590,32 @@ func WithBackendInfo(info gateway.BackendInfo) Option {
 // action and the session attributes. Default gateway.DefaultRouter.
 func WithRouter(r gateway.Router) Option {
 	return optionFunc(func(c *serverConfig) { c.gwRouter = r })
+}
+
+// AuthCacheConfig configures the gateway's cache of connect decisions.
+type AuthCacheConfig struct {
+	// TTL is how long an accepted connect is answered from the cache without
+	// asking the backend. Default 5 minutes.
+	TTL time.Duration
+	// StaleIfError is how long past TTL an accepted decision is still served when
+	// the backend cannot be reached (no backend attached, link failure). 0 serves
+	// no stale decision. Default 1 hour.
+	StaleIfError time.Duration
+	// MaxEntries bounds the cache (default 100000); at the limit expired entries
+	// go first, then an arbitrary one.
+	MaxEntries int
+}
+
+// WithGatewayAuthCache makes a gateway (NewGatewayServer) remember the backend's
+// positive connect decisions, keyed by a hash of what the decision can depend
+// on: the charge point id, request path, Authorization header, offered
+// subprotocols and the client certificate. Within TTL a reconnect is admitted
+// without a round trip (a reconnect storm does not hit the backend's credential
+// store), and after TTL the backend is asked again; if it cannot be reached an
+// accepted decision up to StaleIfError old is reused, so charge points keep
+// reconnecting through a backend outage. Rejections are never cached and drop
+// the entry. Do not enable it when the backend decides on other request headers;
+// call Server.InvalidateAuthCache after a credential change.
+func WithGatewayAuthCache(cfg AuthCacheConfig) Option {
+	return optionFunc(func(c *serverConfig) { c.gwAuthCache = &cfg })
 }

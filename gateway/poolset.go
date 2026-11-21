@@ -17,8 +17,10 @@ import (
 type PoolSet struct {
 	wait time.Duration
 
-	mu    sync.Mutex
-	pools map[string]*Pool
+	mu        sync.Mutex
+	pools     map[string]*Pool
+	unhandled map[[2]string]uint64 // {pool, action} -> routings to a pool without a handler
+	onUnhand  func(pool, action string)
 }
 
 // NewPoolSet returns a PoolSet whose pools hold for wait (<= 0: DefaultUpstreamWait).
@@ -47,6 +49,40 @@ func (s *PoolSet) Add(info BackendInfo, up Upstream) *Member {
 		return nil
 	}
 	return s.get(info.Pool, true).Add(info, up)
+}
+
+// SetUnhandledObserver registers fn to be called (synchronously, keep it cheap)
+// whenever a message is routed to a pool in which no available member serves
+// its action (BackendInfo.Actions), once per such message.
+func (s *PoolSet) SetUnhandledObserver(fn func(pool, action string)) {
+	s.mu.Lock()
+	s.onUnhand = fn
+	s.mu.Unlock()
+}
+
+// Unhandled reports, per pool and action, how many messages were routed to a
+// pool without a member that serves the action since the PoolSet was created.
+func (s *PoolSet) Unhandled() map[[2]string]uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[[2]string]uint64, len(s.unhandled))
+	for k, v := range s.unhandled {
+		out[k] = v
+	}
+	return out
+}
+
+func (s *PoolSet) noteUnhandled(pool, action string) {
+	s.mu.Lock()
+	if s.unhandled == nil {
+		s.unhandled = make(map[[2]string]uint64)
+	}
+	s.unhandled[[2]string{pool, action}]++
+	fn := s.onUnhand
+	s.mu.Unlock()
+	if fn != nil {
+		fn(pool, action)
+	}
 }
 
 // Pool returns the pool called name, or nil when no member has ever attached.
@@ -119,6 +155,36 @@ func (s *PoolSet) choose(r *Route) *Pool {
 	return s.get(name, true)
 }
 
+// chooseFor is choose for a message with an OCPP action: when the chosen pool
+// has no available member that serves it (every member lists its actions and
+// none lists this one), the fallback pool takes it if that one does serve it;
+// without a usable fallback the routed pool keeps it (it will answer
+// NotImplemented, as a backend without a handler does) and the miss is counted.
+// restrict is the action members must serve, "" when the pool is kept anyway.
+func (s *PoolSet) chooseFor(r *Route, kind Kind, action string) (p *Pool, restrict string) {
+	p = s.choose(r)
+	if action == "" || (kind != KindCall && kind != KindSend) || !p.Available() {
+		return p, ""
+	}
+	if p.Handles(action) {
+		return p, action
+	}
+	s.noteUnhandled(poolName(r), action)
+	if r != nil && r.Fallback != "" {
+		if fp := s.get(r.Fallback, false); fp != nil && fp != p && fp.Available() && fp.Handles(action) {
+			return fp, action
+		}
+	}
+	return p, ""
+}
+
+func poolName(r *Route) string {
+	if r == nil || r.Pool == "" {
+		return DefaultPool
+	}
+	return r.Pool
+}
+
 // Connect implements Upstream.
 func (s *PoolSet) Connect(ctx context.Context, req ConnectRequest) (ConnectReply, error) {
 	return s.choose(req.Route).Connect(ctx, req)
@@ -126,8 +192,8 @@ func (s *PoolSet) Connect(ctx context.Context, req ConnectRequest) (ConnectReply
 
 // Handle implements Upstream.
 func (s *PoolSet) Handle(ctx context.Context, env Envelope) (Reply, error) {
-	p := s.choose(env.Route)
-	rep, err := p.Handle(ctx, env)
+	p, restrict := s.chooseFor(env.Route, env.Kind, env.Action)
+	rep, err := p.handle(ctx, env, restrict)
 	if err != nil && env.Route != nil && env.Route.Fallback != "" && isNoBackend(err) {
 		// Every member of the routed pool refused (Nack) or vanished: redispatch
 		// on the fallback pool within the deadline. Never after a dispatch that
@@ -142,7 +208,8 @@ func (s *PoolSet) Handle(ctx context.Context, env Envelope) (Reply, error) {
 
 // Notify implements Upstream.
 func (s *PoolSet) Notify(ctx context.Context, env Envelope) error {
-	return s.choose(env.Route).Notify(ctx, env)
+	p, restrict := s.chooseFor(env.Route, env.Kind, env.Action)
+	return p.notify(ctx, env, restrict)
 }
 
 func isNoBackend(err error) bool { return errors.Is(err, ErrNoBackend) }

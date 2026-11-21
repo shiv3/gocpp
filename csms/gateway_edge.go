@@ -60,6 +60,7 @@ type edge struct {
 	boot string
 
 	router gateway.Router
+	auth   *authCache
 
 	epoch atomic.Uint64
 	seq   atomic.Uint64
@@ -91,6 +92,9 @@ func newEdge(s *Server, link gateway.GatewayLink, id string) *edge {
 		router = gateway.DefaultRouter{}
 	}
 	e := &edge{s: s, link: link, id: id, boot: boot, router: router, calls: make(map[string]*edgeCall)}
+	if c := s.cfg.gwAuthCache; c != nil {
+		e.auth = newAuthCache(*c)
+	}
 	s.reg.SetFallback(e.forward)
 	s.reg.SetSendFallback(e.forwardSend)
 	e.detach = link.Attach(id, edgeDownstream{e})
@@ -134,12 +138,32 @@ func (e *edge) connect(r *http.Request, cpID string) (rep gateway.ConnectReply, 
 		Gateway: gateway.SessionRef{GatewayID: e.id, Boot: e.boot},
 	}
 	req.Route = e.route(gateway.KindCall, cpID, "$connect", "", nil)
+	var key authKey
+	if e.auth != nil {
+		key = authKeyOf(req)
+		if cached, ok := e.auth.fresh(key); ok {
+			return cached, 0, ""
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), edgeNotifyTimeout)
 	defer cancel()
 	rep, err := e.link.Connect(ctx, req)
 	if err != nil {
+		if e.auth != nil {
+			if cached, ok := e.auth.stale(key); ok {
+				e.s.cfg.dispatcher.Logger.Warn("gateway: connect decision unavailable, using cached", "cp_id", cpID, "error", err)
+				return cached, 0, ""
+			}
+		}
 		e.s.cfg.dispatcher.Logger.Warn("gateway: connect decision unavailable", "cp_id", cpID, "error", err)
 		return rep, http.StatusServiceUnavailable, "service unavailable"
+	}
+	if e.auth != nil {
+		if rep.Reject == nil {
+			e.auth.put(key, cpID, rep)
+		} else {
+			e.auth.drop(key)
+		}
 	}
 	if rep.Reject != nil {
 		st := rep.Reject.Status
