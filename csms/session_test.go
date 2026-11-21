@@ -30,9 +30,9 @@ func newSessNode(t *testing.T, reg storage.SessionRegistry, id string, cfg csms.
 	return &sessNode{srv: srv, ts: ts}
 }
 
-func (n *sessNode) dial(ctx context.Context, t *testing.T, cpID string) *websocket.Conn {
+func (n *sessNode) dial(ctx context.Context, t *testing.T) *websocket.Conn {
 	t.Helper()
-	c, _, err := websocket.Dial(ctx, "ws"+n.ts.URL[len("http"):]+"/ocpp/"+cpID, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+	c, _, err := websocket.Dial(ctx, "ws"+n.ts.URL[len("http"):]+"/ocpp/CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.CloseNow() })
 	return c
@@ -43,7 +43,7 @@ func TestSession_ClaimedBeforeAcceptAndReleasedOnClose(t *testing.T) {
 	defer cancel()
 	reg := memory.NewSessionRegistry()
 	a := newSessNode(t, reg, "A", csms.SessionConfig{})
-	c := a.dial(ctx, t, "CP_1")
+	c := a.dial(ctx, t)
 
 	conn, ok := a.srv.Get("CP_1")
 	require.True(t, ok)
@@ -67,10 +67,10 @@ func TestSession_ReconnectToOtherGatewayDisplacesOldSocket(t *testing.T) {
 	cfg := csms.SessionConfig{ReconcileInterval: 50 * time.Millisecond, HeartbeatInterval: 20 * time.Millisecond}
 	a, b := newSessNode(t, reg, "A", cfg), newSessNode(t, reg, "B", cfg)
 
-	old := a.dial(ctx, t, "CP_1")
+	old := a.dial(ctx, t)
 	aConn, _ := a.srv.Get("CP_1")
 	oldSess, _ := aConn.Session()
-	b.dial(ctx, t, "CP_1")
+	b.dial(ctx, t)
 
 	// The registry now routes to B...
 	rec, found, err := reg.Lookup(ctx, "CP_1")
@@ -118,7 +118,7 @@ func TestSession_RegistryOutageAcceptsUnclaimedThenClaims(t *testing.T) {
 	reg := &slowRegistry{SessionRegistry: memory.NewSessionRegistry()}
 	reg.block.Store(true)
 	a := newSessNode(t, reg, "A", csms.SessionConfig{ClaimTimeout: 100 * time.Millisecond})
-	a.dial(ctx, t, "CP_1")
+	a.dial(ctx, t)
 
 	conn, ok := a.srv.Get("CP_1")
 	require.True(t, ok, "connection served while the registry is unreachable")

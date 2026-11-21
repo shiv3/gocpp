@@ -55,7 +55,6 @@ func TestSessionRegistry_Property(t *testing.T) {
 		crashed := make([]bool, gateways)
 		mgrs := make([]*sessionManager, gateways)
 		for g := range mgrs {
-			g := g
 			mgrs[g] = newSessionManager(reg, SessionConfig{GatewayID: fmt.Sprintf("G%d", g), LeaseTTL: leaseTTL}, log, true,
 				func() []sessionHolder {
 					var hs []sessionHolder
