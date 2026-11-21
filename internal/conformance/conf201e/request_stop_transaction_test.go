@@ -2,6 +2,7 @@ package conf201e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ func testChargingProfile201e(stackLevel int64) messages.ChargingProfileType {
 func requireCSMSHandlerInvalidDirection201e[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
-	srv := csms.NewServer(csms.WithSubProtocols(v201.SubProtocol))
+	srv := splitmode.NewServer(csms.WithSubProtocols(v201.SubProtocol))
 	wrongDirection := ocppj.Message[Req, Resp]{
 		Action:    msg.Action,
 		Direction: ocppj.SentByCSMS,

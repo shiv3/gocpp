@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,7 +38,7 @@ func (w extResponseRecorder) WriteHeader(code int) {
 func (w extResponseRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func TestE2E_CompressionNegotiated(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1")) // compression default ON
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.1")) // compression default ON
 	require.NoError(t, csms.On(srv, v21p.Heartbeat, func(_ context.Context, _ *csms.Conn, _ v21msg.HeartbeatRequest) (v21msg.HeartbeatResponse, error) {
 		return v21msg.HeartbeatResponse{CurrentTime: time.Now().UTC()}, nil
 	}))
@@ -67,7 +68,7 @@ func TestE2E_CompressionNegotiated(t *testing.T) {
 }
 
 func TestE2E_CompressionDisabledStillConnects(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithCompression(transport.CompressionDisabled))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.1"), csms.WithCompression(transport.CompressionDisabled))
 	require.NoError(t, csms.On(srv, v21p.Heartbeat, func(_ context.Context, _ *csms.Conn, _ v21msg.HeartbeatRequest) (v21msg.HeartbeatResponse, error) {
 		return v21msg.HeartbeatResponse{CurrentTime: time.Now().UTC()}, nil
 	}))

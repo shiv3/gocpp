@@ -2,6 +2,7 @@ package conf201a
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 
@@ -244,7 +245,7 @@ func TestBootNotification201_ResponseValidation(t *testing.T) {
 }
 
 func TestBootNotification201_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols(v201.SubProtocol))
+	srv := splitmode.NewServer(csms.WithSubProtocols(v201.SubProtocol))
 	wrongDirection := ocppj.Message[messages.BootNotificationRequest, messages.BootNotificationResponse]{
 		Action:    profiles.BootNotification.Action,
 		Direction: ocppj.SentByCSMS,

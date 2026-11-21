@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ import (
 // method (CP.BootNotification) and a CSMS method (CSMS.Reset), confirming each
 // behaves like the equivalent cp.Call / csms.Call.
 func TestE2E_16GeneratedClientMethods(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 
 	require.NoError(t, csms.On(srv, v16p.BootNotification, func(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
 		require.Equal(t, "Acme", req.ChargePointVendor)

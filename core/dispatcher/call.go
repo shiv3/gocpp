@@ -88,6 +88,7 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 	if err := c.send(ctx, raw); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
+	notifySent(ctx)
 
 	select {
 	case res := <-pc.respCh:
@@ -115,4 +116,22 @@ func (c *Conn) maybeSendResultError(msgID string, cause error) {
 		return
 	}
 	c.sendCallResultError(msgID, ocppj.WrapCallError(ocppj.ErrorCodeFormatViolation, cause, nil))
+}
+
+type sentHookKey struct{}
+
+// WithSentHook returns a context that makes DoCall (and the csms/cp wrappers
+// built on it) invoke fn once, on the calling goroutine, right after the CALL
+// frame has been written to the socket. A call that fails before fn ran was
+// never sent and is safe to retry; one that fails after may have been executed
+// by the peer. The gateway uses it to report that distinction to the processing
+// tier.
+func WithSentHook(ctx context.Context, fn func()) context.Context {
+	return context.WithValue(ctx, sentHookKey{}, fn)
+}
+
+func notifySent(ctx context.Context) {
+	if fn, _ := ctx.Value(sentHookKey{}).(func()); fn != nil {
+		fn()
+	}
 }

@@ -23,6 +23,10 @@ type Conn struct {
 	remoteID string
 	srv      *Server
 
+	// gw is the gateway session this Conn belongs to: its own on a gateway, the
+	// session of a handle or message on a processing tier (see GatewaySession).
+	gw *gwSession
+
 	// gone is closed once the server has finished tearing this connection down:
 	// disconnect callback fired and the connection removed from the registry. Nil
 	// for the short-lived wrappers handed to typed handlers, which only wait for
@@ -60,6 +64,9 @@ func (c *Conn) Remote() bool { return c.inner == nil }
 // is a snapshot; the epoch of a connection can change when the server re-claims
 // it.
 func (c *Conn) Session() (s storage.Session, ok bool) {
+	if c.inner == nil && c.gw != nil {
+		return c.gw.storageSession(), true
+	}
 	if c.inner == nil {
 		if c.session == nil {
 			return storage.Session{}, false
@@ -94,6 +101,9 @@ func (c *Conn) Attrs() map[string]string {
 // reserved for a gateway to interpret (gocpp.busy) and are stored like any other.
 // Not supported on a remote handle (ErrRemoteConn).
 func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
+	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
+		return c.srv.setAttrsGateway(ctx, c, attrs)
+	}
 	if c.inner == nil {
 		return ErrRemoteConn
 	}
@@ -146,6 +156,9 @@ func (c *Conn) displace() { c.inner.Abort(ocppj.ErrConnReplaced) }
 // Version returns the negotiated OCPP version.
 func (c *Conn) Version() ocppj.Version {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.version
+		}
 		return ""
 	}
 	return c.inner.Version()
@@ -154,6 +167,9 @@ func (c *Conn) Version() ocppj.Version {
 // Subprotocol returns the negotiated WebSocket subprotocol.
 func (c *Conn) Subprotocol() string {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.subprotocol()
+		}
 		return ""
 	}
 	return c.inner.Subprotocol()
@@ -162,6 +178,9 @@ func (c *Conn) Subprotocol() string {
 // RemoteAddr returns the peer network address from the HTTP upgrade request.
 func (c *Conn) RemoteAddr() string {
 	if c.inner == nil {
+		if c.gw != nil && c.gw.info() != nil {
+			return c.gw.info().RemoteAddr
+		}
 		return ""
 	}
 	return c.inner.RemoteAddr()
@@ -170,6 +189,9 @@ func (c *Conn) RemoteAddr() string {
 // RequestHeader returns a copy of the HTTP upgrade request headers.
 func (c *Conn) RequestHeader() http.Header {
 	if c.inner == nil {
+		if c.gw != nil && c.gw.info() != nil {
+			return c.gw.info().RequestHeader.Clone()
+		}
 		return nil
 	}
 	return c.inner.RequestHeader()
@@ -178,6 +200,9 @@ func (c *Conn) RequestHeader() http.Header {
 // TLS returns a copy of the HTTP upgrade TLS connection state, if available.
 func (c *Conn) TLS() *tls.ConnectionState {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.tlsState()
+		}
 		return nil
 	}
 	return c.inner.TLS()
@@ -195,6 +220,9 @@ func (c *Conn) TLS() *tls.ConnectionState {
 // returns ctx.Err() and the teardown still completes in the background.
 func (c *Conn) Close(ctx context.Context) error {
 	if c.inner == nil {
+		if c.gw != nil && c.srv != nil && c.srv.backend != nil {
+			return c.srv.closeGateway(ctx, c)
+		}
 		return ErrRemoteConn
 	}
 	c.inner.Abort(ocppj.ErrConnClosedByServer)
@@ -248,7 +276,8 @@ func (c *Conn) Done() <-chan struct{} {
 func ConnFromContext(ctx context.Context) (*Conn, bool) {
 	dc, ok := dispatcher.ConnFromContext(ctx)
 	if !ok {
-		return nil, false
+		c, ok := ctx.Value(gwConnKey{}).(*Conn)
+		return c, ok
 	}
 	return &Conn{inner: dc}, true
 }

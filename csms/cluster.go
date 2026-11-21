@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
@@ -76,7 +77,7 @@ func (s *Server) claimSession(r *http.Request, cpID string, attrs map[string]str
 		}
 	}
 	return s.sessions.claim(r.Context(), storage.Session{
-		CPID: cpID, ConnectedAt: time.Now(), Meta: meta,
+		CPID: cpID, ConnectedAt: time.Now(), Meta: meta, Version: s.offeredVersion(r),
 	}), true
 }
 
@@ -97,6 +98,13 @@ func (s *Server) SetGatewayLabel(ctx context.Context, key, value string) {
 // Conn.SetAttrs for the merge rules.
 func (s *Server) SetSessionAttrs(ctx context.Context, id string, attrs map[string]string) error {
 	c, ok := s.Get(id)
+	if !ok && s.backend != nil {
+		h, err := s.lookupGateway(ctx, id)
+		if err != nil {
+			return err
+		}
+		return h.SetAttrs(ctx, attrs)
+	}
 	if !ok {
 		return ocppj.ErrNotConnected
 	}
@@ -249,6 +257,9 @@ func (s *Server) Lookup(ctx context.Context, id string) (*Conn, error) {
 	if c, ok := s.Get(id); ok {
 		return c, nil
 	}
+	if s.backend != nil {
+		return s.lookupGateway(ctx, id)
+	}
 	if !s.clustered() {
 		return nil, ocppj.ErrNotConnected
 	}
@@ -265,4 +276,19 @@ func (s *Server) Lookup(ctx context.Context, id string) (*Conn, error) {
 		return nil, ocppj.ErrNotConnected
 	}
 	return &Conn{remoteID: id, srv: s, session: &sess}, nil
+}
+
+// offeredVersion is the OCPP version the upgrade will negotiate: the first of
+// the server's subprotocols (its preference order, as the WebSocket library
+// picks) that the charger offers. Empty when there is none.
+func (s *Server) offeredVersion(r *http.Request) string {
+	offered := websocketSubprotocols(r)
+	for _, ours := range s.cfg.subProtocols {
+		for _, p := range offered {
+			if strings.EqualFold(ours, p) {
+				return strings.TrimPrefix(ours, "ocpp")
+			}
+		}
+	}
+	return ""
 }

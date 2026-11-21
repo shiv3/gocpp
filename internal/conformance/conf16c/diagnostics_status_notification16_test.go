@@ -3,6 +3,7 @@ package conf16c
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"testing"
 
 	"github.com/shiv3/gocpp/core/ocppj"
@@ -59,7 +60,7 @@ func TestDiagnosticsStatusNotification16_ResponseValidation(t *testing.T) {
 }
 
 func TestDiagnosticsStatusNotification16_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	wrongDirection := ocppj.Message[messages.DiagnosticsStatusNotificationRequest, messages.DiagnosticsStatusNotificationResponse]{
 		Action:    v16profiles.DiagnosticsStatusNotification.Action,
 		Direction: ocppj.SentByCSMS,

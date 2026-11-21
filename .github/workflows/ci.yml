@@ -13,6 +13,11 @@ jobs:
         with:
           go-version: "1.26"
       - run: go test -race ./...
+      # The conformance and e2e suites a second time with the server split into
+      # a gateway and a processing tier over the in-process link.
+      - run: go test -race -count=1 ./internal/...
+        env:
+          GOCPP_TEST_SPLIT: "1"
       # Footprint bounds are not asserted under -race (it inflates heap/stack).
       - run: go test -count=1 -run TestIdleFootprintBounds ./benchmarks/
 

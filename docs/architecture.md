@@ -17,6 +17,14 @@ only on `core/ocppj` (message values) and `core/schema` (embedded schemas). The
 dispatcher is **version-agnostic**: adding a version added zero dispatcher code — the
 key §1 boundary, validated across 1.6/2.0.1/2.1.
 
+## Split deployment
+
+The same layers can run as a gateway (connection tier) and a backend (processing
+tier) joined by a link; see [gateway.md](gateway.md). The seam is
+`dispatcher.Pipeline` (the payload policy of a connection: signing, schema
+validation, lenient coercion, error mapping), which both an embedded `Conn` and a
+backend call, so error codes are identical in both modes.
+
 ## Connection lifecycle
 
 `dispatcher.Conn` is bound to a `context.WithCancelCause` and has one resident

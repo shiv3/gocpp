@@ -8,6 +8,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Gateway mode (phase 3 of docs/design/gateway.md): `gateway` package (contract:
+  `Envelope`, `Upstream`, `Downstream`, `WireError`, `Pool`), `gateway/inproc`
+  (in-process link), `csms.NewGatewayServer` (connection tier),
+  `csms.WithGatewayLink` + `Server.ServeGateway` / `Server.Upstream` (processing
+  tier), `csms.WithGatewayID`, `csms.WithOnOrphanResult`, `Conn.GatewaySession`,
+  `csms.WithSplitInProcess`. On a backend `Lookup` returns a session handle whose
+  `Call`, `Send` and `Close` go through the link. See docs/gateway.md. The
+  conformance and e2e suites run a second time through the in-process link
+  (`GOCPP_TEST_SPLIT=1`).
+- Staged-release seams: `gateway.BackendInfo`, `DefaultPool`, `PoolSet`,
+  `Router` / `RouteInput` / `RouteDecision`, `Envelope.Route`,
+  `ControlSetAttrs`, `csms.WithBackendInfo`, `csms.WithRouter`,
+  `Conn.UpdateAttrs`. Without a router only the default backend pool gets work.
+- `dispatcher.RawCallError`, `dispatcher.WithSentHook`, `HandlerRegistry` send
+  fallback (`SetSendFallback`, `ResolveSend`), `ConnMetadata.Owner` /
+  `Conn.Owner`.
 - `dispatcher.Pipeline` (`NewPipeline`, `RunCall`, `RunSend`, `ValidateInbound`,
   `ValidateOutbound`, `TransformOutbound`, `DecodeSigned`, `MapBuiltinError`): the
   payload policy of a connection (signed-message unwrap, schema validation and
@@ -15,8 +31,8 @@ All notable changes to this project are documented here. The format is based on
   extracted from `Conn` so it needs only a `Config`, a version and a charge point
   id. Embedded connections use it unchanged; it is the seam a processing tier
   behind a gateway uses to apply identical rules.
-- `HandlerRegistry.SetFallback` / `Resolve`: a catch-all handler for actions with
-  no registered handler (`Lookup` is unchanged).
+- `HandlerRegistry.SetFallback` / `Resolve`: a catch-all handler (receiving the
+  action) for actions with no registered handler (`Lookup` is unchanged).
 - `transport.StatusServiceRestart` (WebSocket close code 1012).
 - `csms.On` / `csms.OnSend` also record the handler in a table typed on
   `*csms.Conn` (internal), used by the upcoming gateway mode.

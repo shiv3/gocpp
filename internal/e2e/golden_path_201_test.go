@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestE2E_201TransactionEventGoldenPath(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp2.0.1"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp2.0.1"))
 	transactionEvents := make(chan string, 2)
 
 	require.NoError(t, csms.On(srv, v201p.BootNotification, func(ctx context.Context, c *csms.Conn, req v201msg.BootNotificationRequest) (v201msg.BootNotificationResponse, error) {

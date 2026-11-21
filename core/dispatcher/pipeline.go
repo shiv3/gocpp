@@ -124,6 +124,11 @@ func (p *Pipeline) handlerFailed(ctx, hctx context.Context, action string, err e
 		p.fail(out, "timeout", ocppj.NewCallError(ocppj.ErrorCodeInternalError, "handler timed out", nil))
 		return
 	}
+	var raw *RawCallError
+	if errors.As(err, &raw) {
+		*out = InboundOutcome{Status: "error", Err: raw.Err, Wire: raw.Wire, NoReply: raw.NoReply}
+		return
+	}
 	ce := mapHandlerError(err)
 	var de *decodeError
 	if errors.As(err, &de) {
@@ -143,6 +148,23 @@ func (p *Pipeline) fail(out *InboundOutcome, status string, ce *ocppj.CallError)
 func (p *Pipeline) builtin(out *InboundOutcome, status string, src ErrorSource, action string, err error, def *ocppj.CallError) {
 	wire, reply := p.MapBuiltinError(src, action, err, def, true)
 	*out = InboundOutcome{Status: status, Err: def, Wire: wire, NoReply: !reply}
+}
+
+// RawCallError is a handler error that is already a finished CALLERROR: the
+// wire code is used as is (no ErrorCodeMapper, no re-spelling for the version)
+// and NoReply suppresses the reply. A gateway's forwarder returns it for an
+// error the processing tier decided.
+type RawCallError struct {
+	Err     *ocppj.CallError
+	Wire    string
+	NoReply bool
+}
+
+func (e *RawCallError) Error() string {
+	if e.Err == nil {
+		return "raw call error"
+	}
+	return e.Err.Error()
 }
 
 // MapBuiltinError runs the configured ErrorCodeMapper for a CALLERROR the

@@ -5,6 +5,8 @@ behind a load balancer, a command for a charge point (Reset, RemoteStartTransact
 ...) may be issued on an instance that does not hold its socket. gocpp forwards
 such calls to the owning instance.
 
+For the split deployment (a connection tier that holds the sockets and a stateless processing tier) see [gateway.md](gateway.md).
+
 ## Setup
 
 ```go

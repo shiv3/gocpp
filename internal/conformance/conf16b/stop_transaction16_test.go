@@ -3,6 +3,7 @@ package conf16b
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -177,7 +178,7 @@ func TestStopTransaction16_ResponseValidation(t *testing.T) {
 }
 
 func TestStopTransaction16_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	wrongDirection := ocppj.Message[messages.StopTransactionRequest, messages.StopTransactionResponse]{
 		Action:    v16profiles.StopTransaction.Action,
 		Direction: ocppj.SentByCSMS,
