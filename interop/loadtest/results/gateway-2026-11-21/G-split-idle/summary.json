@@ -1,0 +1,149 @@
+{
+ "abort_reason": "",
+ "aborted": false,
+ "call_latency_ms": {},
+ "calls": {},
+ "config": {
+  "ServerBin": "./cs-gocpp",
+  "ServerArgs": "",
+  "Addr": "127.0.0.1:9000",
+  "Taskset": "",
+  "Pprof": "127.0.0.1:6060",
+  "Out": "out/G-split-idle",
+  "Label": "split-idle10k",
+  "ServerProcs": 2,
+  "Steps": [
+   {
+    "N": 10000,
+    "Rate": 0,
+    "Dur": 180000000000,
+    "Speed": 1
+   }
+  ],
+  "Ramp": 120000000000,
+  "HB": 600000000000,
+  "ReconnBase": 1000000000,
+  "ReconnCap": 30000000000,
+  "ReconnJitter0": 3000000000,
+  "RestartGap": 2000000000,
+  "Sample": 5000000000,
+  "FreezeThresh": 10000000000,
+  "CallTimeout": 30000000000,
+  "TxCycle": 40000000000,
+  "TxLen": 25000000000,
+  "Meter": 5000000000,
+  "HBJitter": 0.1,
+  "Mute": 1,
+  "TxFrac": 0,
+  "Flappers": 0,
+  "Dups": 0,
+  "Restarts": 0,
+  "Connectors": 2,
+  "MinAvailMB": 800,
+  "Attach": false,
+  "GCTrace": false,
+  "Hot": 0,
+  "HotShare": 0.9,
+  "GatewayBin": "./gocpp-gateway",
+  "BackendPools": "default:2",
+  "GwTaskset": "8-9",
+  "BeTaskset": "10-13",
+  "GwArgs": "",
+  "RestartTarget": "server",
+  "RestartMode": "term",
+  "Gateways": 1
+ },
+ "connect_errors": {},
+ "csms_calls_delivered": {
+  "muted_dropped": 0,
+  "unmuted": 0
+ },
+ "duration_s": 180.088196174,
+ "final_up": 10000,
+ "freezes": null,
+ "label": "split-idle10k",
+ "latency_all_ms": {
+  "BootNotification": {
+   "n": 10000,
+   "P50": 0.613,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 4,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 2034,
+   "P50": 0.613,
+   "P95": 0.964,
+   "P99": 1.08,
+   "Max": 8.298,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 30000,
+   "P50": 0.347,
+   "P95": 0.547,
+   "P99": 0.686,
+   "Max": 6.044,
+   "Mean": 0
+  }
+ },
+ "latency_by_step_steady_ms": {
+  "0": {
+   "BootNotification": {
+    "n": 10000,
+    "P50": 0.613,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 4,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 2034,
+    "P50": 0.613,
+    "P95": 0.964,
+    "P99": 1.08,
+    "Max": 8.298,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 30000,
+    "P50": 0.347,
+    "P95": 0.547,
+    "P99": 0.686,
+    "Max": 6.044,
+    "Mean": 0
+   }
+  }
+ },
+ "latency_restart_windows_ms": {},
+ "latency_steady_ms": {
+  "BootNotification": {
+   "n": 10000,
+   "P50": 0.613,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 4,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 2034,
+   "P50": 0.613,
+   "P95": 0.964,
+   "P99": 1.08,
+   "Max": 8.298,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 30000,
+   "P50": 0.347,
+   "P95": 0.547,
+   "P99": 0.686,
+   "Max": 6.044,
+   "Mean": 0
+  }
+ },
+ "request_errors": {},
+ "restarts": null,
+ "server_crashes": 0
+}

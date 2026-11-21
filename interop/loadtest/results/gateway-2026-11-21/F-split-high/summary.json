@@ -1,0 +1,407 @@
+{
+ "abort_reason": "",
+ "aborted": false,
+ "call_latency_ms": {
+  "not_connected": {
+   "n": 8210,
+   "P50": 0.31,
+   "P95": 0.547,
+   "P99": 0.861,
+   "Max": 251.763,
+   "Mean": 0
+  },
+  "ok": {
+   "n": 4903,
+   "P50": 0.861,
+   "P95": 4.714,
+   "P99": 20.57,
+   "Max": 59.981,
+   "Mean": 0
+  },
+  "timeout": {
+   "n": 3074,
+   "P50": 30250.05,
+   "P95": 30250.05,
+   "P99": 30250.05,
+   "Max": 30250.05,
+   "Mean": 0
+  }
+ },
+ "calls": {
+  "not_connected": 8210,
+  "ok": 4903,
+  "timeout": 3074
+ },
+ "config": {
+  "ServerBin": "./cs-gocpp",
+  "ServerArgs": "-pprof 127.0.0.1:6061",
+  "Addr": "127.0.0.1:9000",
+  "Taskset": "",
+  "Pprof": "127.0.0.1:6060",
+  "Out": "out/F-split-high",
+  "Label": "split-high",
+  "ServerProcs": 2,
+  "Steps": [
+   {
+    "N": 4000,
+    "Rate": 50,
+    "Dur": 90000000000,
+    "Speed": 1
+   },
+   {
+    "N": 4000,
+    "Rate": 50,
+    "Dur": 120000000000,
+    "Speed": 100
+   },
+   {
+    "N": 4000,
+    "Rate": 50,
+    "Dur": 120000000000,
+    "Speed": 200
+   }
+  ],
+  "Ramp": 60000000000,
+  "HB": 30000000000,
+  "ReconnBase": 1000000000,
+  "ReconnCap": 30000000000,
+  "ReconnJitter0": 3000000000,
+  "RestartGap": 2000000000,
+  "Sample": 5000000000,
+  "FreezeThresh": 10000000000,
+  "CallTimeout": 30000000000,
+  "TxCycle": 40000000000,
+  "TxLen": 25000000000,
+  "Meter": 5000000000,
+  "HBJitter": 0.1,
+  "Mute": 0.4,
+  "TxFrac": 0.15,
+  "Flappers": 3,
+  "Dups": 20,
+  "Restarts": 0,
+  "Connectors": 2,
+  "MinAvailMB": 1200,
+  "Attach": false,
+  "GCTrace": false,
+  "Hot": 0,
+  "HotShare": 0.9,
+  "GatewayBin": "./gocpp-gateway",
+  "BackendPools": "default:2",
+  "GwTaskset": "8-9",
+  "BeTaskset": "10-13",
+  "GwArgs": "",
+  "RestartTarget": "server",
+  "RestartMode": "term",
+  "Gateways": 1
+ },
+ "connect_errors": {},
+ "csms_calls_delivered": {
+  "muted_dropped": 3322,
+  "unmuted": 4903
+ },
+ "duration_s": 330.038473158,
+ "final_up": 3993,
+ "freezes": null,
+ "label": "split-high",
+ "latency_all_ms": {
+  "Authorize": {
+   "n": 4155,
+   "P50": 0.488,
+   "P95": 5.279,
+   "P99": 20.57,
+   "Max": 77.025,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 5324,
+   "P50": 0.488,
+   "P95": 1.08,
+   "P99": 3.758,
+   "Max": 32.936,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 4140174,
+   "P50": 0.547,
+   "P95": 9.305,
+   "P99": 25.803,
+   "Max": 343.708,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 2272986,
+   "P50": 0.768,
+   "P95": 8.308,
+   "P99": 23.039,
+   "Max": 308.326,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 4155,
+   "P50": 0.389,
+   "P95": 2.674,
+   "P99": 10.421,
+   "Max": 48.123,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 23908,
+   "P50": 0.31,
+   "P95": 1.08,
+   "P99": 4.209,
+   "Max": 55.936,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 3784,
+   "P50": 0.488,
+   "P95": 4.714,
+   "P99": 14.641,
+   "Max": 87.109,
+   "Mean": 0
+  }
+ },
+ "latency_by_step_steady_ms": {
+  "0": {
+   "Authorize": {
+    "n": 989,
+    "P50": 0.436,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 1.489,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 4389,
+    "P50": 0.488,
+    "P95": 0.768,
+    "P99": 0.964,
+    "Max": 8.533,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 28733,
+    "P50": 0.389,
+    "P95": 0.861,
+    "P99": 1.355,
+    "Max": 6.337,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 51304,
+    "P50": 0.613,
+    "P95": 1.355,
+    "P99": 1.904,
+    "Max": 6.641,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 989,
+    "P50": 0.347,
+    "P95": 0.613,
+    "P99": 0.768,
+    "Max": 1.219,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 14803,
+    "P50": 0.31,
+    "P95": 0.547,
+    "P99": 0.686,
+    "Max": 6.368,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 650,
+    "P50": 0.347,
+    "P95": 0.613,
+    "P99": 0.861,
+    "Max": 1.188,
+    "Mean": 0
+   }
+  },
+  "1": {
+   "Authorize": {
+    "n": 1663,
+    "P50": 0.436,
+    "P95": 3.355,
+    "P99": 23.039,
+    "Max": 77.025,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 490,
+    "P50": 0.547,
+    "P95": 2.132,
+    "P99": 5.913,
+    "Max": 13.542,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 1482796,
+    "P50": 0.436,
+    "P95": 5.279,
+    "P99": 25.803,
+    "Max": 343.708,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 855342,
+    "P50": 0.547,
+    "P95": 4.714,
+    "P99": 20.57,
+    "Max": 308.326,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 1663,
+    "P50": 0.389,
+    "P95": 1.904,
+    "P99": 8.308,
+    "Max": 48.123,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 4761,
+    "P50": 0.389,
+    "P95": 1.355,
+    "P99": 6.623,
+    "Max": 55.936,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 1628,
+    "P50": 0.436,
+    "P95": 3.355,
+    "P99": 11.672,
+    "Max": 87.109,
+    "Mean": 0
+   }
+  },
+  "2": {
+   "Authorize": {
+    "n": 1503,
+    "P50": 0.613,
+    "P95": 11.672,
+    "P99": 25.803,
+    "Max": 40.086,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 445,
+    "P50": 0.861,
+    "P95": 5.913,
+    "P99": 18.366,
+    "Max": 32.936,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 2628645,
+    "P50": 0.686,
+    "P95": 11.672,
+    "P99": 25.803,
+    "Max": 76.838,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 1366340,
+    "P50": 0.964,
+    "P95": 11.672,
+    "P99": 23.039,
+    "Max": 77.474,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 1503,
+    "P50": 0.547,
+    "P95": 5.279,
+    "P99": 14.641,
+    "Max": 29.47,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 4344,
+    "P50": 0.547,
+    "P95": 3.355,
+    "P99": 10.421,
+    "Max": 53.175,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 1506,
+    "P50": 0.768,
+    "P95": 8.308,
+    "P99": 18.366,
+    "Max": 43.397,
+    "Mean": 0
+   }
+  }
+ },
+ "latency_restart_windows_ms": {},
+ "latency_steady_ms": {
+  "Authorize": {
+   "n": 4155,
+   "P50": 0.488,
+   "P95": 5.279,
+   "P99": 20.57,
+   "Max": 77.025,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 5324,
+   "P50": 0.488,
+   "P95": 1.08,
+   "P99": 3.758,
+   "Max": 32.936,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 4140174,
+   "P50": 0.547,
+   "P95": 9.305,
+   "P99": 25.803,
+   "Max": 343.708,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 2272986,
+   "P50": 0.768,
+   "P95": 8.308,
+   "P99": 23.039,
+   "Max": 308.326,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 4155,
+   "P50": 0.389,
+   "P95": 2.674,
+   "P99": 10.421,
+   "Max": 48.123,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 23908,
+   "P50": 0.31,
+   "P95": 1.08,
+   "P99": 4.209,
+   "Max": 55.936,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 3784,
+   "P50": 0.488,
+   "P95": 4.714,
+   "P99": 14.641,
+   "Max": 87.109,
+   "Mean": 0
+  }
+ },
+ "request_errors": {
+  "BootNotification/closed": 19,
+  "Heartbeat/closed": 1,
+  "MeterValues/closed": 3,
+  "StatusNotification/closed": 1
+ },
+ "restarts": null,
+ "server_crashes": 0
+}
