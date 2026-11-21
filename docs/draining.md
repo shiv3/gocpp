@@ -71,3 +71,23 @@ a time (`maxUnavailable: 1`) and keep capacity for `N-1` pods.
 * `transport.RotateSharedTicketKeys(tlsConfig, secret, rotate)`: derive TLS session
   ticket keys from a secret shared by all processes, so a charger that reconnects
   to a different pod resumes its TLS session instead of a full handshake.
+
+## Measured
+
+Rolling restart of a 4,000-charger fleet (simulated 1.6J chargers, jittered
+back-off, balancer sending new connections to the ready process; no TLS, no auth;
+harness in branch `test/loadtest-drain`, `interop/loadtest/drain`):
+
+| | peak connect attempts at the new process | peak server CPU (250 ms) | fleet back to 99% |
+|---|---|---|---|
+| SIGTERM, exit at once | about 2,000 per second (all 4,000 within 3 s) | 0.3 to 0.4 cores | 3 s (all of them offline until then) |
+| `Drain`, window 60 s (target 74 per second) | 90 per second | 0.12 cores | 56 s (about 3,850 of 4,000 connected throughout) |
+| `Drain`, window 30 s (target 148 per second) | 161 per second | 0.12 cores | 29 s |
+| SIGTERM + `WithAcceptRateLimit(200, 400)` on the new process | 984 attempts, 594 upgrades per second | 0.24 cores | 33 s |
+
+The reconnect peak follows the configured pace (observed peaks are within 25% of
+the target, the excess being the chargers' own retry jitter), and the fleet
+stays about 96% connected during a 60 s drain instead of 0% for the restart. The
+bare gocpp server handles 4,000 reconnects in 3 s without trouble, so the
+absolute CPU saving here is small; the pace matters where each connect costs more
+(TLS handshakes, authentication against a database, per-connect application work).
