@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -53,6 +54,8 @@ func main() {
 	drainWindow := flag.Duration("drain-window", 0, "on SIGTERM, Server.Drain over this window (new upgrades get 503, readiness at /ready fails) before exiting; 0 = exit at once")
 	acceptRate := flag.Float64("accept-rate", 0, "csms.WithAcceptRateLimit rate per second (0 = off)")
 	acceptBurst := flag.Int("accept-burst", 0, "burst for -accept-rate (default 2x the rate)")
+	failRate := flag.Float64("fail-rate", 0, "load-test fault injection: answer this fraction of Heartbeat/MeterValues/StatusNotification with an InternalError CALLERROR (an error-injecting canary)")
+	handledLog := flag.String("handled-log", "", "append one line `unix_ms charger action` per handled Heartbeat/MeterValues to this file (routing correctness checks)")
 	flag.Parse()
 	if *pprofAddr != "" {
 		go func() { log.Println(http.ListenAndServe(*pprofAddr, nil)) }()
@@ -133,7 +136,15 @@ func main() {
 		}
 	}
 	srv := csms.NewServer(opts...)
-	if err := v16h.RegisterCSMS(srv, &handler{rec: rec}); err != nil {
+	h := &handler{rec: rec, failRate: *failRate}
+	if *handledLog != "" {
+		hl, err := newHandledLog(*handledLog)
+		if err != nil {
+			log.Fatal(err)
+		}
+		h.hlog = hl
+	}
+	if err := v16h.RegisterCSMS(srv, h); err != nil {
 		log.Fatal(err)
 	}
 
@@ -196,8 +207,20 @@ func disconnectCause(err error) (cause, raw string) {
 // messages are left to UnimplementedCSMSHandler (NotSupported CallError).
 type handler struct {
 	v16h.UnimplementedCSMSHandler
-	rec *common.Recorder
-	tx  common.TxCounter
+	rec      *common.Recorder
+	tx       common.TxCounter
+	failRate float64
+	hlog     *handledLog
+}
+
+// inject returns the injected InternalError for a fraction of the calls (see
+// -fail-rate); it also writes the handled log.
+func (h *handler) inject(id, action string) error {
+	h.hlog.note(id, action)
+	if h.failRate > 0 && (h.failRate >= 1 || rand.Float64() < h.failRate) {
+		return ocppj.NewCallError(ocppj.ErrorCodeInternalError, "injected", nil)
+	}
+	return nil
 }
 
 func idTagInfo(idTag string) v16msg.IDTagInfo {
@@ -213,6 +236,9 @@ func (h *handler) OnBootNotification(_ context.Context, c *csms.Conn, req v16msg
 
 func (h *handler) OnHeartbeat(_ context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
 	h.rec.Request(c.ID(), "Heartbeat", req)
+	if err := h.inject(c.ID(), "Heartbeat"); err != nil {
+		return v16msg.HeartbeatResponse{}, err
+	}
 	resp := v16msg.HeartbeatResponse{CurrentTime: common.FixedTimeT}
 	h.rec.Response(c.ID(), "Heartbeat", resp, nil)
 	return resp, nil
@@ -244,6 +270,9 @@ func (h *handler) OnStopTransaction(_ context.Context, c *csms.Conn, req v16msg.
 
 func (h *handler) OnStatusNotification(_ context.Context, c *csms.Conn, req v16msg.StatusNotificationRequest) (v16msg.StatusNotificationResponse, error) {
 	h.rec.Request(c.ID(), "StatusNotification", req)
+	if h.failRate > 0 && (h.failRate >= 1 || rand.Float64() < h.failRate) {
+		return v16msg.StatusNotificationResponse{}, ocppj.NewCallError(ocppj.ErrorCodeInternalError, "injected", nil)
+	}
 	resp := v16msg.StatusNotificationResponse{}
 	h.rec.Response(c.ID(), "StatusNotification", resp, nil)
 	return resp, nil
@@ -251,6 +280,9 @@ func (h *handler) OnStatusNotification(_ context.Context, c *csms.Conn, req v16m
 
 func (h *handler) OnMeterValues(_ context.Context, c *csms.Conn, req v16msg.MeterValuesRequest) (v16msg.MeterValuesResponse, error) {
 	h.rec.Request(c.ID(), "MeterValues", req)
+	if err := h.inject(c.ID(), "MeterValues"); err != nil {
+		return v16msg.MeterValuesResponse{}, err
+	}
 	resp := v16msg.MeterValuesResponse{}
 	h.rec.Response(c.ID(), "MeterValues", resp, nil)
 	return resp, nil

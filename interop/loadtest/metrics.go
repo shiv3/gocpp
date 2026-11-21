@@ -457,6 +457,8 @@ func (g *gen) finish() {
 	sort.Ints(keys)
 	lf, _ := os.Create(filepath.Join(g.cfg.Out, "latency.csv"))
 	fmt.Fprintln(lf, "window_start_s,step,restart,action,n,p50_ms,p95_ms,p99_ms,max_ms")
+	ef, _ := os.Create(filepath.Join(g.cfg.Out, "errors.csv"))
+	fmt.Fprintln(ef, "window_start_s,step,kind,n")
 	cf, _ := os.Create(filepath.Join(g.cfg.Out, "calls.csv"))
 	fmt.Fprintln(cf, "window_start_s,outcome,n,p50_ms,p99_ms")
 	add := func(dst map[string]*hist, k string, h *hist) {
@@ -482,6 +484,7 @@ func (g *gen) finish() {
 		}
 		for e, n := range w.reqErr {
 			errs[e] += n
+			fmt.Fprintf(ef, "%d,%d,%s,%d\n", k*10, w.step, e, n)
 		}
 		for o, n := range w.calls {
 			calls[o] += n
@@ -491,6 +494,7 @@ func (g *gen) finish() {
 	}
 	lf.Close()
 	cf.Close()
+	ef.Close()
 	conv := func(mm map[string]*hist) map[string]pct {
 		o := map[string]pct{}
 		for k, h := range mm {

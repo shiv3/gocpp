@@ -47,6 +47,10 @@ type config struct {
 	// Split topology (see topology.go).
 	GatewayBin, BackendPools, GwTaskset, BeTaskset, GwArgs, RestartTarget, RestartMode, Plan string
 	Gateways                                                                                 int
+	// Rollout scenarios (see rollout.go).
+	PoolArgs   string
+	HandledLog bool
+	Hooks      hookList
 }
 
 type gen struct {
@@ -145,6 +149,9 @@ func main() {
 	flag.StringVar(&c.RestartTarget, "restart-target", "server", "what -restarts acts on: server | backend | gateway | pool:NAME")
 	flag.StringVar(&c.Plan, "plan", "", "mixed restart plan, comma separated target:mode (target server|backend|gateway|pool:NAME, mode term|kill), spread evenly over the first step; replaces -restarts")
 	flag.StringVar(&c.RestartMode, "restart-mode", "term", "term (SIGTERM, drain) | kill (SIGKILL)")
+	flag.StringVar(&c.PoolArgs, "pool-args", "", "extra backend args per pool, pool=args;pool=args (e.g. 'canary=-fail-rate 1')")
+	flag.BoolVar(&c.HandledLog, "handled-log", false, "backends write handled-<name>.log (which charger each backend served; routing correctness)")
+	flag.Var(&c.Hooks, "hook", "OFFSET=COMMAND, repeatable: run COMMAND (sh -c) OFFSET after the load starts; env LT_REDIS LT_OUT LT_GW_METRICS LT_GW_ADMIN; output in hook-N.log")
 	flag.BoolVar(&c.Attach, "attach", false, "do not spawn the server")
 	flag.BoolVar(&c.GCTrace, "gctrace", false, "start the server with GODEBUG=gctrace=1 (needed for the in-mark share in report.py)")
 	knee := flag.Bool("knee", false, "preset: -steps 4000:50:150s:160,4000:50:150s:320 (about 30k then 60k requests/s; implies -gctrace and -restarts 0)")
@@ -206,7 +213,7 @@ func (g *gen) run() {
 		log.Fatal("server did not become healthy")
 	}
 	g.start = time.Now()
-	g.events.add("start", fmt.Sprintf("steps=%v", c.Steps))
+	g.events.add("start", fmt.Sprintf("unix_ms=%d steps=%v", g.start.UnixMilli(), c.Steps))
 
 	maxN := 0
 	for _, s := range c.Steps {
@@ -243,6 +250,8 @@ func (g *gen) run() {
 	}
 
 	go g.sampler()
+	g.startHooks()
+	go g.gatewayMetricsSampler()
 	go g.driver()
 	go g.freezeWatch()
 

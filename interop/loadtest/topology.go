@@ -118,6 +118,10 @@ func newTopology(g *gen) (*topology, error) {
 				"-gateways", strings.Join(links, ","), "-redis", t.redis.Addr(), "-pool", pool, "-id", p.name,
 				"-schema", "off"}
 			p.args = append(p.args, strings.Fields(c.ServerArgs)...)
+			p.args = append(p.args, strings.Fields(poolArgsFor(c.PoolArgs, ps.name))...)
+			if c.HandledLog {
+				p.args = append(p.args, "-handled-log", filepath.Join(c.Out, "handled-"+p.name+".log"))
+			}
 			t.bes = append(t.bes, p)
 			j++
 		}

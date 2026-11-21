@@ -1,0 +1,16 @@
+# Automatic rollout of the canary pool on the load-test topology: 1% -> 10% -> 50%
+# -> 100%, evaluated every 10 s over a 30 s window.
+rule: canary
+base:
+  salt: rollout-lt
+  rules:
+    - {name: canary, pool: canary}
+stages:
+  - {name: one, percent: 1, soak: 60s}
+  - {name: ten, percent: 10, soak: 60s}
+  - {name: half, percent: 50, soak: 60s}
+  - {name: all, percent: 100, soak: 60s}
+interval: 10s
+window: 30s
+fail_evaluations: 1
+gates: {min_requests: 100}
