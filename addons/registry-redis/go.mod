@@ -6,7 +6,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/coder/websocket v1.8.15
 	github.com/redis/go-redis/v9 v9.20.1
-	github.com/shiv3/gocpp v0.2.0
+	github.com/shiv3/gocpp v0.3.0
 	github.com/stretchr/testify v1.12.1
 )
 

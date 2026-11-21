@@ -7,8 +7,8 @@ require (
 	github.com/nats-io/nats-server/v2 v2.15.3
 	github.com/nats-io/nats.go v1.56.0
 	github.com/nats-io/nuid v1.0.1
-	github.com/shiv3/gocpp v0.0.0-00010101000000-000000000000
-	github.com/shiv3/gocpp/addons/link-grpc v0.0.0-00010101000000-000000000000
+	github.com/shiv3/gocpp v0.3.0
+	github.com/shiv3/gocpp/addons/link-grpc v0.3.0
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0
 	google.golang.org/protobuf v1.36.12
