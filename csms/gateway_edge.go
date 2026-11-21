@@ -26,7 +26,7 @@ const defaultGatewayHandlerTimeout = 25 * time.Second
 const edgeNotifyTimeout = 5 * time.Second
 
 // edgeNotifyClosing is the same bound once the gateway itself is closing.
-const edgeNotifyClosing = 250 * time.Millisecond
+const edgeNotifyClosing = 20 * time.Millisecond
 
 // NewGatewayServer returns a Server that is the connection tier of a split
 // deployment. It terminates WebSockets exactly like NewServer (every connection

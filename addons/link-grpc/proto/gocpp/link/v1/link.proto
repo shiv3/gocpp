@@ -1,0 +1,232 @@
+syntax = "proto3";
+
+package gocpp.link.v1;
+
+option go_package = "github.com/shiv3/gocpp/addons/link-grpc/linkpb";
+
+// Link is the contract between a gateway (the connection tier) and the
+// processing tier. Backends dial gateways and keep one Attach stream each; every
+// message in both directions rides on that stream with a correlation id.
+//
+// Compatibility rules (see docs/design/gateway.md 5.3):
+//   - the first frame is Hello (backend) and the answer HelloAck (gateway);
+//   - fields are only ever added; unknown fields are ignored;
+//   - a frame whose body is unknown to the receiver is answered with
+//     Unsupported, never by closing the stream;
+//   - field numbers 100-199 of Envelope are reserved for routing metadata.
+service Link {
+  rpc Attach(stream BackendFrame) returns (stream GatewayFrame);
+}
+
+message ProtoRange {
+  uint32 min = 1;
+  uint32 max = 2;
+}
+
+message BackendInfo {
+  string id = 1;
+  string pool = 2;
+  string version = 3;
+  uint32 role = 4; // 0 worker, 1 caller
+  ProtoRange proto = 5;
+  repeated string caps = 6;
+  repeated string actions = 7;
+  map<string, string> labels = 8;
+}
+
+message Hello {
+  BackendInfo backend = 1;
+}
+
+message GatewayPeer {
+  string id = 1;
+  string boot = 2;
+  string version = 3;
+  uint64 policy_rev = 4;
+}
+
+// HelloAck answers Hello. proto = 0 means rejected (reason set); the gateway
+// then closes the stream.
+message HelloAck {
+  uint32 proto = 1;
+  repeated string caps = 2;
+  GatewayPeer gateway = 3;
+  string reason = 4;
+}
+
+message SessionRef {
+  string cpid = 1;
+  string gateway_id = 2;
+  string boot = 3;
+  uint64 epoch = 4;
+}
+
+message Route {
+  string pool = 1;
+  string fallback = 2;
+  string rule = 3;
+  uint64 rev = 4;
+}
+
+message WireError {
+  string kind = 1; // call_error | sentinel | other
+  string code = 2;
+  string description = 3;
+  bytes details_json = 4;
+  bool result_error = 5;
+  string sentinel = 6;
+  string message = 7;
+}
+
+message HeaderValues {
+  repeated string v = 1;
+}
+
+message SessionInfo {
+  string remote_addr = 1;
+  string subprotocol = 2;
+  map<string, HeaderValues> header = 3;
+  repeated bytes peer_certs = 4;
+  string identity = 5;
+  map<string, string> meta = 6;
+}
+
+message CloseInfo {
+  string cause = 1;
+  string message = 2;
+}
+
+message Envelope {
+  uint32 proto = 1;
+  SessionRef session = 2;
+  string version = 3;
+  uint32 kind = 4;
+  string delivery_id = 5;
+  uint32 attempt = 6;
+  string msg_id = 7;
+  string action = 8;
+  bytes payload = 9;
+  int64 received_at_unix_nano = 10;
+  int64 deadline_unix_nano = 11;
+  string trace = 12;
+  map<string, string> attrs = 13;
+  SessionInfo open = 14;
+  Route route = 15;
+  CloseInfo close = 16;
+  string call_id = 17;
+  WireError error = 18;
+  reserved 100 to 199;
+}
+
+message Reply {
+  bytes payload = 1;
+  WireError error = 2;
+  bool nack = 3;
+  bool no_reply = 4;
+}
+
+message Timeouts {
+  int64 call_timeout_ns = 1;
+  int64 write_timeout_ns = 2;
+  int64 ping_interval_ns = 3;
+  int64 pong_wait_ns = 4;
+  int64 read_timeout_ns = 5;
+}
+
+message ConnectRequest {
+  string cpid = 1;
+  string path = 2;
+  string remote_addr = 3;
+  map<string, HeaderValues> header = 4;
+  repeated bytes peer_certs = 5;
+  repeated string subprotocol = 6;
+  SessionRef gateway = 7;
+  Route route = 8;
+}
+
+message ConnectReply {
+  int32 reject_status = 1; // non-zero refuses the upgrade
+  string reject_message = 2;
+  string cpid = 3;
+  string identity = 4;
+  map<string, string> meta = 5;
+  Timeouts timeouts = 6;
+  map<string, string> attrs = 7;
+}
+
+message CallRequest {
+  SessionRef target = 1;
+  string call_id = 2;
+  string action = 3;
+  bytes payload = 4;
+  int64 deadline_unix_nano = 5;
+  string trace = 6;
+}
+
+message CallReply {
+  bytes payload = 1;
+  WireError error = 2;
+  uint32 sent = 3;
+  SessionRef session = 4;
+}
+
+message ControlRequest {
+  SessionRef target = 1;
+  uint32 op = 2;
+  string reason = 3;
+  map<string, string> attrs = 4;
+}
+
+// Ack answers requests that have no payload result.
+message Ack {
+  WireError error = 1;
+}
+
+// Unsupported answers a frame body the receiver does not know.
+message Unsupported {
+  string what = 1;
+}
+
+// Drain announces that a backend takes no new work; the gateway lets work in
+// flight finish.
+message Drain {}
+
+// DrainAck is the gateway's answer to Drain, sent once it has stopped choosing
+// the backend and every request it had dispatched to it has been answered.
+// Because a stream is ordered, no further work follows it: the backend may
+// close the stream as soon as its own in-flight work is done.
+message DrainAck {}
+
+// Cancel is a hint that the gateway no longer needs the answer to request id.
+message Cancel {}
+
+message BackendFrame {
+  uint64 id = 1; // correlation id: a request's id, or the id of the request this answers
+  oneof body {
+    Hello hello = 2;
+    ConnectReply connect_reply = 3;
+    Reply reply = 4;
+    Ack notify_ack = 5;
+    CallRequest call = 6;
+    CallRequest send = 7;
+    ControlRequest control = 8;
+    Drain drain = 9;
+    Unsupported unsupported = 20;
+  }
+}
+
+message GatewayFrame {
+  uint64 id = 1;
+  oneof body {
+    HelloAck hello_ack = 2;
+    ConnectRequest connect = 3;
+    Envelope handle = 4;
+    Envelope notify = 5;
+    CallReply call_reply = 6;
+    Ack send_ack = 7;
+    Ack control_ack = 8;
+    Cancel cancel = 9;
+    DrainAck drain_ack = 10;
+    Unsupported unsupported = 20;
+  }
+}

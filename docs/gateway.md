@@ -106,6 +106,40 @@ is byte-identical to embedded mode (`TestGateway_WireIdenticalToEmbedded`).
 - **Idempotency key.** `CallRequest.CallID` makes duplicate requests that arrive
   while the first is in flight share its outcome (the charger sees one CALL).
 
+## The gRPC link and the reference binary
+
+`addons/link-grpc` (its own module, so the main module gains no gRPC dependency)
+is the link for separate processes. **Backends dial gateways**: a gateway serves
+the `Attach` stream (`Gateway.Register(grpcServer)`), a backend keeps one stream
+per gateway (`NewBackend(StaticTargets(...) | DNSTargets("gateway-link", "9090"))`,
+then `csms.WithGatewayLink(backend)` and `ServeGateway`). Every message kind rides
+the stream with correlation ids; HTTP/2 flow control plus a per-stream in-flight
+cap is the backpressure and the keepalive detects a dead peer in seconds. The
+first frame is `Hello` (protocol range, capabilities, pool, version) and `HelloAck`
+carries the negotiated protocol and the capability intersection; a disjoint range
+is rejected loudly (`link_attach_total{result="proto_mismatch"}`). A frame body or
+control op a peer does not know is answered `Unsupported` and the stream stays up.
+A backend that is stopped sends `Drain`, the gateway stops choosing it, answers
+every request it had in flight and acknowledges (`DrainAck`), and only then does
+the backend close: a backend deploy is invisible to chargers. The wire contract is
+`addons/link-grpc/proto/gocpp/link/v1/link.proto` (`buf lint`, `buf generate`).
+
+`cmd/gocpp-gateway` (own module) is the reference gateway: WebSocket listener
+(TLS, optional client-certificate verification, shared TLS ticket keys, accept
+rate limit), the link listener (optional mTLS between tiers), the Redis session
+registry, `/metrics` (labels `gateway_id`, `gateway_version`, `pool`,
+`backend_version`), `/healthz`, `/readyz` (not draining, under
+`--soft-max-sessions`, and a worker attached to the default pool), SIGTERM drain
+(`--drain-window`), and `gocpp-gateway probe` (upgrade + BootNotification +
+Heartbeat with the reserved identity `$probe-<id>`; the backend must answer it
+without side effects) for use as a startup probe. Flags have `GOCPP_GATEWAY_*`
+environment equivalents. Example manifests: `examples/gke-gateway`.
+
+Failure behaviour is exercised with real processes in
+`cmd/gocpp-gateway/chaos` (kill -9 a backend mid-handler, SIGTERM a backend under
+load, kill -9 a gateway, gateway/backend and gateway/registry partitions with a
+TCP fault proxy, the same charger id on two gateways).
+
 ## Links
 
 | Link | Package | Use |
@@ -148,8 +182,6 @@ Tests create servers with `internal/splitmode.NewServer`, which is
 
 ## Not yet
 
-Session registry with epochs across gateways, drain with paced close, accept
-rate limiting (design phases 1 and 2), the gRPC link and the reference gateway
-binary (phase 4), an edge Heartbeat responder, per-tenant
+An edge Heartbeat responder, per-tenant
 caps (phase 6). Without a registry a gateway numbers its sessions with a local
 counter, so duplicate connections across two gateways are not detected yet.
