@@ -2,6 +2,7 @@ package csms_test
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"testing"
 
@@ -41,8 +42,9 @@ func TestGateway_SessionClosedOnAnotherBackendStillFiresDisconnect(t *testing.T)
 	ctx := context.Background()
 	for round := 0; round < 40; round++ {
 		a, b := newBackend(), newBackend()
-		require.NoError(t, a.Upstream().Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-1", 1)))
-		require.NoError(t, b.Upstream().Notify(ctx, sessEnv(gateway.KindSessionClosed, "gw-1", 1)))
+		gw := fmt.Sprintf("gw-%d", round%3)
+		require.NoError(t, a.Upstream().Notify(ctx, sessEnv(gateway.KindSessionOpened, gw, 1)))
+		require.NoError(t, b.Upstream().Notify(ctx, sessEnv(gateway.KindSessionClosed, gw, 1)))
 		a.Close()
 		b.Close()
 	}

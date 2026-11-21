@@ -35,7 +35,7 @@ func badUpgrade(t *testing.T, base, origin string, withKey bool) int {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode
 }
 
