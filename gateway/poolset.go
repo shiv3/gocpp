@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,11 +17,28 @@ import (
 // never named by a router receives nothing.
 type PoolSet struct {
 	wait time.Duration
+	obs  atomic.Pointer[RouteObserver]
 
 	mu        sync.Mutex
 	pools     map[string]*Pool
 	unhandled map[[2]string]uint64 // {pool, action} -> routings to a pool without a handler
 	onUnhand  func(pool, action string)
+}
+
+// SetObserver sets the RouteObserver (nil removes it).
+func (s *PoolSet) SetObserver(o RouteObserver) {
+	if o == nil {
+		s.obs.Store(nil)
+		return
+	}
+	s.obs.Store(&o)
+}
+
+func (s *PoolSet) observer() RouteObserver {
+	if p := s.obs.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // NewPoolSet returns a PoolSet whose pools hold for wait (<= 0: DefaultUpstreamWait).
@@ -132,8 +150,9 @@ func (s *PoolSet) Status() []PoolStatus {
 	return out
 }
 
-// choose applies the fallback rule: the routed pool, else its fallback.
-func (s *PoolSet) choose(r *Route) *Pool {
+// choose applies the fallback rule: the routed pool, else its fallback. reason
+// is "unavailable" when the fallback was taken.
+func (s *PoolSet) choose(r *Route) (p *Pool, reason string) {
 	name := DefaultPool
 	fb := ""
 	if r != nil {
@@ -143,16 +162,22 @@ func (s *PoolSet) choose(r *Route) *Pool {
 		fb = r.Fallback
 	}
 	if p := s.get(name, false); p != nil && p.Available() {
-		return p
+		return p, ""
 	}
 	if fb != "" {
 		if p := s.get(fb, false); p != nil && p.Available() {
-			return p
+			return p, "unavailable"
 		}
 	}
 	// Nothing available: the named pool holds the message (a backend may be
 	// about to attach), creating it so the wait is observable.
-	return s.get(name, true)
+	return s.get(name, true), ""
+}
+
+func (s *PoolSet) fellBack(r *Route, reason string) {
+	if o := s.observer(); o != nil && r != nil && reason != "" {
+		o.RouteFallback(*r, reason)
+	}
 }
 
 // chooseFor is choose for a message with an OCPP action: when the chosen pool
@@ -160,22 +185,24 @@ func (s *PoolSet) choose(r *Route) *Pool {
 // none lists this one), the fallback pool takes it if that one does serve it;
 // without a usable fallback the routed pool keeps it (it will answer
 // NotImplemented, as a backend without a handler does) and the miss is counted.
-// restrict is the action members must serve, "" when the pool is kept anyway.
-func (s *PoolSet) chooseFor(r *Route, kind Kind, action string) (p *Pool, restrict string) {
-	p = s.choose(r)
+// restrict is the action members must serve, "" when the pool is kept anyway;
+// reason is choose's ("unavailable" when the pool was replaced because it has no
+// member; a per-action fallback is not a pool failure and reports none).
+func (s *PoolSet) chooseFor(r *Route, kind Kind, action string) (p *Pool, restrict, reason string) {
+	p, reason = s.choose(r)
 	if action == "" || (kind != KindCall && kind != KindSend) || !p.Available() {
-		return p, ""
+		return p, "", reason
 	}
 	if p.Handles(action) {
-		return p, action
+		return p, action, reason
 	}
 	s.noteUnhandled(poolName(r), action)
 	if r != nil && r.Fallback != "" {
 		if fp := s.get(r.Fallback, false); fp != nil && fp != p && fp.Available() && fp.Handles(action) {
-			return fp, action
+			return fp, action, reason
 		}
 	}
-	return p, ""
+	return p, "", reason
 }
 
 func poolName(r *Route) string {
@@ -187,28 +214,67 @@ func poolName(r *Route) string {
 
 // Connect implements Upstream.
 func (s *PoolSet) Connect(ctx context.Context, req ConnectRequest) (ConnectReply, error) {
-	return s.choose(req.Route).Connect(ctx, req)
+	if req.Route != nil && req.Route.Pool == PoolReject {
+		return ConnectReply{}, ErrNoBackend
+	}
+	p, reason := s.choose(req.Route)
+	s.fellBack(req.Route, reason)
+	return p.Connect(ctx, req)
 }
 
 // Handle implements Upstream.
 func (s *PoolSet) Handle(ctx context.Context, env Envelope) (Reply, error) {
-	p, restrict := s.chooseFor(env.Route, env.Kind, env.Action)
+	if env.Route != nil && env.Route.Pool == PoolReject {
+		return Reply{}, ErrNoBackend
+	}
+	p, restrict, reason := s.chooseFor(env.Route, env.Kind, env.Action)
+	s.fellBack(env.Route, reason)
 	rep, err := p.handle(ctx, env, restrict)
 	if err != nil && env.Route != nil && env.Route.Fallback != "" && isNoBackend(err) {
 		// Every member of the routed pool refused (Nack) or vanished: redispatch
 		// on the fallback pool within the deadline. Never after a dispatch that
 		// may have run (that error is not ErrNoBackend).
 		if fp := s.get(env.Route.Fallback, false); fp != nil && fp != p && fp.Available() {
+			s.fellBack(env.Route, "nack")
 			env.Attempt++
 			return fp.Handle(ctx, env)
 		}
 	}
+	if o := s.observer(); o != nil && env.Route != nil && env.Route.Rule != "" && reason == "" && p != nil && s.isRoutedPool(env.Route, p) {
+		o.RouteOutcome(*env.Route, Outcome(rep, err))
+	}
 	return rep, err
+}
+
+// isRoutedPool reports whether p is the pool r names (not its fallback).
+func (s *PoolSet) isRoutedPool(r *Route, p *Pool) bool {
+	return s.get(r.Pool, false) == p
+}
+
+// Outcome classifies the end of an inbound CALL for RouteObserver.RouteOutcome.
+func Outcome(rep Reply, err error) string {
+	switch {
+	case err != nil && errors.Is(err, ErrNoBackend):
+		return "no_backend"
+	case err != nil && errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case err != nil:
+		return "stream_broken"
+	case rep.Error != nil && rep.Error.Kind == ErrKindCallError:
+		return "callerror_" + rep.Error.Code
+	case rep.Error != nil:
+		return "callerror_InternalError"
+	}
+	return "result"
 }
 
 // Notify implements Upstream.
 func (s *PoolSet) Notify(ctx context.Context, env Envelope) error {
-	p, restrict := s.chooseFor(env.Route, env.Kind, env.Action)
+	if env.Route != nil && env.Route.Pool == PoolReject {
+		return ErrNoBackend
+	}
+	p, restrict, reason := s.chooseFor(env.Route, env.Kind, env.Action)
+	s.fellBack(env.Route, reason)
 	return p.notify(ctx, env, restrict)
 }
 

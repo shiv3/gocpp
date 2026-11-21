@@ -540,3 +540,23 @@ type DefaultRouter struct{}
 
 // Route implements Router.
 func (DefaultRouter) Route(RouteInput) RouteDecision { return RouteDecision{Pool: DefaultPool} }
+
+// PoolReject is a reserved pool name: a message routed to it is refused at
+// once (ErrNoBackend, the charger gets InternalError) instead of being held. A
+// router uses it for a suspended rule whose actions only the canary handles.
+const PoolReject = "$reject"
+
+// RouteObserver is told what happened to routed messages. A Router that also
+// implements it (the routepolicy engine does) is wired to the link with its
+// route-observer option; it drives fallback accounting, rule suspension and the
+// error-rate guard. Methods are called on the dispatch path and must not block.
+type RouteObserver interface {
+	// RouteFallback reports that a message routed by r was sent to r.Fallback
+	// because r.Pool had no available member ("unavailable") or every member
+	// refused it ("nack").
+	RouteFallback(r Route, reason string)
+	// RouteOutcome reports how an inbound CALL routed by r ended on r.Pool:
+	// "result", "callerror_<Code>", "timeout", "stream_broken" or "no_backend".
+	// It is not called for messages that were sent to the fallback pool.
+	RouteOutcome(r Route, outcome string)
+}

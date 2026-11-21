@@ -20,6 +20,7 @@ import (
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/gateway"
 	"github.com/shiv3/gocpp/gateway/inproc"
+	"github.com/shiv3/gocpp/gateway/routepolicy"
 	"github.com/shiv3/gocpp/v16"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -729,4 +730,66 @@ func TestGateway_AuthCache(t *testing.T) {
 	// Invalidated (credential changed): no stale decision left.
 	r.gw.InvalidateAuthCache("CP_1")
 	require.Equal(t, 503, dial("secret"))
+}
+
+// A real routing policy at 50% (the salt is chosen so that CP_1 is in the
+// sample) with a canary pool: the frames written to the charger are
+// byte-identical to embedded mode, the canary served, the default pool did not.
+func TestGateway_RoutePolicyEngineWireIdentical(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	reg := schema.NewRegistry()
+	require.NoError(t, v16.RegisterSchemas(reg))
+	handler := func(ctx context.Context, c *csms.Conn, req gwBoot) (gwBootResp, error) {
+		switch req.ChargePointVendor {
+		case "boom":
+			panic("boom")
+		case "nope":
+			return gwBootResp{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, "no thanks", map[string]any{"k": "v"})
+		}
+		return gwBootResp{Status: "Accepted", Interval: 300, CurrentTime: "2026-06-15T00:00:00Z"}, nil
+	}
+	common := []csms.Option{csms.WithSchemaRegistry(reg), csms.WithStrictSchema(true)}
+	embedded := frames(t, func(obs csms.Option) (http.Handler, func()) {
+		s := csms.NewServer(append(common, obs)...)
+		require.NoError(t, csms.On(s, gwBootMsg, handler))
+		return s.Handler(), s.Close
+	})
+
+	salt := ""
+	for i := 0; routepolicy.Bucket(salt, "CP_1") >= 5000; i++ {
+		salt = "s" + string(rune('a'+i))
+	}
+	pc := 50.0
+	engine := routepolicy.NewEngine()
+	require.NoError(t, engine.Apply(routepolicy.Policy{Revision: 1, Salt: salt,
+		Rules: []routepolicy.Rule{{Name: "half", Pool: "canary", Match: routepolicy.Match{Percent: &pc}}}}))
+
+	var served [2]atomic.Int64
+	split := frames(t, func(obs csms.Option) (http.Handler, func()) {
+		hub := inproc.New(inproc.WithRouteObserver(engine))
+		gw := csms.NewGatewayServer(hub.Gateway(), append(common, obs, csms.WithRouter(engine))...)
+		var stops []func(context.Context) error
+		var bes []*csms.Server
+		for i, pool := range []string{"", "canary"} {
+			be := csms.NewServer(append(common, csms.WithGatewayLink(hub.Backend()), csms.WithBackendInfo(gateway.BackendInfo{Pool: pool}))...)
+			require.NoError(t, csms.On(be, gwBootMsg, func(ctx context.Context, c *csms.Conn, req gwBoot) (gwBootResp, error) {
+				served[i].Add(1)
+				return handler(ctx, c, req)
+			}))
+			stops = append(stops, hub.AttachBackend(be.Upstream(), gateway.BackendInfo{Pool: pool, Caps: []string{gateway.CapSend21}}))
+			bes = append(bes, be)
+		}
+		return gw.Handler(), func() {
+			gw.Close()
+			for _, s := range stops {
+				_ = s(context.Background())
+			}
+			for _, b := range bes {
+				b.Close()
+			}
+		}
+	})
+	require.Equal(t, embedded, split)
+	require.Zero(t, served[0].Load())
+	require.NotZero(t, served[1].Load(), "CP_1 is in the 50% sample: the canary served")
 }

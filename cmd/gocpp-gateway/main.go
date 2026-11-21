@@ -19,6 +19,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -31,9 +32,11 @@ import (
 	linknats "github.com/shiv3/gocpp/addons/link-nats"
 	registryredis "github.com/shiv3/gocpp/addons/registry-redis"
 	"github.com/shiv3/gocpp/core/observability/metrics/prom"
+	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/transport"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/gateway"
+	"github.com/shiv3/gocpp/gateway/routepolicy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -95,6 +98,22 @@ func serve(args []string) error {
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{"gateway_id": cfg.ID, "gateway_version": cfg.Version}, reg)
 
+	// Routing policy (design 5.1): the engine routes every message to a backend
+	// pool; without a policy everything goes to the default pool.
+	var gw *csms.Server
+	engine := routepolicy.NewEngine(routepolicy.WithMetrics(newRouteMetrics(wrapped)), routepolicy.WithLogger(log),
+		routepolicy.WithOnApply(func(rev uint64) {
+			if gw != nil {
+				gw.SetGatewayLabel(ctx, "policy_rev", strconv.FormatUint(rev, 10))
+			}
+		}),
+		routepolicy.WithOnSuspend(func(rules []string) {
+			if gw != nil {
+				gw.SetGatewayLabel(ctx, "suspended", joinRules(rules))
+			}
+		}))
+	wrapped.MustRegister(heldCollector{engine})
+
 	var link gatewayLink
 	var grpcLink *linkgrpc.Gateway
 	switch cfg.Link {
@@ -110,7 +129,7 @@ func serve(args []string) error {
 		}
 		defer nc.Close()
 		nl, err := linknats.NewGateway(nc, linknats.WithPrefix(cfg.NATSPrefix),
-			linknats.WithGatewayVersion(cfg.Version), linknats.WithGatewayMetrics(newLinkMetrics(wrapped)),
+			linknats.WithRouteObserver(engine), linknats.WithGatewayVersion(cfg.Version), linknats.WithGatewayMetrics(newLinkMetrics(wrapped)),
 			linknats.WithUpstreamWait(cfg.UpstreamWait), linknats.WithAcceptTimeout(cfg.NATSAccept))
 		if err != nil {
 			return err
@@ -118,7 +137,7 @@ func serve(args []string) error {
 		defer nl.Close()
 		link = nl
 	default:
-		grpcLink = linkgrpc.NewGateway(
+		grpcLink = linkgrpc.NewGateway(linkgrpc.WithRouteObserver(engine),
 			linkgrpc.WithGatewayVersion(cfg.Version), linkgrpc.WithGatewayMetrics(newLinkMetrics(wrapped)),
 			linkgrpc.WithUpstreamWait(cfg.UpstreamWait))
 		link = grpcLink
@@ -130,7 +149,7 @@ func serve(args []string) error {
 		csms.WithHandlerTimeout(cfg.HandlerTime), csms.WithCallTimeout(cfg.CallTimeout),
 		csms.WithMaxConnections(cfg.MaxConnections), csms.WithSoftMaxConnections(cfg.SoftMaxSessions),
 		csms.WithAcceptRateLimit(cfg.AcceptRate, cfg.AcceptBurst),
-		csms.WithMetrics(prom.New(wrapped)), csms.WithLogger(log),
+		csms.WithMetrics(prom.New(wrapped)), csms.WithLogger(log), csms.WithRouter(engine),
 	}
 	if cfg.EdgeHeartbeat {
 		opts = append(opts, csms.WithEdgeHeartbeat())
@@ -146,14 +165,27 @@ func serve(args []string) error {
 		opts = append(opts, csms.WithTenantLimits(tl))
 	}
 	var rdb *redis.Client
+	var policyStore storage.PolicyStore
 	if cfg.RedisAddr != "" {
 		rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr, Password: cfg.RedisPassword})
 		defer func() { _ = rdb.Close() }()
-		opts = append(opts, csms.WithSessionRegistry(registryredis.New(rdb), csms.SessionConfig{GatewayID: cfg.ID, LeaseTTL: cfg.LeaseTTL, HeartbeatInterval: cfg.HeartbeatEvery, ReconcileInterval: cfg.ReconcileEvery, ClaimTimeout: cfg.ClaimTimeout}))
+		reg := registryredis.New(rdb)
+		policyStore = reg
+		opts = append(opts, csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: cfg.ID, LeaseTTL: cfg.LeaseTTL, HeartbeatInterval: cfg.HeartbeatEvery, ReconcileInterval: cfg.ReconcileEvery, ClaimTimeout: cfg.ClaimTimeout}))
 	}
-	gw := csms.NewGatewayServer(link, opts...)
+	gw = csms.NewGatewayServer(link, opts...)
 	gw.SetGatewayLabel(ctx, "version", cfg.Version)
+	gw.SetGatewayLabel(ctx, "policy_rev", "0")
 	gw.SetGatewayLabel(ctx, "caps", "route.v1,attrs.set,send.21,cancel,orphan")
+
+	if cfg.RoutePolicyFile != "" {
+		go func() {
+			_ = engine.Watch(ctx, routepolicy.FileSource{Path: cfg.RoutePolicyFile, Interval: cfg.RoutePolicyInterval})
+		}()
+	}
+	if policyStore != nil {
+		go func() { _ = engine.Watch(ctx, routepolicy.StoreSource{Store: policyStore}) }()
+	}
 
 	// WebSocket listener.
 	lis, err := net.Listen("tcp", cfg.Listen)

@@ -45,6 +45,7 @@ func main() {
 	targets := flag.String("gateways", "", "comma separated gateway link addresses (gRPC), or the NATS server URL")
 	linkKind := flag.String("link", "grpc", "grpc|nats")
 	redisAddr := flag.String("redis", "", "registry address")
+	failHB := flag.Bool("fail-heartbeat", false, "answer every Heartbeat with an InternalError CALLERROR (an error-injecting canary)")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -83,6 +84,9 @@ func main() {
 	must(csms.On(srv, ocppj.Message[hbReq, hbResp]{Action: "Heartbeat", Direction: ocppj.SentByCP},
 		func(ctx context.Context, c *csms.Conn, _ hbReq) (hbResp, error) {
 			fmt.Printf("HANDLED Heartbeat %s %s\n", *id, c.ID())
+			if *failHB {
+				return hbResp{}, ocppj.NewCallError(ocppj.ErrorCodeInternalError, "injected", nil)
+			}
 			return hbResp{CurrentTime: time.Now().UTC().Format(time.RFC3339)}, nil
 		}))
 	fmt.Println("READY", *id)
