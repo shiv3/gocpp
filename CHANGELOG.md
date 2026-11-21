@@ -218,6 +218,11 @@ All notable changes to this project are documented here. The format is based on
   holding a reserved array in the goroutine's first frame (the callees could not use
   those bytes, so the stack was still copied again further down). Per goroutine that goes
   10 KB deep: 0.66 us instead of 2.6 us (`BenchmarkDeepHandlerStack`).
+  The embedded server's handler goroutines no longer reserve a 600-byte array either: it
+  never helped (stack copying stayed at ~5% of CPU on the Heartbeat path with or without
+  it, round-trip time unchanged within noise), and pre-growing to 16 KB did not pay for
+  embedded servers without schema validation (loopback Heartbeat +15%) while leaving the
+  idle footprint unchanged, so `DeepHandlerStack` stays opt-in.
 
 - `gocpp-gateway` secure defaults (pre-merge review of the gateway, not yet released): the gRPC link is
   served only with mutual TLS (`--link-tls-cert`, `--link-tls-key`, `--link-client-ca`) unless

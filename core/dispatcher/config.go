@@ -148,7 +148,13 @@ type Config struct {
 	// transport and its encoder): a 2 KB stack that grows as needed is copied
 	// three or four times on the way down, each time with more frames to
 	// adjust, and one copy of an almost empty stack costs a fraction of that.
-	// Leave it off for ordinary handlers, which fit the default.
+	// Leave it off for ordinary handlers, which fit the default: measured on
+	// the embedded server's Heartbeat path it did not pay (the loopback round
+	// trip got slower, the stack copy share of CPU barely moved). It does pay
+	// when schema validation runs in the handler path (in-memory dispatch with
+	// SchemaModeLenient: 15.3 -> 5.7 us/op; Strict: 17.0 -> 10.3 us/op). The
+	// idle footprint is unchanged either way, since handler goroutines are
+	// transient.
 	DeepHandlerStack bool
 	Logger           *slog.Logger
 	Metrics          MetricsHook

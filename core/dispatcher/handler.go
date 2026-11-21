@@ -167,13 +167,6 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 		return
 	}
 
-	// Every inbound message runs on a fresh goroutine whose 2 KiB stack is too
-	// small for the handler chain, so it has to grow. Growing at entry, while
-	// only a few frames exist, is cheaper than growing later from inside the
-	// pipeline (about 7% of a Heartbeat round trip in BenchmarkInboundHeartbeat),
-	// so reserve frame space here, which makes the runtime grow once, now.
-	var reserve [stackReserve]byte
-	reserveStack(&reserve)
 	start := time.Now()
 	c.cfg.Metrics.CallStarted(frame.Action, "inbound")
 	status := "ok"
@@ -291,12 +284,6 @@ func mustJSON(v any) []byte {
 	}
 	return b
 }
-
-// stackReserve is the frame space runHandler reserves up front; see there.
-const stackReserve = 600
-
-//go:noinline
-func reserveStack(*[stackReserve]byte) {}
 
 // deepStackFrame is the frame size of growDeepStack: large enough that the
 // runtime, which doubles a stack until the frame fits, takes a fresh
