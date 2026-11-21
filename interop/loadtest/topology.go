@@ -261,9 +261,9 @@ func (t *topology) pickWS() string { return t.gws[rand.Intn(len(t.gws))].ws }
 
 // target selects the processes a restart acts on, round-robin over the
 // candidates: gateway | backend | pool:NAME | server (the control backend).
-func (t *topology) target() *proc {
+func (t *topology) target(ts string) *proc {
 	var c []*proc
-	switch ts := t.g.cfg.RestartTarget; {
+	switch {
 	case ts == "gateway":
 		c = t.gws
 	case strings.HasPrefix(ts, "pool:"):

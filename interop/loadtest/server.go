@@ -134,19 +134,19 @@ type restartRec struct {
 	PeakUp         int64   `json:"peak_up"`
 }
 
-func (g *gen) restart(k int) {
+func (g *gen) restart(k int, target, mode string) {
 	pre := g.up.Load()
 	g.met.restartActive.Store(true)
 	killAt := time.Now()
-	g.events.add("restart_kill", fmt.Sprintf("k=%d pre_up=%d", k, pre))
+	g.events.add("restart_kill", fmt.Sprintf("k=%d pre_up=%d target=%s mode=%s", k, pre, target, mode))
 	var exit time.Duration
 	var tp *proc
 	sig := syscall.SIGTERM
-	if g.cfg.RestartMode == "kill" {
+	if mode == "kill" {
 		sig = syscall.SIGKILL
 	}
-	if g.topo != nil && g.cfg.RestartTarget != "server" {
-		tp = g.topo.target()
+	if g.topo != nil && target != "server" {
+		tp = g.topo.target(target)
 		g.events.add("restart_target", tp.name)
 		exit = g.topo.stopProc(tp, sig)
 	} else if g.topo != nil {

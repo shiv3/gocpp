@@ -123,6 +123,7 @@ func main() {
 	}
 	var link *linkgrpc.Backend
 	if *mode == "backend" {
+		rec.AssumeConnected(true)
 		link = linkgrpc.NewBackend(linkgrpc.StaticTargets(strings.Split(*gateways, ",")...),
 			linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
 			linkgrpc.WithResolveInterval(500*time.Millisecond), linkgrpc.WithDrainTimeout(30*time.Second))

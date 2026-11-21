@@ -18,7 +18,37 @@ def load(d):
     with open(os.path.join(d, "timeline.csv")) as f:
         for r in csv.DictReader(f):
             rows.append({k: (float(v) if re.match(r"^-?[\d.]+$", v) else v) for k, v in r.items()})
+    merge_procs(d, rows)
     return rows
+
+
+def merge_procs(d, rows):
+    """Split topology: the timeline's server columns describe only the /control backend, so
+    srv_rss_mb / srv_cpu_cores / srv_threads / srv_fds become the sum over all gateway and backend
+    processes in procs.csv (sampled on the same clock), and gw_/be_ column pairs are added."""
+    p = os.path.join(d, "procs.csv")
+    if not os.path.exists(p):
+        return
+    by = {}
+    with open(p) as f:
+        for r in csv.DictReader(f):
+            if not r["t_s"] or r["t_s"] == "t_s":
+                continue
+            t = float(r["t_s"]); a = by.setdefault(t, {})
+            for role in (r["role"], "all"):
+                v = a.setdefault(role, [0.0, 0.0, 0.0, 0.0])
+                v[0] += float(r["rss_mb"]); v[1] += float(r["cpu_cores"]); v[2] += float(r["threads"]); v[3] += float(r["fds"])
+    if not by:
+        return
+    ts = sorted(by)
+    for row in rows:
+        t = min(ts, key=lambda x: abs(x - row["t_s"]))
+        if abs(t - row["t_s"]) > 6:
+            continue
+        a = by[t]
+        for role in ("gateway", "backend"):
+            v = a.get(role, [0, 0, 0, 0]); row[role[:2] + "_rss_mb"] = v[0]; row[role[:2] + "_cpu_cores"] = v[1]
+        v = a["all"]; row["srv_rss_mb"], row["srv_cpu_cores"], row["srv_threads"], row["srv_fds"] = v
 
 def slope(xs, ys):
     if len(xs) < 3: return 0.0

@@ -1,0 +1,387 @@
+{
+ "abort_reason": "",
+ "aborted": false,
+ "call_latency_ms": {
+  "not_connected": {
+   "n": 91,
+   "P50": 0.768,
+   "P95": 1.21,
+   "P99": 1.367,
+   "Max": 1.367,
+   "Mean": 0
+  },
+  "ok": {
+   "n": 5723,
+   "P50": 0.861,
+   "P95": 1.355,
+   "P99": 1.7,
+   "Max": 22.932,
+   "Mean": 0
+  },
+  "other": {
+   "n": 248,
+   "P50": 23161.382,
+   "P95": 29053.637,
+   "P99": 29996.172,
+   "Max": 29996.172,
+   "Mean": 0
+  },
+  "timeout": {
+   "n": 3309,
+   "P50": 30002.723,
+   "P95": 30002.723,
+   "P99": 30002.723,
+   "Max": 30002.723,
+   "Mean": 0
+  }
+ },
+ "calls": {
+  "not_connected": 91,
+  "ok": 5723,
+  "other": 248,
+  "timeout": 3309
+ },
+ "config": {
+  "ServerBin": "/work/scratch/q5/bin/cs-gocpp",
+  "ServerArgs": "",
+  "Addr": "127.0.0.1:9200",
+  "Taskset": "",
+  "Pprof": "127.0.0.1:6060",
+  "Out": "/work/wt/gocpp-gwq5/interop/loadtest/results/gateway-final-2026-11-21/gateway-10k-rolling-drain",
+  "Label": "gateway-10k-rolling",
+  "ServerProcs": 2,
+  "Steps": [
+   {
+    "N": 10000,
+    "Rate": 20,
+    "Dur": 480000000000,
+    "Speed": 1
+   }
+  ],
+  "Ramp": 90000000000,
+  "HB": 30000000000,
+  "ReconnBase": 1000000000,
+  "ReconnCap": 30000000000,
+  "ReconnJitter0": 3000000000,
+  "RestartGap": 2000000000,
+  "Sample": 5000000000,
+  "FreezeThresh": 10000000000,
+  "CallTimeout": 30000000000,
+  "TxCycle": 40000000000,
+  "TxLen": 25000000000,
+  "Meter": 5000000000,
+  "HBJitter": 0.1,
+  "Mute": 0.4,
+  "TxFrac": 0.15,
+  "Flappers": 3,
+  "Dups": 20,
+  "Restarts": 5,
+  "Connectors": 2,
+  "MinAvailMB": 800,
+  "Attach": false,
+  "GCTrace": false,
+  "Hot": 0,
+  "HotShare": 0.9,
+  "GatewayBin": "/work/scratch/q5/bin/gocpp-gateway",
+  "BackendPools": "default:3",
+  "GwTaskset": "8-10",
+  "BeTaskset": "11-13",
+  "GwArgs": "",
+  "RestartTarget": "server",
+  "RestartMode": "term",
+  "Plan": "gateway:term,gateway:term,gateway:term",
+  "Gateways": 3
+ },
+ "connect_errors": {
+  "bad_status": 7716,
+  "refused": 518
+ },
+ "csms_calls_delivered": {
+  "muted_dropped": 3768,
+  "unmuted": 5723
+ },
+ "duration_s": 480.090720335,
+ "final_up": 9993,
+ "freezes": null,
+ "label": "gateway-10k-rolling",
+ "latency_all_ms": {
+  "Authorize": {
+   "n": 14739,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 5.891,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 26582,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 6.24,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 137402,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 0.964,
+   "Max": 8.712,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 67231,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 6.912,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 14739,
+   "P50": 0.436,
+   "P95": 0.613,
+   "P99": 0.768,
+   "Max": 6.87,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 107053,
+   "P50": 0.389,
+   "P95": 0.613,
+   "P99": 0.686,
+   "Max": 7.454,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 12571,
+   "P50": 0.436,
+   "P95": 0.613,
+   "P99": 0.768,
+   "Max": 2.368,
+   "Mean": 0
+  }
+ },
+ "latency_by_step_steady_ms": {
+  "0": {
+   "Authorize": {
+    "n": 4949,
+    "P50": 0.547,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 5.595,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 10287,
+    "P50": 0.613,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 3.856,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 46348,
+    "P50": 0.488,
+    "P95": 0.861,
+    "P99": 0.964,
+    "Max": 7.074,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 22401,
+    "P50": 0.547,
+    "P95": 0.861,
+    "P99": 0.964,
+    "Max": 6.717,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 4949,
+    "P50": 0.436,
+    "P95": 0.613,
+    "P99": 0.768,
+    "Max": 1.987,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 39983,
+    "P50": 0.389,
+    "P95": 0.613,
+    "P99": 0.686,
+    "Max": 2.58,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 4176,
+    "P50": 0.436,
+    "P95": 0.613,
+    "P99": 0.768,
+    "Max": 1.097,
+    "Mean": 0
+   }
+  }
+ },
+ "latency_restart_windows_ms": {
+  "Authorize": {
+   "n": 9790,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 5.891,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 16295,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 0.964,
+   "Max": 6.24,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 91054,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 0.964,
+   "Max": 8.712,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 44830,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 6.912,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 9790,
+   "P50": 0.436,
+   "P95": 0.613,
+   "P99": 0.768,
+   "Max": 6.87,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 67070,
+   "P50": 0.389,
+   "P95": 0.613,
+   "P99": 0.768,
+   "Max": 7.454,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 8395,
+   "P50": 0.436,
+   "P95": 0.613,
+   "P99": 0.768,
+   "Max": 2.368,
+   "Mean": 0
+  }
+ },
+ "latency_steady_ms": {
+  "Authorize": {
+   "n": 4949,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 5.595,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 10287,
+   "P50": 0.613,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 3.856,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 46348,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 0.964,
+   "Max": 7.074,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 22401,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 0.964,
+   "Max": 6.717,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 4949,
+   "P50": 0.436,
+   "P95": 0.613,
+   "P99": 0.768,
+   "Max": 1.987,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 39983,
+   "P50": 0.389,
+   "P95": 0.613,
+   "P99": 0.686,
+   "Max": 2.58,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 4176,
+   "P50": 0.436,
+   "P95": 0.613,
+   "P99": 0.768,
+   "Max": 1.097,
+   "Mean": 0
+  }
+ },
+ "request_errors": {
+  "BootNotification/closed": 7,
+  "StatusNotification/closed": 1
+ },
+ "restarts": [
+  {
+   "k": 1,
+   "kill_at_s": 187.59120315,
+   "exit_ms": 60007,
+   "ready_after_kill_s": 62.011160982,
+   "pre_up": 9997,
+   "t90_from_ready_s": 0.000044805,
+   "t99_from_ready_s": 0.001,
+   "t99_from_kill_s": 62.012160982,
+   "t100_from_ready_s": 3.255488744,
+   "reached_99": true,
+   "peak_up": 9994
+  },
+  {
+   "k": 2,
+   "kill_at_s": 285.091456555,
+   "exit_ms": 60012,
+   "ready_after_kill_s": 62.016207646,
+   "pre_up": 9997,
+   "t90_from_ready_s": 0.000029293,
+   "t99_from_ready_s": 0.001,
+   "t99_from_kill_s": 62.017207645999996,
+   "t100_from_ready_s": 3.255367459,
+   "reached_99": true,
+   "peak_up": 9994
+  },
+  {
+   "k": 3,
+   "kill_at_s": 382.591002889,
+   "exit_ms": 60015,
+   "ready_after_kill_s": 62.019944953,
+   "pre_up": 9999,
+   "t90_from_ready_s": 0.000027851,
+   "t99_from_ready_s": 0.001,
+   "t99_from_kill_s": 62.020944953,
+   "t100_from_ready_s": 5.259763464,
+   "reached_99": true,
+   "peak_up": 9996
+  }
+ ],
+ "server_crashes": 0
+}

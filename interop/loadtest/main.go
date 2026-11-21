@@ -45,8 +45,8 @@ type config struct {
 	Hot                                                     int
 	HotShare                                                float64
 	// Split topology (see topology.go).
-	GatewayBin, BackendPools, GwTaskset, BeTaskset, GwArgs, RestartTarget, RestartMode string
-	Gateways                                                                           int
+	GatewayBin, BackendPools, GwTaskset, BeTaskset, GwArgs, RestartTarget, RestartMode, Plan string
+	Gateways                                                                                 int
 }
 
 type gen struct {
@@ -143,6 +143,7 @@ func main() {
 	flag.StringVar(&c.BeTaskset, "be-taskset", "", "cpu list for each backend")
 	flag.StringVar(&c.GwArgs, "gw-args", "", "extra gateway args (space separated)")
 	flag.StringVar(&c.RestartTarget, "restart-target", "server", "what -restarts acts on: server | backend | gateway | pool:NAME")
+	flag.StringVar(&c.Plan, "plan", "", "mixed restart plan, comma separated target:mode (target server|backend|gateway|pool:NAME, mode term|kill), spread evenly over the first step; replaces -restarts")
 	flag.StringVar(&c.RestartMode, "restart-mode", "term", "term (SIGTERM, drain) | kill (SIGKILL)")
 	flag.BoolVar(&c.Attach, "attach", false, "do not spawn the server")
 	flag.BoolVar(&c.GCTrace, "gctrace", false, "start the server with GODEBUG=gctrace=1 (needed for the in-mark share in report.py)")
@@ -274,15 +275,22 @@ func (g *gen) run() {
 			})
 		}
 		prevN = s.N
-		if si == 0 && c.Restarts > 0 && (g.srv != nil || g.topo != nil) {
+		if si == 0 && (c.Restarts > 0 || c.Plan != "") && (g.srv != nil || g.topo != nil) {
 			win := s.Dur - ramp
-			for k := 1; k <= c.Restarts; k++ {
-				at := ramp + win*time.Duration(k)/time.Duration(c.Restarts+1)
+			plan := parsePlan(c.Plan)
+			if len(plan) == 0 {
+				for k := 0; k < c.Restarts; k++ {
+					plan = append(plan, restartSpec{c.RestartTarget, c.RestartMode})
+				}
+			}
+			for k := 1; k <= len(plan); k++ {
+				at := ramp + win*time.Duration(k)/time.Duration(len(plan)+1)
+				spec := plan[k-1]
 				restartsDone.Add(1)
 				time.AfterFunc(at, func() {
 					defer restartsDone.Done()
 					if g.ctx.Err() == nil {
-						g.restart(k)
+						g.restart(k, spec.target, spec.mode)
 					}
 				})
 			}
@@ -329,4 +337,27 @@ func (g *gen) health(timeout time.Duration) (time.Duration, bool) {
 	var v struct{ OK bool }
 	_ = json.NewDecoder(resp.Body).Decode(&v)
 	return time.Since(t0), v.OK
+}
+
+type restartSpec struct{ target, mode string }
+
+func parsePlan(s string) []restartSpec {
+	var out []restartSpec
+	for _, it := range strings.Split(s, ",") {
+		it = strings.TrimSpace(it)
+		if it == "" {
+			continue
+		}
+		t, mode, _ := strings.Cut(it, ":")
+		if strings.HasPrefix(it, "pool:") { // pool:NAME:mode
+			rest := strings.TrimPrefix(it, "pool:")
+			n, md, _ := strings.Cut(rest, ":")
+			t, mode = "pool:"+n, md
+		}
+		if mode == "" {
+			mode = "term"
+		}
+		out = append(out, restartSpec{t, mode})
+	}
+	return out
 }

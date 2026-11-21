@@ -50,13 +50,14 @@ type Event struct {
 // Recorder keeps events in memory and optionally appends them to a JSONL file.
 // It also tracks the set of connected charge point ids.
 type Recorder struct {
-	mu     sync.Mutex
-	seq    int64
-	events []Event
-	file   *os.File
-	conns  map[string]int // id -> number of live registrations
-	lite   bool           // load-test mode: keep no events, only connection tracking and counters
-	counts map[string]int64
+	mu              sync.Mutex
+	assumeConnected bool
+	seq             int64
+	events          []Event
+	file            *os.File
+	conns           map[string]int // id -> number of live registrations
+	lite            bool           // load-test mode: keep no events, only connection tracking and counters
+	counts          map[string]int64
 }
 
 // SetLite switches to load-test mode: events are neither stored nor written,
@@ -175,9 +176,21 @@ func (r *Recorder) Connections() []string {
 }
 
 // IsConnected reports whether id is currently connected.
+// AssumeConnected makes IsConnected always true. A backend behind a gateway sees
+// only the connect events notified to it, so its own bookkeeping cannot tell
+// whether a charger is connected; the call then fails through Lookup instead.
+func (r *Recorder) AssumeConnected(v bool) {
+	r.mu.Lock()
+	r.assumeConnected = v
+	r.mu.Unlock()
+}
+
 func (r *Recorder) IsConnected(id string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.assumeConnected {
+		return true
+	}
 	return r.conns[id] > 0
 }
 

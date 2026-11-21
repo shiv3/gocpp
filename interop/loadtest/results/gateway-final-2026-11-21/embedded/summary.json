@@ -1,0 +1,470 @@
+{
+ "abort_reason": "",
+ "aborted": false,
+ "call_latency_ms": {
+  "http_eof": {
+   "n": 3567,
+   "P50": 18464.111,
+   "P95": 29053.637,
+   "P99": 30016.749,
+   "Max": 30016.749,
+   "Mean": 0
+  },
+  "http_refused": {
+   "n": 705,
+   "P50": 0.112,
+   "P95": 11.672,
+   "P99": 14.641,
+   "Max": 16.408,
+   "Mean": 0
+  },
+  "http_reset": {
+   "n": 4,
+   "P50": 10.421,
+   "P95": 16.376,
+   "P99": 16.376,
+   "Max": 16.376,
+   "Mean": 0
+  },
+  "not_connected": {
+   "n": 2873,
+   "P50": 0.277,
+   "P95": 0.547,
+   "P99": 0.768,
+   "Max": 56.983,
+   "Mean": 0
+  },
+  "ok": {
+   "n": 42252,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 32.424,
+   "Mean": 0
+  },
+  "other": {
+   "n": 223,
+   "P50": 0.277,
+   "P95": 0.436,
+   "P99": 0.547,
+   "Max": 0.561,
+   "Mean": 0
+  },
+  "timeout": {
+   "n": 24761,
+   "P50": 30035.669,
+   "P95": 30035.669,
+   "P99": 30035.669,
+   "Max": 30035.669,
+   "Mean": 0
+  }
+ },
+ "calls": {
+  "http_eof": 3567,
+  "http_refused": 705,
+  "http_reset": 4,
+  "not_connected": 2873,
+  "ok": 42252,
+  "other": 223,
+  "timeout": 24761
+ },
+ "config": {
+  "ServerBin": "/work/scratch/q5/bin/cs-gocpp",
+  "ServerArgs": "-drain-window=20s",
+  "Addr": "127.0.0.1:9000",
+  "Taskset": "2-5",
+  "Pprof": "127.0.0.1:6060",
+  "Out": "/work/wt/gocpp-gwq5/interop/loadtest/results/gateway-final-2026-11-21/embedded",
+  "Label": "embedded-final",
+  "ServerProcs": 4,
+  "Steps": [
+   {
+    "N": 4000,
+    "Rate": 50,
+    "Dur": 1500000000000,
+    "Speed": 1
+   }
+  ],
+  "Ramp": 60000000000,
+  "HB": 30000000000,
+  "ReconnBase": 1000000000,
+  "ReconnCap": 30000000000,
+  "ReconnJitter0": 3000000000,
+  "RestartGap": 2000000000,
+  "Sample": 5000000000,
+  "FreezeThresh": 10000000000,
+  "CallTimeout": 30000000000,
+  "TxCycle": 40000000000,
+  "TxLen": 25000000000,
+  "Meter": 5000000000,
+  "HBJitter": 0.1,
+  "Mute": 0.4,
+  "TxFrac": 0.15,
+  "Flappers": 3,
+  "Dups": 20,
+  "Restarts": 5,
+  "Connectors": 2,
+  "MinAvailMB": 800,
+  "Attach": false,
+  "GCTrace": false,
+  "Hot": 0,
+  "HotShare": 0.9,
+  "GatewayBin": "",
+  "BackendPools": "default:2",
+  "GwTaskset": "",
+  "BeTaskset": "",
+  "GwArgs": "",
+  "RestartTarget": "server",
+  "RestartMode": "term",
+  "Plan": "server:term,server:kill,server:term,server:term,server:kill,server:term,server:term",
+  "Gateways": 0
+ },
+ "connect_errors": {
+  "bad_status": 49880,
+  "refused": 21118,
+  "reset": 32
+ },
+ "csms_calls_delivered": {
+  "muted_dropped": 28287,
+  "unmuted": 42252
+ },
+ "duration_s": 1500.047129494,
+ "final_up": 3988,
+ "freezes": null,
+ "label": "embedded-final",
+ "latency_all_ms": {
+  "Authorize": {
+   "n": 19523,
+   "P50": 0.277,
+   "P95": 0.436,
+   "P99": 0.547,
+   "Max": 5.638,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 37619,
+   "P50": 0.221,
+   "P95": 0.436,
+   "P99": 1.904,
+   "Max": 34.405,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 177711,
+   "P50": 0.277,
+   "P95": 0.436,
+   "P99": 0.547,
+   "Max": 7.665,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 88595,
+   "P50": 0.31,
+   "P95": 0.547,
+   "P99": 0.613,
+   "Max": 7.291,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 19523,
+   "P50": 0.221,
+   "P95": 0.347,
+   "P99": 0.436,
+   "Max": 7.161,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 148985,
+   "P50": 0.176,
+   "P95": 0.347,
+   "P99": 1.08,
+   "Max": 34.179,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 16606,
+   "P50": 0.221,
+   "P95": 0.347,
+   "P99": 0.436,
+   "Max": 4.871,
+   "Mean": 0
+  }
+ },
+ "latency_by_step_steady_ms": {
+  "0": {
+   "Authorize": {
+    "n": 14406,
+    "P50": 0.277,
+    "P95": 0.436,
+    "P99": 0.547,
+    "Max": 5.638,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 8295,
+    "P50": 0.247,
+    "P95": 0.389,
+    "P99": 0.547,
+    "Max": 27.929,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 131875,
+    "P50": 0.277,
+    "P95": 0.436,
+    "P99": 0.547,
+    "Max": 6.359,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 70088,
+    "P50": 0.31,
+    "P95": 0.488,
+    "P99": 0.613,
+    "Max": 7.291,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 14406,
+    "P50": 0.221,
+    "P95": 0.347,
+    "P99": 0.436,
+    "Max": 7.161,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 53269,
+    "P50": 0.176,
+    "P95": 0.31,
+    "P99": 0.389,
+    "Max": 27.721,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 13979,
+    "P50": 0.221,
+    "P95": 0.347,
+    "P99": 0.436,
+    "Max": 4.871,
+    "Mean": 0
+   }
+  }
+ },
+ "latency_restart_windows_ms": {
+  "Authorize": {
+   "n": 5117,
+   "P50": 0.277,
+   "P95": 0.436,
+   "P99": 0.547,
+   "Max": 3.51,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 29324,
+   "P50": 0.197,
+   "P95": 0.488,
+   "P99": 2.132,
+   "Max": 34.405,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 45836,
+   "P50": 0.277,
+   "P95": 0.436,
+   "P99": 0.547,
+   "Max": 7.665,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 18507,
+   "P50": 0.31,
+   "P95": 0.547,
+   "P99": 0.613,
+   "Max": 6.074,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 5117,
+   "P50": 0.221,
+   "P95": 0.347,
+   "P99": 0.436,
+   "Max": 0.707,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 95716,
+   "P50": 0.176,
+   "P95": 0.347,
+   "P99": 1.517,
+   "Max": 34.179,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 2627,
+   "P50": 0.221,
+   "P95": 0.347,
+   "P99": 0.436,
+   "Max": 0.627,
+   "Mean": 0
+  }
+ },
+ "latency_steady_ms": {
+  "Authorize": {
+   "n": 14406,
+   "P50": 0.277,
+   "P95": 0.436,
+   "P99": 0.547,
+   "Max": 5.638,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 8295,
+   "P50": 0.247,
+   "P95": 0.389,
+   "P99": 0.547,
+   "Max": 27.929,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 131875,
+   "P50": 0.277,
+   "P95": 0.436,
+   "P99": 0.547,
+   "Max": 6.359,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 70088,
+   "P50": 0.31,
+   "P95": 0.488,
+   "P99": 0.613,
+   "Max": 7.291,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 14406,
+   "P50": 0.221,
+   "P95": 0.347,
+   "P99": 0.436,
+   "Max": 7.161,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 53269,
+   "P50": 0.176,
+   "P95": 0.31,
+   "P99": 0.389,
+   "Max": 27.721,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 13979,
+   "P50": 0.221,
+   "P95": 0.347,
+   "P99": 0.436,
+   "Max": 4.871,
+   "Mean": 0
+  }
+ },
+ "request_errors": {
+  "Authorize/closed": 1,
+  "BootNotification/closed": 17,
+  "Heartbeat/closed": 13,
+  "MeterValues/closed": 9,
+  "StatusNotification/closed": 1
+ },
+ "restarts": [
+  {
+   "k": 1,
+   "kill_at_s": 240.046043768,
+   "exit_ms": 15021,
+   "ready_after_kill_s": 17.223635339,
+   "pre_up": 3988,
+   "t90_from_ready_s": 12.023846864,
+   "t99_from_ready_s": 25.053120147,
+   "t99_from_kill_s": 42.276755486,
+   "t100_from_ready_s": 28.811066587,
+   "reached_99": true,
+   "peak_up": 3985
+  },
+  {
+   "k": 2,
+   "kill_at_s": 420.045813103,
+   "exit_ms": 41,
+   "ready_after_kill_s": 2.2449739969999998,
+   "pre_up": 3989,
+   "t90_from_ready_s": 2.502910173,
+   "t99_from_ready_s": 6.008630711,
+   "t99_from_kill_s": 8.253604708000001,
+   "t100_from_ready_s": 9.015041262,
+   "reached_99": true,
+   "peak_up": 3986
+  },
+  {
+   "k": 3,
+   "kill_at_s": 600.045730641,
+   "exit_ms": 15021,
+   "ready_after_kill_s": 17.239826794,
+   "pre_up": 3992,
+   "t90_from_ready_s": 12.772880346,
+   "t99_from_ready_s": 26.551981117,
+   "t99_from_kill_s": 43.791807911,
+   "t100_from_ready_s": 33.817891248,
+   "reached_99": true,
+   "peak_up": 3990
+  },
+  {
+   "k": 4,
+   "kill_at_s": 780.045648341,
+   "exit_ms": 15024,
+   "ready_after_kill_s": 17.226185729,
+   "pre_up": 3990,
+   "t90_from_ready_s": 11.769749075,
+   "t99_from_ready_s": 25.546897716,
+   "t99_from_kill_s": 42.773083445,
+   "t100_from_ready_s": 27.801048196,
+   "reached_99": true,
+   "peak_up": 3987
+  },
+  {
+   "k": 5,
+   "kill_at_s": 960.045675793,
+   "exit_ms": 42,
+   "ready_after_kill_s": 2.2647464250000002,
+   "pre_up": 3987,
+   "t90_from_ready_s": 2.505428398,
+   "t99_from_ready_s": 6.012367985,
+   "t99_from_kill_s": 8.27711441,
+   "t100_from_ready_s": 7.514995577,
+   "reached_99": true,
+   "peak_up": 3984
+  },
+  {
+   "k": 6,
+   "kill_at_s": 1140.048829313,
+   "exit_ms": 15026,
+   "ready_after_kill_s": 17.227125661,
+   "pre_up": 3991,
+   "t90_from_ready_s": 12.022553867,
+   "t99_from_ready_s": 24.796105204,
+   "t99_from_kill_s": 42.023230865,
+   "t100_from_ready_s": 27.801975629,
+   "reached_99": true,
+   "peak_up": 3988
+  },
+  {
+   "k": 7,
+   "kill_at_s": 1320.045709337,
+   "exit_ms": 15024,
+   "ready_after_kill_s": 17.226228836,
+   "pre_up": 3989,
+   "t90_from_ready_s": 12.522950714,
+   "t99_from_ready_s": 25.295989683,
+   "t99_from_kill_s": 42.522218519,
+   "t100_from_ready_s": 29.053254494,
+   "reached_99": true,
+   "peak_up": 3986
+  }
+ ],
+ "server_crashes": 0
+}
