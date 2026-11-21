@@ -33,7 +33,7 @@ func handshake(t *testing.T, srvCfg, cliCfg *tls.Config) (resumed bool) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	errc := make(chan error, 1)
 	go func() {
 		raw, err := ln.Accept()
@@ -41,7 +41,7 @@ func handshake(t *testing.T, srvCfg, cliCfg *tls.Config) (resumed bool) {
 			errc <- err
 			return
 		}
-		defer raw.Close()
+		defer func() { _ = raw.Close() }()
 		s := tls.Server(raw, srvCfg)
 		if err := s.Handshake(); err != nil {
 			errc <- err
@@ -67,8 +67,7 @@ func TestSharedTicketKeysResumeAcrossProcesses(t *testing.T) {
 	secret := []byte("shared secret")
 	newSrv := func() *tls.Config {
 		cfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
-		stop := func() {}
-		stop = RotateSharedTicketKeys(cfg, secret, time.Hour)
+		stop := RotateSharedTicketKeys(cfg, secret, time.Hour)
 		t.Cleanup(stop)
 		return cfg
 	}

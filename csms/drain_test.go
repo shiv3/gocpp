@@ -324,7 +324,7 @@ func TestRateLimitListener(t *testing.T) {
 		_ = c.SetReadDeadline(time.Now().Add(30 * time.Millisecond))
 		if _, err := c.Read(make([]byte, 1)); err != nil && !errors.Is(err, net.ErrClosed) {
 			var ne net.Error
-			if !(errors.As(err, &ne) && ne.Timeout()) {
+			if !errors.As(err, &ne) || !ne.Timeout() {
 				dropped++ // closed by the limiter (EOF / reset)
 			}
 		}
