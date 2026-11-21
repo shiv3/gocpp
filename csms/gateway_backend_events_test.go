@@ -464,3 +464,40 @@ func TestGateway_RegistryDataLossDoesNotSuppressConnect(t *testing.T) {
 	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-B", 1)))
 	require.EqualValues(t, 2, connects.Load(), "the registry's session must be announced")
 }
+
+// A connect decision fetched before InvalidateGatewayAuthCache must not be
+// cached after it: it may be the credential that was just revoked (review N9).
+func TestGateway_InFlightConnectDoesNotRecacheAfterInvalidate(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	var revoked atomic.Bool
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	r := newRig(t, []csms.Option{csms.WithGatewayAuthCache(csms.AuthCacheConfig{TTL: time.Hour, StaleIfError: time.Hour})},
+		[]csms.Option{csms.WithAuthenticator(auth.BasicAuth(func(cpID, _ string) (auth.Identity, error) {
+			if !revoked.Load() {
+				entered <- struct{}{}
+				<-release // the decision (allow) is made, its delivery is slow
+				return auth.Identity{CPID: cpID}, nil
+			}
+			return auth.Identity{}, auth.ErrUnauthorized
+		}))})
+	defer r.close()
+	r.serve()
+	dial := func() int {
+		h := http.Header{}
+		h.Set("Authorization", "Basic "+basic("CP_1", "pw"))
+		c, resp, err := websocket.Dial(context.Background(), r.url+"CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}, HTTPHeader: h})
+		if err != nil {
+			return resp.StatusCode
+		}
+		_ = c.CloseNow()
+		return http.StatusSwitchingProtocols
+	}
+	first := make(chan int, 1)
+	go func() { first <- dial() }()
+	<-entered
+	revoked.Store(true)
+	require.NoError(t, r.be.InvalidateGatewayAuthCache(context.Background(), "CP_1"))
+	close(release)
+	require.Equal(t, 101, <-first)
+	require.Equal(t, 401, dial(), "the pre-invalidation decision was cached after the invalidation")
+}
