@@ -209,17 +209,17 @@ func freeAddr(t *testing.T) string {
 
 type gw struct {
 	*proc
-	id, ws, link, admin string
+	id, ws, link, admin, api string // admin: metrics and probes; api: admin API and pprof
 }
 
 func startGateway(t *testing.T, id, redisAddr string, extra ...string) *gw {
 	t.Helper()
-	g := &gw{id: id, ws: freeAddr(t), link: freeAddr(t), admin: freeAddr(t)}
+	g := &gw{id: id, ws: freeAddr(t), link: freeAddr(t), admin: freeAddr(t), api: freeAddr(t)}
 	if linkKind == "nats" {
 		g.link = brokerAddr(t) // every gateway and backend meets on the broker
 		extra = append([]string{"--link", "nats", "--nats-url", "nats://" + g.link, "--nats-accept-timeout", "1500ms"}, extra...)
 	}
-	args := []string{"serve", "--id", id, "--listen", g.ws, "--link-listen", g.link, "--admin", g.admin,
+	args := []string{"serve", "--id", id, "--listen", g.ws, "--link-listen", g.link, "--link-insecure", "--metrics-listen", g.admin, "--admin", g.api,
 		"--subprotocols", "ocpp1.6", "--accept-rate", "0", "--upstream-wait", "1s", "--drain-window", "2s",
 		"--lease-ttl", "3s", "--lease-heartbeat", "500ms", "--reconcile-interval", "1s", "--claim-timeout", "500ms",
 		"--link-keepalive", "1s", "--log-level", "warn"}

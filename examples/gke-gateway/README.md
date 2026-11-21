@@ -11,8 +11,27 @@ Files
 - `gateway.yaml`: StatefulSet (`partition` for canary rollouts, `minReadySeconds`,
   startup probe using `gocpp-gateway probe`), headless Service for the link, the
   L4 `LoadBalancer` Service for chargers, PodDisruptionBudget.
+- `tls.yaml`: cert-manager Issuer/Certificates for mutual TLS on the gRPC link
+  and TLS on the admin API (or create the Secrets yourself).
 - `backend.yaml`: backend Deployment (pool `default`) and an optional canary
   Deployment (pool `canary`, receives no traffic until a router names the pool).
+
+Security
+
+- The gateway refuses to start the gRPC link without TLS and a client CA
+  (`--link-tls-cert --link-tls-key --link-client-ca`); `--link-insecure` exists for
+  development only and logs a warning. Backends need a client certificate from the
+  same CA (`tls.yaml`).
+- The admin API and pprof listen on a separate port (here `:9443`, with the token
+  from the `gateway-admin` Secret and TLS); on the default `127.0.0.1:9101` no
+  token is needed. A non-loopback bind without a token is refused. Metrics and
+  probes stay on `:9100` and carry no secrets.
+- gocppctl: `GOCPPCTL_ADMIN_TOKEN` (or `--admin-token-file`), `--admin-ca` for the
+  TLS verification, `GOCPPCTL_REDIS_PASSWORD` and `--redis-tls --redis-ca` for Redis.
+- Charger-facing TLS (`gateway-tls`), Redis TLS, and NATS permissions (if you use
+  the NATS link) are described in `docs/gateway.md`, "Security".
+- Add a NetworkPolicy that only lets backends reach 9090 and your operators reach
+  9443.
 
 Rollout notes
 

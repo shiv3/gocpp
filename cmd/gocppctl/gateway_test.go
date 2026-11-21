@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,8 +100,10 @@ func TestGatewayStatusShedAndCap(t *testing.T) {
 	require.Contains(t, out, "sessions=90")
 	require.Contains(t, out, "2 gateways, 100 sessions, fair share 50.0")
 
+	tokFile := filepath.Join(t.TempDir(), "tok")
+	require.NoError(t, os.WriteFile(tokFile, []byte("tok\n"), 0o600))
 	out, errs, code = ctl(t, "gateway", "shed", "--redis-addr", addr, "--gateway", "gw-0", "--count", "20",
-		"--min-age", "15m", "--attr", "site=a", "--rate", "50", "--admin-token", "tok")
+		"--min-age", "15m", "--attr", "site=a", "--rate", "50", "--admin-token-file", tokFile)
 	require.Equal(t, 0, code, errs)
 	require.Contains(t, out, "gw-0: shedding 20 of")
 	gws[0].mu.Lock()

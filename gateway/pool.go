@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -84,6 +85,18 @@ func (p *Pool) Handles(action string) bool {
 	defer p.mu.Unlock()
 	for _, m := range p.members {
 		if !m.draining.Load() && m.info.Handles(action) {
+			return true
+		}
+	}
+	return false
+}
+
+// advertises reports whether a member explicitly lists action.
+func (p *Pool) advertises(action string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, m := range p.members {
+		if slices.Contains(m.info.Actions, action) {
 			return true
 		}
 	}

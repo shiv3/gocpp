@@ -93,6 +93,11 @@ func (s *PoolSet) Unhandled() map[[2]string]uint64 {
 }
 
 func (s *PoolSet) noteUnhandled(pool, action string) {
+	// The name is the charger's choice: bound the map. Standard actions and
+	// those some backend advertises (a vendor extension) keep their name.
+	if LabelAction(action) == OtherAction && !s.advertised(action) {
+		action = OtherAction
+	}
 	s.mu.Lock()
 	if s.unhandled == nil {
 		s.unhandled = make(map[[2]string]uint64)
@@ -103,6 +108,22 @@ func (s *PoolSet) noteUnhandled(pool, action string) {
 	if fn != nil {
 		fn(pool, action)
 	}
+}
+
+// advertised reports whether any member of any pool lists action in its Actions.
+func (s *PoolSet) advertised(action string) bool {
+	s.mu.Lock()
+	ps := make([]*Pool, 0, len(s.pools))
+	for _, p := range s.pools {
+		ps = append(ps, p)
+	}
+	s.mu.Unlock()
+	for _, p := range ps {
+		if p.advertises(action) {
+			return true
+		}
+	}
+	return false
 }
 
 // Pool returns the pool called name, or nil when no member has ever attached.

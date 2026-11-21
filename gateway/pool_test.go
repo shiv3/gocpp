@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -435,4 +436,22 @@ func TestPoolSet_AttemptIsMonotonicAcrossFallback(t *testing.T) {
 	_, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}, Deadline: time.Now().Add(time.Second)})
 	require.NoError(t, err)
 	require.EqualValues(t, 4, got.Load(), "three Nacked attempts, then attempt 4 on the fallback")
+}
+
+// S12: charger-chosen action names must not grow the unhandled map (or a metric
+// label) without bound.
+func TestPoolSet_UnhandledActionsAreBounded(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	s := gateway.NewPoolSet(50 * time.Millisecond)
+	s.Add(gateway.BackendInfo{ID: "s", Pool: gateway.DefaultPool, Actions: []string{"Heartbeat", "VendorThing"}}, &fakeUp{handle: ok})
+	s.Add(gateway.BackendInfo{ID: "c", Pool: "canary", Actions: []string{"Heartbeat"}}, &fakeUp{handle: ok})
+	route := &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}
+	for i := 0; i < 500; i++ {
+		_, _ = s.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Action: fmt.Sprintf("Junk%d", i), Route: route})
+	}
+	_, _ = s.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Action: "VendorThing", Route: route})
+	_, _ = s.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Action: "Reset", Route: route})
+	require.Equal(t, map[[2]string]uint64{{"canary", "other"}: 500, {"canary", "VendorThing"}: 1, {"canary", "Reset"}: 1}, s.Unhandled())
+	require.Equal(t, "other", gateway.LabelAction("Junk1"))
+	require.Equal(t, "BootNotification", gateway.LabelAction("BootNotification"))
 }

@@ -26,8 +26,18 @@ spec:
             - {name: GOCPP_GATEWAY_ID, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
             # gocppctl finds each gateway's admin API through its lease; the
             # headless Service gives every pod a stable name.
-            - {name: GOCPP_GATEWAY_ADVERTISE_ADMIN, value: "$(GOCPP_GATEWAY_ID).gateway-link:9100"}
+            # The admin API and pprof listen on their own port (9443, token + TLS
+            # required beyond loopback); metrics and probes are on 9100.
+            - {name: GOCPP_GATEWAY_ADMIN, value: ":9443"}
+            - {name: GOCPP_GATEWAY_ADVERTISE_ADMIN, value: "$(GOCPP_GATEWAY_ID).gateway-link:9443"}
             - {name: GOCPP_GATEWAY_ADMIN_TOKEN, valueFrom: {secretKeyRef: {name: gateway-admin, key: token}}}
+            - {name: GOCPP_GATEWAY_ADMIN_TLS_CERT, value: /link-tls/tls.crt}
+            - {name: GOCPP_GATEWAY_ADMIN_TLS_KEY, value: /link-tls/tls.key}
+            # The gRPC link requires mutual TLS: backends need a certificate
+            # signed by this CA (tls.yaml). --link-insecure would run it open.
+            - {name: GOCPP_GATEWAY_LINK_TLS_CERT, value: /link-tls/tls.crt}
+            - {name: GOCPP_GATEWAY_LINK_TLS_KEY, value: /link-tls/tls.key}
+            - {name: GOCPP_GATEWAY_LINK_CLIENT_CA, value: /link-tls/ca.crt}
             - {name: REDIS_ADDR, value: "redis.example.invalid:6379"}
             - {name: GOCPP_GATEWAY_TLS_CERT, value: /tls/tls.crt}
             - {name: GOCPP_GATEWAY_TLS_KEY, value: /tls/tls.key}
@@ -37,19 +47,21 @@ spec:
           ports:
             - {name: ocpp, containerPort: 8080}
             - {name: link, containerPort: 9090}
-            - {name: admin, containerPort: 9100}
+            - {name: metrics, containerPort: 9100}
+            - {name: admin, containerPort: 9443}
           startupProbe:          # pre-flight: upgrade + BootNotification + Heartbeat on the gateway's own listener
             exec:
               command: ["/gocpp-gateway", "probe", "--insecure", "--url=wss://127.0.0.1:8080/ocpp/"]
             periodSeconds: 5
             failureThreshold: 60
           readinessProbe:
-            httpGet: {path: /readyz, port: admin}
+            httpGet: {path: /readyz, port: metrics}
             periodSeconds: 2
           livenessProbe:
-            httpGet: {path: /healthz, port: admin}
+            httpGet: {path: /healthz, port: metrics}
           volumeMounts:
             - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: link-tls, mountPath: /link-tls, readOnly: true}
           resources:
             requests: {cpu: "1", memory: 1Gi}
             limits: {memory: 1Gi}
@@ -67,6 +79,8 @@ spec:
       volumes:
         - name: tls
           secret: {secretName: gateway-tls}
+        - name: link-tls
+          secret: {secretName: gateway-link-tls}
 ---
 # Backends dial every gateway pod through this headless Service.
 apiVersion: v1
@@ -79,7 +93,8 @@ spec:
   selector: {app: gateway}
   ports:
     - {name: link, port: 9090}
-    - {name: admin, port: 9100}
+    - {name: metrics, port: 9100}
+    - {name: admin, port: 9443}
 ---
 # Chargers connect here: L4 passthrough, TLS terminates in the gateway.
 apiVersion: v1

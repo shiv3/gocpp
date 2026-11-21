@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -226,13 +227,15 @@ func newCanaryRig(t *testing.T, n, cap int, redisForGateways func(real string) s
 	var links []string
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("gw-%d", i)
-		extra := []string{"--admin-token", adminToken, "--accept-rate", "0"}
-		g := &gw{id: id, ws: freeAddr(t), link: freeAddr(t), admin: freeAddr(t)}
-		extra = append(extra, "--advertise-admin", g.admin)
+		tokFile := filepath.Join(t.TempDir(), "admin-token")
+		require.NoError(t, os.WriteFile(tokFile, []byte(adminToken), 0o600))
+		extra := []string{"--admin-token-file", tokFile, "--accept-rate", "0"}
+		g := &gw{id: id, ws: freeAddr(t), link: freeAddr(t), admin: freeAddr(t), api: freeAddr(t)}
+		extra = append(extra, "--advertise-admin", g.api)
 		if i == 2 {
 			extra = append(extra, "--soft-max-sessions", fmt.Sprint(cap))
 		}
-		args := []string{"serve", "--id", id, "--listen", g.ws, "--link-listen", g.link, "--admin", g.admin,
+		args := []string{"serve", "--id", id, "--listen", g.ws, "--link-listen", g.link, "--link-insecure", "--metrics-listen", g.admin, "--admin", g.api,
 			"--subprotocols", "ocpp1.6", "--upstream-wait", "1s", "--drain-window", "2s",
 			"--lease-ttl", "3s", "--lease-heartbeat", "500ms", "--reconcile-interval", "1s", "--claim-timeout", "500ms",
 			"--link-keepalive", "1s", "--log-level", "warn", "--redis-addr", gwRedis}
@@ -255,8 +258,10 @@ func newCanaryRig(t *testing.T, n, cap int, redisForGateways func(real string) s
 
 func ctl(t *testing.T, redisAddr string, args ...string) (string, error) {
 	t.Helper()
-	full := append([]string{args[0], args[1], "--redis-addr", redisAddr, "--admin-token", adminToken}, args[2:]...)
-	out, err := exec.Command(filepath.Join(binDir, "gocppctl"), full...).CombinedOutput()
+	full := append([]string{args[0], args[1], "--redis-addr", redisAddr}, args[2:]...)
+	cmd := exec.Command(filepath.Join(binDir, "gocppctl"), full...)
+	cmd.Env = append(os.Environ(), "GOCPPCTL_ADMIN_TOKEN="+adminToken)
+	out, err := cmd.CombinedOutput()
 	t.Logf("gocppctl %s\n%s", strings.Join(full[:2], " "), out)
 	return string(out), err
 }

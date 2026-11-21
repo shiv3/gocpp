@@ -87,6 +87,61 @@ func loadPool(path string) (*x509.CertPool, error) {
 	return p, nil
 }
 
+// adminMux serves the admin API (api, which checks the token itself) and pprof
+// (guarded by the same token).
+func adminMux(token string, api http.Handler) http.Handler {
+	m := http.NewServeMux()
+	for path, h := range map[string]http.HandlerFunc{
+		"/debug/pprof/": pprof.Index, "/debug/pprof/profile": pprof.Profile,
+		"/debug/pprof/symbol": pprof.Symbol, "/debug/pprof/trace": pprof.Trace,
+	} {
+		m.Handle(path, admin.RequireToken(token, h))
+	}
+	m.Handle("/admin/", api)
+	return m
+}
+
+// natsSecurityOptions are the credentials and TLS settings of every NATS
+// connection the gateway makes (the link and the tap).
+func natsSecurityOptions(cfg config) []nats.Option {
+	var o []nats.Option
+	if cfg.NATSCreds != "" {
+		o = append(o, nats.UserCredentials(cfg.NATSCreds))
+	}
+	if cfg.NATSCA != "" {
+		o = append(o, nats.RootCAs(cfg.NATSCA))
+	}
+	if cfg.NATSCert != "" {
+		o = append(o, nats.ClientCert(cfg.NATSCert, cfg.NATSKey))
+	}
+	return o
+}
+
+// redisTLS builds the TLS configuration of the Redis connection.
+func redisTLS(cfg config) (*tls.Config, error) {
+	tc := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: cfg.RedisSNI}
+	if tc.ServerName == "" {
+		if h, _, err := net.SplitHostPort(cfg.RedisAddr); err == nil {
+			tc.ServerName = h
+		}
+	}
+	if cfg.RedisCA != "" {
+		pool, err := loadPool(cfg.RedisCA)
+		if err != nil {
+			return nil, err
+		}
+		tc.RootCAs = pool
+	}
+	if cfg.RedisCert != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.RedisCert, cfg.RedisKey)
+		if err != nil {
+			return nil, err
+		}
+		tc.Certificates = []tls.Certificate{cert}
+	}
+	return tc, nil
+}
+
 func serve(args []string) error {
 	cfg, err := parseConfig(args)
 	if err != nil {
@@ -120,9 +175,9 @@ func serve(args []string) error {
 	var grpcLink *linkgrpc.Gateway
 	switch cfg.Link {
 	case "nats":
-		var nopts []nats.Option
-		if cfg.NATSCreds != "" {
-			nopts = append(nopts, nats.UserCredentials(cfg.NATSCreds))
+		nopts := natsSecurityOptions(cfg)
+		if !strings.Contains(cfg.NATSURL, "tls://") && cfg.NATSCA == "" && cfg.NATSCreds == "" {
+			log.Warn("the NATS link is neither encrypted nor authenticated: anyone who can reach the server can read every message and send commands; use tls:// with --nats-tls-ca, credentials and subject permissions (docs/gateway.md, security)")
 		}
 		nopts = append(nopts, nats.PingInterval(cfg.LinkKeepalive))
 		nc, err := linknats.Connect(cfg.NATSURL, "gocpp-gateway-"+cfg.ID, nopts...)
@@ -202,7 +257,13 @@ func serve(args []string) error {
 	var rdb *redis.Client
 	var policyStore storage.PolicyStore
 	if cfg.RedisAddr != "" {
-		rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr, Password: cfg.RedisPassword})
+		ropts := &redis.Options{Addr: cfg.RedisAddr, Password: cfg.RedisPassword}
+		if cfg.RedisTLS || cfg.RedisCA != "" {
+			if ropts.TLSConfig, err = redisTLS(cfg); err != nil {
+				return err
+			}
+		}
+		rdb = redis.NewClient(ropts)
 		defer func() { _ = rdb.Close() }()
 		reg := registryredis.New(rdb)
 		policyStore = reg
@@ -266,20 +327,19 @@ func serve(args []string) error {
 	var gs *grpc.Server
 	if grpcLink != nil {
 		var err error
+		if cfg.LinkInsecure {
+			log.Warn("INSECURE: the gRPC link on " + cfg.LinkAddr + " has no mutual TLS (--link-insecure). Anyone who can reach it can attach as a backend, " +
+				"read every ConnectRequest (including Basic auth headers) and every message, and send Reset, RemoteStart or UpdateFirmware to chargers. Development only.")
+		}
 		if gs, err = startLinkListener(cfg, grpcLink, log, stop); err != nil {
 			return err
 		}
 	}
 
-	// Admin: metrics and probes.
+	// Metrics and probes: no secrets and no control, reachable by Prometheus and
+	// the kubelet.
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	// Profiles for the performance work (the admin listener is internal).
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	mux.Handle("/admin/", admin.Handler(gw, admin.Options{ID: cfg.ID, Version: cfg.Version, Token: cfg.AdminToken, Context: ctx}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	ready := gw.ReadyHandler()
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -292,15 +352,47 @@ func serve(args []string) error {
 		}
 		ready.ServeHTTP(w, r)
 	})
-	adminSrv := &http.Server{Addr: cfg.Admin, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	metricsSrv := &http.Server{Addr: cfg.Metrics, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		if err := adminSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("metrics listener stopped", "error", err)
+		}
+	}()
+
+	// Admin API and pprof: control and diagnostics, on their own listener (loopback
+	// by default; a wider bind needs the token, enforced in parseConfig). The
+	// token guards pprof as well.
+	amux := adminMux(cfg.AdminToken, admin.Handler(gw, admin.Options{ID: cfg.ID, Version: cfg.Version, Token: cfg.AdminToken, Context: ctx}))
+	adminSrv := &http.Server{Handler: amux, ReadHeaderTimeout: 5 * time.Second}
+	alis, err := net.Listen("tcp", cfg.Admin)
+	if err != nil {
+		return err
+	}
+	if cfg.AdminTLSCert != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.AdminTLSCert, cfg.AdminTLSKey)
+		if err != nil {
+			return err
+		}
+		tc := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+		if cfg.AdminTLSClientCA != "" {
+			pool, err := loadPool(cfg.AdminTLSClientCA)
+			if err != nil {
+				return err
+			}
+			tc.ClientCAs, tc.ClientAuth = pool, tls.RequireAndVerifyClientCert
+		}
+		alis = tls.NewListener(alis, tc)
+	} else if !loopbackAddr(cfg.Admin) {
+		log.Warn("the admin API listens beyond loopback without TLS: the bearer token crosses the network in clear text (--admin-tls-cert/--admin-tls-key)", "admin", cfg.Admin)
+	}
+	go func() {
+		if err := adminSrv.Serve(alis); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("admin listener stopped", "error", err)
 		}
 	}()
 
 	log.Info("gateway started", "id", cfg.ID, "version", cfg.Version, "ws", cfg.Listen, "link", cfg.Link, "link_addr", cfg.LinkAddr, "nats", cfg.NATSURL,
-		"admin", cfg.Admin, "registry", cfg.RedisAddr != "")
+		"metrics", cfg.Metrics, "admin", cfg.Admin, "registry", cfg.RedisAddr != "")
 	<-ctx.Done()
 
 	// SIGTERM: fail readiness, close sessions at a paced rate (1012, idle first),
@@ -326,6 +418,7 @@ func serve(args []string) error {
 		gs.GracefulStop()
 	}
 	_ = adminSrv.Shutdown(dctx)
+	_ = metricsSrv.Shutdown(dctx)
 	return nil
 }
 

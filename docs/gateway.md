@@ -278,14 +278,18 @@ pairs that carry more than one stream can; the default is 1.
 
 `cmd/gocpp-gateway` (own module) is the reference gateway: WebSocket listener
 (TLS, optional client-certificate verification, shared TLS ticket keys, accept
-rate limit), the link listener (optional mTLS between tiers), the Redis session
-registry, `/metrics` (labels `gateway_id`, `gateway_version`, `pool`,
-`backend_version`), `/healthz`, `/readyz` (not draining, under
-`--soft-max-sessions`, and a worker attached to the default pool), SIGTERM drain
+rate limit), the link listener (mutual TLS between tiers, required unless
+`--link-insecure`), the Redis session registry (optionally over TLS), `/metrics`
+(labels `gateway_id`, `gateway_version`, `pool`, `backend_version`), `/healthz`,
+`/readyz` on `--metrics-listen` (default `:9100`; not draining, under
+`--soft-max-sessions`, and a worker attached to the default pool), the admin API and
+pprof on their own `--admin` listener (default `127.0.0.1:9101`), SIGTERM drain
 (`--drain-window`), and `gocpp-gateway probe` (upgrade + BootNotification +
 Heartbeat with the reserved identity `$probe-<id>`; the backend must answer it
 without side effects) for use as a startup probe. Flags have `GOCPP_GATEWAY_*`
-environment equivalents. Example manifests: `examples/gke-gateway`.
+environment equivalents; secrets are not flags (`GOCPP_GATEWAY_ADMIN_TOKEN`,
+`GOCPP_GATEWAY_REDIS_PASSWORD`, `GOCPP_GATEWAY_ATTR_SOURCE_TOKEN`, or the matching
+`--...-file` flag). Example manifests: `examples/gke-gateway`. See "Security" below.
 
 Failure behaviour is exercised with real processes in
 `cmd/gocpp-gateway/chaos` (kill -9 a backend mid-handler, SIGTERM a backend under
@@ -353,6 +357,77 @@ Failure behaviour is exercised by the chaos suite with the NATS link
 (`GOCPP_CHAOS_LINK=nats go test ./chaos`, an embedded `nats-server` per test):
 the same scenarios as for gRPC plus a broker restart.
 
+## Security
+
+The gateway sits between the internet and your processing tier, and the link
+carries every message, including the `Authorization` header of each connect. Treat
+the link, the admin API and Redis as part of the trust boundary.
+
+**The gRPC link requires mutual TLS.** `gocpp-gateway` refuses to start the link
+unless `--link-tls-cert`, `--link-tls-key` and `--link-client-ca` are given: a
+backend must present a certificate signed by that CA to attach. An attacker that
+can attach as a backend sees every `ConnectRequest` (Basic credentials included)
+and every CALL and can send `Reset`, `RemoteStart` or `UpdateFirmware` to any
+charger, so there is no unauthenticated default. `--link-insecure`
+(`GOCPP_GATEWAY_LINK_INSECURE=true`) turns the check off for local development
+and logs a warning at startup. Backends use `linkgrpc.WithDialOptions` with
+`grpc.WithTransportCredentials(credentials.NewTLS(...))` (client certificate,
+the CA, and the server name the gateway certificate carries). A backend with an
+authenticated identity is trusted to send control operations for any session, so
+keep the CA private to the processing tier; `examples/gke-gateway/tls.yaml` issues
+both sides with cert-manager.
+
+**Admin API and pprof** (`/admin/status|shed|soft-max`, `/debug/pprof/*`) listen on
+`--admin`, separate from `/metrics`, `/healthz` and `/readyz` (`--metrics-listen`).
+The default is `127.0.0.1:9101`. Binding it to a non-loopback address requires a
+token (`GOCPP_GATEWAY_ADMIN_TOKEN` or `--admin-token-file`); the process refuses to
+start otherwise. The token guards pprof as well and is sent as
+`Authorization: Bearer <token>`. Use `--admin-tls-cert/--admin-tls-key` (and
+`--admin-tls-client-ca` for mutual TLS) when the listener is reachable over the
+network: the token is otherwise readable on the wire. `POST /admin/shed` can
+disconnect every charger of a gateway; keep the port behind a NetworkPolicy.
+
+**gocppctl** reads the gateways' admin addresses from lease labels in Redis, so
+anyone who can write to Redis can point it elsewhere. It therefore refuses to send
+the token over plain HTTP to a host that is not loopback (`--admin-ca` or
+`--admin-tls` make lease addresses `https://`; `--admin-insecure-token` overrides).
+Secrets are never flags (`ps` shows them): `GOCPPCTL_ADMIN_TOKEN` or
+`--admin-token-file`, `GOCPPCTL_REDIS_PASSWORD` or `--redis-password-file`. Redis
+over TLS: `--redis-tls`, `--redis-ca`, `--redis-cert/--redis-key`; the gateway has
+the same as `--redis-tls`, `--redis-tls-ca`, `--redis-tls-cert/--redis-tls-key`.
+Restrict Redis with ACLs: the registry needs keys under its prefix
+(`gocpp:sess:*`), `EVALSHA`/`EVAL`, and `PUBLISH`/`SUBSCRIBE` on its channels.
+
+**The NATS link** has no gateway-side listener to secure; the broker is the trust
+boundary, so configure it:
+
+- Use TLS (`nats://` with `--nats-tls-ca`, or `tls://`) and authenticate every
+  client (`--nats-creds`, or client certificates `--nats-tls-cert/--nats-tls-key`).
+  The gateway logs a warning when it connects without either.
+- Give gateways and backends separate NATS users with subject permissions (the
+  subjects are listed above; `P` is the prefix, default `gocpp`):
+  - a **gateway** publishes `P.in.>`, `P.connect.>`, `P.notify.>`, `P.who`,
+    `P.cancel`, replies on `P.r.>` and `P.ack.>`/`_INBOX.>` as needed, and
+    subscribes `P.hello`, `P.drain`, `P.gw.>` and its reply subjects `P.r.>`;
+  - a **backend** subscribes `P.in.<pool>.>` (or the per-action subjects),
+    `P.connect.<pool>`, `P.notify.<pool>`, `P.who`, `P.cancel`, `P.ack.>` and its
+    reply subjects `P.r.>`; it publishes `P.hello`, `P.drain`, `P.gw.>` (its CSMS
+    calls and controls) and replies on `P.r.>`.
+  Anyone who may publish `P.gw.*.control` can control any session, and anyone who
+  may subscribe `P.in.>` reads every message: grant backends only their own pool
+  (a canary user gets `P.in.canary.>`, `P.connect.canary`, `P.notify.canary`) and
+  do not give backends `P.hello` subscribe rights. Verify the set against your
+  build with `nats sub 'gocpp.>'` on a test server; a denied subject shows up in
+  the server log as a permissions violation.
+- The tap (`--tap-nats`) publishes `gocpp.tap.>`; give only the consumers
+  `subscribe` there, since frames carry meter values and identity tags.
+
+**Chargers**: terminate TLS in the gateway (`--tls-cert/--tls-key`); with
+`--tls-client-ca` a presented client certificate is verified (Security Profile 3,
+the backend decides whether one is required). `--max-connections`, `--accept-rate`
+and the per-tenant limits bound what an unauthenticated peer can use before the
+backend authenticates it.
+
 ## Links
 
 | Link | Package | Use |
@@ -406,7 +481,7 @@ in well under a second, operated with `gocppctl route`. The runbook is
 The connection tier has its own staged release (a canary gateway: the highest
 StatefulSet ordinal with a soft session cap, filled by a paced partial drain of
 the others, then rebalanced): each gateway serves `/admin/status`, `/admin/shed`
-and `/admin/soft-max` on its admin listener (`gateway/admin`, `--admin-token`,
+and `/admin/soft-max` on its admin listener (`gateway/admin`, `--admin-token-file`,
 `--advertise-admin`), driven by `gocppctl gateway status|shed|cap|rebalance`.
 `probe --interval` is a sidecar that exercises an idle gateway continuously, and
 `--attr-source-file` / `--attr-source-url` (`csms.WithAttrSource`) add labels from
