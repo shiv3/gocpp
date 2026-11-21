@@ -293,9 +293,8 @@ func (g *gwTool) rebalance(shed admin.ShedRequest, tol float64, rounds int, sett
 				return err
 			}
 		}
-		if round == rounds {
-			break
-		}
+		// Let the displaced chargers reconnect (and the leases catch up) before
+		// planning again or judging the result.
 		select {
 		case <-g.ctx.Done():
 			return g.ctx.Err()

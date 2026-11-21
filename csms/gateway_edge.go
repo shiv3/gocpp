@@ -509,7 +509,7 @@ func (d edgeDownstream) Control(ctx context.Context, req gateway.ControlRequest)
 		c.inner.Abort(ocppj.ErrConnReplaced)
 		return nil
 	case gateway.ControlSetAttrs:
-		_, err := c.gw.mergeAttrs(req.Attrs)
+		err := c.gw.mergeAttrs(req.Attrs)
 		if err != nil {
 			return err
 		}

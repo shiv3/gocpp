@@ -122,7 +122,7 @@ func (e *edge) refreshOne(c *Conn) {
 	if len(delta) == 0 {
 		return
 	}
-	if _, err := c.gw.mergeAttrs(delta); err != nil {
+	if err := c.gw.mergeAttrs(delta); err != nil {
 		return // would exceed the cap: keep what the session has
 	}
 	// The operator-facing copy (the connection's attachment and, when clustered,
