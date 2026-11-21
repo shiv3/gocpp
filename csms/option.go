@@ -43,7 +43,7 @@ type serverConfig struct {
 
 	auth           auth.Authenticator
 	connReg        storage.ConnectionRegistry
-	router         storage.MessageRouter
+	router         storage.MessageRouter //nolint:staticcheck // legacy interface, kept for compatibility (deprecated in favour of gateway.Downstream)
 	txStore        storage.TransactionStore
 	cfgStore       storage.ConfigStore
 	metrics        observability.Metrics
@@ -478,6 +478,11 @@ func WithConnectionRegistry(r storage.ConnectionRegistry) Option {
 }
 
 // WithMessageRouter sets the inter-instance message router (default no-op).
+//
+// Deprecated: use a gateway link (WithGatewayLink on the processing tier,
+// NewGatewayServer for the connection tier) so CSMS-initiated calls travel as
+// gateway.Downstream requests; csms.DownstreamRouter adapts a Downstream for
+// callers that cannot move yet. Removed no earlier than v0.4.
 func WithMessageRouter(r storage.MessageRouter) Option {
 	return optionFunc(func(c *serverConfig) { c.router = r })
 }

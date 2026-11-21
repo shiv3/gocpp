@@ -98,7 +98,7 @@ Runnable examples: [`examples/csms-minimal`](examples/csms-minimal),
 | `core/dispatcher` | Version-agnostic connection lifecycle + pending-call tracking |
 | `core/schema` | JSON-Schema validator + registry |
 | `core/auth` | `Authenticator`: `None`, `BasicAuth`, `MTLSFromClientCert` |
-| `core/storage` (+ `/memory`) | `ConnectionRegistry`, `MessageRouter` (used by csms), `TransactionStore`, `ConfigStore` (extension points for your handlers; csms does not use them itself) |
+| `core/storage` (+ `/memory`) | `ConnectionRegistry`, `MessageRouter` (used by csms; deprecated, see `gateway.Downstream`), `TransactionStore`, `ConfigStore` (extension points for your handlers; csms does not use them itself) |
 | `core/observability` (+ `/metrics/{prom,otel}`) | `Metrics` (NoOp/Prometheus/OpenTelemetry), OTel tracer |
 
 ## Addons
@@ -108,9 +108,9 @@ their heavy dependencies stay out of the core dependency tree:
 
 | Addon | Purpose |
 |---|---|
-| [`addons/router-redis`](addons/router-redis/) | `storage.MessageRouter` over Redis Pub/Sub (multi-instance CSMS) |
-| [`addons/router-nats`](addons/router-nats/) | `storage.MessageRouter` over NATS request/reply |
-| [`addons/router-temporal`](addons/router-temporal/) | Durable Temporal-backed `MessageRouter` (experimental) |
+| [`addons/router-redis`](addons/router-redis/) | `storage.MessageRouter` over Redis Pub/Sub (multi-instance CSMS; deprecated, see docs/clustering.md) |
+| [`addons/router-nats`](addons/router-nats/) | `storage.MessageRouter` over NATS request/reply (deprecated, see docs/clustering.md) |
+| [`addons/router-temporal`](addons/router-temporal/) | Durable Temporal-backed `MessageRouter` (experimental; deprecated, see docs/clustering.md) |
 | [`addons/statefsm`](addons/statefsm/) | OCPP 1.6 connector state-machine helper |
 | [`addons/tenant`](addons/tenant/) | Multi-tenant partitioning of the pluggable stores |
 

@@ -24,6 +24,15 @@ All notable changes to this project are documented here. The format is based on
   `RejectCode` and count as `kind="inflight"`. `dispatcher.Conn.SetInboundDone`,
   optional `observability.TenantInflightMetrics` (`gocpp_tenant_inflight`),
   `gocpp-gateway --tenant-inflight-pool --tenant-max-inflight --tenant-weights`.
+- `storage.MessageRouter`, `csms.WithMessageRouter` and the router addons
+  (`router-redis`, `router-nats`, `router-temporal`) are **deprecated** in favour
+  of `gateway.Downstream` over a gateway link (design: docs/design/gateway.md).
+  Nothing changes at runtime and nothing is removed before v0.4. Migration:
+  `csms.RouterDownstream(router)` exposes an existing router as a
+  `gateway.Downstream` and `csms.DownstreamRouter(downstream)` exposes a
+  `Downstream` to `WithMessageRouter`; docs/clustering.md ("Moving to the gateway
+  link") maps each old construct to its replacement. Linters (staticcheck SA1019)
+  will flag the deprecated identifiers.
 - Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
   capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
   from the registered handlers and honoured by `PoolSet` (unhandled actions fall
