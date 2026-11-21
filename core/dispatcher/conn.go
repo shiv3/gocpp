@@ -61,11 +61,12 @@ type Conn struct {
 	// use it so cancelling the connection never aborts a socket operation without
 	// a close frame. handlerBase is noCancel plus the *Conn value handler
 	// contexts are built on.
-	noCancel    context.Context
-	handlerBase context.Context
-	closeWSOnce sync.Once
-	done        chan struct{}
-	wg          sync.WaitGroup
+	noCancel     context.Context
+	handlerBase  context.Context
+	closeWSOnce  sync.Once
+	closedMetric sync.Once
+	done         chan struct{}
+	wg           sync.WaitGroup
 
 	// Transient background goroutines (async calls and their callbacks, the
 	// OCPP keepalive loop, ping callbacks). bgWG tracks them; bgClosed (under
@@ -483,7 +484,9 @@ func (c *Conn) Close(reason error) error {
 	c.bgClosed = true
 	c.bgMu.Unlock()
 	c.bgWG.Wait()
-	c.cfg.Metrics.ConnectionClosed()
+	// Close can be called by more than one party (a replacement and the
+	// connection's own teardown); the gauge must drop once.
+	c.closedMetric.Do(c.cfg.Metrics.ConnectionClosed)
 	return nil
 }
 
