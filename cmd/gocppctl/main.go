@@ -7,6 +7,7 @@
 //	gocppctl route apply FILE [--expect-rev N] [--wait 30s] [--force]
 //	gocppctl route rollback [--to REV]
 //	gocppctl route status
+//	gocppctl gateway status|shed|cap|rebalance
 //
 // Connection flags (before the subcommand's own): --redis-addr (env
 // GOCPPCTL_REDIS_ADDR), --redis-password (GOCPPCTL_REDIS_PASSWORD), --prefix
@@ -68,6 +69,10 @@ commands:
   route apply FILE           store FILE as the next revision and wait for the gateways
   route rollback [--to REV]  restore the previous (or a given) revision, ignoring holds
   route status               revision per gateway; exit 3 if they differ
+  gateway status             sessions, state and admin address per gateway
+  gateway shed               close sessions of one gateway at a paced rate (partial drain)
+  gateway cap                set or remove a gateway's soft session cap (canary share)
+  gateway rebalance          shed the excess from gateways above their fair share
   version
 
 run "gocppctl <command> -h" for flags.
@@ -83,6 +88,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer) int {
 	switch args[0] {
 	case "route":
 		err = routeCmd(ctx, args[1:], out)
+	case "gateway":
+		err = gatewayCmd(ctx, args[1:], out)
 	case "version":
 		fmt.Fprintln(out, version)
 	case "help", "-h", "--help":

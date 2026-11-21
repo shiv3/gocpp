@@ -65,6 +65,8 @@ type serverConfig struct {
 	backendInfo    gateway.BackendInfo
 	gwRouter       gateway.Router
 	gwAuthCache    *AuthCacheConfig
+	attrSource     gateway.AttrSource
+	attrSourceOpts AttrSourceOptions
 	onOrphan       func(cpID, callID, action string, payload []byte, err error)
 	edgeResponders map[string]EdgeResponder
 	// edgeTimeEncoding is timeEncoding as the gateway keeps it (the processing tier applies it otherwise).
@@ -642,4 +644,25 @@ type AuthCacheConfig struct {
 // call Server.InvalidateAuthCache after a credential change.
 func WithGatewayAuthCache(cfg AuthCacheConfig) Option {
 	return optionFunc(func(c *serverConfig) { c.gwAuthCache = &cfg })
+}
+
+// AttrSourceOptions tunes WithAttrSource.
+type AttrSourceOptions struct {
+	// Timeout bounds the lookup at connect (default 200 ms); on failure the
+	// session starts without external attributes.
+	Timeout time.Duration
+	// Refresh, if positive, re-reads the attributes of every connected session at
+	// this interval and updates them (a failed lookup keeps the old ones).
+	Refresh time.Duration
+	// OnResult is called once per lookup with "ok", "timeout" or "error", for
+	// metrics.
+	OnResult func(result string)
+}
+
+// WithAttrSource makes a gateway (NewGatewayServer) add the attributes of src to
+// every session, prefixed "ext." (gateway.ExtAttrPrefix), after the processing
+// tier's own: rules can match them like any attribute, and they can never
+// override one the backend set. See gateway.AttrSource.
+func WithAttrSource(src gateway.AttrSource, o AttrSourceOptions) Option {
+	return optionFunc(func(c *serverConfig) { c.attrSource, c.attrSourceOpts = src, o })
 }

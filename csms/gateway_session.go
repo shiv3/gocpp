@@ -113,7 +113,7 @@ func (g *gwSession) setAttrs(m map[string]string) {
 // mergeAttrs applies a SetAttrs: an empty value deletes the key. The result is
 // capped at gateway.MaxAttrsSize and is a fresh map (readers never see a
 // partial update).
-func (g *gwSession) mergeAttrs(upd map[string]string) (map[string]string, error) {
+func (g *gwSession) mergeAttrs(upd map[string]string) error {
 	cur := g.attrs()
 	out := make(map[string]string, len(cur)+len(upd))
 	for k, v := range cur {
@@ -131,10 +131,10 @@ func (g *gwSession) mergeAttrs(upd map[string]string) (map[string]string, error)
 		size += len(k) + len(v)
 	}
 	if size > gateway.MaxAttrsSize {
-		return nil, gateway.ErrAttrsTooLarge
+		return gateway.ErrAttrsTooLarge
 	}
 	g.setAttrs(out)
-	return out, nil
+	return nil
 }
 
 func newGwSession(ref gateway.SessionRef, version ocppj.Version, info *gateway.SessionInfo) *gwSession {

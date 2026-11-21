@@ -567,6 +567,9 @@ func WithSoftMaxConnections(n int) Option {
 	return optionFunc(func(c *serverConfig) { c.softMax = n })
 }
 
+// SoftMaxConnections returns the soft cap (0 = none).
+func (s *Server) SoftMaxConnections() int { return int(s.softMax.Load()) }
+
 // SetSoftMaxConnections changes the soft cap at runtime (0 removes it).
 func (s *Server) SetSoftMaxConnections(n int) { s.softMax.Store(int64(n)) }
 

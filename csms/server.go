@@ -225,6 +225,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		if edgeReply.CPID != "" {
 			cpID = edgeReply.CPID
 		}
+		edgeReply.Attrs = s.edge.withExtAttrs(r.Context(), cpID, edgeReply.Attrs)
 	} else {
 		id, err := s.cfg.auth.Authenticate(r, cpID)
 		if err != nil {

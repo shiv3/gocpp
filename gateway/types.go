@@ -561,3 +561,17 @@ type RouteObserver interface {
 	// It is not called for messages that were sent to the fallback pool.
 	RouteOutcome(r Route, outcome string)
 }
+
+// ExtAttrPrefix is the prefix of the session attributes an AttrSource provides.
+const ExtAttrPrefix = "ext."
+
+// AttrSource supplies routing attributes from a system the processing tier does
+// not own (a fleet database, a labelling service). The gateway asks it at
+// connect, under a short timeout (a failure means no external attributes, and is
+// counted), and refreshes the attributes of connected sessions on an interval.
+// Keys are prefixed "ext." by the gateway and can never override attributes the
+// backend set (ConnectReply.Attrs, SetAttrs). Implementations must be safe for
+// concurrent use; see package gateway/attrsource for a file and an HTTP source.
+type AttrSource interface {
+	Attrs(ctx context.Context, cpID string) (map[string]string, error)
+}
