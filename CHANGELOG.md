@@ -8,14 +8,316 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Stability: the public API added for gateway mode is marked experimental ("Experimental:
+  this API may change before v1.0." in the doc comments): package `gateway` and its
+  subpackages, `csms.NewGatewayServer`, `WithGatewayLink`, `WithSplitInProcess`,
+  `WithSplitLink`, `WithRouter`, `WithTenantLimits`, `DrainOptions` and `Server.Drain`,
+  `storage.SessionRegistry`/`PolicyStore`/`RouteWriter`, the `core/dispatcher` hooks
+  (`Pipeline`, `InboundGate`, `SetAttachment`, `Owner`, `RawCallError`, `WithSentHook`,
+  `Quiesce`, `TryDrain`, `ForceDrain`) and the addons `link-grpc`, `link-nats`,
+  `registry-redis`, `rollout`. docs/gateway.md and the README list what is stable and
+  what is experimental.
+- Rollout controller (`addons/rollout`) review fixes: `ConvergeTimeout` is honoured
+  (a revision that does not reach every gateway in time is rolled back, and the
+  gateway guard and the gates are evaluated while waiting), and the controller state
+  (stage, the revision before the rollout, the revision it waits for, timers) is
+  persisted in the new optional `storage.StateStore` (memory and `registry-redis`),
+  so a restarted `gocppctl rollout run` resumes the same plan and a later rollback
+  goes to the right revision. `gocppctl rollout run --fresh` starts over.
+- Staged releases, phase 7 chaos leftovers: real-process tests of CSMS calls issued
+  from the canary and the stable pool during a canary, the orphan result when the
+  calling canary backend dies (gRPC link), a `hold: busy` session during promotion
+  and rollback, and a "no NotSent call lost" check in the gateway canary fill.
+- Staged releases, phase 7 leftovers: the gateway keeps the pool each session is
+  routed to in the registry (`Session.Meta["route.pool"]`, new optional
+  `storage.RouteWriter`, implemented by the memory registry and `registry-redis`),
+  the gateway exports `gocpp_gateway_late_replies_total{pool}` and
+  `gocpp_gateway_orphan_results_total{pool,outcome}` (link-grpc `RoutingMetrics`),
+  an orphan result goes to the pool of the calling backend (`CallRequest.CallerPool`),
+  and `addons/rollout` has the optional `late_orphan` gates. link-grpc metrics now
+  label the default pool `default` instead of an empty string.
+- Staged releases, phase 7c (docs/rollout.md part 4): `addons/rollout` (own module),
+  the optional, default-off automatic promotion controller: stage plan, gates
+  (failed-outcome ratio, CALLERROR code shares, p99 latency, minimum samples, your
+  own Prometheus checks), auto-rollback in one revision, yield on manual changes,
+  dry-run mode, `PromSource` and `ScrapeSource` (the gateways' own `/metrics`),
+  log and Kubernetes event notifiers; `gocppctl rollout validate|run`.
+- Staged releases, phase 7b (docs/rollout.md): `gateway/admin` (per-gateway admin
+  API: status, paced `shed` by count / min age / attributes, soft cap; client and
+  rebalance planner), `gocppctl gateway status|shed|cap|rebalance`,
+  `Server.SoftMaxConnections`, `gateway.AttrSource` + `csms.WithAttrSource` +
+  `gateway/attrsource` (file and HTTP; keys arrive as `ext.*`), gateway flags
+  `--admin-token`, `--advertise-admin`, `--attr-source-*`, `probe --interval` (a
+  continuous probe sidecar with `gocpp_probe_*` metrics), manifests with the probe
+  sidecar and the admin port, and real-process tests of a gateway canary
+  (soft cap, fill, rebalance, kill -9 of the canary, rollback during a shed,
+  registry outage during a shed).
+- `BenchmarkGatewayIdleFootprint` and `TestGatewayIdleFootprintBounds` (16 KB heap+stack per idle gateway session); `TestIdleFootprintBounds` bounds tightened to 9 KB heap / 6 KB stack so a regression of a few hundred bytes per connection fails. docs/performance.md: "RSS versus live memory".
+- Gateway options (phase 6): `csms.WithEdgeHeartbeat` / `WithEdgeResponder` /
+  `WithOnEdgeResponse` (a gateway answers Heartbeat, or any configured action,
+  itself without a backend hop; opt-in) and `csms.WithTenantLimits` (per-tenant
+  session cap checked before the upgrade and a fairly shared per-tenant message
+  rate budget; tenant from a request resolver, a cp id mapping or the session
+  attributes). `dispatcher.Conn.SetInboundGate`, the optional metrics
+  extensions `observability.TenantMetrics` and `EdgeMetrics` (Prometheus and
+  OpenTelemetry), `gocpp-gateway --edge-heartbeat --tenant-*` flags, benchmark
+  `BenchmarkEdgeAndTenant` and gate `TestGateEdgeAndTenantOverhead`.
+- Weighted in-flight caps per tenant (`csms.TenantLimits.InFlightPool`,
+  `TenantLimit.Weight` / `MaxInFlight`): the pool is split by weight among the
+  tenants with sessions, a tenant is always admitted up to its share and may
+  borrow only what other active tenants cannot claim, refusals answer with
+  `RejectCode` and count as `kind="inflight"`. `dispatcher.Conn.SetInboundDone`,
+  optional `observability.TenantInflightMetrics` (`gocpp_tenant_inflight`),
+  `gocpp-gateway --tenant-inflight-pool --tenant-max-inflight --tenant-weights`.
+- `storage.MessageRouter`, `csms.WithMessageRouter` and the router addons
+  (`router-redis`, `router-nats`, `router-temporal`) are **deprecated** in favour
+  of `gateway.Downstream` over a gateway link (design: docs/design/gateway.md).
+  Nothing changes at runtime and nothing is removed before v0.4. Migration:
+  `csms.RouterDownstream(router)` exposes an existing router as a
+  `gateway.Downstream` and `csms.DownstreamRouter(downstream)` exposes a
+  `Downstream` to `WithMessageRouter`; docs/clustering.md ("Moving to the gateway
+  link") maps each old construct to its replacement. Linters (staticcheck SA1019)
+  will flag the deprecated identifiers.
+- Frame and session tap exporters (`core/observability/tap`): bounded, lossy,
+  never blocking the hot path, with sampling and filters; `tap.JSONL` /
+  `JSONLFile` / `Multi` sinks and `linknats.NewTapSink` (NATS subjects per charge
+  point); `csms.WithSessionObserver` and `observability.SessionEvent` (opened /
+  closed once, on embedded servers and gateways); `gocpp-gateway --tap-*` flags and
+  `gocpp_tap_events_total`.
+- Conformance and e2e suites in split mode over NATS (`scripts/split-nats-suite.sh`,
+  CI job `gateway-modules`): `csms.WithSplitLink` / `csms.SplitLink` (the
+  `WithSplitInProcess` topology over any link), `splitmode.Register`
+  (`GOCPP_TEST_SPLIT=<name>`), and `addons/link-nats/splitharness`. The main
+  module does not depend on `addons/link-nats`.
+- Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
+  capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
+  from the registered handlers and honoured by `PoolSet` (unhandled actions fall
+  back to the route's fallback pool and are counted), `csms.WithGatewayAuthCache`
+  and `Server.InvalidateAuthCache`, and link protocol skew tests (v1/v2 ranges).
+- Staged releases, phase 7a (docs/staged-releases.md): `gateway/routepolicy`
+  (declarative routing policy: id / attribute / version / stable-hash percentage
+  rules, action rules with a transaction-group lint, `on_unavailable`, `hold: busy`,
+  suspend on fallback, error-rate guard; `Engine` implements `gateway.Router` and
+  the new `gateway.RouteObserver`), `storage.PolicyStore` (CAS + watch) with memory and
+  `addons/registry-redis` implementations, `gateway.PoolReject`, `PoolSet.SetObserver`,
+  `linkgrpc.WithRouteObserver`, `inproc.WithRouteObserver`, `cmd/gocppctl`
+  (`route validate|show|apply|rollback|status`), gateway flags `--route-policy-file`,
+  lease labels `policy_rev` and `suspended`, and the routing metrics
+  (`gocpp_gateway_route_*`).
+
+- `addons/link-grpc`: optional adaptive write linger, `WithGatewayWriteLinger(d)` (frames
+  to a backend; `gocpp-gateway --link-write-linger`, `GOCPP_GATEWAY_LINK_WRITE_LINGER`) and
+  `WithBackendWriteLinger(d)` (frames to a gateway, the replies). Off by default. On a
+  stream whose frames follow each other at an average interval of at most d/2, a frame
+  that would be written alone waits up to d (at most `MaxWriteLinger`, 5 ms) for the
+  frames about to follow and they leave in one write; a stream below that rate writes
+  every frame at once and arms no timer, so nothing changes at low rate. The wait ends
+  early when a batch is full, and a frame accepted into a wait is never reported as not
+  written afterwards (the error attribution of the send queue is unchanged). There is no
+  fixed-delay mode: measured, a fixed 100 us added 1.3 ms to the Heartbeat p50 and a
+  quarter more CPU at 260 msg/s. Numbers and guidance: docs/gateway.md, "Write linger". `BenchmarkGRPCHopRate`
+  (open loop at fixed rates: CPU per message, p50, p99, per linger).
+- `dispatcher.Config.DeepHandlerStack`: grow the stack of the goroutine started for an
+  inbound message to 16 KB once, before the handler runs. `csms.NewGatewayServer` sets
+  it: a gateway's handler is the forward path through the link, about 10 KB deep.
+
+- `addons/link-grpc`: write coalescing on the link stream (frames queued while a write is
+  in progress go out together; as one `Batch` message when both ends advertise the new
+  `batch` capability, `gateway.CapBatch`; no timer, a lone frame is written at once) and
+  `WithStreams(n)` for N Attach streams per gateway. Link protocol stays v1: an older peer
+  simply does not negotiate `batch`. Backend request goroutines reserve stack up front.
+- Gateway performance gates and benchmarks (`benchmarks/gateway_hop_test.go`,
+  `addons/link-grpc/hop_test.go`), pprof on the `gocpp-gateway` admin listener, and the
+  measured results in docs/gateway.md.
+- `addons/link-grpc` (own module): gRPC link between gateways and backends
+  (protobuf contract `gocpp.link.v1`, backends dial gateways, Hello/HelloAck
+  protocol and capability negotiation, Drain/DrainAck, Unsupported answers).
+- `cmd/gocpp-gateway` (own module): reference gateway binary (`serve`, `probe`),
+  Prometheus metrics, `/readyz`, soft session cap, SIGTERM drain; chaos tests with
+  real processes; `examples/gke-gateway` manifests.
+- Gateway mode (phase 3 of docs/design/gateway.md): `gateway` package (contract:
+  `Envelope`, `Upstream`, `Downstream`, `WireError`, `Pool`), `gateway/inproc`
+  (in-process link), `csms.NewGatewayServer` (connection tier),
+  `csms.WithGatewayLink` + `Server.ServeGateway` / `Server.Upstream` (processing
+  tier), `csms.WithGatewayID`, `csms.WithOnOrphanResult`, `Conn.GatewaySession`,
+  `csms.WithSplitInProcess`. On a backend `Lookup` returns a session handle whose
+  `Call`, `Send` and `Close` go through the link. See docs/gateway.md. The
+  conformance and e2e suites run a second time through the in-process link
+  (`GOCPP_TEST_SPLIT=1`).
+- Staged-release seams: `gateway.BackendInfo`, `DefaultPool`, `PoolSet`,
+  `Router` / `RouteInput` / `RouteDecision`, `Envelope.Route`,
+  `ControlSetAttrs`, `csms.WithBackendInfo`, `csms.WithRouter`,
+  `Conn.UpdateAttrs`. Without a router only the default backend pool gets work.
+- `dispatcher.RawCallError`, `dispatcher.WithSentHook`, `HandlerRegistry` send
+  fallback (`SetSendFallback`, `ResolveSend`), `ConnMetadata.Owner` /
+  `Conn.Owner`.
+- `dispatcher.Pipeline` (`NewPipeline`, `RunCall`, `RunSend`, `ValidateInbound`,
+  `ValidateOutbound`, `TransformOutbound`, `DecodeSigned`, `MapBuiltinError`): the
+  payload policy of a connection (signed-message unwrap, schema validation and
+  lenient coercion, outbound transform, handler-error to CALLERROR mapping),
+  extracted from `Conn` so it needs only a `Config`, a version and a charge point
+  id. Embedded connections use it unchanged; it is the seam a processing tier
+  behind a gateway uses to apply identical rules.
+- `HandlerRegistry.SetFallback` / `Resolve`: a catch-all handler (receiving the
+  action) for actions with no registered handler (`Lookup` is unchanged).
+- `transport.StatusServiceRestart` (WebSocket close code 1012).
+- `csms.On` / `csms.OnSend` also record the handler in a table typed on
+  `*csms.Conn` (internal), used by the upcoming gateway mode.
+- `storage.SessionRegistry` (Claim / CAS Release / Reassert with registry-assigned
+  epochs, per-gateway lease, `LookupMany`), `memory.NewSessionRegistry`, and
+  `csms.WithSessionRegistry` with `csms.SessionConfig`. The server claims a
+  session before accepting the WebSocket upgrade, releases it by epoch when the
+  connection ends, keeps a gateway lease alive and runs a reconcile loop that
+  closes sockets superseded by a newer connection on another instance and
+  re-asserts lost records. `csms.Conn.Session()` returns the record.
+  `dispatcher.Conn.SetAttachment/Attachment`.
+- `addons/registry-redis`: `storage.SessionRegistry` on Redis with Lua scripts.
+- `csms.Server.Drain(ctx, DrainOptions)`: moves every charge point off a server
+  without a reconnect storm. New upgrades get `503` with a jittered
+  `Retry-After` (`Server.Draining`, `Server.ReadyHandler` for readiness), sessions
+  are closed at a fixed rate (default sessions / (0.9 x window), window 5 min),
+  idle first, with close code 1012 (service restart) and cause
+  `ocppj.ErrGatewayDraining`; a busy session stops taking new calls (they fail
+  unsent with `ErrGatewayDraining`) and is closed when idle or after its grace;
+  at the end of the window the rest are closed with `ocppj.ErrDrainTimeout`.
+  `dispatcher.Conn.TryDrain` / `Quiesce` / `ForceDrain` / `Draining` are the
+  per-connection primitives.
+- Session attributes and gateway labels (aligned with docs/design/gateway.md section 5):
+  attributes live in `storage.Session.Meta` under the reserved prefix `attr.`
+  (`Session.Attrs()`, `storage.MergeAttrs`; `route.` is reserved for gateway routing
+  decisions), `SessionRegistry.SetAttrs` merges (empty value deletes) with a compare
+  on the epoch, `Session.GatewayVersion`, `GatewayInfo.Labels` stored in the lease
+  (`version`, `policy_rev`, ...; memory and Redis), `csms.SessionConfig.Version/Labels`,
+  `Server.SetGatewayLabel`, `csms.WithSessionAttributes`, `Conn.Attrs/SetAttrs`
+  (1 KiB cap, `ErrAttrsTooLarge`), `Server.SetSessionAttrs`.
+- Targeted drain for rollouts: `DrainOptions.CPIDs/Attrs/Select/Filter/Max/Fraction/
+  RefuseDuring` close only the selected sessions (idle first, paced, 1012) while the
+  server keeps serving (lease stays `serving`, `ReadyHandler` not-ready meanwhile);
+  `Server.DrainStatus` reports progress.
+- `csms.WithSoftMaxConnections` / `Server.SetSoftMaxConnections`: `ReadyHandler`
+  reports not-ready at or above the soft cap; upgrades and sessions are unaffected.
+- `observability.SessionMetrics` (Prometheus and OTel): session duration, closes by
+  code and cause, upgrade results.
+- `csms.WithAcceptRateLimit(rate, burst)` (token bucket in front of the upgrade,
+  `503` + jittered `Retry-After`), `csms.RateLimitListener` (shed connections at TCP
+  accept, before TLS), `Server.AdmissionStats`.
+- `transport.SharedTicketKeys` / `RotateSharedTicketKeys`: TLS session ticket keys
+  derived from a shared secret so a charge point reconnecting to another pod
+  resumes its TLS session.
 - `observability.SchemaSoftViolationMetrics` (optional extension of `Metrics`).
   The Prometheus (`gocpp_schema_soft_violations_total{version,action,kind,keyword}`)
   and OpenTelemetry (`gocpp.schema_soft_violations`) adapters implement it, and the
   dispatcher's metrics bridge forwards it, so lenient-mode soft violations are now
   exported.
 
+### Changed
+
+- Stack growth on the split path: a gateway's handler goroutines (see
+  `DeepHandlerStack` above) and the request goroutines of a `link-grpc` backend now grow
+  their stack once, by calling a function with a large frame that returns, instead of
+  holding a reserved array in the goroutine's first frame (the callees could not use
+  those bytes, so the stack was still copied again further down). Per goroutine that goes
+  10 KB deep: 0.66 us instead of 2.6 us (`BenchmarkDeepHandlerStack`).
+  The embedded server's handler goroutines keep a small (600-byte) frame reserve at entry:
+  removing it made the loopback round trip without schema validation 15% slower than
+  before the gateway work (`BenchmarkDispatchRoundTrip` Heartbeat and StatusNotification
+  with schema off; the reserve makes both ~22% faster than the 0.2.0 baseline). When
+  schema validation runs in the handler path (`SchemaValidate` or `SchemaValidateLenient`
+  set, i.e. lenient and strict modes) the stack is pre-grown to 16 KB instead, as on the
+  split path: those round trips are 27-71% faster than 0.2.0, where the reserve alone made
+  strict Heartbeat 37% slower. Handler goroutines are transient, so the idle footprint is
+  unchanged.
+
+- `gocpp-gateway` secure defaults (pre-merge review of the gateway, not yet released): the gRPC link is
+  served only with mutual TLS (`--link-tls-cert`, `--link-tls-key`, `--link-client-ca`) unless
+  `--link-insecure` is given, which logs a warning; the admin API and pprof moved to their own
+  listener `--admin` (default `127.0.0.1:9101`, a non-loopback address needs a token, pprof is behind the
+  token, optional `--admin-tls-*`), while `/metrics`, `/healthz` and `/readyz` are on the new
+  `--metrics-listen` (default `:9100`); secrets are no longer flags (`--admin-token`, `--redis-password`,
+  `--attr-source-token` are replaced by env variables or `--...-file`); Redis TLS
+  (`--redis-tls*`) and NATS TLS/credentials options were added. `gocppctl` reads tokens and passwords from
+  `GOCPPCTL_ADMIN_TOKEN` / `GOCPPCTL_REDIS_PASSWORD` or `--...-file` flags, has TLS options for the admin API
+  and Redis, and the admin client (`gateway/admin.Client`) refuses to send the token over plain HTTP to a
+  non-loopback host. `examples/gke-gateway` uses mTLS (cert-manager) and docs/gateway.md has a Security section
+  (link, admin, Redis, NATS subject permissions).
+- With `WithInstanceID`, the connection registry's global routes are now recorded
+  as epoch-ordered sessions when the registry implements `storage.SessionRegistry`
+  (the in-memory registries and `InProcessHub` do): a delayed write from an old
+  connection can no longer overwrite a newer one, and a superseded socket is
+  closed by the reconcile loop. Registries that only implement `ConnectionRegistry`
+  keep working through an adapter with their previous guarantees.
+- In a clustered server the route is claimed before the WebSocket upgrade is
+  accepted (it was published right after), so a slow registry now delays the
+  handshake; after `SessionConfig.ClaimTimeout` (2s) the connection is accepted
+  unclaimed and claimed in the background.
+- `Server.Lookup` reads `SessionRegistry.Lookup`, which honours gateway leases.
+
 ### Fixed
 
+- Gateway second-review fixes. Backend: a late `SessionClosed` of an older session no
+  longer fires `OnDisconnect` after the newer session's connect when a session registry
+  shows the newer session (without a registry apps must ignore a disconnect older than the
+  current session's epoch); `Control(Replaced)` is sent only when the new epoch is higher;
+  a registry that lost its data and restarted its epochs no longer makes backends skip
+  `OnConnect`, and cache reads no longer keep stale sessions from the idle sweep. Server:
+  reconcile no longer closes a live socket because of the process's own in-flight claim;
+  a failed upgrade no longer restores the own gateway's dead record; `Undrain` and the start
+  of `Drain` are atomic. Gateway: a connect decision fetched before
+  `InvalidateGatewayAuthCache` is not cached after it; `NotifyPeriodicEventStream` is a
+  standard action (checked against the generated profiles); the admin client reuses its
+  HTTP transport.
+- Metrics: the `action` label of `gocpp_calls_total`, `gocpp_call_duration_seconds`, the
+  schema-failure series was the action name the charge
+  point sent, so a client inventing names could create unbounded series. Inbound
+  actions that are neither a standard OCPP action nor have a registered handler (or an
+  edge responder) are now reported as `other`.
+- Gateway: the answer to a CSMS call whose caller disappeared is routed to the caller's
+  pool, and falls back to the default pool at once when the pool's members vanished
+  between the choice and the delivery (it used to be held until the pool wait ran out and
+  then dropped). An answer that arrives together with the loss of its caller is reported
+  as an orphan result instead of being sent to the dead stream. The
+  `orphan_results_total{outcome}` label reflects where the answer went.
+
+- Gateway pre-merge review fixes (session core): a CSMS call whose caller gave up while the frame was written is no longer reported `NotSent` when the charger got it (S1);
+  a cancelled `Drain` gives quiesced sessions their calls back, and `Server.Undrain` takes a cancelled full drain back into service (S2); the backend orders sessions
+  across gateways by registry epoch (a late `SessionOpened{A,5}` after `{B,6}` is ignored, S3); session events are serialized per charger instead of per 1/64 stripe, so a blocked
+  `OnConnect` stalls only its own charger (S4); a reconnect through another gateway closes the old socket at once through `ControlReplaced` sent by the backend (S5); when every member of a
+  routed pool refuses a CALL and a fallback pool is usable the message falls back immediately instead of being held for `UpstreamWait` (S6); `Pool.Drain`/`Remove` can no longer lose a race
+  with `pick` and hand a request to a drained member (S8); deadlines are not compared across hosts: `Envelope.Deadline-ReceivedAt` and the new `CallRequest.Budget` (link-grpc proto field
+  `budget_nanos`) carry relative budgets (S9); `ControlInvalidateAuth` and `Server.InvalidateGatewayAuthCache` invalidate gateway auth caches cluster-wide (S10).
+  Also: `HandlerTimeout` starts after signature/schema validation again, the registry-outage connect wait is `ClaimTimeout` once (not twice), `Conn.SetAttrs` no longer races
+  the reconcile loop (epoch could go back), the processing tier forgets idle cached sessions, a full gateway refuses before asking the backend to authenticate, and a busy session
+  met for the first time under a `hold: busy` rule is held where the previous revision had it.
+- Gateway pre-merge fixes, links and registry: `Attempt` stays monotonic when the fallback pool takes over after the
+  routed pool's members Nacked; link-grpc sends `Cancel` only to a backend that negotiated the capability, and
+  batches are capped at 1 MiB; link-nats bounds its subscriptions' pending queues (no longer unlimited) and treats a
+  message over the server's `max_payload` as a permanent error (`linknats.ErrPayloadTooLarge`) instead of "not
+  delivered" (no futile redispatch, no "charger not connected"); `registry-redis` policy keys share a hash tag
+  (`{policy}`; no CROSSSLOT on Redis Cluster) and `Gateways` reads a lease index set instead of scanning the
+  keyspace (key `<prefix>:gwidx`); the frame/session tap keeps session events in a buffer of their own so a frame
+  flood cannot drop connects and disconnects.
+- Gateway pre-merge fixes: a `RoleCaller` backend sending `Drain` no longer crashes the
+  gateway (nil pool member); a write error met while flushing another goroutine's
+  frame on a link stream is no longer returned to the goroutine whose own frame was
+  written (it caused a redispatch of a delivered CALL); link batches are capped at
+  1 MiB; `registry-redis` never hands out an epoch at or below the surviving record's
+  when the epoch counter expired or was evicted, and `Reassert` keeps the counter alive.
+- Session registry: an upgrade request that fails (missing `Sec-WebSocket-Key`, refused origin, aborted handshake) for a charge point id that is
+  connected no longer deletes that connection's route. The pre-check now mirrors `websocket.Accept`, a failure after the claim restores the
+  displaced record, and the legacy `ConnectionRegistry` adapter claims only after the upgrade succeeded (review B1 of the gateway integration).
+- Gateway backend: a `SessionClosed` that reaches a backend which never saw the session's `SessionOpened` now fires `OnDisconnect` (it was dropped
+  as stale with several backends); only a close of a session already replaced by a newer one is suppressed (review B2).
+- Per-tenant limits (`WithTenantLimits`): the tenant table no longer keeps one entry
+  per tenant id ever seen. Tenants with no session, nothing in flight and a refilled
+  message bucket are dropped when the table doubles; metric labels stay bounded by
+  `MaxMetricTenants`.
+- Gateway admin API: the bearer token is only accepted with the `Bearer ` scheme. Unbounded
+  growth from charger-chosen action names in `PoolSet.Unhandled` and the gateway link metrics: names outside
+  the standard OCPP set (and not advertised by a backend) are counted as `other`.
+- Gateway mode: the processing tier runs the connect/disconnect hooks of one charge point's session events one at a time, so a replaced session's disconnect can no longer run after the new session's connect when `SessionClosed(old)` and `SessionOpened(new)` arrive concurrently. A session event still waiting for a backend when the gateway server closes now gives up after the closing bound instead of keeping a goroutine for the pool's hold time.
+- The `ConnectionCount` gauge (`gocpp_connections`) drifted negative when a connection
+  was closed twice (a replaced connection is closed by the replacement and by its own
+  teardown); the close is now counted once.
 - `gocpp_outbound_queue_depth` / `gocpp.outbound_queue.depth` help text and the
   `dispatcher.Conn` doc comment described the removed writer-goroutine queue. The
   metric samples senders waiting for or holding the per-connection write lock

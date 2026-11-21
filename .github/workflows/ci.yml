@@ -13,8 +13,16 @@ jobs:
         with:
           go-version: "1.26"
       - run: go test -race ./...
+      # The conformance and e2e suites a second time with the server split into
+      # a gateway and a processing tier over the in-process link.
+      - run: go test -race -count=1 ./internal/...
+        env:
+          GOCPP_TEST_SPLIT: "1"
       # Footprint bounds are not asserted under -race (it inflates heap/stack).
       - run: go test -count=1 -run TestIdleFootprintBounds ./benchmarks/
+      # Gateway performance gate: the in-process split may add at most 0.5 ms mean
+      # and 2 ms p99 per message (docs/gateway.md, performance).
+      - run: go test -count=1 -run TestGateHopOverhead ./benchmarks/
 
   codegen-drift:
     runs-on: ubuntu-latest
@@ -36,6 +44,11 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+      # cmd/gocpp-gateway is its own module, which the run above does not cover.
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          working-directory: cmd/gocpp-gateway
 
   vulncheck:
     runs-on: ubuntu-latest
@@ -46,3 +59,65 @@ jobs:
           go-version: "1.26"
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - run: govulncheck ./...
+
+  gateway-modules:
+    # The gRPC link and the reference gateway binary are separate modules.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: go test -race -count=1 ./...
+        working-directory: addons/link-grpc
+      # gRPC hop latency gate (skipped under -race).
+      - run: go test -count=1 -run TestGateGRPCHopLatency ./...
+        working-directory: addons/link-grpc
+      - run: go test -race -count=1 ./...
+        working-directory: addons/link-nats
+      # The conformance and e2e suites in split mode over NATS: a gateway and a
+      # processing tier per test server, joined by a nats-server on loopback.
+      - run: scripts/split-nats-suite.sh -race ./internal/...
+      - run: go test -count=1 -timeout 5m ./...
+        working-directory: cmd/gocpp-gateway
+      # The same chaos suite over the NATS link.
+      - run: go test -count=1 -timeout 5m ./chaos
+        working-directory: cmd/gocpp-gateway
+        env:
+          GOCPP_CHAOS_LINK: nats
+      - run: go test -race -count=1 ./...
+        working-directory: cmd/gocppctl
+      - run: go test -race -count=1 ./...
+        working-directory: addons/registry-redis
+      - run: go test -race -count=1 ./...
+        working-directory: addons/rollout
+
+  gateway-compat:
+    # Previous-release compatibility (design 5.3): build the gateway and the
+    # test backend from the previous release tag and run the chaos suite in both
+    # mixed combinations. Skipped until a release tag contains cmd/gocpp-gateway.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: previous release with the gateway binary?
+        id: prev
+        run: |
+          tag=$(git tag --list 'v*' --sort=-v:refname | while read t; do
+            if git cat-file -e "$t:cmd/gocpp-gateway/go.mod" 2>/dev/null; then echo "$t"; break; fi
+          done)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: mixed-version chaos suite
+        if: steps.prev.outputs.tag != ''
+        run: |
+          echo "previous release with a gateway: ${{ steps.prev.outputs.tag }}"
+          git worktree add ../prev "${{ steps.prev.outputs.tag }}"
+          # new gateway + old backend, then old gateway + new backend
+          (cd ../prev/cmd/gocpp-gateway && go build -o /tmp/old-gateway . && go build -o /tmp/old-backend ./chaos/testbackend)
+          cd cmd/gocpp-gateway
+          GOCPP_CHAOS_GATEWAY_BIN=/tmp/old-gateway go test -count=1 -timeout 5m ./chaos
+          GOCPP_CHAOS_BACKEND_BIN=/tmp/old-backend go test -count=1 -timeout 5m ./chaos

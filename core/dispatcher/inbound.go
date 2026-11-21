@@ -62,8 +62,19 @@ func (c *Conn) enqueueInbound(f ocppj.Frame) bool {
 // handlerLoop runs f and then keeps popping queued frames until none is left or
 // the connection ends. It owns one unit of running.
 func (c *Conn) handlerLoop(f ocppj.Frame) {
+	if c.cfg.DeepHandlerStack || c.cfg.SchemaValidate != nil || c.cfg.SchemaValidateLenient != nil {
+		// With validation in the handler path the chain is deep (the validator,
+		// the codec, the reply encoder): pre-growing straight to 16 KB saves the
+		// repeated stack copies, and the pre-growth also makes the small reserve
+		// in runHandler a no-op. Without validation the reserve alone is the
+		// cheapest (a 16 KB stack costs more than it saves on the shallow path).
+		growDeepStack()
+	}
 	for {
 		c.runHandler(f)
+		if d := c.inboundDone; d != nil {
+			d(f)
+		}
 		c.inMu.Lock()
 		if len(c.inQ) == 0 || c.ctx.Err() != nil {
 			c.inQ = nil

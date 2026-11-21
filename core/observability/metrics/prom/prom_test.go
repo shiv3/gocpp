@@ -38,3 +38,33 @@ func TestProm_SchemaSoftViolation(t *testing.T) {
 	sm.SchemaSoftViolation("1.6", "StartTransaction", "request", "enum")
 	require.Equal(t, 2, testutil.CollectAndCount(reg, "gocpp_schema_soft_violations_total"))
 }
+
+func TestProm_SessionMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	sm := prom.New(reg).(observability.SessionMetrics)
+	sm.SessionClosed("ocpp1.6", 90*time.Second, "1012", "drain")
+	sm.SessionClosed("ocpp1.6", time.Second, "1006", "dropped")
+	sm.UpgradeResult("ok")
+	sm.UpgradeResult("rate_limited")
+	require.Equal(t, 2, testutil.CollectAndCount(reg, "gocpp_closes_total"))
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_session_duration_seconds"))
+	require.Equal(t, 2, testutil.CollectAndCount(reg, "gocpp_accepts_total"))
+}
+
+func TestProm_TenantAndEdgeMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := prom.New(reg)
+	tm := m.(observability.TenantMetrics)
+	tm.TenantSessions("a", 1)
+	tm.TenantSessions("a", 1)
+	tm.TenantSessions("a", -1)
+	tm.TenantRejected("a", "sessions")
+	tm.TenantRejected("a", "messages")
+	tm.TenantRejected("a", "inflight")
+	m.(observability.TenantInflightMetrics).TenantInflight("a", 2)
+	m.(observability.EdgeMetrics).EdgeResponse("1.6", "Heartbeat")
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_tenant_sessions"))
+	require.Equal(t, 3, testutil.CollectAndCount(reg, "gocpp_tenant_rejected_total"))
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_tenant_inflight"))
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_edge_responses_total"))
+}

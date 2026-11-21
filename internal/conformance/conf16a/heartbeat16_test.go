@@ -3,6 +3,7 @@ package conf16a
 import (
 	"context"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ func TestHeartbeat16_ResponseValidation(t *testing.T) {
 }
 
 func TestHeartbeat16_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	wrongDirection := ocppj.Message[messages.HeartbeatRequest, messages.HeartbeatResponse]{
 		Action:    v16profiles.Heartbeat.Action,
 		Direction: ocppj.SentByCSMS,

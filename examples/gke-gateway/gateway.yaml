@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: gateway
+spec:
+  serviceName: gateway-link
+  replicas: 4
+  podManagementPolicy: Parallel
+  minReadySeconds: 30            # a crash-looping new pod stops the rollout
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0               # canary: set to replicas-1 and lower step by step
+  selector:
+    matchLabels: {app: gateway}
+  template:
+    metadata:
+      labels: {app: gateway}
+    spec:
+      terminationGracePeriodSeconds: 420   # above --drain-window
+      containers:
+        - name: gateway
+          image: example.invalid/gocpp-gateway:latest
+          args: ["serve", "--drain-window=5m", "--redis-addr=$(REDIS_ADDR)"]
+          env:
+            - {name: GOCPP_GATEWAY_ID, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+            # gocppctl finds each gateway's admin API through its lease; the
+            # headless Service gives every pod a stable name.
+            # The admin API and pprof listen on their own port (9443, token + TLS
+            # required beyond loopback); metrics and probes are on 9100.
+            - {name: GOCPP_GATEWAY_ADMIN, value: ":9443"}
+            - {name: GOCPP_GATEWAY_ADVERTISE_ADMIN, value: "$(GOCPP_GATEWAY_ID).gateway-link:9443"}
+            - {name: GOCPP_GATEWAY_ADMIN_TOKEN, valueFrom: {secretKeyRef: {name: gateway-admin, key: token}}}
+            - {name: GOCPP_GATEWAY_ADMIN_TLS_CERT, value: /link-tls/tls.crt}
+            - {name: GOCPP_GATEWAY_ADMIN_TLS_KEY, value: /link-tls/tls.key}
+            # The gRPC link requires mutual TLS: backends need a certificate
+            # signed by this CA (tls.yaml). --link-insecure would run it open.
+            - {name: GOCPP_GATEWAY_LINK_TLS_CERT, value: /link-tls/tls.crt}
+            - {name: GOCPP_GATEWAY_LINK_TLS_KEY, value: /link-tls/tls.key}
+            - {name: GOCPP_GATEWAY_LINK_CLIENT_CA, value: /link-tls/ca.crt}
+            - {name: REDIS_ADDR, value: "redis.example.invalid:6379"}
+            - {name: GOCPP_GATEWAY_TLS_CERT, value: /tls/tls.crt}
+            - {name: GOCPP_GATEWAY_TLS_KEY, value: /tls/tls.key}
+            - {name: GOCPP_GATEWAY_TLS_TICKET_SECRET, valueFrom: {secretKeyRef: {name: gateway-ticket, key: secret}}}
+            - {name: GOCPP_GATEWAY_MAX_CONNECTIONS, value: "20000"}
+            - {name: GOCPP_GATEWAY_ACCEPT_RATE, value: "200"}
+          ports:
+            - {name: ocpp, containerPort: 8080}
+            - {name: link, containerPort: 9090}
+            - {name: metrics, containerPort: 9100}
+            - {name: admin, containerPort: 9443}
+          startupProbe:          # pre-flight: upgrade + BootNotification + Heartbeat on the gateway's own listener
+            exec:
+              command: ["/gocpp-gateway", "probe", "--insecure", "--url=wss://127.0.0.1:8080/ocpp/"]
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /readyz, port: metrics}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: metrics}
+          volumeMounts:
+            - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: link-tls, mountPath: /link-tls, readOnly: true}
+          resources:
+            requests: {cpu: "1", memory: 1Gi}
+            limits: {memory: 1Gi}
+        # Continuous synthetic probe: an idle canary is still exercised, and the
+        # alert is on gocpp_probe_runs_total{result="error"}.
+        - name: probe
+          image: example.invalid/gocpp-gateway:latest
+          args: ["probe", "--insecure", "--url=wss://127.0.0.1:8080/ocpp/", "--id=$(GOCPP_GATEWAY_ID)", "--interval=30s", "--metrics=:9101"]
+          env:
+            - {name: GOCPP_GATEWAY_ID, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+          ports:
+            - {name: probe-metrics, containerPort: 9101}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+      volumes:
+        - name: tls
+          secret: {secretName: gateway-tls}
+        - name: link-tls
+          secret: {secretName: gateway-link-tls}
+---
+# Backends dial every gateway pod through this headless Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-link
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true   # a not-ready (draining) gateway still holds sessions that need its link
+  selector: {app: gateway}
+  ports:
+    - {name: link, port: 9090}
+    - {name: metrics, port: 9100}
+    - {name: admin, port: 9443}
+---
+# Chargers connect here: L4 passthrough, TLS terminates in the gateway.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-ocpp
+  annotations:
+    cloud.google.com/l4-rbs: "enabled"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector: {app: gateway}
+  ports:
+    - {name: ocpp, port: 443, targetPort: ocpp}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {app: gateway}

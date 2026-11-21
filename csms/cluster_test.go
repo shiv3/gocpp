@@ -264,11 +264,11 @@ func (g gatedRegistry) PutGlobal(ctx context.Context, cpID, inst string) error {
 	return g.ConnectionRegistry.PutGlobal(ctx, cpID, inst)
 }
 
-// The global route is published synchronously in the connect path: a slow
-// registry write delays the first inbound handler instead of letting it run
-// (and the connection look established) before the route exists. Publish order
-// therefore follows connection order on one instance.
-func TestCluster_GlobalRoutePublishedBeforeInboundHandled(t *testing.T) {
+// With the legacy adapter the route is written right after the upgrade is
+// accepted (a failed upgrade must not touch a live connection's route), and
+// before any inbound handler runs: a slow registry write delays the connection
+// becoming established, so no handler sees a connection without its route.
+func TestCluster_RouteClaimedBeforeUpgradeAccepted(t *testing.T) {
 	hub := memory.NewInProcessHub()
 	reg := gatedRegistry{hub.Registry(), make(chan struct{})}
 	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithInstanceID("A"),
@@ -284,16 +284,31 @@ func TestCluster_GlobalRoutePublishedBeforeInboundHandled(t *testing.T) {
 	t.Cleanup(func() { ts.Close(); srv.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
-	require.NoError(t, err)
+	dialed := make(chan *websocket.Conn, 1)
+	go func() {
+		c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+		if err == nil {
+			dialed <- c
+		}
+	}()
+	c := <-dialed
 	t.Cleanup(func() { _ = c.CloseNow() })
 	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"1","Heartbeat",{}]`)))
-
-	time.Sleep(150 * time.Millisecond)
-	require.Nil(t, routeAtHandler.Load(), "inbound handled while the route publish was still pending")
+	replies := make(chan []byte, 1)
+	go func() {
+		if _, data, err := c.Read(ctx); err == nil {
+			replies <- data
+		}
+	}()
+	select {
+	case <-replies:
+		t.Fatal("handler ran while the route write was pending")
+	case <-time.After(150 * time.Millisecond):
+	}
+	_, connected := srv.Get("CP_1")
+	require.False(t, connected)
 	close(reg.release)
-	_, reply, err := c.Read(ctx)
-	require.NoError(t, err)
+	reply := <-replies
 	require.Contains(t, string(reply), `[3,"1"`)
 	require.Equal(t, "A", routeAtHandler.Load())
 }

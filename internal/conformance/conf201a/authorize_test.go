@@ -2,6 +2,7 @@ package conf201a
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -245,7 +246,7 @@ func TestAuthorize201_ResponseValidation(t *testing.T) {
 }
 
 func TestAuthorize201_Direction(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols(v201.SubProtocol))
+	srv := splitmode.NewServer(csms.WithSubProtocols(v201.SubProtocol))
 	wrongDirection := ocppj.Message[messages.AuthorizeRequest, messages.AuthorizeResponse]{
 		Action:    profiles.Authorize.Action,
 		Direction: ocppj.SentByCSMS,

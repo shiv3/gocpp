@@ -112,11 +112,11 @@ Two lower-level alternatives exist if you don't want the wrapper:
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,
 `WithWriteTimeout`, `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`
 (+ `WithLenientTimeLocation`), `WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
-`WithDuplicatePolicy`, `WithTransactionStore` and `WithConfigStore` (application-facing storage slots, see below), `WithMessageRouter`,
+`WithDuplicatePolicy`, `WithTransactionStore` and `WithConfigStore` (application-facing storage slots, see below), `WithMessageRouter` (deprecated, see docs/clustering.md),
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
 `WithSerializedCalls` / `WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`,
 `WithMaxConnections`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
-`WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`, `WithInstanceID` (see [clustering](clustering.md)).
+`WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`, `WithInstanceID` (see [clustering](clustering.md)), `WithAcceptRateLimit` and `Server.Drain` (see [draining](draining.md)).
 
 CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`

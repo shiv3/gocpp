@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +20,7 @@ func TestE2E_OriginCheck(t *testing.T) {
 	const crossOrigin = "http://evil.example.com"
 
 	t.Run("rejected by default", func(t *testing.T) {
-		srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+		srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
 
@@ -35,7 +36,7 @@ func TestE2E_OriginCheck(t *testing.T) {
 	})
 
 	t.Run("allowed with WithInsecureSkipVerifyOrigin", func(t *testing.T) {
-		srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithInsecureSkipVerifyOrigin())
+		srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithInsecureSkipVerifyOrigin())
 		ts := httptest.NewServer(srv.Handler())
 		defer ts.Close()
 
@@ -52,7 +53,7 @@ func TestE2E_OriginCheck(t *testing.T) {
 
 	t.Run("custom WithCheckOrigin decides", func(t *testing.T) {
 		// Allow only a specific origin via a custom predicate.
-		srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithCheckOrigin(func(r *http.Request) bool {
+		srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithCheckOrigin(func(r *http.Request) bool {
 			return r.Header.Get("Origin") == "http://trusted.example.com"
 		}))
 		ts := httptest.NewServer(srv.Handler())
@@ -76,7 +77,7 @@ func TestE2E_OriginCheck(t *testing.T) {
 
 // TestE2E_Shutdown verifies graceful shutdown drains live connections.
 func TestE2E_Shutdown(t *testing.T) {
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

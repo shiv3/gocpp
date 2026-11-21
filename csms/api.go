@@ -14,16 +14,23 @@ func On[Req, Resp any](s *Server, m ocppj.Message[Req, Resp], h func(ctx context
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpHandle, m.Direction); err != nil {
 		return err
 	}
-	s.reg.Register(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) ([]byte, error) {
+	typed := func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
 		var req Req
 		if err := codec.Unmarshal(payload, &req); err != nil {
 			return nil, dispatcher.NewDecodeError(err)
 		}
-		resp, err := h(ctx, &Conn{inner: dc}, req)
+		resp, err := h(ctx, c, req)
 		if err != nil {
 			return nil, err
 		}
 		return codec.Marshal(resp)
+	}
+	// The same closure is kept in a table typed on *Conn so that a processing
+	// tier behind a gateway can run it with a Conn that is not backed by a
+	// dispatcher.Conn (see Server.handler).
+	s.handlers.setCall(m.Action, typed)
+	s.reg.Register(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) ([]byte, error) {
+		return typed(ctx, &Conn{inner: dc}, payload)
 	})
 	return nil
 }
@@ -38,6 +45,9 @@ func CallRaw(ctx context.Context, c *Conn, action string, payload []byte) ([]byt
 // doCall sends on the local connection, or forwards through the router when c is
 // a handle for a charge point held by another instance.
 func doCall(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error) {
+	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
+		return c.srv.callGateway(ctx, c, action, payload)
+	}
 	if c.inner == nil {
 		return c.srv.callRemote(ctx, c.remoteID, action, payload)
 	}
@@ -47,6 +57,10 @@ func doCall(ctx context.Context, c *Conn, action string, payload []byte) ([]byte
 // doCallAsync is the asynchronous form of doCall. A remote call has no outbound
 // queue on this instance, so it simply runs in its own goroutine.
 func doCallAsync(ctx context.Context, c *Conn, action string, payload []byte, cb func([]byte, error)) error {
+	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
+		go func() { cb(c.srv.callGateway(ctx, c, action, payload)) }()
+		return nil
+	}
 	if c.inner == nil {
 		go func() { cb(c.srv.callRemote(ctx, c.remoteID, action, payload)) }()
 		return nil

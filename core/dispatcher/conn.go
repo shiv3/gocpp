@@ -25,6 +25,23 @@ type Conn struct {
 	version ocppj.Version
 	meta    ConnMetadata
 
+	// calls counts outbound calls that have started and not yet returned
+	// (queued for the slot, awaiting a reply). drainBit is set once the
+	// connection is draining: no call may start any more. Both live in one word
+	// so that "idle and mark draining" is a single compare-and-swap.
+	calls atomic.Int64
+
+	// attachment is owner-defined data hung on the connection (see SetAttachment).
+	attachment atomic.Value
+	// attMu serialises read-modify-write updates of the attachment
+	// (UpdateAttachment).
+	attMu sync.Mutex
+	// inboundGate, when set, filters inbound CALL/SEND before they are scheduled.
+	inboundGate InboundGate
+	// inboundDone, when set, is called once for every frame the gate admitted, after
+	// its handler returned.
+	inboundDone func(f ocppj.Frame)
+
 	// wlock is the write lock: a channel of capacity 1 so that waiting for it can
 	// honour a context and blocked senders are served FIFO. A sender holds it
 	// across ws.Write and the frame-observer call (wire order). wwait counts
@@ -52,11 +69,12 @@ type Conn struct {
 	// use it so cancelling the connection never aborts a socket operation without
 	// a close frame. handlerBase is noCancel plus the *Conn value handler
 	// contexts are built on.
-	noCancel    context.Context
-	handlerBase context.Context
-	closeWSOnce sync.Once
-	done        chan struct{}
-	wg          sync.WaitGroup
+	noCancel     context.Context
+	handlerBase  context.Context
+	closeWSOnce  sync.Once
+	closedMetric sync.Once
+	done         chan struct{}
+	wg           sync.WaitGroup
 
 	// Transient background goroutines (async calls and their callbacks, the
 	// OCPP keepalive loop, ping callbacks). bgWG tracks them; bgClosed (under
@@ -90,12 +108,20 @@ type Conn struct {
 	pingTimer     *time.Timer
 
 	cfg *Config
+	// pipe is the payload policy (validation, signing, error mapping) for this
+	// connection; see Pipeline.
+	pipe Pipeline
 }
 
 // ConnMetadata contains HTTP upgrade metadata associated with a connection.
 // Fields are empty for connections that were not created from an inbound HTTP
 // upgrade request.
 type ConnMetadata struct {
+	// Owner is opaque data of whoever creates the connection (the CSMS server
+	// keeps its gateway session here), returned by Conn.Owner. It is not cloned.
+	//
+	// Experimental: this API may change before v1.0.
+	Owner         any
 	RemoteAddr    string
 	RequestHeader http.Header
 	TLS           *tls.ConnectionState
@@ -128,6 +154,7 @@ func NewConnShared(id string, ws transport.WS, cfg *Config, reg *HandlerRegistry
 		done:        make(chan struct{}),
 		cfg:         cfg,
 	}
+	c.pipe = NewPipeline(cfg, c.version, id)
 	return c
 }
 
@@ -167,6 +194,11 @@ func (c *Conn) Version() ocppj.Version { return c.version }
 
 // Subprotocol returns the negotiated WebSocket subprotocol.
 func (c *Conn) Subprotocol() string { return c.ws.Subprotocol() }
+
+// Owner returns the ConnMetadata.Owner the connection was created with.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) Owner() any { return c.meta.Owner }
 
 // RemoteAddr returns the peer network address from the HTTP upgrade request, if
 // available.
@@ -235,6 +267,7 @@ func (c *Conn) NoteActivity() {
 
 func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 	cloned := ConnMetadata{
+		Owner:         meta.Owner,
 		RemoteAddr:    meta.RemoteAddr,
 		RequestHeader: meta.RequestHeader.Clone(),
 	}
@@ -248,6 +281,10 @@ func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 // replacedCloseReason is the WebSocket close reason sent to a connection that
 // was superseded by a newer one with the same id.
 const replacedCloseReason = "replaced by a new connection with the same ID"
+
+// drainingCloseReason is the WebSocket close reason of a connection closed by a
+// drain (close code 1012, service restart).
+const drainingCloseReason = "gateway draining"
 
 // closedByServerReason is the WebSocket close reason sent when the server
 // closes the connection on purpose.
@@ -267,6 +304,9 @@ func (c *Conn) closeWS(code transport.StatusCode, reason string) {
 func (c *Conn) closeForCause() {
 	cause := context.Cause(c.ctx)
 	switch {
+	case errors.Is(cause, ocppj.ErrGatewayDraining), errors.Is(cause, ocppj.ErrDrainTimeout):
+		c.closeWS(transport.StatusServiceRestart, drainingCloseReason)
+
 	case errors.Is(cause, ocppj.ErrConnReplaced):
 		c.closeWS(transport.StatusPolicyViolation, replacedCloseReason)
 	case errors.Is(cause, ocppj.ErrConnClosedByServer):
@@ -349,6 +389,151 @@ func (c *Conn) Start(parent context.Context) {
 	context.AfterFunc(c.ctx, c.teardown)
 }
 
+// SetAttachment stores owner data on the connection so that code holding only
+// the *Conn (a handler reaching it through ConnFromContext) can find it. The
+// stored values must all have the same concrete type. The CSMS server keeps the
+// connection's registry session here.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) SetAttachment(v any) {
+	c.attMu.Lock()
+	c.attachment.Store(v)
+	c.attMu.Unlock()
+}
+
+// UpdateAttachment replaces the attachment with f(current) atomically with
+// respect to other UpdateAttachment and SetAttachment calls, so two owners that
+// each derive a new value from the old one (a session's attributes and its
+// epoch, say) cannot overwrite each other's change. f runs under a lock and must
+// not block or call back into the connection. Like SetAttachment, the result
+// must have the same concrete type as every earlier value.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) UpdateAttachment(f func(old any) any) {
+	c.attMu.Lock()
+	c.attachment.Store(f(c.attachment.Load()))
+	c.attMu.Unlock()
+}
+
+// Attachment returns the value stored by SetAttachment, or nil.
+func (c *Conn) Attachment() any { return c.attachment.Load() }
+
+// InboundGate decides, for every inbound CALL and SEND, whether it is scheduled
+// at all. It returns nil to admit the frame, or the error to refuse it with: a
+// refused CALL is answered with that CALLERROR (counted against the same bound
+// on queued error replies as other built-in errors), a refused SEND is dropped.
+// Nothing about the frame has been validated or decoded when the gate runs, so it
+// must be cheap and must not block. It is called on the connection's reader
+// goroutine, one frame at a time.
+//
+// Experimental: this API may change before v1.0.
+type InboundGate func(f ocppj.Frame) *ocppj.CallError
+
+// SetInboundGate installs g (nil removes it). Call it before Start: the reader
+// reads the field without synchronisation.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) SetInboundGate(g InboundGate) { c.inboundGate = g }
+
+// SetInboundDone installs a callback that runs after the handler of every inbound
+// CALL and SEND has returned (and its reply was queued), so a gate that counts
+// admitted frames, such as a concurrency limit, can release them. Frames the gate
+// admitted but that never reach a handler because the connection ended are not
+// reported: the owner reconciles its count when it tears the connection down.
+// Call it before Start. It runs on the handler goroutine and must not block.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) SetInboundDone(f func(ocppj.Frame)) { c.inboundDone = f }
+
+// drainBit marks Conn.calls as draining.
+const drainBit = int64(1) << 62
+
+// beginCall registers an outbound call. It fails once the connection is
+// draining, before anything was written.
+func (c *Conn) beginCall() bool {
+	if c.calls.Add(1)&drainBit != 0 {
+		c.calls.Add(-1)
+		return false
+	}
+	return true
+}
+
+func (c *Conn) endCall() { c.calls.Add(-1) }
+
+// Draining reports whether the connection stopped accepting new outbound calls
+// because a drain began (TryDrain or ForceDrain).
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) Draining() bool { return c.calls.Load()&drainBit != 0 }
+
+// Quiesce stops the connection from starting new outbound calls (they fail with
+// ocppj.ErrGatewayDraining before anything is written) without closing it, so
+// calls already started can finish. Call TryDrain afterwards to close it once
+// it is idle.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) Quiesce() { c.calls.Or(drainBit) }
+
+// Unquiesce undoes Quiesce: the connection accepts new outbound calls again. Use
+// it when a drain that quiesced the connection ends without closing it. It has no
+// effect on a connection TryDrain or ForceDrain has already closed.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) Unquiesce() {
+	if c.Context().Err() != nil {
+		return
+	}
+	c.calls.And(^drainBit)
+}
+
+// TryDrain closes the connection for a drain if it is idle: no inbound handler
+// running or queued, no outbound call queued, in flight or awaiting a reply. It
+// is atomic with respect to new outbound calls, which from then on fail with
+// ocppj.ErrGatewayDraining before anything is written. On success the close
+// frame (1012, service restart) is sent in the background and TryDrain reports
+// true; a busy connection is left untouched and TryDrain reports false. A frame
+// the charge point sends at the same moment may still be lost, as with any
+// disconnect.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) TryDrain() bool {
+	c.inMu.Lock()
+	busy := c.running > 0 || len(c.inQ) > 0
+	c.inMu.Unlock()
+	if busy {
+		return false
+	}
+	c.slot.mu.Lock()
+	queued := len(c.slot.q)
+	c.slot.mu.Unlock()
+	if queued > 0 {
+		return false
+	}
+	// Idle means no call counted besides the drain bit itself; swap to exactly
+	// the bit so that no call can slip in between the check and the close.
+	for {
+		v := c.calls.Load()
+		if v&^drainBit != 0 {
+			return false
+		}
+		if c.calls.CompareAndSwap(v, drainBit) {
+			break
+		}
+	}
+	c.Abort(ocppj.ErrGatewayDraining)
+	return true
+}
+
+// ForceDrain closes the connection for a drain whatever it is doing, at the end
+// of the drain window. Calls in flight fail with ocppj.ErrDrainTimeout, which
+// (unlike ErrGatewayDraining) does not prove they were not executed.
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) ForceDrain() {
+	c.calls.Or(drainBit)
+	c.Abort(ocppj.ErrDrainTimeout)
+}
+
 // Abort cancels the connection with cause without waiting for teardown. The
 // socket is then closed in the background with a close frame matching cause
 // (see teardown); call Close afterwards to wait for completion.
@@ -378,7 +563,9 @@ func (c *Conn) Close(reason error) error {
 	c.bgClosed = true
 	c.bgMu.Unlock()
 	c.bgWG.Wait()
-	c.cfg.Metrics.ConnectionClosed()
+	// Close can be called by more than one party (a replacement and the
+	// connection's own teardown); the gauge must drop once.
+	c.closedMetric.Do(c.cfg.Metrics.ConnectionClosed)
 	return nil
 }
 
@@ -427,7 +614,7 @@ func (c *Conn) handleMessage(msg []byte) bool {
 			var ute *ocppj.UnknownMessageTypeError
 			if errors.As(err, &ute) && ute.MsgID != "" {
 				def := ocppj.NewCallError(ocppj.ErrorCodeMessageTypeNotSupported, ute.Error(), nil)
-				if wire, reply := c.mapBuiltinError(ErrorSourceUnknownMessageType, "", ute, def, c.version != ocppj.V16); reply {
+				if wire, reply := c.pipe.MapBuiltinError(ErrorSourceUnknownMessageType, "", ute, def, c.version != ocppj.V16); reply {
 					c.trySendCallErrorWire(ute.MsgID, wire, def.Description)
 				}
 			}
@@ -441,7 +628,7 @@ func (c *Conn) handleMessage(msg []byte) bool {
 		if errors.As(err, &perr) && perr.MessageType == int(ocppj.Call) && perr.MsgID != "" {
 			// WireCode spells it per version (FormationViolation / FormatViolation).
 			def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, perr.Message, nil)
-			if wire, reply := c.mapBuiltinError(ErrorSourceMalformedFrame, "", perr, def, true); reply {
+			if wire, reply := c.pipe.MapBuiltinError(ErrorSourceMalformedFrame, "", perr, def, true); reply {
 				c.trySendCallErrorWire(perr.MsgID, wire, def.Description)
 			}
 		}
@@ -476,6 +663,14 @@ func (c *Conn) routeInbound(frame ocppj.Frame) bool {
 		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, IsResultError: true}
 		c.pending.resolve(frame.MsgID, rawResult{err: ce})
 	case ocppj.Call, ocppj.Send:
+		if g := c.inboundGate; g != nil {
+			if ce := g(frame); ce != nil {
+				if frame.Type == ocppj.Call && frame.MsgID != "" {
+					c.trySendCallErrorWire(frame.MsgID, ce.WireCode(c.version), ce.Description)
+				}
+				return true
+			}
+		}
 		return c.enqueueInbound(frame)
 	}
 	return true
@@ -526,7 +721,7 @@ func (c *Conn) checkMessageID(frame ocppj.Frame) bool {
 		if long && frame.Type == ocppj.Call {
 			def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation,
 				fmt.Sprintf("message id longer than %d characters", ocppj.MaxMessageIDLength), nil)
-			if wire, reply := c.mapBuiltinError(ErrorSourceMessageID, frame.Action, nil, def, true); reply {
+			if wire, reply := c.pipe.MapBuiltinError(ErrorSourceMessageID, frame.Action, nil, def, true); reply {
 				c.trySendCallErrorWire(frame.MsgID, wire, def.Description)
 			}
 		}

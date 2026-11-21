@@ -1,0 +1,36 @@
+package main
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/shiv3/gocpp/csms"
+	v16h "github.com/shiv3/gocpp/v16/handlers"
+	v16msg "github.com/shiv3/gocpp/v16/messages"
+)
+
+// Embed Unimplemented and override only what you handle;
+// every other message answers NotSupported.
+type handler struct{ v16h.UnimplementedCSMSHandler }
+
+func (handler) OnBootNotification(ctx context.Context, c *csms.Conn, req v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
+	log.Printf("boot from %s: %s %s", c.ID(), req.ChargePointVendor, req.ChargePointModel)
+	return v16msg.BootNotificationResponse{
+		Status:      v16msg.RegistrationStatusAccepted,
+		CurrentTime: time.Now(),
+		Interval:    300,
+	}, nil
+}
+
+func (handler) OnHeartbeat(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
+	return v16msg.HeartbeatResponse{CurrentTime: time.Now()}, nil
+}
+
+func main() {
+	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	if err := v16h.RegisterCSMS(srv, handler{}); err != nil {
+		log.Fatal(err)
+	}
+	log.Fatal(srv.ListenAndServe(":8080")) // ws://host:8080/ocpp/{cpId}
+}

@@ -17,6 +17,14 @@ only on `core/ocppj` (message values) and `core/schema` (embedded schemas). The
 dispatcher is **version-agnostic**: adding a version added zero dispatcher code — the
 key §1 boundary, validated across 1.6/2.0.1/2.1.
 
+## Split deployment
+
+The same layers can run as a gateway (connection tier) and a backend (processing
+tier) joined by a link; see [gateway.md](gateway.md). The seam is
+`dispatcher.Pipeline` (the payload policy of a connection: signing, schema
+validation, lenient coercion, error mapping), which both an embedded `Conn` and a
+backend call, so error codes are identical in both modes.
+
 ## Connection lifecycle
 
 `dispatcher.Conn` is bound to a `context.WithCancelCause` and has one resident
@@ -58,3 +66,15 @@ Output is deterministic: `make codegen && git diff --exit-code` must stay clean.
 `core/storage`, `core/auth`, `core/observability` define interfaces with in-memory / NoOp
 defaults, wired into the CSMS via options. Real adapters (Redis/NATS/Postgres) are
 post-v1.0; the interfaces are the frozen candidates.
+
+## Sessions across instances, and deploys
+
+A server that takes part in clustering (`WithInstanceID` or `WithSessionRegistry`)
+records each connection in a `storage.SessionRegistry` under a registry-assigned
+epoch: it claims the session before it accepts the WebSocket upgrade, releases it
+by compare-and-delete on the epoch when the connection ends, keeps a per-process
+lease, and runs a reconcile loop that closes sockets superseded elsewhere. See
+[clustering](clustering.md). `Server.Drain` and the accept rate limiters move
+charge points off a process at a controlled pace for deploys; see
+[draining](draining.md). Both work in a single process and are independent of any
+gateway topology.

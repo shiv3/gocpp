@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ func TestE2E_EmitsHandlerSpan(t *testing.T) {
 	rec := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
 
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithTracerProvider(tp))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithTracerProvider(tp))
 	require.NoError(t, csms.On(srv, bootMsg, func(ctx context.Context, c *csms.Conn, req bootReq) (bootResp, error) {
 		return bootResp{Status: "Accepted"}, nil
 	}))

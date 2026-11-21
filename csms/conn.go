@@ -3,12 +3,14 @@ package csms
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/storage"
 )
 
 // Conn is a CSMS-side connection to a charge point.
@@ -21,17 +23,32 @@ type Conn struct {
 	remoteID string
 	srv      *Server
 
+	// gw is the gateway session this Conn belongs to: its own on a gateway, the
+	// session of a handle or message on a processing tier (see GatewaySession).
+	gw *gwSession
+
+	// tenantRelease returns the tenant session slot (WithTenantLimits).
+	tenantRelease func()
+
 	// gone is closed once the server has finished tearing this connection down:
 	// disconnect callback fired and the connection removed from the registry. Nil
 	// for the short-lived wrappers handed to typed handlers, which only wait for
 	// the inner connection.
 	gone chan struct{}
 
+	// session is the registry record of a remote handle (see Server.Lookup).
+	session *storage.Session
+
 	// disconnectOnce makes the disconnect notification fire exactly once, whether
 	// it comes from a replacement or from the connection's own teardown. Do blocks
 	// concurrent callers until the first call returns, which orders the
 	// replacement's connect notification after the old disconnect.
 	disconnectOnce sync.Once
+
+	// tapOnce makes the session-closed observation fire once; openedAt dates the
+	// session for its duration (WithSessionObserver).
+	tapOnce  sync.Once
+	openedAt time.Time
 }
 
 // ID returns the charge point identifier.
@@ -47,9 +64,143 @@ func (c *Conn) ID() string {
 // details such as Version, RemoteAddr and TLS are empty for it.
 func (c *Conn) Remote() bool { return c.inner == nil }
 
+// Session returns the registry record of this connection: for a live local
+// connection the session this server claimed for it, for a remote handle the
+// record that Lookup found. ok is false when the server runs without a session
+// registry (and clustering), and for a connection accepted while the registry
+// was unreachable until it has been claimed (Epoch is 0 until then). The value
+// is a snapshot; the epoch of a connection can change when the server re-claims
+// it.
+func (c *Conn) Session() (s storage.Session, ok bool) {
+	if c.inner == nil && c.gw != nil {
+		return c.gw.storageSession(), true
+	}
+	if c.inner == nil {
+		if c.session == nil {
+			return storage.Session{}, false
+		}
+		return *c.session, true
+	}
+	p, _ := c.inner.Attachment().(*sessionRef)
+	if p == nil {
+		return storage.Session{}, false
+	}
+	return p.s, true
+}
+
+// ErrAttrsTooLarge is returned by SetAttrs when the attributes would exceed
+// storage.MaxAttrBytes.
+var ErrAttrsTooLarge = errors.New("csms: session attributes exceed the size cap")
+
+// Attrs returns a copy of the session attributes (see WithSessionAttributes and
+// SetAttrs); nil when there are none. They are stored in the session record as
+// Meta keys with the reserved prefix "attr.".
+func (c *Conn) Attrs() map[string]string {
+	s, _ := c.Session()
+	return s.Attrs()
+}
+
+// SetAttrs merges attrs into the session attributes: a key replaces its value, a
+// key with an empty value is deleted, other attributes stay. The total size of
+// keys and values is capped (storage.MaxAttrBytes; ErrAttrsTooLarge). With a
+// session registry the record is updated there too (compare-and-set on the
+// epoch); the local value is updated first, so a registry error leaves the next
+// reconcile pass to repair the record. Attribute keys starting with "gocpp." are
+// reserved for a gateway to interpret (gocpp.busy) and are stored like any other.
+// Not supported on a remote handle (ErrRemoteConn).
+//
+// Experimental: this API may change before v1.0.
+func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
+	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
+		return c.srv.setAttrsGateway(ctx, c, attrs)
+	}
+	if c.inner == nil {
+		return ErrRemoteConn
+	}
+	// The read-modify-write is atomic with the reconcile loop's epoch update
+	// (setHolderSession): an attribute change computed from an old snapshot must
+	// not write the old epoch back.
+	var merged storage.Session
+	var srv *Server
+	var tooLarge bool
+	c.inner.UpdateAttachment(func(old any) any {
+		ref, _ := old.(*sessionRef)
+		if ref == nil {
+			ref = &sessionRef{s: storage.Session{CPID: c.inner.ID()}, srv: c.srv}
+		}
+		meta, ok := storage.MergeAttrs(ref.s.Meta, attrs)
+		if !ok {
+			tooLarge = true
+			return ref
+		}
+		s := ref.s
+		s.Meta = meta
+		merged, srv = s, ref.srv
+		return &sessionRef{s: s, srv: ref.srv}
+	})
+	if tooLarge {
+		return ErrAttrsTooLarge
+	}
+	if srv == nil || srv.sessions == nil || merged.Epoch == 0 {
+		return nil
+	}
+	_, err := srv.sessions.reg.SetAttrs(ctx, merged.CPID, merged.Epoch, attrs)
+	return err
+}
+
+// sessionHolder implementation, used by the session manager.
+
+func (c *Conn) holderID() string { return c.inner.ID() }
+
+func (c *Conn) holderSession() storage.Session {
+	s, _ := c.Session()
+	if c.gw != nil {
+		// A gateway's record also carries its routing decision, so a re-claim or
+		// a reassert after a registry loss restores it.
+		if p := c.gw.routePool.Load(); p != nil {
+			meta := make(map[string]string, len(s.Meta)+1)
+			for k, v := range s.Meta {
+				meta[k] = v
+			}
+			meta[storage.RoutePrefix+routePoolKey] = *p
+			s.Meta = meta
+		}
+	}
+	return s
+}
+
+// setHolderSession adopts the epoch the registry assigned to s (a late claim of
+// an unclaimed socket, or a re-claim). Only the epoch is taken: the attributes
+// may have changed since s was read.
+func (c *Conn) setHolderSession(s storage.Session) {
+	c.inner.UpdateAttachment(func(old any) any {
+		ref, _ := old.(*sessionRef)
+		if ref == nil {
+			return &sessionRef{s: s}
+		}
+		cur := ref.s
+		cur.Epoch = s.Epoch
+		return &sessionRef{s: cur, srv: ref.srv}
+	})
+}
+
+// sessionRef is what the server hangs on a dispatcher connection: the session
+// snapshot and the server that owns it.
+type sessionRef struct {
+	s   storage.Session
+	srv *Server
+}
+
+func (c *Conn) alive() bool { return c.inner.Context().Err() == nil }
+
+func (c *Conn) displace() { c.inner.Abort(ocppj.ErrConnReplaced) }
+
 // Version returns the negotiated OCPP version.
 func (c *Conn) Version() ocppj.Version {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.version
+		}
 		return ""
 	}
 	return c.inner.Version()
@@ -58,6 +209,9 @@ func (c *Conn) Version() ocppj.Version {
 // Subprotocol returns the negotiated WebSocket subprotocol.
 func (c *Conn) Subprotocol() string {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.subprotocol()
+		}
 		return ""
 	}
 	return c.inner.Subprotocol()
@@ -66,6 +220,9 @@ func (c *Conn) Subprotocol() string {
 // RemoteAddr returns the peer network address from the HTTP upgrade request.
 func (c *Conn) RemoteAddr() string {
 	if c.inner == nil {
+		if c.gw != nil && c.gw.info() != nil {
+			return c.gw.info().RemoteAddr
+		}
 		return ""
 	}
 	return c.inner.RemoteAddr()
@@ -74,6 +231,9 @@ func (c *Conn) RemoteAddr() string {
 // RequestHeader returns a copy of the HTTP upgrade request headers.
 func (c *Conn) RequestHeader() http.Header {
 	if c.inner == nil {
+		if c.gw != nil && c.gw.info() != nil {
+			return c.gw.info().RequestHeader.Clone()
+		}
 		return nil
 	}
 	return c.inner.RequestHeader()
@@ -82,6 +242,9 @@ func (c *Conn) RequestHeader() http.Header {
 // TLS returns a copy of the HTTP upgrade TLS connection state, if available.
 func (c *Conn) TLS() *tls.ConnectionState {
 	if c.inner == nil {
+		if c.gw != nil {
+			return c.gw.tlsState()
+		}
 		return nil
 	}
 	return c.inner.TLS()
@@ -99,6 +262,9 @@ func (c *Conn) TLS() *tls.ConnectionState {
 // returns ctx.Err() and the teardown still completes in the background.
 func (c *Conn) Close(ctx context.Context) error {
 	if c.inner == nil {
+		if c.gw != nil && c.srv != nil && c.srv.backend != nil {
+			return c.srv.closeGateway(ctx, c)
+		}
 		return ErrRemoteConn
 	}
 	c.inner.Abort(ocppj.ErrConnClosedByServer)
@@ -152,7 +318,8 @@ func (c *Conn) Done() <-chan struct{} {
 func ConnFromContext(ctx context.Context) (*Conn, bool) {
 	dc, ok := dispatcher.ConnFromContext(ctx)
 	if !ok {
-		return nil, false
+		c, ok := ctx.Value(gwConnKey{}).(*Conn)
+		return c, ok
 	}
 	return &Conn{inner: dc}, true
 }

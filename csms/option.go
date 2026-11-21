@@ -1,6 +1,7 @@
 package csms
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/core/transport"
+	"github.com/shiv3/gocpp/gateway"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -27,28 +29,55 @@ type serverConfig struct {
 	path            string
 	cpIDExtractor   CPIDExtractor
 	instanceID      string
+	sessionReg      storage.SessionRegistry
+	sessionAttrs    func(r *http.Request, cpID string) map[string]string
+	sessionCfg      SessionConfig
 	registry        *schema.Registry
 	duplicatePolicy DuplicatePolicy
 
 	globalConcurrencyLimit int
 	maxConnections         int
+	acceptLimit            *tokenBucket
+	softMax                int
 	ioReadBuffer           int
 	ioWriteBuffer          int
 
 	auth           auth.Authenticator
 	connReg        storage.ConnectionRegistry
-	router         storage.MessageRouter
+	router         storage.MessageRouter //nolint:staticcheck // legacy interface, kept for compatibility (deprecated in favour of gateway.Downstream)
 	txStore        storage.TransactionStore
 	cfgStore       storage.ConfigStore
 	metrics        observability.Metrics
 	tracerProvider trace.TracerProvider
 	onConnect      func(*Conn)
 	onDisconnect   func(*Conn, error)
+	sessionObs     observability.SessionObserver
 	connConfig     func(r *http.Request, cpID string, t *ConnTimeouts)
 
 	originPatterns           []string
 	insecureSkipVerifyOrigin bool
 	checkOrigin              func(r *http.Request) bool
+
+	// Gateway mode (see gateway_edge.go, gateway_backend.go).
+	edgeLink       gateway.GatewayLink // set: this server is a gateway
+	gatewayID      string
+	link           gateway.BackendLink // set: this server is a processing tier
+	splitInProcess bool
+	splitLink      SplitLink
+	backendInfo    gateway.BackendInfo
+	gwRouter       gateway.Router
+	gwAuthCache    *AuthCacheConfig
+	attrSource     gateway.AttrSource
+	attrSourceOpts AttrSourceOptions
+	onOrphan       func(cpID, callID, action string, payload []byte, err error)
+	edgeResponders map[string]EdgeResponder
+	// edgeTimeEncoding is timeEncoding as the gateway keeps it (the processing tier applies it otherwise).
+	edgeTimeEncoding  schema.TimeEncoding
+	onEdgeResponse    func(cpID, action string)
+	edgeHeartbeat     bool
+	edgeHeartbeatWhen []func(EdgeRequest) bool
+
+	tenantLimits *TenantLimits
 }
 
 func defaultServerConfig() serverConfig {
@@ -289,12 +318,27 @@ func WithOnDisconnect(fn func(*Conn, error)) Option {
 	return optionFunc(func(c *serverConfig) { c.onDisconnect = fn })
 }
 
+// WithSessionObserver installs a callback that sees the lifecycle of every
+// WebSocket session this server terminates: opened once the connection is
+// registered, closed once when it ends (with the cause and the duration). It
+// works on an embedded server and on a gateway alike (unlike WithOnConnect, which
+// belongs to the processing tier), and runs inline, so it must not block; see
+// observability/tap for an exporter that does not. Panics are recovered.
+func WithSessionObserver(fn observability.SessionObserver) Option {
+	return optionFunc(func(c *serverConfig) { c.sessionObs = fn })
+}
+
 // WithInstanceID sets this CSMS instance's identifier and turns on multi-instance
 // routing: the instance registers every charge point it holds in the registry's
 // global table under this id, serves calls forwarded by other instances through
 // the message router (WithMessageRouter), and Server.Lookup can forward calls to
 // charge points held elsewhere. The id must be unique per running instance. See
 // docs/clustering.md.
+//
+// Routes are recorded through a storage.SessionRegistry: the connection registry
+// itself when it implements the interface (the in-memory registries do), else an
+// adapter over its PutGlobal / LookupGlobal / DeleteGlobal with the guarantees
+// those calls always had. Prefer WithSessionRegistry for new code.
 func WithInstanceID(id string) Option {
 	return optionFunc(func(c *serverConfig) { c.instanceID = id })
 }
@@ -413,12 +457,49 @@ func WithAuthenticator(a auth.Authenticator) Option {
 	return optionFunc(func(c *serverConfig) { c.auth = a })
 }
 
+// WithSessionRegistry makes the server record every connection it holds in reg
+// under a registry-assigned epoch and turns on multi-instance routing, like
+// WithInstanceID (whose value, if set, becomes the gateway id unless cfg gives
+// one). The registry claims the session before the WebSocket upgrade is accepted,
+// releases it with a compare-and-delete when the connection ends, keeps a
+// gateway lease alive and runs a reconcile loop that closes sockets superseded
+// by a newer connection elsewhere. At most one SessionConfig may be given; omit
+// it for the defaults. See docs/clustering.md.
+//
+// Servers that share one registry see each other's sessions; use
+// memory.NewSessionRegistry in tests and addons/registry-redis in production.
+//
+// Experimental: this API may change before v1.0.
+func WithSessionRegistry(reg storage.SessionRegistry, cfg ...SessionConfig) Option {
+	return optionFunc(func(c *serverConfig) {
+		c.sessionReg = reg
+		if len(cfg) > 0 {
+			c.sessionCfg = cfg[0]
+		}
+	})
+}
+
+// WithSessionAttributes sets a function that derives the session attributes
+// (site, vendor, model, firmware, tenant, ...) from the upgrade request, e.g. from
+// the authenticated identity or headers. They are stored in the session record
+// and can be matched by DrainOptions.Select and by rollout tooling reading the
+// registry; update them later with Conn.SetAttrs or Server.SetSessionAttrs. The
+// function must not retain the returned map.
+func WithSessionAttributes(fn func(r *http.Request, cpID string) map[string]string) Option {
+	return optionFunc(func(c *serverConfig) { c.sessionAttrs = fn })
+}
+
 // WithConnectionRegistry sets the connection registry (default in-memory).
 func WithConnectionRegistry(r storage.ConnectionRegistry) Option {
 	return optionFunc(func(c *serverConfig) { c.connReg = r })
 }
 
 // WithMessageRouter sets the inter-instance message router (default no-op).
+//
+// Deprecated: use a gateway link (WithGatewayLink on the processing tier,
+// NewGatewayServer for the connection tier) so CSMS-initiated calls travel as
+// gateway.Downstream requests; csms.DownstreamRouter adapts a Downstream for
+// callers that cannot move yet. Removed no earlier than v0.4.
 func WithMessageRouter(r storage.MessageRouter) Option {
 	return optionFunc(func(c *serverConfig) { c.router = r })
 }
@@ -510,4 +591,115 @@ func WithOCPPGoCompat() Option {
 			o.apply(c)
 		}
 	})
+}
+
+// WithSplitInProcess makes the server run both tiers of a split deployment in
+// this process: an internal gateway terminates the WebSockets (Handler returns
+// its handler) and forwards every message over the in-process link to this
+// server, which acts as the processing tier. The wire behaviour is identical to
+// embedded mode and the same options configure both tiers; the point is the
+// topology: handlers run behind the same contract and session handles as when
+// the tiers are separate processes, which is what the conformance suite checks
+// (GOCPP_TEST_SPLIT=1, see internal/splitmode). Get returns a handle for a
+// connected charger, Connections lists the gateway's sessions.
+//
+// Experimental: this API may change before v1.0.
+func WithSplitInProcess() Option {
+	return optionFunc(func(c *serverConfig) { c.splitInProcess = true })
+}
+
+// SplitLink is a transport that has both ends of a split deployment in this
+// process, for WithSplitLink. *inproc.Hub is one; a harness can wrap any other
+// link (a NATS or gRPC pair on loopback) the same way.
+//
+// Experimental: this API may change before v1.0.
+type SplitLink interface {
+	// Gateway is the end the internal gateway uses.
+	Gateway() gateway.GatewayLink
+	// Backend is the end the processing tier uses to reach the gateway.
+	Backend() gateway.BackendLink
+	// AttachBackend attaches up as a backend and returns once it can take work.
+	// The returned function drains it (no new work, wait for work in flight).
+	AttachBackend(up gateway.Upstream, info gateway.BackendInfo) (drain func(ctx context.Context) error)
+}
+
+// WithSplitLink is WithSplitInProcess over a link of the caller's choosing: an
+// internal gateway and this server, the processing tier, are joined by l. It is
+// how the conformance suite is run in split mode over a real transport (see
+// internal/splitmode and addons/link-nats/splitharness).
+//
+// Experimental: this API may change before v1.0.
+func WithSplitLink(l SplitLink) Option {
+	return optionFunc(func(c *serverConfig) { c.splitLink = l })
+}
+
+// WithBackendInfo declares who a processing-tier server is when it attaches to a
+// link: its pool ("" = gateway.DefaultPool), build version, role, labels. A
+// gateway only sends inbound work to pools its router names, and without a
+// router that is the default pool only, so starting a server in another pool
+// is never a traffic change by itself. Proto, Caps and ID are filled in.
+func WithBackendInfo(info gateway.BackendInfo) Option {
+	return optionFunc(func(c *serverConfig) { c.backendInfo = info })
+}
+
+// WithRouter sets the routing hook of a gateway (NewGatewayServer): for every
+// message it names the backend pool that serves it, from the charger id, the
+// action and the session attributes. Default gateway.DefaultRouter.
+//
+// Experimental: this API may change before v1.0.
+func WithRouter(r gateway.Router) Option {
+	return optionFunc(func(c *serverConfig) { c.gwRouter = r })
+}
+
+// AuthCacheConfig configures the gateway's cache of connect decisions.
+type AuthCacheConfig struct {
+	// TTL is how long an accepted connect is answered from the cache without
+	// asking the backend. Default 5 minutes.
+	TTL time.Duration
+	// StaleIfError is how long past TTL an accepted decision is still served when
+	// the backend cannot be reached (no backend attached, link failure). 0 serves
+	// no stale decision. Default 1 hour.
+	StaleIfError time.Duration
+	// MaxEntries bounds the cache (default 100000); at the limit expired entries
+	// go first, then an arbitrary one.
+	MaxEntries int
+}
+
+// WithGatewayAuthCache makes a gateway (NewGatewayServer) remember the backend's
+// positive connect decisions, keyed by a hash of what the decision can depend
+// on: the charge point id, request path, Authorization header, offered
+// subprotocols and the client certificate. Within TTL a reconnect is admitted
+// without a round trip (a reconnect storm does not hit the backend's credential
+// store), and after TTL the backend is asked again; if it cannot be reached an
+// accepted decision up to StaleIfError old is reused, so charge points keep
+// reconnecting through a backend outage. Rejections are never cached and drop
+// the entry. Do not enable it when the backend decides on other request headers;
+// call Server.InvalidateAuthCache after a credential change.
+//
+// Experimental: this API may change before v1.0.
+func WithGatewayAuthCache(cfg AuthCacheConfig) Option {
+	return optionFunc(func(c *serverConfig) { c.gwAuthCache = &cfg })
+}
+
+// AttrSourceOptions tunes WithAttrSource.
+type AttrSourceOptions struct {
+	// Timeout bounds the lookup at connect (default 200 ms); on failure the
+	// session starts without external attributes.
+	Timeout time.Duration
+	// Refresh, if positive, re-reads the attributes of every connected session at
+	// this interval and updates them (a failed lookup keeps the old ones).
+	Refresh time.Duration
+	// OnResult is called once per lookup with "ok", "timeout" or "error", for
+	// metrics.
+	OnResult func(result string)
+}
+
+// WithAttrSource makes a gateway (NewGatewayServer) add the attributes of src to
+// every session, prefixed "ext." (gateway.ExtAttrPrefix), after the processing
+// tier's own: rules can match them like any attribute, and they can never
+// override one the backend set. See gateway.AttrSource.
+//
+// Experimental: this API may change before v1.0.
+func WithAttrSource(src gateway.AttrSource, o AttrSourceOptions) Option {
+	return optionFunc(func(c *serverConfig) { c.attrSource, c.attrSourceOpts = src, o })
 }

@@ -37,7 +37,16 @@ var (
 	ErrConnDropped        = errors.New("ocpp: connection dropped")
 	// ErrConnReplaced is the close cause of a connection that was superseded by a
 	// newer connection with the same charge point id.
-	ErrConnReplaced     = errors.New("ocpp: connection replaced by a newer connection with the same id")
+	ErrConnReplaced = errors.New("ocpp: connection replaced by a newer connection with the same id")
+	// ErrGatewayDraining is the close cause of a connection closed by
+	// csms.Server.Drain while it was idle, and the error of a call that tried to
+	// start (or was queued) on it. Nothing had been written, so the call is safe
+	// to retry once the charge point reconnects. The WebSocket close code is 1012.
+	ErrGatewayDraining = errors.New("ocpp: gateway draining")
+	// ErrDrainTimeout is the close cause of a connection that was still busy at
+	// the end of the drain window and was closed anyway (also 1012). Calls in
+	// flight fail with it and may or may not have been executed by the charge point.
+	ErrDrainTimeout     = errors.New("ocpp: connection closed at the end of the drain window")
 	ErrNotConnected     = errors.New("ocpp: not connected")
 	ErrAlreadyConnected = errors.New("ocpp: already connected")
 

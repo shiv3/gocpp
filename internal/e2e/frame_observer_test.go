@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -29,7 +30,7 @@ func TestE2E_FrameObserverAndMessageID(t *testing.T) {
 		}
 	}
 	handlerID := make(chan string, 1)
-	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithFrameObserver(collect(&srvEvs)))
+	srv := splitmode.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithFrameObserver(collect(&srvEvs)))
 	require.NoError(t, csms.On(srv, v16p.BootNotification, func(ctx context.Context, _ *csms.Conn, _ v16msg.BootNotificationRequest) (v16msg.BootNotificationResponse, error) {
 		id, _ := ocppj.MessageIDFromContext(ctx)
 		handlerID <- id
@@ -52,20 +53,28 @@ func TestE2E_FrameObserverAndMessageID(t *testing.T) {
 	require.NotEmpty(t, sentID)
 	require.Equal(t, sentID, <-handlerID)
 
-	mu.Lock()
-	defer mu.Unlock()
-	find := func(evs []observability.FrameEvent, dir observability.FrameDirection, typ ocppj.MessageType) *observability.FrameEvent {
-		for i := range evs {
-			if evs[i].Direction == dir && evs[i].Type == typ && evs[i].MsgID == sentID {
-				return &evs[i]
+	// The observer is called after the frame is written (it reports the outcome of
+	// the write), so a peer that has already read the reply can be ahead of it:
+	// wait for the events instead of reading them at once.
+	find := func(evs *[]observability.FrameEvent, dir observability.FrameDirection, typ ocppj.MessageType) *observability.FrameEvent {
+		mu.Lock()
+		defer mu.Unlock()
+		for i := range *evs {
+			if e := &(*evs)[i]; e.Direction == dir && e.Type == typ && e.MsgID == sentID {
+				c := *e
+				return &c
 			}
 		}
 		return nil
 	}
-	out := find(cpEvs, observability.FrameOut, ocppj.Call)
-	require.NotNil(t, out)
+	eventually := func(evs *[]observability.FrameEvent, dir observability.FrameDirection, typ ocppj.MessageType) *observability.FrameEvent {
+		var ev *observability.FrameEvent
+		require.Eventually(t, func() bool { ev = find(evs, dir, typ); return ev != nil }, 3*time.Second, 2*time.Millisecond)
+		return ev
+	}
+	out := eventually(&cpEvs, observability.FrameOut, ocppj.Call)
 	require.Equal(t, "BootNotification", out.Action)
-	require.NotNil(t, find(srvEvs, observability.FrameIn, ocppj.Call))
-	require.NotNil(t, find(srvEvs, observability.FrameOut, ocppj.CallResult))
-	require.NotNil(t, find(cpEvs, observability.FrameIn, ocppj.CallResult))
+	eventually(&srvEvs, observability.FrameIn, ocppj.Call)
+	eventually(&srvEvs, observability.FrameOut, ocppj.CallResult)
+	eventually(&cpEvs, observability.FrameIn, ocppj.CallResult)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/shiv3/gocpp/internal/splitmode"
 	"strings"
 	"testing"
 	"time"
@@ -308,7 +309,7 @@ func requireCPRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.Mes
 func requireCSMSRejectsWrongDirection21[Req, Resp any](t *testing.T, msg ocppj.Message[Req, Resp]) {
 	t.Helper()
 
-	srv := csms.NewServer(csms.WithSubProtocols(v21.SubProtocol))
+	srv := splitmode.NewServer(csms.WithSubProtocols(v21.SubProtocol))
 	defer srv.Close()
 	wrongDirection := ocppj.Message[Req, Resp]{
 		Action:    msg.Action,
