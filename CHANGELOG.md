@@ -220,7 +220,14 @@ All notable changes to this project are documented here. The format is based on
   Also: `HandlerTimeout` starts after signature/schema validation again, the registry-outage connect wait is `ClaimTimeout` once (not twice), `Conn.SetAttrs` no longer races
   the reconcile loop (epoch could go back), the processing tier forgets idle cached sessions, a full gateway refuses before asking the backend to authenticate, and a busy session
   met for the first time under a `hold: busy` rule is held where the previous revision had it.
-
+- Gateway pre-merge fixes, links and registry: `Attempt` stays monotonic when the fallback pool takes over after the
+  routed pool's members Nacked; link-grpc sends `Cancel` only to a backend that negotiated the capability, and
+  batches are capped at 1 MiB; link-nats bounds its subscriptions' pending queues (no longer unlimited) and treats a
+  message over the server's `max_payload` as a permanent error (`linknats.ErrPayloadTooLarge`) instead of "not
+  delivered" (no futile redispatch, no "charger not connected"); `registry-redis` policy keys share a hash tag
+  (`{policy}`; no CROSSSLOT on Redis Cluster) and `Gateways` reads a lease index set instead of scanning the
+  keyspace (key `<prefix>:gwidx`); the frame/session tap keeps session events in a buffer of their own so a frame
+  flood cannot drop connects and disconnects.
 - Gateway pre-merge fixes: a `RoleCaller` backend sending `Drain` no longer crashes the
   gateway (nil pool member); a write error met while flushing another goroutine's
   frame on a link stream is no longer returned to the goroutine whose own frame was

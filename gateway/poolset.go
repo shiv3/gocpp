@@ -244,14 +244,14 @@ func (s *PoolSet) Handle(ctx context.Context, env Envelope) (Reply, error) {
 		fp := s.get(env.Route.Fallback, false)
 		failFast = fp != nil && fp != p && fp.Available()
 	}
-	rep, err := p.handleFast(ctx, env, restrict, failFast)
+	rep, next, err := p.handleFast(ctx, env, restrict, failFast)
 	if err != nil && env.Route != nil && env.Route.Fallback != "" && isNoBackend(err) {
 		// Every member of the routed pool refused (Nack) or vanished: redispatch
 		// on the fallback pool within the deadline. Never after a dispatch that
 		// may have run (that error is not ErrNoBackend).
 		if fp := s.get(env.Route.Fallback, false); fp != nil && fp != p && fp.Available() {
 			s.fellBack(env.Route, "nack")
-			env.Attempt++
+			env.Attempt = max(next, env.Attempt+1) // never back: the routed pool may have used several
 			return fp.Handle(ctx, env)
 		}
 	}

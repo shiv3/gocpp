@@ -370,13 +370,24 @@ type leaseInfo struct {
 	Labels   map[string]string `json:"labels,omitempty"`
 }
 
+// gwIndex is the set of gateway ids that have (or recently had) a lease, so that
+// Gateways does not have to scan the whole keyspace. Entries whose lease expired
+// are dropped when Gateways meets them; a live gateway re-adds itself with every
+// heartbeat.
+func (r *Registry) gwIndex() string { return r.prefix + ":gwidx" }
+
 // Heartbeat implements storage.SessionRegistry.
 func (r *Registry) Heartbeat(ctx context.Context, g storage.GatewayInfo, ttl time.Duration) error {
 	b, err := json.Marshal(leaseInfo{ID: g.ID, Boot: g.Boot, Address: g.Address, State: g.State, Sessions: g.Sessions, Labels: g.Labels})
 	if err != nil {
 		return err
 	}
-	if err := r.rdb.Set(ctx, r.leaseKey(g.ID), b, ttl).Err(); err != nil {
+	// Two keys that need not share a slot: a pipeline (not a transaction) works
+	// on Redis Cluster too.
+	pipe := r.rdb.Pipeline()
+	pipe.Set(ctx, r.leaseKey(g.ID), b, ttl)
+	pipe.SAdd(ctx, r.gwIndex(), g.ID)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("registryredis: heartbeat: %w", err)
 	}
 	return nil
@@ -384,10 +395,29 @@ func (r *Registry) Heartbeat(ctx context.Context, g storage.GatewayInfo, ttl tim
 
 // Gateways implements storage.SessionRegistry.
 func (r *Registry) Gateways(ctx context.Context) ([]storage.GatewayInfo, error) {
+	ids, err := r.rdb.SMembers(ctx, r.gwIndex()).Result()
+	if err != nil {
+		return nil, fmt.Errorf("registryredis: gateways: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	pipe := r.rdb.Pipeline()
+	cmds := make([]*redis.StringCmd, len(ids))
+	for i, id := range ids {
+		cmds[i] = pipe.Get(ctx, r.leaseKey(id))
+	}
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("registryredis: gateways: %w", err)
+	}
 	var out []storage.GatewayInfo
-	iter := r.rdb.Scan(ctx, 0, r.prefix+":gw:*", 100).Iterator()
-	for iter.Next(ctx) {
-		v, err := r.rdb.Get(ctx, iter.Val()).Result()
+	var gone []any
+	for i, c := range cmds {
+		v, err := c.Result()
+		if errors.Is(err, redis.Nil) {
+			gone = append(gone, ids[i]) // the lease lapsed
+			continue
+		}
 		if err != nil {
 			continue
 		}
@@ -396,8 +426,8 @@ func (r *Registry) Gateways(ctx context.Context) ([]storage.GatewayInfo, error) 
 			out = append(out, storage.GatewayInfo{ID: li.ID, Boot: li.Boot, Address: li.Address, State: li.State, Sessions: li.Sessions, Labels: li.Labels})
 		}
 	}
-	if err := iter.Err(); err != nil {
-		return nil, fmt.Errorf("registryredis: gateways: %w", err)
+	if len(gone) > 0 {
+		_ = r.rdb.SRem(ctx, r.gwIndex(), gone...).Err() // best effort; a live gateway re-adds itself
 	}
 	return out, nil
 }
