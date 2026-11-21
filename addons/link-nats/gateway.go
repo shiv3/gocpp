@@ -26,7 +26,7 @@ var SupportedProto = linkgrpc.SupportedProto
 // supportedCaps are the capabilities this build advertises (both ends).
 var supportedCaps = []string{
 	gateway.CapNack, gateway.CapOrphan, gateway.CapAttrsSet, gateway.CapRouteV1, gateway.CapSend21, gateway.CapCancel,
-	gateway.CapActionList,
+	gateway.CapActionList, gateway.CapLocate,
 }
 
 const (
@@ -527,6 +527,8 @@ func (g *Gateway) serveDownstream(id string) nats.MsgHandler {
 				g.serveCall(d, ok, m, true)
 			case "control":
 				g.serveControl(d, ok, m)
+			case "locate":
+				g.serveLocate(d, ok, m)
 			default:
 				g.metrics.Unsupported("recv", "op_"+op)
 				respondUnsupported(g.nc, m, op)
@@ -614,6 +616,23 @@ func (g *Gateway) serveControl(d gateway.Downstream, ok bool, m *nats.Msg) {
 		})
 	}
 	data, _ := proto.Marshal(&linkpb.Ack{Error: linkconv.ErrToPB(gateway.EncodeError(err))})
+	respond(g.nc, m, data, nil)
+}
+
+// serveLocate answers which session this gateway holds for a charge point.
+func (g *Gateway) serveLocate(d gateway.Downstream, ok bool, m *nats.Msg) {
+	var req linkpb.LocateRequest
+	if err := proto.Unmarshal(m.Data, &req); err != nil {
+		respondUnsupported(g.nc, m, "malformed")
+		return
+	}
+	rep := &linkpb.LocateReply{}
+	if l, isLocator := d.(gateway.Locator); ok && isLocator {
+		if loc, found := l.LocateSession(req.GetCpid()); found {
+			rep = &linkpb.LocateReply{Found: true, Session: linkconv.RefToPB(loc.Ref), Version: string(loc.Version), Info: linkconv.InfoToPB(loc.Info)}
+		}
+	}
+	data, _ := proto.Marshal(rep)
 	respond(g.nc, m, data, nil)
 }
 

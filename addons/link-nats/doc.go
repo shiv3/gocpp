@@ -7,10 +7,10 @@
 // Subjects (P is the prefix, default "gocpp"; every dynamic part is a single
 // token, dots and wildcard characters replaced by "_"):
 //
-//	P.in.<pool>.<version>.<action>   inbound CALL, queue group P.<pool>   (backends subscribe)
+//	P.in.<pool>.<version>.<action>   inbound CALL, queue group P.<pool>   (backends subscribe; WithActionSubjects: only their actions)
 //	P.connect.<pool>                 upgrade decision, same queue group
 //	P.notify.<pool>                  SEND and session events, same queue group
-//	P.gw.<gatewayID>.call|send|control   CSMS-initiated work, one subscriber (the gateway)
+//	P.gw.<gatewayID>.call|send|control|locate   CSMS-initiated work, one subscriber (the gateway)
 //	P.hello / P.drain                backend announcements, every gateway listens
 //	P.who                            "announce yourselves", every backend listens
 //	P.cancel                         cancel hint for a DeliveryID

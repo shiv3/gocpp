@@ -171,10 +171,10 @@ srv.ServeGateway(ctx)
 `cmd/gocpp-gateway --link nats --nats-url nats://...` runs the reference gateway
 on it (no link listener). Subjects (prefix `gocpp`, configurable, one token per
 dynamic part): inbound CALLs on `gocpp.in.<pool>.<version>.<action>` in the queue
-group `gocpp.<pool>` (a backend with `BackendInfo.Actions` subscribes only to
+group `gocpp.<pool>` (`WithActionSubjects` makes a backend subscribe only to
 those actions, which is how a per-action worker pool is built), `connect.<pool>`
 and `notify.<pool>` in the same group, CSMS-initiated work on
-`gocpp.gw.<gatewayID>.call|send|control`, `hello`/`drain`/`who`/`cancel` for
+`gocpp.gw.<gatewayID>.call|send|control|locate`, `hello`/`drain`/`who`/`cancel` for
 membership.
 
 What is different from the gRPC link, all inherent to NATS core:

@@ -30,6 +30,7 @@ type Backend struct {
 	interval     time.Duration
 	drainTimeout time.Duration
 	maxInFlight  int
+	byAction     bool
 	id           string
 	mux          *mux
 
@@ -67,6 +68,15 @@ func WithDrainTimeout(d time.Duration) BackendOption { return func(b *Backend) {
 // WithMaxInFlight caps the requests a backend works on at once (default 4096);
 // the excess is Nacked and goes to another backend.
 func WithMaxInFlight(n int) BackendOption { return func(b *Backend) { b.maxInFlight = n } }
+
+// WithActionSubjects makes the backend subscribe only to the subjects of the
+// actions in its BackendInfo.Actions instead of every action of its pool, which
+// is how a per-action worker pool is built (a pool of backends for one action,
+// possibly not written in Go). An action nobody subscribes to is then not
+// answered NotImplemented but fails like an unavailable backend, so use it only
+// with every action covered. Without it the backend subscribes to the whole
+// pool and answers unknown actions itself, as an embedded server does.
+func WithActionSubjects() BackendOption { return func(b *Backend) { b.byAction = true } }
 
 // NewBackend returns the backend end of the link over nc. The caller owns nc;
 // see NewGateway for the recommended connection options. Close releases what
@@ -222,13 +232,17 @@ func (b *Backend) Serve(ctx context.Context, up gateway.Upstream, info gateway.B
 	}
 	if info.Role != gateway.RoleCaller {
 		q := b.prefix + "." + token(info.Pool)
-		if len(info.Actions) == 0 {
+		actions := info.Actions
+		if !b.byAction {
+			actions = nil
+		}
+		if len(actions) == 0 {
 			sub, err = b.nc.QueueSubscribe(b.prefix+".in."+token(info.Pool)+".>", q, s.onHandle)
 			if err := add(sub, err, true); err != nil {
 				return err
 			}
 		}
-		for _, a := range info.Actions {
+		for _, a := range actions {
 			sub, err = b.nc.QueueSubscribe(b.prefix+".in."+token(info.Pool)+".*."+token(a), q, s.onHandle)
 			if err := add(sub, err, true); err != nil {
 				return err
@@ -510,8 +524,49 @@ func (b *Backend) Control(ctx context.Context, req gateway.ControlRequest) error
 	return b.ack(m, err)
 }
 
-// Locate is not provided by this link: the session registry is the directory
-// of sessions across gateways.
-func (b *Backend) Locate(context.Context, string) (gateway.Located, bool, error) {
-	return gateway.Located{}, false, nil
+// Locate asks every live gateway which session it holds for cpID, so a backend
+// without a session registry can still address a charger it has not seen a
+// message from. It returns the first answer that has one; a gateway that does not
+// know the question (an older build) or does not answer counts as not found.
+func (b *Backend) Locate(ctx context.Context, cpID string) (gateway.Located, bool, error) {
+	ids := b.Gateways()
+	if len(ids) == 0 {
+		return gateway.Located{}, false, nil
+	}
+	type result struct {
+		loc gateway.Located
+		ok  bool
+		err error
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	res := make(chan result, len(ids))
+	for _, id := range ids {
+		go func() {
+			m, err := b.downstream(ctx, id, "locate", &linkpb.LocateRequest{Cpid: cpID})
+			if err != nil {
+				res <- result{err: err}
+				return
+			}
+			var rep linkpb.LocateReply
+			if m.Header.Get(hUnsupported) != "" || proto.Unmarshal(m.Data, &rep) != nil || !rep.GetFound() {
+				res <- result{}
+				return
+			}
+			res <- result{ok: true, loc: gateway.Located{
+				Ref: linkconv.RefFromPB(rep.Session), Version: ocppj.Version(rep.Version), Info: linkconv.InfoFromPB(rep.Info),
+			}}
+		}()
+	}
+	var firstErr error
+	for range ids {
+		r := <-res
+		switch {
+		case r.ok:
+			return r.loc, true, nil
+		case r.err != nil && firstErr == nil:
+			firstErr = r.err
+		}
+	}
+	return gateway.Located{}, false, firstErr
 }

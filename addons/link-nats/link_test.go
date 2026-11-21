@@ -359,3 +359,46 @@ func leakCheck(t *testing.T) {
 		goleak.VerifyNone(t, goleak.IgnoreAnyFunction("github.com/nats-io/nats-server/v2/server.(*Server).handleSignals"))
 	})
 }
+
+// Without a session registry a backend finds a charger's session by asking the
+// gateways (Locate).
+func TestLink_LocateWithoutRegistry(t *testing.T) {
+	leakCheck(t)
+	ns := startNATS(t)
+	link, err := linknats.NewGateway(connect(t, ns.ClientURL()))
+	require.NoError(t, err)
+	gw := csms.NewGatewayServer(link, csms.WithGatewayID("gw-1")) // no registry
+	ts := httptest.NewServer(gw.Handler())
+	nc := connect(t, ns.ClientURL())
+	be, err := linknats.NewBackend(nc, linknats.WithHelloInterval(helloEvery))
+	require.NoError(t, err)
+	srv := csms.NewServer(csms.WithGatewayLink(be))
+	require.NoError(t, csms.On(srv, bootMsg, ok))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = srv.ServeGateway(ctx) }()
+	defer func() {
+		ts.Close()
+		gw.Close()
+		cancel()
+		<-done
+		srv.Close()
+		be.Close()
+		link.Close()
+	}()
+	require.Eventually(t, func() bool { return len(be.Gateways()) == 1 && link.Available(gateway.DefaultPool) }, 5*time.Second, 10*time.Millisecond)
+	c := cp.NewClient("CP_1", "ws"+ts.URL[4:]+"/ocpp/CP_1", cp.WithSubProtocols("ocpp1.6"))
+	require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) { return resetResp{Status: "Accepted"}, nil }))
+	cctx, ccancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer ccancel()
+	require.NoError(t, c.Connect(cctx))
+	defer c.Close()
+
+	h, err := srv.Lookup(cctx, "CP_1")
+	require.NoError(t, err)
+	got, err := csms.Call(cctx, h, resetMsg, resetReq{Type: "Hard"})
+	require.NoError(t, err)
+	require.Equal(t, "Accepted", got.Status)
+	_, err = srv.Lookup(cctx, "NOPE")
+	require.ErrorIs(t, err, ocppj.ErrNotConnected)
+}
