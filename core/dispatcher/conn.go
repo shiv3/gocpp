@@ -90,6 +90,9 @@ type Conn struct {
 	pingTimer     *time.Timer
 
 	cfg *Config
+	// pipe is the payload policy (validation, signing, error mapping) for this
+	// connection; see Pipeline.
+	pipe Pipeline
 }
 
 // ConnMetadata contains HTTP upgrade metadata associated with a connection.
@@ -128,6 +131,7 @@ func NewConnShared(id string, ws transport.WS, cfg *Config, reg *HandlerRegistry
 		done:        make(chan struct{}),
 		cfg:         cfg,
 	}
+	c.pipe = NewPipeline(cfg, c.version, id)
 	return c
 }
 
@@ -427,7 +431,7 @@ func (c *Conn) handleMessage(msg []byte) bool {
 			var ute *ocppj.UnknownMessageTypeError
 			if errors.As(err, &ute) && ute.MsgID != "" {
 				def := ocppj.NewCallError(ocppj.ErrorCodeMessageTypeNotSupported, ute.Error(), nil)
-				if wire, reply := c.mapBuiltinError(ErrorSourceUnknownMessageType, "", ute, def, c.version != ocppj.V16); reply {
+				if wire, reply := c.pipe.MapBuiltinError(ErrorSourceUnknownMessageType, "", ute, def, c.version != ocppj.V16); reply {
 					c.trySendCallErrorWire(ute.MsgID, wire, def.Description)
 				}
 			}
@@ -441,7 +445,7 @@ func (c *Conn) handleMessage(msg []byte) bool {
 		if errors.As(err, &perr) && perr.MessageType == int(ocppj.Call) && perr.MsgID != "" {
 			// WireCode spells it per version (FormationViolation / FormatViolation).
 			def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation, perr.Message, nil)
-			if wire, reply := c.mapBuiltinError(ErrorSourceMalformedFrame, "", perr, def, true); reply {
+			if wire, reply := c.pipe.MapBuiltinError(ErrorSourceMalformedFrame, "", perr, def, true); reply {
 				c.trySendCallErrorWire(perr.MsgID, wire, def.Description)
 			}
 		}
@@ -526,7 +530,7 @@ func (c *Conn) checkMessageID(frame ocppj.Frame) bool {
 		if long && frame.Type == ocppj.Call {
 			def := ocppj.NewCallError(ocppj.ErrorCodeFormationViolation,
 				fmt.Sprintf("message id longer than %d characters", ocppj.MaxMessageIDLength), nil)
-			if wire, reply := c.mapBuiltinError(ErrorSourceMessageID, frame.Action, nil, def, true); reply {
+			if wire, reply := c.pipe.MapBuiltinError(ErrorSourceMessageID, frame.Action, nil, def, true); reply {
 				c.trySendCallErrorWire(frame.MsgID, wire, def.Description)
 			}
 		}

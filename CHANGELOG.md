@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `dispatcher.Pipeline` (`NewPipeline`, `RunCall`, `RunSend`, `ValidateInbound`,
+  `ValidateOutbound`, `TransformOutbound`, `DecodeSigned`, `MapBuiltinError`): the
+  payload policy of a connection (signed-message unwrap, schema validation and
+  lenient coercion, outbound transform, handler-error to CALLERROR mapping),
+  extracted from `Conn` so it needs only a `Config`, a version and a charge point
+  id. Embedded connections use it unchanged; it is the seam a processing tier
+  behind a gateway uses to apply identical rules.
+- `HandlerRegistry.SetFallback` / `Resolve`: a catch-all handler for actions with
+  no registered handler (`Lookup` is unchanged).
+- `transport.StatusServiceRestart` (WebSocket close code 1012).
+- `csms.On` / `csms.OnSend` also record the handler in a table typed on
+  `*csms.Conn` (internal), used by the upcoming gateway mode.
 - `observability.SchemaSoftViolationMetrics` (optional extension of `Metrics`).
   The Prometheus (`gocpp_schema_soft_violations_total{version,action,kind,keyword}`)
   and OpenTelemetry (`gocpp.schema_soft_violations`) adapters implement it, and the

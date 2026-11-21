@@ -22,6 +22,9 @@ import (
 type Server struct {
 	cfg serverConfig
 	reg *dispatcher.HandlerRegistry
+	// handlers mirrors reg with handlers typed on *Conn, for dispatch that does
+	// not start from a dispatcher.Conn.
+	handlers handlerTable
 	// verCfg caches the shared dispatcher.Config per subprotocol.
 	verCfg sync.Map
 
