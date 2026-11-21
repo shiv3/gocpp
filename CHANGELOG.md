@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Gateway performance gates and benchmarks (`benchmarks/gateway_hop_test.go`,
+  `addons/link-grpc/hop_test.go`), pprof on the `gocpp-gateway` admin listener, and the
+  measured results in docs/gateway.md.
 - `addons/link-grpc` (own module): gRPC link between gateways and backends
   (protobuf contract `gocpp.link.v1`, backends dial gateways, Hello/HelloAck
   protocol and capability negotiation, Drain/DrainAck, Unsupported answers).
@@ -105,6 +108,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- The `ConnectionCount` gauge (`gocpp_connections`) drifted negative when a connection
+  was closed twice (a replaced connection is closed by the replacement and by its own
+  teardown); the close is now counted once.
 - `gocpp_outbound_queue_depth` / `gocpp.outbound_queue.depth` help text and the
   `dispatcher.Conn` doc comment described the removed writer-goroutine queue. The
   metric samples senders waiting for or holding the per-connection write lock
