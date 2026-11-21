@@ -16,4 +16,8 @@
 // This package has no dependencies beyond the standard library and
 // core/ocppj. In-process links live in package inproc; the gRPC link is the
 // separate module addons/link-grpc.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package gateway

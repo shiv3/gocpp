@@ -15,6 +15,8 @@ import (
 // choices, with the hold and Nack redispatch of Pool. A pool that has no
 // available member falls back to Route.Fallback immediately; a pool that was
 // never named by a router receives nothing.
+//
+// Experimental: this API may change before v1.0.
 type PoolSet struct {
 	wait time.Duration
 	obs  atomic.Pointer[RouteObserver]

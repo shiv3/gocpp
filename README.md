@@ -120,6 +120,21 @@ go get github.com/shiv3/gocpp/addons/router-redis
 
 See [addons/README.md](addons/README.md) for details.
 
+## Stability
+
+The core API (`csms.NewServer`, `On`, `Call`, `Send`, `Get`, `cp`, the generated
+message packages, `core/ocppj`, `core/schema`, `core/auth`) is the stable surface.
+The split deployment (gateway mode, see [docs/gateway.md](docs/gateway.md)) is
+**experimental** until v1.0: `csms.NewGatewayServer`, `WithGatewayLink`,
+`WithSplitInProcess`/`WithSplitLink`, `WithRouter`, `WithTenantLimits`,
+`Server.Drain`, package `gateway` and its subpackages, `storage.SessionRegistry`,
+`PolicyStore`, `RouteWriter`, `StateStore`, the low-level `core/dispatcher` hooks
+(`Pipeline`, `InboundGate`, `Conn.SetAttachment`, `Quiesce`, `TryDrain`,
+`ForceDrain`, `WithSentHook`, `ConnMetadata.Owner`) and the addons `link-grpc`,
+`link-nats`, `registry-redis` and `rollout`. These carry "Experimental: this API
+may change before v1.0." in their doc comments and may change in minor releases;
+see "Stability" in docs/gateway.md for the full list.
+
 ## Validation
 
 Layer 1 (wire): enable strict schema validation on the connection so malformed

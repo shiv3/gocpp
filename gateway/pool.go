@@ -19,6 +19,8 @@ const DefaultUpstreamWait = 20 * time.Second
 // attached, non-draining members; a hold of up to UpstreamWait while the set is
 // empty; redispatch to another member on Nack or ErrNotDelivered, within the
 // envelope's deadline, and never after a request may have been executed.
+//
+// Experimental: this API may change before v1.0.
 type Pool struct {
 	wait time.Duration
 

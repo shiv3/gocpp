@@ -4,6 +4,10 @@
 // topology, and as the reference implementation of the link semantics: backend
 // selection, the hold while no backend is attached, redispatch on Nack, and
 // draining.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package inproc
 
 import (

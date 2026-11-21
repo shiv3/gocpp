@@ -41,6 +41,8 @@ const edgeNotifyClosing = 20 * time.Millisecond
 // Options that belong to the processing tier are ignored here: schema
 // validation, time encoding, handlers and the OnConnect/OnDisconnect callbacks,
 // so one option list can configure both tiers. See docs/gateway.md.
+//
+// Experimental: this API may change before v1.0.
 func NewGatewayServer(link gateway.GatewayLink, opts ...Option) *Server {
 	opts = append(opts[:len(opts):len(opts)], optionFunc(func(c *serverConfig) {
 		c.edgeLink = link

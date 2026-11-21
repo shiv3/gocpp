@@ -28,6 +28,8 @@ import (
 //
 // On such a server Get and Connections only see nothing (it holds no sockets);
 // use Lookup, which finds a charger through the link. See docs/gateway.md.
+//
+// Experimental: this API may change before v1.0.
 func WithGatewayLink(link gateway.BackendLink) Option {
 	return optionFunc(func(c *serverConfig) { c.link = link })
 }

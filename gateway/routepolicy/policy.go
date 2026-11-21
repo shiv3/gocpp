@@ -9,6 +9,10 @@
 // attributes, OCPP version, action) plus two pieces of deliberately bounded state:
 // rules suspended by the guard and the hold of busy sessions. Two gateways on the
 // same revision therefore route a charger identically.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package routepolicy
 
 import (

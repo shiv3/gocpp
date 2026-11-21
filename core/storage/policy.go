@@ -16,6 +16,8 @@ var ErrPolicyRevision = errors.New("storage: policy revision must be greater tha
 // overwrite each other.
 //
 // The document is opaque to the store; the routepolicy package defines it.
+//
+// Experimental: this API may change before v1.0.
 type PolicyStore interface {
 	// PutPolicy stores data as revision rev if the stored revision equals
 	// prevRev (0 when none is stored). ok is false, with a nil error, when
@@ -40,6 +42,8 @@ type PolicyEntry struct {
 
 // PolicyHistory is implemented by stores that keep the last revisions, which
 // is what a rollback (gocppctl route rollback) is written from.
+//
+// Experimental: this API may change before v1.0.
 type PolicyHistory interface {
 	// PolicyHistory returns the stored revisions, newest first.
 	PolicyHistory(ctx context.Context) ([]PolicyEntry, error)

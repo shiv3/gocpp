@@ -4,6 +4,10 @@
 // admin listener, the matching client, and the planner gocppctl uses to compute
 // a rebalance. It moves sessions only through csms.Server.Drain (idle first,
 // paced, close code 1012), never by touching a socket itself.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package admin
 
 import (

@@ -2,6 +2,10 @@
 // per-charger labels and an HTTP lookup. Use them with csms.WithAttrSource when
 // the labels a staged release selects on live in a system the backend does not
 // own. Keys come back prefixed "ext." from the gateway.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package attrsource
 
 import (

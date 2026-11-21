@@ -108,6 +108,8 @@ func (c *Conn) Attrs() map[string]string {
 // reconcile pass to repair the record. Attribute keys starting with "gocpp." are
 // reserved for a gateway to interpret (gocpp.busy) and are stored like any other.
 // Not supported on a remote handle (ErrRemoteConn).
+//
+// Experimental: this API may change before v1.0.
 func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
 	if c.inner == nil && c.gw != nil && c.srv != nil && c.srv.backend != nil {
 		return c.srv.setAttrsGateway(ctx, c, attrs)
