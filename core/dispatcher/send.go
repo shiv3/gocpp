@@ -163,10 +163,6 @@ func (c *Conn) trySendCallErrorWire(msgID, wire, desc string) {
 		"cp_id", c.id, "msg_id", msgID)
 }
 
-func (c *Conn) sendCallError(msgID string, ce *ocppj.CallError) {
-	c.sendCallErrorWire(msgID, ce.WireCode(c.version), ce)
-}
-
 func (c *Conn) sendCallErrorWire(msgID, wire string, ce *ocppj.CallError) {
 	var details []byte
 	if ce.Details != nil {
@@ -241,12 +237,4 @@ func (c *Conn) sendCallResultError(msgID string, ce *ocppj.CallError) {
 		return
 	}
 	_ = c.send(c.ctx, raw)
-}
-
-// replyBuiltinError answers msgID with a dispatcher-generated CALLERROR,
-// honouring the ErrorCodeMapper.
-func (c *Conn) replyBuiltinError(msgID string, src ErrorSource, action string, err error, def *ocppj.CallError) {
-	if wire, reply := c.pipe.MapBuiltinError(src, action, err, def, true); reply {
-		c.sendCallErrorWire(msgID, wire, def)
-	}
 }

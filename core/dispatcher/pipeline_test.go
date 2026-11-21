@@ -19,13 +19,13 @@ func newTestPipeline(mut func(*Config)) Pipeline {
 	return NewPipeline(&cfg, ocppj.V16, "CP_1")
 }
 
-func callFrame(action, payload string) *ocppj.Frame {
-	return &ocppj.Frame{Type: ocppj.Call, MsgID: "m1", Action: action, Payload: []byte(payload)}
+func callFrame(action string) *ocppj.Frame {
+	return &ocppj.Frame{Type: ocppj.Call, MsgID: "m1", Action: action, Payload: []byte(`{}`)}
 }
 
 func TestPipeline_RunCall_Result(t *testing.T) {
 	p := newTestPipeline(nil)
-	out := p.RunCall(context.Background(), callFrame("Heartbeat", `{}`), func(context.Context, []byte) ([]byte, error) {
+	out := p.RunCall(context.Background(), callFrame("Heartbeat"), func(context.Context, []byte) ([]byte, error) {
 		return []byte(`{"a":1}`), nil
 	})
 	require.Equal(t, "ok", out.Status)
@@ -35,7 +35,7 @@ func TestPipeline_RunCall_Result(t *testing.T) {
 
 func TestPipeline_RunCall_NotImplemented(t *testing.T) {
 	p := newTestPipeline(nil)
-	out := p.RunCall(context.Background(), callFrame("Nope", `{}`), nil)
+	out := p.RunCall(context.Background(), callFrame("Nope"), nil)
 	require.Equal(t, "not_implemented", out.Status)
 	require.Equal(t, ocppj.ErrorCodeNotImplemented, out.Err.Code)
 	require.Equal(t, "NotImplemented", out.Wire)
@@ -46,25 +46,25 @@ func TestPipeline_RunCall_ErrorCodeMapperCanSuppressReply(t *testing.T) {
 	p := newTestPipeline(func(c *Config) {
 		c.ErrorCodeMapper = func(ErrorContext) (string, bool) { return "", false }
 	})
-	out := p.RunCall(context.Background(), callFrame("Nope", `{}`), nil)
+	out := p.RunCall(context.Background(), callFrame("Nope"), nil)
 	require.True(t, out.NoReply)
 }
 
 func TestPipeline_RunCall_PanicAndHandlerError(t *testing.T) {
 	p := newTestPipeline(nil)
-	out := p.RunCall(context.Background(), callFrame("X", `{}`), func(context.Context, []byte) ([]byte, error) {
+	out := p.RunCall(context.Background(), callFrame("X"), func(context.Context, []byte) ([]byte, error) {
 		panic("boom")
 	})
 	require.Equal(t, "panic", out.Status)
 	require.Equal(t, ocppj.ErrorCodeInternalError, out.Err.Code)
 
-	out = p.RunCall(context.Background(), callFrame("X", `{}`), func(context.Context, []byte) ([]byte, error) {
+	out = p.RunCall(context.Background(), callFrame("X"), func(context.Context, []byte) ([]byte, error) {
 		return nil, errors.New("db down")
 	})
 	require.Equal(t, "error", out.Status)
 	require.Equal(t, "InternalError", out.Wire)
 
-	out = p.RunCall(context.Background(), callFrame("X", `{}`), func(context.Context, []byte) ([]byte, error) {
+	out = p.RunCall(context.Background(), callFrame("X"), func(context.Context, []byte) ([]byte, error) {
 		return nil, NewDecodeError(errors.New("bad"))
 	})
 	require.Equal(t, ocppj.ErrorCodeFormationViolation, out.Err.Code)
@@ -76,7 +76,7 @@ func TestPipeline_RunCall_SchemaStrictRejectsBeforeHandler(t *testing.T) {
 		c.SchemaValidate = func(ocppj.Version, string, string, []byte) error { return errors.New("nope") }
 	})
 	called := false
-	out := p.RunCall(context.Background(), callFrame("X", `{}`), func(context.Context, []byte) ([]byte, error) {
+	out := p.RunCall(context.Background(), callFrame("X"), func(context.Context, []byte) ([]byte, error) {
 		called = true
 		return nil, nil
 	})
