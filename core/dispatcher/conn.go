@@ -15,8 +15,10 @@ import (
 	"github.com/shiv3/gocpp/core/transport"
 )
 
-// Conn is one OCPP connection. It owns reader, reader and writer goroutines
-// whose lifetime is bound to ctx. All teardown flows from cancel(cause).
+// Conn is one OCPP connection. It owns one resident reader goroutine whose
+// lifetime is bound to ctx; writes happen on the sender's goroutine under a
+// per-connection FIFO write lock (there is no writer goroutine or queue). All
+// teardown flows from cancel(cause).
 type Conn struct {
 	id      string
 	ws      transport.WS

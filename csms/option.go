@@ -423,12 +423,14 @@ func WithMessageRouter(r storage.MessageRouter) Option {
 	return optionFunc(func(c *serverConfig) { c.router = r })
 }
 
-// WithTransactionStore sets the transaction store (default in-memory).
+// WithTransactionStore sets the transaction store (default in-memory). It is an
+// application-facing extension point: csms keeps it but never reads or writes it.
 func WithTransactionStore(s storage.TransactionStore) Option {
 	return optionFunc(func(c *serverConfig) { c.txStore = s })
 }
 
-// WithConfigStore sets the configuration store (default in-memory).
+// WithConfigStore sets the configuration store (default in-memory). It is an
+// application-facing extension point: csms keeps it but never reads or writes it.
 func WithConfigStore(s storage.ConfigStore) Option {
 	return optionFunc(func(c *serverConfig) { c.cfgStore = s })
 }

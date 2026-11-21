@@ -22,6 +22,13 @@ func (NoOp) CallCompleted(string, string, string, time.Duration, string) {}
 func (NoOp) PendingCallCount(string, int)                                {}
 func (NoOp) SchemaValidationFailure(string, string, string)              {}
 
+// SchemaSoftViolationMetrics is an optional extension of Metrics. In lenient
+// schema mode each repaired or tolerated violation is reported once, with the
+// schema keyword that triggered it (for example "enum", "format", "type").
+type SchemaSoftViolationMetrics interface {
+	SchemaSoftViolation(version, action, kind, keyword string)
+}
+
 // ConnectionMetrics is an optional extension of Metrics. A Metrics value that
 // also implements it receives per-connection health samples; implementations
 // of Metrics that do not are unaffected.

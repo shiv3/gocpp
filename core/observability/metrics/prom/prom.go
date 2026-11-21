@@ -16,6 +16,7 @@ type metrics struct {
 	schemaFails *prometheus.CounterVec
 	queueDepth  *prometheus.HistogramVec
 	pingLatency *prometheus.HistogramVec
+	softViol    *prometheus.CounterVec
 }
 
 // New creates a Prometheus-backed Metrics and registers collectors with reg.
@@ -26,10 +27,11 @@ func New(reg prometheus.Registerer) observability.Metrics {
 		calls:       prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_calls_total", Help: "calls completed"}, []string{"version", "action", "direction", "status"}),
 		callDur:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_call_duration_seconds", Help: "call duration"}, []string{"version", "action", "direction"}),
 		schemaFails: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_schema_failures_total", Help: "schema validation failures"}, []string{"version", "action", "direction"}),
-		queueDepth:  prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_outbound_queue_depth", Help: "frames waiting for the writer, sampled at enqueue", Buckets: []float64{0, 1, 2, 4, 8, 16, 32, 64, 128, 256}}, []string{"version"}),
+		queueDepth:  prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_outbound_queue_depth", Help: "senders waiting for or holding the connection write lock (1 = uncontended write), sampled at each send", Buckets: []float64{0, 1, 2, 4, 8, 16, 32, 64, 128, 256}}, []string{"version"}),
 		pingLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_ping_latency_seconds", Help: "WebSocket ping round-trip time"}, []string{"version"}),
+		softViol:    prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_schema_soft_violations_total", Help: "lenient-mode schema violations that were repaired or tolerated"}, []string{"version", "action", "kind", "keyword"}),
 	}
-	reg.MustRegister(m.connections, m.pending, m.calls, m.callDur, m.schemaFails, m.queueDepth, m.pingLatency)
+	reg.MustRegister(m.connections, m.pending, m.calls, m.callDur, m.schemaFails, m.queueDepth, m.pingLatency, m.softViol)
 	return m
 }
 
@@ -50,6 +52,9 @@ func (m *metrics) SchemaValidationFailure(version, action, direction string) {
 
 func (m *metrics) OutboundQueueDepth(version string, depth int) {
 	m.queueDepth.WithLabelValues(version).Observe(float64(depth))
+}
+func (m *metrics) SchemaSoftViolation(version, action, kind, keyword string) {
+	m.softViol.WithLabelValues(version, action, kind, keyword).Inc()
 }
 func (m *metrics) PingLatency(version string, d time.Duration) {
 	m.pingLatency.WithLabelValues(version).Observe(d.Seconds())
