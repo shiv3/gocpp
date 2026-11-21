@@ -223,7 +223,7 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 
 - Metrics: the `action` label of `gocpp_calls_total`, `gocpp_call_duration_seconds`, the
-  schema-failure series and `gocpp_pending`-style hooks was the action name the charge
+  schema-failure series was the action name the charge
   point sent, so a client inventing names could create unbounded series. Inbound
   actions that are neither a standard OCPP action nor have a registered handler (or an
   edge responder) are now reported as `other`.
