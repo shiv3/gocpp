@@ -70,6 +70,9 @@ jobs:
         working-directory: addons/link-grpc
       - run: go test -race -count=1 ./...
         working-directory: addons/link-nats
+      # The conformance and e2e suites in split mode over NATS: a gateway and a
+      # processing tier per test server, joined by a nats-server on loopback.
+      - run: scripts/split-nats-suite.sh -race ./internal/...
       - run: go test -count=1 -timeout 5m ./...
         working-directory: cmd/gocpp-gateway
       # The same chaos suite over the NATS link.

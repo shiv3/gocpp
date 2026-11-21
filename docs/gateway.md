@@ -447,7 +447,17 @@ it off when the backend decides on other request headers.
 `GOCPP_TEST_SPLIT=1 go test ./internal/...` runs the conformance and e2e suites
 with every server split through the in-process link (CI does this on every PR).
 Tests create servers with `internal/splitmode.NewServer`, which is
-`csms.NewServer` plus `WithSplitInProcess` when the variable is set. The NATS link
+`csms.NewServer` plus `WithSplitInProcess` when the variable is set. 
+`scripts/split-nats-suite.sh [go test args]` runs the same suites (about 3,100
+tests, ten seconds) with every server split over the NATS link and a real
+`nats-server` on loopback; CI runs it in the `gateway-modules` job. The main
+module must not depend on `addons/link-nats`, so the script builds a throwaway
+`go.work` and an overlay that registers the transport
+(`addons/link-nats/splitharness`, `splitmode.Register` and
+`GOCPP_TEST_SPLIT=nats`); nothing in the tree changes. It skips the e2e goleak
+check, because the suites do not close every server they start (the in-process
+split run keeps that check). Another transport can be run the same way by
+implementing `csms.SplitLink` and registering it. The NATS link
 has its own tests (`addons/link-nats`: the link contract over a real
 `nats-server`, and a wire-identity test that diffs the frames of an embedded
 server against a gateway with a NATS backend) and runs the whole chaos suite.

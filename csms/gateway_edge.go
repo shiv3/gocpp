@@ -123,6 +123,7 @@ func applyEdgeConfig(c *serverConfig) {
 	c.instanceID = ""
 	c.link = nil
 	c.splitInProcess = false
+	c.splitLink = nil
 	if c.dispatcher.HandlerTimeout == 0 {
 		c.dispatcher.HandlerTimeout = defaultGatewayHandlerTimeout
 	}

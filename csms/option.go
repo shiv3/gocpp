@@ -1,6 +1,7 @@
 package csms
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -62,6 +63,7 @@ type serverConfig struct {
 	gatewayID      string
 	link           gateway.BackendLink // set: this server is a processing tier
 	splitInProcess bool
+	splitLink      SplitLink
 	backendInfo    gateway.BackendInfo
 	gwRouter       gateway.Router
 	gwAuthCache    *AuthCacheConfig
@@ -600,6 +602,27 @@ func WithOCPPGoCompat() Option {
 // connected charger, Connections lists the gateway's sessions.
 func WithSplitInProcess() Option {
 	return optionFunc(func(c *serverConfig) { c.splitInProcess = true })
+}
+
+// SplitLink is a transport that has both ends of a split deployment in this
+// process, for WithSplitLink. *inproc.Hub is one; a harness can wrap any other
+// link (a NATS or gRPC pair on loopback) the same way.
+type SplitLink interface {
+	// Gateway is the end the internal gateway uses.
+	Gateway() gateway.GatewayLink
+	// Backend is the end the processing tier uses to reach the gateway.
+	Backend() gateway.BackendLink
+	// AttachBackend attaches up as a backend and returns once it can take work.
+	// The returned function drains it (no new work, wait for work in flight).
+	AttachBackend(up gateway.Upstream, info gateway.BackendInfo) (drain func(ctx context.Context) error)
+}
+
+// WithSplitLink is WithSplitInProcess over a link of the caller's choosing: an
+// internal gateway and this server, the processing tier, are joined by l. It is
+// how the conformance suite is run in split mode over a real transport (see
+// internal/splitmode and addons/link-nats/splitharness).
+func WithSplitLink(l SplitLink) Option {
+	return optionFunc(func(c *serverConfig) { c.splitLink = l })
 }
 
 // WithBackendInfo declares who a processing-tier server is when it attaches to a
