@@ -384,7 +384,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// connection override hook it is shared by every connection of a version.
 	var dcfgp *dispatcher.Config
 	if perConn {
-		dcfg.Metrics = dispatcher.MetricsHookBounded(s.cfg.metrics, c.Subprotocol(), s.knownAction(c.Subprotocol()))
+		dcfg.Metrics = dispatcher.MetricsHookBounded(s.cfg.metrics, c.Subprotocol(), s.knownAction())
 		dcfg.Tracer = observability.NewTracer(s.cfg.tracerProvider)
 		dcfgp = &dcfg
 	} else {
@@ -506,7 +506,7 @@ func (s *Server) versionConfig(sub string) *dispatcher.Config {
 		return v.(*dispatcher.Config)
 	}
 	d := s.cfg.dispatcher
-	d.Metrics = dispatcher.MetricsHookBounded(s.cfg.metrics, sub, s.knownAction(sub))
+	d.Metrics = dispatcher.MetricsHookBounded(s.cfg.metrics, sub, s.knownAction())
 	d.Tracer = observability.NewTracer(s.cfg.tracerProvider)
 	v, _ := s.verCfg.LoadOrStore(sub, &d)
 	return v.(*dispatcher.Config)
@@ -893,13 +893,12 @@ func (s *Server) waitSplit() {
 	_ = s.splitDrain(ctx)
 }
 
-// knownAction returns the predicate that bounds the action label of metrics for
-// connections that negotiated subprotocol sub: the actions of the
-// registry for that version and the OCPP actions of it, the actions with a registered handler and the
-// actions the gateway answers itself. Any other action a charge point sends is
-// reported as "other", so invented action names cannot grow the metric series.
-func (s *Server) knownAction(sub string) func(string) bool {
-	version := strings.TrimPrefix(sub, "ocpp")
+// knownAction returns the predicate that bounds the action label of metrics: the
+// standard OCPP actions (gateway.LabelAction), the actions with a registered
+// handler and the actions the gateway answers itself. Any other action a charge
+// point sends is reported as "other", so invented action names cannot grow the
+// metric series.
+func (s *Server) knownAction() func(string) bool {
 	return func(action string) bool {
 		if _, ok := s.handlers.call(action); ok {
 			return true
@@ -907,13 +906,8 @@ func (s *Server) knownAction(sub string) func(string) bool {
 		if _, ok := s.handlers.send(action); ok {
 			return true
 		}
-		if _, ok := ocppActions[version][action]; ok {
-			return true
-		}
-		if r := s.cfg.registry; r != nil {
-			if _, ok := r.Lookup(version, action, "request"); ok {
-				return true
-			}
+		if gateway.LabelAction(action) != gateway.OtherAction {
+			return true // a standard OCPP action
 		}
 		if s.edge != nil {
 			_, ok := s.edge.responders[action]

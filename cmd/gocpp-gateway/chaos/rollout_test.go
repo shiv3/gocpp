@@ -46,6 +46,13 @@ func TestChaos_AutomaticRolloutRollsBackAnErrorInjectingCanary(t *testing.T) {
 			// Traffic: three chargers heartbeat continuously.
 			stop := make(chan struct{})
 			var ok, failed atomic.Int64
+			// converged is set once every gateway runs the policy the rollback
+			// wrote. A call that started before that may still be routed to (or be
+			// in flight on) the canary: that is the documented propagation window,
+			// so only calls that started after it count as failures after the
+			// rollback.
+			var converged atomic.Bool
+			var okAfter, failedAfter atomic.Int64
 			for _, id := range []string{"CP_1", "CP_2", "CP_3"} {
 				c := newCharger(t, g.ws, id)
 				go func() {
@@ -55,11 +62,18 @@ func TestChaos_AutomaticRolloutRollsBackAnErrorInjectingCanary(t *testing.T) {
 							return
 						case <-time.After(25 * time.Millisecond):
 						}
+						after := converged.Load()
 						ctx, cancel := ctxT(5 * time.Second)
 						if err := c.heartbeat(ctx); err != nil {
 							failed.Add(1)
+							if after {
+								failedAfter.Add(1)
+							}
 						} else {
 							ok.Add(1)
+							if after {
+								okAfter.Add(1)
+							}
 						}
 						cancel()
 					}
@@ -84,9 +98,11 @@ func TestChaos_AutomaticRolloutRollsBackAnErrorInjectingCanary(t *testing.T) {
 				require.NoError(t, err)
 				require.Empty(t, cur.Rules)
 				// after the rollback the default pool answers everything again
-				before := failed.Load()
-				time.Sleep(time.Second)
-				require.Equal(t, before, failed.Load(), "no more errors once rolled back")
+				_, err = pc.WaitConverged(context.Background(), cur.Revision, 10*time.Second)
+				require.NoError(t, err)
+				converged.Store(true)
+				require.Eventually(t, func() bool { return okAfter.Load() >= 10 }, 10*time.Second, 20*time.Millisecond)
+				require.Zero(t, failedAfter.Load(), "no more errors once the rollback has propagated")
 			} else {
 				require.Equal(t, rollout.StateDone, ctl.State(), "%+v", decisions)
 				cur, err := pc.Current(context.Background())

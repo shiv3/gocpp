@@ -3,9 +3,7 @@ package csms
 import (
 	"context"
 	"net/http/httptest"
-	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,23 +12,6 @@ import (
 	"github.com/shiv3/gocpp/core/observability/metrics/prom"
 	"github.com/stretchr/testify/require"
 )
-
-func TestOCPPActionsMatchSchemas(t *testing.T) {
-	for version, dir := range map[string]string{"1.6": "../v16/schemas", "2.0.1": "../v201/schemas", "2.1": "../v21/schemas"} {
-		entries, err := os.ReadDir(dir)
-		require.NoError(t, err)
-		want := map[string]struct{}{}
-		for _, e := range entries {
-			n, ok := strings.CutSuffix(e.Name(), ".json")
-			if !ok {
-				continue
-			}
-			n = strings.TrimSuffix(strings.TrimSuffix(n, "Response"), "Request")
-			want[n] = struct{}{}
-		}
-		require.Equal(t, want, ocppActions[version], version)
-	}
-}
 
 // A charger that invents action names must not create metric series.
 func TestMetricsActionLabelIsBounded(t *testing.T) {
