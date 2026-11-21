@@ -268,6 +268,20 @@ func newCanaryRig(t *testing.T, n, cap int, redisForGateways func(real string) s
 	for _, g := range r.gws {
 		require.Eventually(t, g.ready, 10*time.Second, 50*time.Millisecond)
 	}
+	// gocppctl finds a gateway's admin address in its lease label, which is set
+	// just after the lease first appears.
+	require.Eventually(t, func() bool {
+		gws, err := r.reg.Gateways(context.Background())
+		if err != nil || len(gws) != len(r.gws) {
+			return false
+		}
+		for _, g := range gws {
+			if g.Labels["admin"] == "" {
+				return false
+			}
+		}
+		return true
+	}, 10*time.Second, 50*time.Millisecond, "the gateways never published their admin address")
 	r.lb = newL4(t)
 	r.lb.add(r.gws[0])
 	r.lb.add(r.gws[1])
