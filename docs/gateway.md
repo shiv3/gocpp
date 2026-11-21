@@ -399,16 +399,18 @@ outside the backend as `ext.*` session attributes. The runbook is
 Measured with the load-test harness (`interop/loadtest` on branch `test/loadtest-4k`,
 `results/gateway-2026-11-21`): 4,000 chargers, loopback, gateway on 2 pinned cores,
 2 backends on 2 cores each, gRPC link, schema off, compared with one embedded server
-on 6 cores. Targets are those of design section 2.7.
+on 6 cores (throughput and memory rows), and the final acceptance run below. Targets are those of design section 2.7.
 
 | Target | Result |
 |---|---|
 | Gateway >= 20,000 inbound CALLs/s per core | 22,700 msg/s per core at 36k msg/s (1.6 cores); the same gateway at 7.7k msg/s used 0.77 cores |
 | Added latency, p50 <= 0.5 ms, p99 <= 2 ms at 5k msg/s | +0.15 ms p50, +0.5 ms p99 at 7.7k msg/s (Heartbeat p50 0.20 -> 0.35 ms, p99 0.49 -> 0.96 ms) |
 | Gateway memory <= 16 KB per idle session | **met for live memory**: 11 KB heap+stack per idle session (`BenchmarkGatewayIdleFootprint`, 2,000 sessions; 14 KB at 10,000 sessions with real clients in the harness: 9.5 KB heap from a post-GC heap profile plus about 4.8 KB stacks). Process RSS is 24-26 KB/session at 10,000 sessions for the gateway and for the embedded server alike (main and integ/gateway measured the same, no regression): about 1.7x the live memory is GC headroom and unreturned idle spans left by the connect storm, see docs/performance.md, "RSS versus live memory" |
-| Backend rollout: 0 disconnects, 0 attributable CALLERRORs | met: 5 SIGTERM and 3 kill -9 restarts under load, 0 disconnects, restart-window Heartbeat p99 0.96 ms |
-| Gateway rollout, reconnects within the pace | drain of one of two gateways (2,000 chargers, 20 s window) moved all sessions through the other gateway; ~9% of chargers were disconnected at the deepest point; no freeze. The 10,000-charger / 5-minute / 3-gateway scale of the design was not run |
+| Backend rollout: 0 disconnects, 0 attributable CALLERRORs | met, in the final acceptance run (4,000 chargers, 25 min, 40% mute, 3 flappers, 2 gateways, 3 backends): 5 backend restarts (3 SIGTERM, 2 SIGKILL) and 2 gateway drains in one run; chargers up never dropped below 3,987 during backend restarts; Heartbeat p99 in restart windows 1.1 ms (embedded server restarts: all 4,000 reconnect, 6-27 s to 99%) |
+| Gateway rollout, reconnects within the pace | met, same run: SIGTERM drain of one of two gateways over 20 s dipped to 3,625 and 3,270 of 4,000 chargers up and was back to 99% within 1.8 s of the replacement being ready, no freeze. 10,000 chargers over 3 gateways, three drains in turn: dips to 9,565 / 9,364 / 9,015, all back within 3.3 s, no freeze (`results/gateway-final-2026-11-21/report.md`) |
 | Gateway crash, accept capacity (500 handshakes/s per core) | not measured here (no TLS in the harness) |
+
+Final acceptance run (`results/gateway-final-2026-11-21` on `test/loadtest-4k`, split and embedded concurrently on pinned cores): Heartbeat steady p50/p99 0.5/1.1 ms against 0.3/0.5 ms embedded (+0.2 ms p50, +0.6 ms p99); at about 300 msg/s the whole split deployment used 0.32 cores against 0.12 embedded, dominated by fixed per-session costs (that run is not CPU bound; the throughput comparison is below).
 
 Cost of the split: total CPU is about 1.4x the embedded server (3.3 vs 2.4 cores at 37k
 msg/s); the gRPC hop is about 25 us of CPU per message over both ends. The profile
