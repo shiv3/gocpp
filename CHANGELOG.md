@@ -32,6 +32,12 @@ All notable changes to this project are documented here. The format is based on
   (`route validate|show|apply|rollback|status`), gateway flags `--route-policy-file`,
   lease labels `policy_rev` and `suspended`, and the routing metrics
   (`gocpp_gateway_route_*`).
+
+- `addons/link-grpc`: write coalescing on the link stream (frames queued while a write is
+  in progress go out together; as one `Batch` message when both ends advertise the new
+  `batch` capability, `gateway.CapBatch`; no timer, a lone frame is written at once) and
+  `WithStreams(n)` for N Attach streams per gateway. Link protocol stays v1: an older peer
+  simply does not negotiate `batch`. Backend request goroutines reserve stack up front.
 - Gateway performance gates and benchmarks (`benchmarks/gateway_hop_test.go`,
   `addons/link-grpc/hop_test.go`), pprof on the `gocpp-gateway` admin listener, and the
   measured results in docs/gateway.md.

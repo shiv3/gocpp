@@ -184,6 +184,13 @@ the backend close: a backend deploy is invisible to chargers. The wire contract 
 capability which session it holds for a charge point; an older gateway counts as
 "not here". With a session registry the registry stays the authority.
 
+Writes on a stream are coalesced: while one write is in progress, frames queued by other
+goroutines wait and are then written together, as a single `Batch` message when both ends
+negotiated the `batch` capability (otherwise as consecutive messages). There is no timer,
+so a frame on an idle stream is written at once and the added latency at low rate is
+zero. `WithStreams(n)` keeps n streams (each on its own connection) to every gateway for
+pairs that carry more than one stream can; the default is 1.
+
 `cmd/gocpp-gateway` (own module) is the reference gateway: WebSocket listener
 (TLS, optional client-certificate verification, shared TLS ticket keys, accept
 rate limit), the link listener (optional mTLS between tiers), the Redis session
@@ -330,8 +337,10 @@ on 6 cores. Targets are those of design section 2.7.
 Cost of the split: total CPU is about 1.4x the embedded server (3.3 vs 2.4 cores at 37k
 msg/s); the gRPC hop is about 25 us of CPU per message over both ends. The profile
 (`results/.../profiles`) shows the gateway at 27% in `write(2)`: the WebSocket reply write
-and the link stream write, in roughly equal parts. Next steps are coalescing writes on
-the link stream and a second stream per backend. When the gateway is the bottleneck (it
+and the link stream write, in roughly equal parts. Link write coalescing, a second stream
+per backend and stack reservation in the backend's request goroutines followed (see
+below): in the same harness at 35k msg/s total CPU went from 1.35x to 1.29x of embedded
+(79.8 to 76.2 us per message against 59.1); a second stream did not change it. When the gateway is the bottleneck (it
 ran at 80% of its 2 cores in the two top steps) p99 grows to tens of milliseconds, which
 is queueing, not hop cost: size gateways below about 70% CPU.
 

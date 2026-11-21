@@ -1817,6 +1817,98 @@ func (*Cancel) Descriptor() ([]byte, []int) {
 	return file_gocpp_link_v1_link_proto_rawDescGZIP(), []int{25}
 }
 
+// BackendBatch carries several frames in one stream message, in order. It is
+// only sent when the "batch" capability was negotiated: frames that were
+// queued together are written together, which saves per-message and per-write
+// cost under load and changes nothing at low rate (a lone frame is sent as is).
+type BackendBatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Frames        []*BackendFrame        `protobuf:"bytes,1,rep,name=frames,proto3" json:"frames,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackendBatch) Reset() {
+	*x = BackendBatch{}
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackendBatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackendBatch) ProtoMessage() {}
+
+func (x *BackendBatch) ProtoReflect() protoreflect.Message {
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackendBatch.ProtoReflect.Descriptor instead.
+func (*BackendBatch) Descriptor() ([]byte, []int) {
+	return file_gocpp_link_v1_link_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *BackendBatch) GetFrames() []*BackendFrame {
+	if x != nil {
+		return x.Frames
+	}
+	return nil
+}
+
+type GatewayBatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Frames        []*GatewayFrame        `protobuf:"bytes,1,rep,name=frames,proto3" json:"frames,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GatewayBatch) Reset() {
+	*x = GatewayBatch{}
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GatewayBatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GatewayBatch) ProtoMessage() {}
+
+func (x *GatewayBatch) ProtoReflect() protoreflect.Message {
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GatewayBatch.ProtoReflect.Descriptor instead.
+func (*GatewayBatch) Descriptor() ([]byte, []int) {
+	return file_gocpp_link_v1_link_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *GatewayBatch) GetFrames() []*GatewayFrame {
+	if x != nil {
+		return x.Frames
+	}
+	return nil
+}
+
 type BackendFrame struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"` // correlation id: a request's id, or the id of the request this answers
@@ -1831,6 +1923,7 @@ type BackendFrame struct {
 	//	*BackendFrame_Control
 	//	*BackendFrame_Drain
 	//	*BackendFrame_Locate
+	//	*BackendFrame_Batch
 	//	*BackendFrame_Unsupported
 	Body          isBackendFrame_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
@@ -1839,7 +1932,7 @@ type BackendFrame struct {
 
 func (x *BackendFrame) Reset() {
 	*x = BackendFrame{}
-	mi := &file_gocpp_link_v1_link_proto_msgTypes[26]
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1851,7 +1944,7 @@ func (x *BackendFrame) String() string {
 func (*BackendFrame) ProtoMessage() {}
 
 func (x *BackendFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_gocpp_link_v1_link_proto_msgTypes[26]
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1864,7 +1957,7 @@ func (x *BackendFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackendFrame.ProtoReflect.Descriptor instead.
 func (*BackendFrame) Descriptor() ([]byte, []int) {
-	return file_gocpp_link_v1_link_proto_rawDescGZIP(), []int{26}
+	return file_gocpp_link_v1_link_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *BackendFrame) GetId() uint64 {
@@ -1962,6 +2055,15 @@ func (x *BackendFrame) GetLocate() *LocateRequest {
 	return nil
 }
 
+func (x *BackendFrame) GetBatch() *BackendBatch {
+	if x != nil {
+		if x, ok := x.Body.(*BackendFrame_Batch); ok {
+			return x.Batch
+		}
+	}
+	return nil
+}
+
 func (x *BackendFrame) GetUnsupported() *Unsupported {
 	if x != nil {
 		if x, ok := x.Body.(*BackendFrame_Unsupported); ok {
@@ -2011,6 +2113,10 @@ type BackendFrame_Locate struct {
 	Locate *LocateRequest `protobuf:"bytes,10,opt,name=locate,proto3,oneof"`
 }
 
+type BackendFrame_Batch struct {
+	Batch *BackendBatch `protobuf:"bytes,21,opt,name=batch,proto3,oneof"` // only when both ends advertise the "batch" capability
+}
+
 type BackendFrame_Unsupported struct {
 	Unsupported *Unsupported `protobuf:"bytes,20,opt,name=unsupported,proto3,oneof"`
 }
@@ -2033,6 +2139,8 @@ func (*BackendFrame_Drain) isBackendFrame_Body() {}
 
 func (*BackendFrame_Locate) isBackendFrame_Body() {}
 
+func (*BackendFrame_Batch) isBackendFrame_Body() {}
+
 func (*BackendFrame_Unsupported) isBackendFrame_Body() {}
 
 type GatewayFrame struct {
@@ -2050,6 +2158,7 @@ type GatewayFrame struct {
 	//	*GatewayFrame_Cancel
 	//	*GatewayFrame_DrainAck
 	//	*GatewayFrame_LocateReply
+	//	*GatewayFrame_Batch
 	//	*GatewayFrame_Unsupported
 	Body          isGatewayFrame_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
@@ -2058,7 +2167,7 @@ type GatewayFrame struct {
 
 func (x *GatewayFrame) Reset() {
 	*x = GatewayFrame{}
-	mi := &file_gocpp_link_v1_link_proto_msgTypes[27]
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2070,7 +2179,7 @@ func (x *GatewayFrame) String() string {
 func (*GatewayFrame) ProtoMessage() {}
 
 func (x *GatewayFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_gocpp_link_v1_link_proto_msgTypes[27]
+	mi := &file_gocpp_link_v1_link_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2083,7 +2192,7 @@ func (x *GatewayFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayFrame.ProtoReflect.Descriptor instead.
 func (*GatewayFrame) Descriptor() ([]byte, []int) {
-	return file_gocpp_link_v1_link_proto_rawDescGZIP(), []int{27}
+	return file_gocpp_link_v1_link_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GatewayFrame) GetId() uint64 {
@@ -2190,6 +2299,15 @@ func (x *GatewayFrame) GetLocateReply() *LocateReply {
 	return nil
 }
 
+func (x *GatewayFrame) GetBatch() *GatewayBatch {
+	if x != nil {
+		if x, ok := x.Body.(*GatewayFrame_Batch); ok {
+			return x.Batch
+		}
+	}
+	return nil
+}
+
 func (x *GatewayFrame) GetUnsupported() *Unsupported {
 	if x != nil {
 		if x, ok := x.Body.(*GatewayFrame_Unsupported); ok {
@@ -2243,6 +2361,10 @@ type GatewayFrame_LocateReply struct {
 	LocateReply *LocateReply `protobuf:"bytes,11,opt,name=locate_reply,json=locateReply,proto3,oneof"`
 }
 
+type GatewayFrame_Batch struct {
+	Batch *GatewayBatch `protobuf:"bytes,21,opt,name=batch,proto3,oneof"` // only when both ends advertise the "batch" capability
+}
+
 type GatewayFrame_Unsupported struct {
 	Unsupported *Unsupported `protobuf:"bytes,20,opt,name=unsupported,proto3,oneof"`
 }
@@ -2266,6 +2388,8 @@ func (*GatewayFrame_Cancel) isGatewayFrame_Body() {}
 func (*GatewayFrame_DrainAck) isGatewayFrame_Body() {}
 
 func (*GatewayFrame_LocateReply) isGatewayFrame_Body() {}
+
+func (*GatewayFrame_Batch) isGatewayFrame_Body() {}
 
 func (*GatewayFrame_Unsupported) isGatewayFrame_Body() {}
 
@@ -2444,7 +2568,11 @@ const file_gocpp_link_v1_link_proto_rawDesc = "" +
 	"\x05Drain\"\n" +
 	"\n" +
 	"\bDrainAck\"\b\n" +
-	"\x06Cancel\"\xc0\x04\n" +
+	"\x06Cancel\"C\n" +
+	"\fBackendBatch\x123\n" +
+	"\x06frames\x18\x01 \x03(\v2\x1b.gocpp.link.v1.BackendFrameR\x06frames\"C\n" +
+	"\fGatewayBatch\x123\n" +
+	"\x06frames\x18\x01 \x03(\v2\x1b.gocpp.link.v1.GatewayFrameR\x06frames\"\xf5\x04\n" +
 	"\fBackendFrame\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12,\n" +
 	"\x05hello\x18\x02 \x01(\v2\x14.gocpp.link.v1.HelloH\x00R\x05hello\x12B\n" +
@@ -2457,9 +2585,10 @@ const file_gocpp_link_v1_link_proto_rawDesc = "" +
 	"\acontrol\x18\b \x01(\v2\x1d.gocpp.link.v1.ControlRequestH\x00R\acontrol\x12,\n" +
 	"\x05drain\x18\t \x01(\v2\x14.gocpp.link.v1.DrainH\x00R\x05drain\x126\n" +
 	"\x06locate\x18\n" +
-	" \x01(\v2\x1c.gocpp.link.v1.LocateRequestH\x00R\x06locate\x12>\n" +
+	" \x01(\v2\x1c.gocpp.link.v1.LocateRequestH\x00R\x06locate\x123\n" +
+	"\x05batch\x18\x15 \x01(\v2\x1b.gocpp.link.v1.BackendBatchH\x00R\x05batch\x12>\n" +
 	"\vunsupported\x18\x14 \x01(\v2\x1a.gocpp.link.v1.UnsupportedH\x00R\vunsupportedB\x06\n" +
-	"\x04body\"\x8c\x05\n" +
+	"\x04body\"\xc1\x05\n" +
 	"\fGatewayFrame\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x126\n" +
 	"\thello_ack\x18\x02 \x01(\v2\x17.gocpp.link.v1.HelloAckH\x00R\bhelloAck\x129\n" +
@@ -2474,7 +2603,8 @@ const file_gocpp_link_v1_link_proto_rawDesc = "" +
 	"\x06cancel\x18\t \x01(\v2\x15.gocpp.link.v1.CancelH\x00R\x06cancel\x126\n" +
 	"\tdrain_ack\x18\n" +
 	" \x01(\v2\x17.gocpp.link.v1.DrainAckH\x00R\bdrainAck\x12?\n" +
-	"\flocate_reply\x18\v \x01(\v2\x1a.gocpp.link.v1.LocateReplyH\x00R\vlocateReply\x12>\n" +
+	"\flocate_reply\x18\v \x01(\v2\x1a.gocpp.link.v1.LocateReplyH\x00R\vlocateReply\x123\n" +
+	"\x05batch\x18\x15 \x01(\v2\x1b.gocpp.link.v1.GatewayBatchH\x00R\x05batch\x12>\n" +
 	"\vunsupported\x18\x14 \x01(\v2\x1a.gocpp.link.v1.UnsupportedH\x00R\vunsupportedB\x06\n" +
 	"\x04body2N\n" +
 	"\x04Link\x12F\n" +
@@ -2492,7 +2622,7 @@ func file_gocpp_link_v1_link_proto_rawDescGZIP() []byte {
 	return file_gocpp_link_v1_link_proto_rawDescData
 }
 
-var file_gocpp_link_v1_link_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_gocpp_link_v1_link_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
 var file_gocpp_link_v1_link_proto_goTypes = []any{
 	(*ProtoRange)(nil),     // 0: gocpp.link.v1.ProtoRange
 	(*BackendInfo)(nil),    // 1: gocpp.link.v1.BackendInfo
@@ -2520,75 +2650,81 @@ var file_gocpp_link_v1_link_proto_goTypes = []any{
 	(*Drain)(nil),          // 23: gocpp.link.v1.Drain
 	(*DrainAck)(nil),       // 24: gocpp.link.v1.DrainAck
 	(*Cancel)(nil),         // 25: gocpp.link.v1.Cancel
-	(*BackendFrame)(nil),   // 26: gocpp.link.v1.BackendFrame
-	(*GatewayFrame)(nil),   // 27: gocpp.link.v1.GatewayFrame
-	nil,                    // 28: gocpp.link.v1.BackendInfo.LabelsEntry
-	nil,                    // 29: gocpp.link.v1.SessionInfo.HeaderEntry
-	nil,                    // 30: gocpp.link.v1.SessionInfo.MetaEntry
-	nil,                    // 31: gocpp.link.v1.Envelope.AttrsEntry
-	nil,                    // 32: gocpp.link.v1.ConnectRequest.HeaderEntry
-	nil,                    // 33: gocpp.link.v1.ConnectReply.MetaEntry
-	nil,                    // 34: gocpp.link.v1.ConnectReply.AttrsEntry
-	nil,                    // 35: gocpp.link.v1.ControlRequest.AttrsEntry
+	(*BackendBatch)(nil),   // 26: gocpp.link.v1.BackendBatch
+	(*GatewayBatch)(nil),   // 27: gocpp.link.v1.GatewayBatch
+	(*BackendFrame)(nil),   // 28: gocpp.link.v1.BackendFrame
+	(*GatewayFrame)(nil),   // 29: gocpp.link.v1.GatewayFrame
+	nil,                    // 30: gocpp.link.v1.BackendInfo.LabelsEntry
+	nil,                    // 31: gocpp.link.v1.SessionInfo.HeaderEntry
+	nil,                    // 32: gocpp.link.v1.SessionInfo.MetaEntry
+	nil,                    // 33: gocpp.link.v1.Envelope.AttrsEntry
+	nil,                    // 34: gocpp.link.v1.ConnectRequest.HeaderEntry
+	nil,                    // 35: gocpp.link.v1.ConnectReply.MetaEntry
+	nil,                    // 36: gocpp.link.v1.ConnectReply.AttrsEntry
+	nil,                    // 37: gocpp.link.v1.ControlRequest.AttrsEntry
 }
 var file_gocpp_link_v1_link_proto_depIdxs = []int32{
 	0,  // 0: gocpp.link.v1.BackendInfo.proto:type_name -> gocpp.link.v1.ProtoRange
-	28, // 1: gocpp.link.v1.BackendInfo.labels:type_name -> gocpp.link.v1.BackendInfo.LabelsEntry
+	30, // 1: gocpp.link.v1.BackendInfo.labels:type_name -> gocpp.link.v1.BackendInfo.LabelsEntry
 	1,  // 2: gocpp.link.v1.Hello.backend:type_name -> gocpp.link.v1.BackendInfo
 	3,  // 3: gocpp.link.v1.HelloAck.gateway:type_name -> gocpp.link.v1.GatewayPeer
-	29, // 4: gocpp.link.v1.SessionInfo.header:type_name -> gocpp.link.v1.SessionInfo.HeaderEntry
-	30, // 5: gocpp.link.v1.SessionInfo.meta:type_name -> gocpp.link.v1.SessionInfo.MetaEntry
+	31, // 4: gocpp.link.v1.SessionInfo.header:type_name -> gocpp.link.v1.SessionInfo.HeaderEntry
+	32, // 5: gocpp.link.v1.SessionInfo.meta:type_name -> gocpp.link.v1.SessionInfo.MetaEntry
 	5,  // 6: gocpp.link.v1.Envelope.session:type_name -> gocpp.link.v1.SessionRef
-	31, // 7: gocpp.link.v1.Envelope.attrs:type_name -> gocpp.link.v1.Envelope.AttrsEntry
+	33, // 7: gocpp.link.v1.Envelope.attrs:type_name -> gocpp.link.v1.Envelope.AttrsEntry
 	9,  // 8: gocpp.link.v1.Envelope.open:type_name -> gocpp.link.v1.SessionInfo
 	6,  // 9: gocpp.link.v1.Envelope.route:type_name -> gocpp.link.v1.Route
 	10, // 10: gocpp.link.v1.Envelope.close:type_name -> gocpp.link.v1.CloseInfo
 	7,  // 11: gocpp.link.v1.Envelope.error:type_name -> gocpp.link.v1.WireError
 	7,  // 12: gocpp.link.v1.Reply.error:type_name -> gocpp.link.v1.WireError
-	32, // 13: gocpp.link.v1.ConnectRequest.header:type_name -> gocpp.link.v1.ConnectRequest.HeaderEntry
+	34, // 13: gocpp.link.v1.ConnectRequest.header:type_name -> gocpp.link.v1.ConnectRequest.HeaderEntry
 	5,  // 14: gocpp.link.v1.ConnectRequest.gateway:type_name -> gocpp.link.v1.SessionRef
 	6,  // 15: gocpp.link.v1.ConnectRequest.route:type_name -> gocpp.link.v1.Route
-	33, // 16: gocpp.link.v1.ConnectReply.meta:type_name -> gocpp.link.v1.ConnectReply.MetaEntry
+	35, // 16: gocpp.link.v1.ConnectReply.meta:type_name -> gocpp.link.v1.ConnectReply.MetaEntry
 	13, // 17: gocpp.link.v1.ConnectReply.timeouts:type_name -> gocpp.link.v1.Timeouts
-	34, // 18: gocpp.link.v1.ConnectReply.attrs:type_name -> gocpp.link.v1.ConnectReply.AttrsEntry
+	36, // 18: gocpp.link.v1.ConnectReply.attrs:type_name -> gocpp.link.v1.ConnectReply.AttrsEntry
 	5,  // 19: gocpp.link.v1.CallRequest.target:type_name -> gocpp.link.v1.SessionRef
 	7,  // 20: gocpp.link.v1.CallReply.error:type_name -> gocpp.link.v1.WireError
 	5,  // 21: gocpp.link.v1.CallReply.session:type_name -> gocpp.link.v1.SessionRef
 	5,  // 22: gocpp.link.v1.ControlRequest.target:type_name -> gocpp.link.v1.SessionRef
-	35, // 23: gocpp.link.v1.ControlRequest.attrs:type_name -> gocpp.link.v1.ControlRequest.AttrsEntry
+	37, // 23: gocpp.link.v1.ControlRequest.attrs:type_name -> gocpp.link.v1.ControlRequest.AttrsEntry
 	7,  // 24: gocpp.link.v1.Ack.error:type_name -> gocpp.link.v1.WireError
 	5,  // 25: gocpp.link.v1.LocateReply.session:type_name -> gocpp.link.v1.SessionRef
 	9,  // 26: gocpp.link.v1.LocateReply.info:type_name -> gocpp.link.v1.SessionInfo
-	2,  // 27: gocpp.link.v1.BackendFrame.hello:type_name -> gocpp.link.v1.Hello
-	15, // 28: gocpp.link.v1.BackendFrame.connect_reply:type_name -> gocpp.link.v1.ConnectReply
-	12, // 29: gocpp.link.v1.BackendFrame.reply:type_name -> gocpp.link.v1.Reply
-	19, // 30: gocpp.link.v1.BackendFrame.notify_ack:type_name -> gocpp.link.v1.Ack
-	16, // 31: gocpp.link.v1.BackendFrame.call:type_name -> gocpp.link.v1.CallRequest
-	16, // 32: gocpp.link.v1.BackendFrame.send:type_name -> gocpp.link.v1.CallRequest
-	18, // 33: gocpp.link.v1.BackendFrame.control:type_name -> gocpp.link.v1.ControlRequest
-	23, // 34: gocpp.link.v1.BackendFrame.drain:type_name -> gocpp.link.v1.Drain
-	21, // 35: gocpp.link.v1.BackendFrame.locate:type_name -> gocpp.link.v1.LocateRequest
-	20, // 36: gocpp.link.v1.BackendFrame.unsupported:type_name -> gocpp.link.v1.Unsupported
-	4,  // 37: gocpp.link.v1.GatewayFrame.hello_ack:type_name -> gocpp.link.v1.HelloAck
-	14, // 38: gocpp.link.v1.GatewayFrame.connect:type_name -> gocpp.link.v1.ConnectRequest
-	11, // 39: gocpp.link.v1.GatewayFrame.handle:type_name -> gocpp.link.v1.Envelope
-	11, // 40: gocpp.link.v1.GatewayFrame.notify:type_name -> gocpp.link.v1.Envelope
-	17, // 41: gocpp.link.v1.GatewayFrame.call_reply:type_name -> gocpp.link.v1.CallReply
-	19, // 42: gocpp.link.v1.GatewayFrame.send_ack:type_name -> gocpp.link.v1.Ack
-	19, // 43: gocpp.link.v1.GatewayFrame.control_ack:type_name -> gocpp.link.v1.Ack
-	25, // 44: gocpp.link.v1.GatewayFrame.cancel:type_name -> gocpp.link.v1.Cancel
-	24, // 45: gocpp.link.v1.GatewayFrame.drain_ack:type_name -> gocpp.link.v1.DrainAck
-	22, // 46: gocpp.link.v1.GatewayFrame.locate_reply:type_name -> gocpp.link.v1.LocateReply
-	20, // 47: gocpp.link.v1.GatewayFrame.unsupported:type_name -> gocpp.link.v1.Unsupported
-	8,  // 48: gocpp.link.v1.SessionInfo.HeaderEntry.value:type_name -> gocpp.link.v1.HeaderValues
-	8,  // 49: gocpp.link.v1.ConnectRequest.HeaderEntry.value:type_name -> gocpp.link.v1.HeaderValues
-	26, // 50: gocpp.link.v1.Link.Attach:input_type -> gocpp.link.v1.BackendFrame
-	27, // 51: gocpp.link.v1.Link.Attach:output_type -> gocpp.link.v1.GatewayFrame
-	51, // [51:52] is the sub-list for method output_type
-	50, // [50:51] is the sub-list for method input_type
-	50, // [50:50] is the sub-list for extension type_name
-	50, // [50:50] is the sub-list for extension extendee
-	0,  // [0:50] is the sub-list for field type_name
+	28, // 27: gocpp.link.v1.BackendBatch.frames:type_name -> gocpp.link.v1.BackendFrame
+	29, // 28: gocpp.link.v1.GatewayBatch.frames:type_name -> gocpp.link.v1.GatewayFrame
+	2,  // 29: gocpp.link.v1.BackendFrame.hello:type_name -> gocpp.link.v1.Hello
+	15, // 30: gocpp.link.v1.BackendFrame.connect_reply:type_name -> gocpp.link.v1.ConnectReply
+	12, // 31: gocpp.link.v1.BackendFrame.reply:type_name -> gocpp.link.v1.Reply
+	19, // 32: gocpp.link.v1.BackendFrame.notify_ack:type_name -> gocpp.link.v1.Ack
+	16, // 33: gocpp.link.v1.BackendFrame.call:type_name -> gocpp.link.v1.CallRequest
+	16, // 34: gocpp.link.v1.BackendFrame.send:type_name -> gocpp.link.v1.CallRequest
+	18, // 35: gocpp.link.v1.BackendFrame.control:type_name -> gocpp.link.v1.ControlRequest
+	23, // 36: gocpp.link.v1.BackendFrame.drain:type_name -> gocpp.link.v1.Drain
+	21, // 37: gocpp.link.v1.BackendFrame.locate:type_name -> gocpp.link.v1.LocateRequest
+	26, // 38: gocpp.link.v1.BackendFrame.batch:type_name -> gocpp.link.v1.BackendBatch
+	20, // 39: gocpp.link.v1.BackendFrame.unsupported:type_name -> gocpp.link.v1.Unsupported
+	4,  // 40: gocpp.link.v1.GatewayFrame.hello_ack:type_name -> gocpp.link.v1.HelloAck
+	14, // 41: gocpp.link.v1.GatewayFrame.connect:type_name -> gocpp.link.v1.ConnectRequest
+	11, // 42: gocpp.link.v1.GatewayFrame.handle:type_name -> gocpp.link.v1.Envelope
+	11, // 43: gocpp.link.v1.GatewayFrame.notify:type_name -> gocpp.link.v1.Envelope
+	17, // 44: gocpp.link.v1.GatewayFrame.call_reply:type_name -> gocpp.link.v1.CallReply
+	19, // 45: gocpp.link.v1.GatewayFrame.send_ack:type_name -> gocpp.link.v1.Ack
+	19, // 46: gocpp.link.v1.GatewayFrame.control_ack:type_name -> gocpp.link.v1.Ack
+	25, // 47: gocpp.link.v1.GatewayFrame.cancel:type_name -> gocpp.link.v1.Cancel
+	24, // 48: gocpp.link.v1.GatewayFrame.drain_ack:type_name -> gocpp.link.v1.DrainAck
+	22, // 49: gocpp.link.v1.GatewayFrame.locate_reply:type_name -> gocpp.link.v1.LocateReply
+	27, // 50: gocpp.link.v1.GatewayFrame.batch:type_name -> gocpp.link.v1.GatewayBatch
+	20, // 51: gocpp.link.v1.GatewayFrame.unsupported:type_name -> gocpp.link.v1.Unsupported
+	8,  // 52: gocpp.link.v1.SessionInfo.HeaderEntry.value:type_name -> gocpp.link.v1.HeaderValues
+	8,  // 53: gocpp.link.v1.ConnectRequest.HeaderEntry.value:type_name -> gocpp.link.v1.HeaderValues
+	28, // 54: gocpp.link.v1.Link.Attach:input_type -> gocpp.link.v1.BackendFrame
+	29, // 55: gocpp.link.v1.Link.Attach:output_type -> gocpp.link.v1.GatewayFrame
+	55, // [55:56] is the sub-list for method output_type
+	54, // [54:55] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_gocpp_link_v1_link_proto_init() }
@@ -2596,7 +2732,7 @@ func file_gocpp_link_v1_link_proto_init() {
 	if File_gocpp_link_v1_link_proto != nil {
 		return
 	}
-	file_gocpp_link_v1_link_proto_msgTypes[26].OneofWrappers = []any{
+	file_gocpp_link_v1_link_proto_msgTypes[28].OneofWrappers = []any{
 		(*BackendFrame_Hello)(nil),
 		(*BackendFrame_ConnectReply)(nil),
 		(*BackendFrame_Reply)(nil),
@@ -2606,9 +2742,10 @@ func file_gocpp_link_v1_link_proto_init() {
 		(*BackendFrame_Control)(nil),
 		(*BackendFrame_Drain)(nil),
 		(*BackendFrame_Locate)(nil),
+		(*BackendFrame_Batch)(nil),
 		(*BackendFrame_Unsupported)(nil),
 	}
-	file_gocpp_link_v1_link_proto_msgTypes[27].OneofWrappers = []any{
+	file_gocpp_link_v1_link_proto_msgTypes[29].OneofWrappers = []any{
 		(*GatewayFrame_HelloAck)(nil),
 		(*GatewayFrame_Connect)(nil),
 		(*GatewayFrame_Handle)(nil),
@@ -2619,6 +2756,7 @@ func file_gocpp_link_v1_link_proto_init() {
 		(*GatewayFrame_Cancel)(nil),
 		(*GatewayFrame_DrainAck)(nil),
 		(*GatewayFrame_LocateReply)(nil),
+		(*GatewayFrame_Batch)(nil),
 		(*GatewayFrame_Unsupported)(nil),
 	}
 	type x struct{}
@@ -2627,7 +2765,7 @@ func file_gocpp_link_v1_link_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gocpp_link_v1_link_proto_rawDesc), len(file_gocpp_link_v1_link_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   36,
+			NumMessages:   38,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
