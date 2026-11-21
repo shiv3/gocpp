@@ -77,3 +77,80 @@ func TestSendQueue_OrderBatchingAndError(t *testing.T) {
 		t.Fatalf("sticky error: %v", err)
 	}
 }
+
+// B4: a write error met while flushing other goroutines' frames must not be
+// returned to the owner whose own frame was written.
+func TestSendQueue_ForeignWriteErrorNotAttributedToOwner(t *testing.T) {
+	boom := errors.New("boom")
+	gate := make(chan struct{})
+	q := &sendQueue[int]{write: func(i int) error {
+		if i == 0 {
+			<-gate
+			return nil
+		}
+		return boom // every later frame fails
+	}}
+	res := make(chan error, 1)
+	go func() { res <- q.push(0) }()
+	for {
+		q.mu.Lock()
+		a := q.active
+		q.mu.Unlock()
+		if a {
+			break
+		}
+	}
+	if err := q.push(1); err != nil { // queued behind the owner: nil
+		t.Fatalf("queued push: %v", err)
+	}
+	close(gate)
+	if err := <-res; err != nil {
+		t.Fatalf("owner's frame 0 was written, but push returned %v", err)
+	}
+	if err := q.push(2); !errors.Is(err, boom) {
+		t.Fatalf("stream must stay broken: %v", err)
+	}
+}
+
+func TestSendQueue_BatchByteCap(t *testing.T) {
+	var sizes []int
+	gate := make(chan struct{})
+	q := &sendQueue[int]{
+		write: func(i int) error {
+			if i == 0 {
+				<-gate
+			}
+			return nil
+		},
+		batch: func(b []int) error { sizes = append(sizes, len(b)); return nil },
+		size:  func(int) int { return maxBatchBytes / 4 },
+	}
+	done := make(chan struct{})
+	go func() { _ = q.push(0); close(done) }()
+	for {
+		q.mu.Lock()
+		a := q.active
+		q.mu.Unlock()
+		if a {
+			break
+		}
+	}
+	for i := 1; i <= 10; i++ {
+		_ = q.push(i)
+	}
+	close(gate)
+	<-done
+	for {
+		q.mu.Lock()
+		a := q.active
+		q.mu.Unlock()
+		if !a {
+			break
+		}
+	}
+	for _, n := range sizes {
+		if n > 4 {
+			t.Fatalf("batch of %d frames exceeds the byte cap: %v", n, sizes)
+		}
+	}
+}

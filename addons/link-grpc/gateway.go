@@ -14,6 +14,7 @@ import (
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/gateway"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 // SupportedProto is the link protocol range this build speaks. Every release
@@ -270,6 +271,7 @@ func (p *peer) send(f *linkpb.GatewayFrame) error { return p.out.push(f) }
 
 func (p *peer) initSend() {
 	p.out.write = p.stream.Send
+	p.out.size = func(f *linkpb.GatewayFrame) int { return proto.Size(f) }
 	if slices.Contains(p.info.Caps, gateway.CapBatch) {
 		p.out.batch = func(fs []*linkpb.GatewayFrame) error {
 			return p.stream.Send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Batch{Batch: &linkpb.GatewayBatch{Frames: fs}}})
@@ -317,6 +319,8 @@ func (p *peer) dispatch(f *linkpb.BackendFrame) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
+			// A RoleCaller backend has no pool member (p.member is nil); there is
+			// nothing to drain, but it still gets its acknowledgement.
 			if err := p.g.pools.Drain(ctx, p.member); err == nil {
 				_ = p.send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_DrainAck{DrainAck: &linkpb.DrainAck{}}})
 			}

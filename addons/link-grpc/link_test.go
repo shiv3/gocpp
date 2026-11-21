@@ -656,3 +656,29 @@ func TestLink_OrphanResultGoesToCallerPool(t *testing.T) {
 		})
 	}
 }
+
+// B3: a RoleCaller backend (no pool member) that sends Drain must not crash the
+// gateway; it gets its DrainAck and the stream stays usable.
+func TestLink_CallerBackendDrainDoesNotCrashGateway(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	tp := newTopology(t)
+	defer tp.close()
+	cc, err := grpc.NewClient(tp.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { _ = cc.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	st, err := linkpb.NewLinkClient(cc).Attach(ctx)
+	require.NoError(t, err)
+	require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{
+		Backend: &linkpb.BackendInfo{Id: "admin", Role: uint32(gateway.RoleCaller), Proto: &linkpb.ProtoRange{Min: 1, Max: 1}},
+	}}}))
+	f, err := st.Recv()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, f.GetHelloAck().GetProto())
+	require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Drain{Drain: &linkpb.Drain{}}}))
+	f, err = st.Recv()
+	require.NoError(t, err)
+	require.NotNil(t, f.GetDrainAck())
+	_ = st.CloseSend()
+}

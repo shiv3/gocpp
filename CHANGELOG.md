@@ -194,6 +194,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Gateway pre-merge fixes: a `RoleCaller` backend sending `Drain` no longer crashes the
+  gateway (nil pool member); a write error met while flushing another goroutine's
+  frame on a link stream is no longer returned to the goroutine whose own frame was
+  written (it caused a redispatch of a delivered CALL); link batches are capped at
+  1 MiB; `registry-redis` never hands out an epoch at or below the surviving record's
+  when the epoch counter expired or was evicted, and `Reassert` keeps the counter alive.
+
 - Gateway mode: the processing tier runs the connect/disconnect hooks of one charge point's session events one at a time, so a replaced session's disconnect can no longer run after the new session's connect when `SessionClosed(old)` and `SessionOpened(new)` arrive concurrently. A session event still waiting for a backend when the gateway server closes now gives up after the closing bound instead of keeping a goroutine for the pool's hold time.
 - The `ConnectionCount` gauge (`gocpp_connections`) drifted negative when a connection
   was closed twice (a replaced connection is closed by the replacement and by its own

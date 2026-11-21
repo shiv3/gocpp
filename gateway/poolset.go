@@ -107,7 +107,13 @@ func (s *PoolSet) noteUnhandled(pool, action string) {
 func (s *PoolSet) Pool(name string) *Pool { return s.get(name, false) }
 
 // Drain drains m out of its pool.
+//
+// A nil member (a RoleCaller backend has none) is a no-op: it has no pool to
+// leave and takes no dispatched work.
 func (s *PoolSet) Drain(ctx context.Context, m *Member) error {
+	if m == nil {
+		return nil
+	}
 	return s.get(m.info.Pool, true).Drain(ctx, m)
 }
 
