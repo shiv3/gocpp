@@ -100,7 +100,7 @@ type sess struct {
 func (c *charger) session() (up bool) {
 	g := c.g
 	dctx, dcancel := context.WithTimeout(g.ctx, 30*time.Second)
-	conn, _, err := websocket.Dial(dctx, "ws://"+g.cfg.Addr+"/ocpp/"+c.id, &websocket.DialOptions{
+	conn, _, err := websocket.Dial(dctx, "ws://"+g.chargerAddr()+"/ocpp/"+c.id, &websocket.DialOptions{
 		Subprotocols: []string{"ocpp1.6"}, HTTPClient: g.httpc,
 	})
 	dcancel()
@@ -348,4 +348,12 @@ func (s *sess) readLoop() {
 			}
 		}
 	}
+}
+
+// chargerAddr is where a charger connects: the server, or a random gateway.
+func (g *gen) chargerAddr() string {
+	if g.topo != nil {
+		return g.topo.pickWS()
+	}
+	return g.cfg.Addr
 }

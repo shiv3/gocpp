@@ -51,6 +51,7 @@ type metrics struct {
 	csmsSeen      [2]int64 // [unmuted, muted] CSMS calls delivered to chargers
 	inflight      atomic.Int64
 	tl            *os.File
+	procs         *os.File // procs.csv: one line per supervised process and sample (split topology)
 	prevMsgs      int64
 	prevCPU       float64
 	prevT         time.Time
@@ -63,6 +64,9 @@ func newMetrics(g *gen) *metrics {
 	m := &metrics{g: g, wins: map[int]*window{}, connErrs: map[string]int{}, reqErrTotal: map[string]int{}}
 	f, _ := os.Create(filepath.Join(g.cfg.Out, "timeline.csv"))
 	m.tl = f
+	pf, _ := os.Create(filepath.Join(g.cfg.Out, "procs.csv"))
+	m.procs = pf
+	fmt.Fprintln(pf, "t_s,name,role,pool,pid,rss_mb,cpu_cores,threads,fds")
 	fmt.Fprintln(f, "t_s,step,target_started,chargers_up,server_connected,health_ms,server_pid,srv_rss_mb,srv_cpu_cores,srv_threads,srv_fds,srv_goroutines,gen_rss_mb,gen_goroutines,mem_avail_mb,canary_max_rtt_ms,canary_up,calls_inflight,msgs_per_s,restart_active,gen_cpu_cores,alloc_mb_s,alloc_kb_req,gc_cycles_s,gc_cpu_cores,gc_assist_cores,sched_p99_ms,heap_obj_mb,stacks_mb")
 	return m
 }
@@ -229,6 +233,9 @@ func (g *gen) srvGoroutines() int {
 }
 
 func (g *gen) srvConnected() int {
+	if g.topo != nil {
+		return g.topo.gatewayConnections()
+	}
 	cl := &http.Client{Timeout: 3 * time.Second}
 	resp, err := cl.Get("http://" + g.cfg.Addr + "/control/count")
 	if err != nil {
@@ -307,6 +314,9 @@ func (g *gen) sampler() {
 		msgs := g.msgs.Load()
 		mps := float64(msgs-m.prevMsgs) / g.cfg.Sample.Seconds()
 		m.prevMsgs = msgs
+		if g.topo != nil {
+			g.topo.sample(m.procs, now, g.since())
+		}
 		sgo := g.srvGoroutines()
 		rt := m.runtimeDelta(g, now, msgs)
 		fmt.Fprintf(m.tl, "%.0f,%d,%d,%d,%d,%.1f,%d,%.1f,%.2f,%d,%d,%d,%.1f,%d,%.0f,%.1f,%d,%d,%.0f,%v,%.2f,%s\n",
@@ -513,7 +523,12 @@ func (g *gen) finish() {
 		g.cancel()
 		g.srv.stop(15) // SIGTERM
 	}
+	if g.topo != nil {
+		g.cancel()
+		g.topo.stopAll()
+	}
 	m.tl.Close()
+	m.procs.Close()
 }
 
 // ---------------------------------------------------------------- server runtime metrics

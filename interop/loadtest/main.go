@@ -44,6 +44,9 @@ type config struct {
 	GCTrace                                                 bool
 	Hot                                                     int
 	HotShare                                                float64
+	// Split topology (see topology.go).
+	GatewayBin, BackendPools, GwTaskset, BeTaskset, GwArgs, RestartTarget, RestartMode string
+	Gateways                                                                           int
 }
 
 type gen struct {
@@ -60,6 +63,7 @@ type gen struct {
 	speed    atomic.Int64 // milli speed factor
 	msgs     atomic.Int64 // completed charger requests
 	srv      *server
+	topo     *topology
 	met      *metrics
 	canaries []*charger
 	chargers []*charger
@@ -132,6 +136,14 @@ func main() {
 	flag.IntVar(&c.MinAvailMB, "min-avail-mb", 1200, "abort when system MemAvailable drops below this")
 	flag.IntVar(&c.Hot, "hot", 0, "number of hot mute chargers that receive most CSMS calls (0 = uniform)")
 	flag.Float64Var(&c.HotShare, "hot-share", 0.9, "share of CSMS calls aimed at the hot set")
+	flag.StringVar(&c.GatewayBin, "gateway-bin", "", "cmd/gocpp-gateway binary (split topology)")
+	flag.IntVar(&c.Gateways, "gateways", 0, "number of gateways; >0 runs the split topology (-server-bin must be cs-gocpp)")
+	flag.StringVar(&c.BackendPools, "backend-pools", "default:2", "backend pools, name:count,... (the first backend serves /control at -addr)")
+	flag.StringVar(&c.GwTaskset, "gw-taskset", "", "cpu list for each gateway")
+	flag.StringVar(&c.BeTaskset, "be-taskset", "", "cpu list for each backend")
+	flag.StringVar(&c.GwArgs, "gw-args", "", "extra gateway args (space separated)")
+	flag.StringVar(&c.RestartTarget, "restart-target", "server", "what -restarts acts on: server | backend | gateway | pool:NAME")
+	flag.StringVar(&c.RestartMode, "restart-mode", "term", "term (SIGTERM, drain) | kill (SIGKILL)")
 	flag.BoolVar(&c.Attach, "attach", false, "do not spawn the server")
 	flag.BoolVar(&c.GCTrace, "gctrace", false, "start the server with GODEBUG=gctrace=1 (needed for the in-mark share in report.py)")
 	knee := flag.Bool("knee", false, "preset: -steps 4000:50:150s:160,4000:50:150s:320 (about 30k then 60k requests/s; implies -gctrace and -restarts 0)")
@@ -173,7 +185,17 @@ func (g *gen) since() float64 { return time.Since(g.start).Seconds() }
 
 func (g *gen) run() {
 	c := g.cfg
-	if !c.Attach {
+	switch {
+	case c.Gateways > 0:
+		t, err := newTopology(g)
+		if err != nil {
+			log.Fatal(err)
+		}
+		g.topo = t
+		if err := t.startAll(); err != nil {
+			log.Fatal(err)
+		}
+	case !c.Attach:
 		g.srv = newServer(g)
 		if err := g.srv.start(); err != nil {
 			log.Fatal(err)
@@ -252,7 +274,7 @@ func (g *gen) run() {
 			})
 		}
 		prevN = s.N
-		if si == 0 && c.Restarts > 0 && g.srv != nil {
+		if si == 0 && c.Restarts > 0 && (g.srv != nil || g.topo != nil) {
 			win := s.Dur - ramp
 			for k := 1; k <= c.Restarts; k++ {
 				at := ramp + win*time.Duration(k)/time.Duration(c.Restarts+1)

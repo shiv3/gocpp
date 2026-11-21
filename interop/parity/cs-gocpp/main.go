@@ -18,15 +18,21 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+	linkgrpc "github.com/shiv3/gocpp/addons/link-grpc"
+	registryredis "github.com/shiv3/gocpp/addons/registry-redis"
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/csms"
+	"github.com/shiv3/gocpp/gateway"
 	"github.com/shiv3/gocpp/interop/parity/common"
 	v16 "github.com/shiv3/gocpp/v16"
 	v16h "github.com/shiv3/gocpp/v16/handlers"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
 	"github.com/shiv3/gocpp/v16/profiles"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -36,6 +42,11 @@ func main() {
 	schemaMode := flag.String("schema", "lenient", "schema validation mode: lenient|strict|tolerant|off")
 	compat := flag.Bool("compat", false, "enable csms.WithOCPPGoCompat() (implies lenient schema)")
 	lite := flag.Bool("lite", false, "load-test mode: keep no event history, only counters (see /control/count)")
+	mode := flag.String("mode", "embedded", "embedded | backend (processing tier behind gocpp-gateway; -listen then serves only /control)")
+	gateways := flag.String("gateways", "", "backend mode: comma separated gateway link addresses (host:port)")
+	redisAddr := flag.String("redis", "", "backend mode: session registry (Redis) address")
+	pool := flag.String("pool", "", "backend mode: backend pool name")
+	beID := flag.String("id", "", "backend mode: backend id")
 	pprofAddr := flag.String("pprof", "", "serve net/http/pprof on this address, e.g. 127.0.0.1:6060")
 	handlerPool := flag.Int("handler-pool", 0, "run inbound handlers on N resident workers (csms.WithHandlerPool); 0 = goroutine per message")
 	outboundValidation := flag.Bool("outbound-validation", true, "validate payloads produced by local handlers (csms.WithOutboundValidation)")
@@ -110,6 +121,16 @@ func main() {
 	default:
 		log.Fatalf("unknown -schema %q", *schemaMode)
 	}
+	var link *linkgrpc.Backend
+	if *mode == "backend" {
+		link = linkgrpc.NewBackend(linkgrpc.StaticTargets(strings.Split(*gateways, ",")...),
+			linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
+			linkgrpc.WithResolveInterval(500*time.Millisecond), linkgrpc.WithDrainTimeout(30*time.Second))
+		opts = append(opts, csms.WithGatewayLink(link), csms.WithBackendInfo(gateway.BackendInfo{ID: *beID, Pool: *pool, Version: "loadtest"}))
+		if *redisAddr != "" {
+			opts = append(opts, csms.WithSessionRegistry(registryredis.New(redis.NewClient(&redis.Options{Addr: *redisAddr}))))
+		}
+	}
 	srv := csms.NewServer(opts...)
 	if err := v16h.RegisterCSMS(srv, &handler{rec: rec}); err != nil {
 		log.Fatal(err)
@@ -119,6 +140,22 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/control/", common.Control(rec, be, *callTimeout))
 	mux.Handle("/ready", srv.ReadyHandler())
+	if *mode == "backend" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+		defer stop()
+		go func() {
+			// SIGTERM: drain the link (Nack new work, finish what is in flight).
+			<-ctx.Done()
+			time.Sleep(50 * time.Millisecond)
+		}()
+		hs := &http.Server{Addr: *listen, Handler: mux}
+		go func() { log.Println(hs.ListenAndServe()) }()
+		fmt.Fprintf(os.Stderr, "cs-gocpp backend (pool=%q) control on %s, gateways %s\n", *pool, *listen, *gateways)
+		if err := srv.ServeGateway(ctx); err != nil {
+			log.Println("drain:", err)
+		}
+		return
+	}
 	mux.Handle("/", srv.Handler())
 	fmt.Fprintf(os.Stderr, "cs-gocpp listening on %s (schema=%s)\n", *listen, *schemaMode)
 	if *drainWindow > 0 {
@@ -326,8 +363,8 @@ func (b *backend) Call(ctx context.Context, cpID, action string, payload json.Ra
 	if !ok {
 		return nil, &common.KindedError{Kind: common.KindInvalid, Err: fmt.Errorf("unsupported action %q", action)}
 	}
-	c, ok := b.srv.Get(cpID)
-	if !ok {
+	c, err := b.srv.Lookup(ctx, cpID)
+	if err != nil {
 		return nil, &common.KindedError{Kind: common.KindNotConnected, Err: errors.New("charge point not connected")}
 	}
 	out, err := fn(ctx, c, payload)

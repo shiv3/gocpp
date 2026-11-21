@@ -139,9 +139,30 @@ func (g *gen) restart(k int) {
 	g.met.restartActive.Store(true)
 	killAt := time.Now()
 	g.events.add("restart_kill", fmt.Sprintf("k=%d pre_up=%d", k, pre))
-	exit := g.srv.stop(syscall.SIGTERM)
+	var exit time.Duration
+	var tp *proc
+	sig := syscall.SIGTERM
+	if g.cfg.RestartMode == "kill" {
+		sig = syscall.SIGKILL
+	}
+	if g.topo != nil && g.cfg.RestartTarget != "server" {
+		tp = g.topo.target()
+		g.events.add("restart_target", tp.name)
+		exit = g.topo.stopProc(tp, sig)
+	} else if g.topo != nil {
+		tp = g.topo.bes[0]
+		exit = g.topo.stopProc(tp, sig)
+	} else {
+		exit = g.srv.stop(sig)
+	}
 	time.Sleep(g.cfg.RestartGap)
-	if err := g.srv.start(); err != nil {
+	var err error
+	if tp != nil {
+		err = g.topo.startProc(tp)
+	} else {
+		err = g.srv.start()
+	}
+	if err != nil {
 		g.events.add("restart_error", err.Error())
 		return
 	}
