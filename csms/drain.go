@@ -299,12 +299,20 @@ func (s *Server) AdmissionStats() AdmissionStats {
 // Experimental: this API may change before v1.0.
 func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 	partial := opts.partial()
+	// drainMu makes "no drain is running, so clear the flags" in Undrain and
+	// "claim the drain, set the flags" here one step each: otherwise an Undrain
+	// that saw no drain could clear the flags of one that started right after.
+	s.drainMu.Lock()
 	if !s.drainActive.CompareAndSwap(false, true) {
+		s.drainMu.Unlock()
 		return ErrDrainInProgress
 	}
 	defer s.drainActive.Store(false)
 	if !partial {
 		s.draining.Store(true)
+		if s.sessions != nil {
+			s.sessions.draining.Store(true)
+		}
 	} else {
 		s.partialDrain.Store(true)
 		defer s.partialDrain.Store(false)
@@ -313,6 +321,7 @@ func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 			defer s.draining.Store(false)
 		}
 	}
+	s.drainMu.Unlock()
 	conns := s.selectSessions(opts)
 	opts = opts.withDefaults(len(conns))
 	if !partial || opts.RefuseDuring {
@@ -329,7 +338,6 @@ func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 	s.cfg.dispatcher.Logger.Info("csms: drain started", "sessions", len(targets), "partial", partial,
 		"window", opts.Window, "rate_per_s", opts.Rate)
 	if s.sessions != nil && !partial {
-		s.sessions.draining.Store(true)
 		s.sessions.heartbeat(ctx)
 	}
 	err := runDrain(ctx, targets, opts, s.drainSt)
@@ -346,15 +354,21 @@ func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 //
 // Experimental: this API may change before v1.0.
 func (s *Server) Undrain(ctx context.Context) error {
+	s.drainMu.Lock()
 	if s.drainActive.Load() {
+		s.drainMu.Unlock()
 		return ErrDrainInProgress
 	}
 	if s.stopping.Load() || s.ctx.Err() != nil {
+		s.drainMu.Unlock()
 		return nil
 	}
 	s.draining.Store(false)
 	if s.sessions != nil {
 		s.sessions.draining.Store(false)
+	}
+	s.drainMu.Unlock()
+	if s.sessions != nil {
 		s.sessions.heartbeat(ctx)
 	}
 	return nil

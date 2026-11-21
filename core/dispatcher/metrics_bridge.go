@@ -30,6 +30,8 @@ func MetricsHookFrom(m observability.Metrics, version string) MetricsHook {
 // inbound action for which known returns false is reported as OtherAction. Use
 // the set of actions of the version plus the registered handlers. Outbound
 // actions are chosen by the server's own code and pass through unchanged.
+//
+// Experimental: this API may change before v1.0.
 func MetricsHookBounded(m observability.Metrics, version string, known func(action string) bool) MetricsHook {
 	return &metricsBridge{m: m, version: version, known: known}
 }

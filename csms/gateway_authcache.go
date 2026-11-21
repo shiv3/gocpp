@@ -53,6 +53,16 @@ type authCache struct {
 
 	mu sync.Mutex
 	m  map[authKey]authEntry
+	// gen counts invalidations. A decision fetched before one must not be
+	// stored after it: it may be the very credential that was revoked.
+	gen uint64
+}
+
+// generation returns the invalidation count; pass it to put.
+func (c *authCache) generation() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen
 }
 
 func newAuthCache(cfg AuthCacheConfig) *authCache {
@@ -101,9 +111,14 @@ func (c *authCache) stale(k authKey) (gateway.ConnectReply, bool) {
 	return c.get(k, c.cfg.TTL+c.cfg.StaleIfError)
 }
 
-func (c *authCache) put(k authKey, cpID string, rep gateway.ConnectReply) {
+// put stores a decision fetched while the cache was at generation gen; it is
+// dropped when an invalidation happened since.
+func (c *authCache) put(k authKey, cpID string, rep gateway.ConnectReply, gen uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if gen != c.gen {
+		return
+	}
 	now := c.now()
 	if _, ok := c.m[k]; !ok && len(c.m) >= c.cfg.MaxEntries {
 		limit := c.cfg.TTL + c.cfg.StaleIfError
@@ -131,6 +146,7 @@ func (c *authCache) drop(k authKey) {
 func (c *authCache) invalidate(cpID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.gen++
 	for k, e := range c.m {
 		if cpID == "" || e.cpID == cpID {
 			delete(c.m, k)

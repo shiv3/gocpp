@@ -97,8 +97,13 @@ is byte-identical to embedded mode (`TestGateway_WireIdenticalToEmbedded`).
   epoch).
 - **Session events.** `WithOnConnect` / `WithOnDisconnect` are driven by session
   events the gateway sends to one backend. Delivery is at least once and the
-  backend ignores a close that is older than the newest session it knows, so the
-  old session's disconnect is always reported before the new session's connect.
+  backend ignores a close that is older than the newest session it knows (and,
+  with a session registry, one the registry shows as superseded), so the old
+  session's disconnect normally precedes the new session's connect. Without a
+  registry a backend that never saw the newer session cannot tell a late close
+  from a legitimate one, so an old session's disconnect can arrive after the new
+  session's connect: ignore a disconnect whose epoch
+  (`conn.GatewaySession().Epoch`) is older than your current session's.
   Make the callbacks idempotent per `(cpID, epoch)`.
 - **No backend.** An inbound CALL is held up to the link's wait (default 20 s)
   for a backend to attach, then the charger gets an `InternalError` CALLERROR,

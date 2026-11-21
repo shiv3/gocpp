@@ -147,7 +147,10 @@ func (s *Server) abandonClaim(cpID string, sess storage.Session, prev *storage.S
 		if hs := cur.holderSession(); hs.Epoch != 0 {
 			restore = &hs
 		}
-	case prev != nil && prev.Epoch != 0 && prev.Boot != "":
+	case prev != nil && prev.Epoch != 0 && prev.Boot != "" && prev.GatewayID != s.sessions.cfg.GatewayID:
+		// Only another gateway's record is put back. A record of this gateway
+		// without a live connection here is dead; restoring it would route to
+		// a socket that no longer exists.
 		restore = prev
 	}
 	if restore == nil {

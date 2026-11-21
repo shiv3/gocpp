@@ -67,6 +67,7 @@ var standardActions = map[string]struct{}{
 	"NotifyEVChargingSchedule":          {},
 	"NotifyEvent":                       {},
 	"NotifyMonitoringReport":            {},
+	"NotifyPeriodicEventStream":         {},
 	"NotifyPriorityCharging":            {},
 	"NotifyReport":                      {},
 	"NotifySettlement":                  {},
@@ -111,6 +112,8 @@ var standardActions = map[string]struct{}{
 	"UsePriorityCharging":               {},
 	"VatNumberValidation":               {},
 }
+
+// The set is checked against the generated profiles by TestStandardActionsMatchGeneratedProfiles.
 
 // LabelAction returns action when it is a standard OCPP action, else OtherAction.
 func LabelAction(action string) string {

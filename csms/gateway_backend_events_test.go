@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/shiv3/gocpp/core/auth"
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
@@ -360,4 +361,143 @@ func TestGateway_FullGatewayDoesNotAskBackendToAuthenticate(t *testing.T) {
 	_, st = dial("CP_2")
 	require.Equal(t, 503, st)
 	require.EqualValues(t, 1, decisions.Load(), "the backend authenticated a charger the gateway had no slot for")
+}
+
+// With several backends the old gateway's SessionClosed can reach a backend
+// after the new session's SessionOpened was announced elsewhere (review N1). A
+// backend that never cached the charger consults the registry and stays quiet.
+func TestGateway_LateClosedOfOldSessionOnBackendWithoutCacheSuppressedByRegistry(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ctx := context.Background()
+	reg := memory.NewSessionRegistry()
+	for _, gw := range []string{"gw-A", "gw-B"} {
+		require.NoError(t, reg.Heartbeat(ctx, storage.GatewayInfo{ID: gw, Boot: "b", State: storage.GatewayServing}, time.Hour))
+	}
+	var epoch uint64
+	for i := 0; i < 6; i++ { // epochs 1..6; 5 is gw-A, 6 is gw-B
+		gw := "gw-A"
+		if i%2 == 1 {
+			gw = "gw-B"
+		}
+		epoch, _, _ = reg.Claim(ctx, storage.Session{CPID: "CP_1", GatewayID: gw, Boot: "b"})
+	}
+	require.EqualValues(t, 6, epoch)
+
+	var xDisc, yDisc, xConn atomic.Int32
+	mk := func(conn, disc *atomic.Int32) *csms.Server {
+		return csms.NewServer(csms.WithGatewayLink(inproc.New().Backend()), csms.WithSubProtocols("ocpp1.6"),
+			csms.WithSessionRegistry(reg),
+			csms.WithOnConnect(func(*csms.Conn) { conn.Add(1) }),
+			csms.WithOnDisconnect(func(*csms.Conn, error) { disc.Add(1) }))
+	}
+	var yConn atomic.Int32
+	x, y := mk(&xConn, &xDisc), mk(&yConn, &yDisc)
+	defer x.Close()
+	defer y.Close()
+	require.NoError(t, x.Upstream().Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-A", 5)))
+	require.NoError(t, x.Upstream().Notify(ctx, sessEnv(gateway.KindSessionClosed, "gw-A", 5)))
+	require.NoError(t, x.Upstream().Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-B", 6)))
+	require.EqualValues(t, 1, xDisc.Load())
+	require.NoError(t, y.Upstream().Notify(ctx, sessEnv(gateway.KindSessionClosed, "gw-A", 5)))
+	require.EqualValues(t, 0, yDisc.Load(), "old session's disconnect must not fire after the new session connected")
+
+	// Without anything newer in the registry the close is still reported.
+	require.NoError(t, y.Upstream().Notify(ctx, sessEnv(gateway.KindSessionClosed, "gw-B", 6)))
+	require.EqualValues(t, 1, yDisc.Load())
+}
+
+// controlSpy records the Control requests a backend sends.
+type controlSpy struct {
+	gateway.BackendLink
+	n atomic.Int32
+}
+
+func (c *controlSpy) Control(ctx context.Context, req gateway.ControlRequest) error {
+	c.n.Add(1)
+	return c.BackendLink.Control(ctx, req)
+}
+
+// The old gateway is told to close the replaced socket only when the registry
+// ranks the new session higher: epoch 0 (unknown) or an equal epoch proves
+// nothing (review N4).
+func TestGateway_ReplacedControlOnlyForHigherEpoch(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ctx := context.Background()
+	spy := &controlSpy{BackendLink: inproc.New().Backend()}
+	be := csms.NewServer(csms.WithGatewayLink(spy), csms.WithSubProtocols("ocpp1.6"),
+		csms.WithSessionRegistry(memory.NewSessionRegistry()))
+	defer be.Close()
+	up := be.Upstream()
+	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-A", 5)))
+	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-B", 0)))
+	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-C", 0)))
+	time.Sleep(100 * time.Millisecond)
+	require.EqualValues(t, 0, spy.n.Load(), "no Control when the new epoch is unknown")
+	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-D", 9)))
+	time.Sleep(100 * time.Millisecond)
+	require.EqualValues(t, 0, spy.n.Load(), "no Control when the replaced session's epoch is unknown")
+	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-E", 10)))
+	require.Eventually(t, func() bool { return spy.n.Load() == 1 }, time.Second, 5*time.Millisecond)
+}
+
+// A backend that cached a higher epoch before the registry lost its data (epoch
+// counters restart at 1) believes the new session is stale and would skip
+// OnConnect forever. With a registry, the registry's record of the session wins
+// (review N11).
+func TestGateway_RegistryDataLossDoesNotSuppressConnect(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ctx := context.Background()
+	reg := memory.NewSessionRegistry()
+	require.NoError(t, reg.Heartbeat(ctx, storage.GatewayInfo{ID: "gw-B", Boot: "b", State: storage.GatewayServing}, time.Hour))
+	var connects atomic.Int32
+	be := csms.NewServer(csms.WithGatewayLink(inproc.New().Backend()), csms.WithSubProtocols("ocpp1.6"),
+		csms.WithSessionRegistry(reg),
+		csms.WithOnConnect(func(*csms.Conn) { connects.Add(1) }))
+	defer be.Close()
+	up := be.Upstream()
+	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-A", 9)))
+	require.EqualValues(t, 1, connects.Load())
+	// The registry restarted empty: gw-B's session gets epoch 1.
+	ep, _, err := reg.Claim(ctx, storage.Session{CPID: "CP_1", GatewayID: "gw-B", Boot: "b"})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, ep)
+	require.NoError(t, up.Notify(ctx, sessEnv(gateway.KindSessionOpened, "gw-B", 1)))
+	require.EqualValues(t, 2, connects.Load(), "the registry's session must be announced")
+}
+
+// A connect decision fetched before InvalidateGatewayAuthCache must not be
+// cached after it: it may be the credential that was just revoked (review N9).
+func TestGateway_InFlightConnectDoesNotRecacheAfterInvalidate(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	var revoked atomic.Bool
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	r := newRig(t, []csms.Option{csms.WithGatewayAuthCache(csms.AuthCacheConfig{TTL: time.Hour, StaleIfError: time.Hour})},
+		[]csms.Option{csms.WithAuthenticator(auth.BasicAuth(func(cpID, _ string) (auth.Identity, error) {
+			if !revoked.Load() {
+				entered <- struct{}{}
+				<-release // the decision (allow) is made, its delivery is slow
+				return auth.Identity{CPID: cpID}, nil
+			}
+			return auth.Identity{}, auth.ErrUnauthorized
+		}))})
+	defer r.close()
+	r.serve()
+	dial := func() int {
+		h := http.Header{}
+		h.Set("Authorization", "Basic "+basic("CP_1", "pw"))
+		c, resp, err := websocket.Dial(context.Background(), r.url+"CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}, HTTPHeader: h})
+		if err != nil {
+			return resp.StatusCode
+		}
+		_ = c.CloseNow()
+		return http.StatusSwitchingProtocols
+	}
+	first := make(chan int, 1)
+	go func() { first <- dial() }()
+	<-entered
+	revoked.Store(true)
+	require.NoError(t, r.be.InvalidateGatewayAuthCache(context.Background(), "CP_1"))
+	close(release)
+	require.Equal(t, 101, <-first)
+	require.Equal(t, 401, dial(), "the pre-invalidation decision was cached after the invalidation")
 }

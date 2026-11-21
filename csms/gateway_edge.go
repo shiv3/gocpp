@@ -165,7 +165,9 @@ func (e *edge) connect(r *http.Request, cpID string) (rep gateway.ConnectReply, 
 	}
 	req.Route = e.route(gateway.KindCall, cpID, "$connect", "", nil)
 	var key authKey
+	var gen uint64
 	if e.auth != nil {
+		gen = e.auth.generation()
 		key = authKeyOf(req)
 		if cached, ok := e.auth.fresh(key); ok {
 			return cached, 0, ""
@@ -186,7 +188,7 @@ func (e *edge) connect(r *http.Request, cpID string) (rep gateway.ConnectReply, 
 	}
 	if e.auth != nil {
 		if rep.Reject == nil {
-			e.auth.put(key, cpID, rep)
+			e.auth.put(key, cpID, rep, gen)
 		} else {
 			e.auth.drop(key)
 		}

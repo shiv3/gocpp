@@ -250,6 +250,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Gateway second-review fixes. Backend: a late `SessionClosed` of an older session no
+  longer fires `OnDisconnect` after the newer session's connect when a session registry
+  shows the newer session (without a registry apps must ignore a disconnect older than the
+  current session's epoch); `Control(Replaced)` is sent only when the new epoch is higher;
+  a registry that lost its data and restarted its epochs no longer makes backends skip
+  `OnConnect`, and cache reads no longer keep stale sessions from the idle sweep. Server:
+  reconcile no longer closes a live socket because of the process's own in-flight claim;
+  a failed upgrade no longer restores the own gateway's dead record; `Undrain` and the start
+  of `Drain` are atomic. Gateway: a connect decision fetched before
+  `InvalidateGatewayAuthCache` is not cached after it; `NotifyPeriodicEventStream` is a
+  standard action (checked against the generated profiles); the admin client reuses its
+  HTTP transport.
 - Metrics: the `action` label of `gocpp_calls_total`, `gocpp_call_duration_seconds`, the
   schema-failure series was the action name the charge
   point sent, so a client inventing names could create unbounded series. Inbound
