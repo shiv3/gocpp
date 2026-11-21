@@ -212,6 +212,18 @@ message DrainAck {}
 // Cancel is a hint that the gateway no longer needs the answer to request id.
 message Cancel {}
 
+// BackendBatch carries several frames in one stream message, in order. It is
+// only sent when the "batch" capability was negotiated: frames that were
+// queued together are written together, which saves per-message and per-write
+// cost under load and changes nothing at low rate (a lone frame is sent as is).
+message BackendBatch {
+  repeated BackendFrame frames = 1;
+}
+
+message GatewayBatch {
+  repeated GatewayFrame frames = 1;
+}
+
 message BackendFrame {
   uint64 id = 1; // correlation id: a request's id, or the id of the request this answers
   oneof body {
@@ -224,6 +236,7 @@ message BackendFrame {
     ControlRequest control = 8;
     Drain drain = 9;
     LocateRequest locate = 10;
+    BackendBatch batch = 21; // only when both ends advertise the "batch" capability
     Unsupported unsupported = 20;
   }
 }
@@ -241,6 +254,7 @@ message GatewayFrame {
     Cancel cancel = 9;
     DrainAck drain_ack = 10;
     LocateReply locate_reply = 11;
+    GatewayBatch batch = 21; // only when both ends advertise the "batch" capability
     Unsupported unsupported = 20;
   }
 }

@@ -463,6 +463,7 @@ const (
 	CapCancel     = "cancel"
 	CapActionList = "actions.list"
 	CapLocate     = "locate"
+	CapBatch      = "batch" // several frames per stream message (link-grpc)
 )
 
 // BackendInfo is what a backend announces when it attaches to a link.

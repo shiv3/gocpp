@@ -485,3 +485,59 @@ func TestLink_UnhandledActionInRoutedPoolFallsBack(t *testing.T) {
 	require.EqualValues(t, 0, canary.Load())
 	require.Equal(t, uint64(5), tp.link.Unhandled()[[2]string{"canary", "BootNotification"}])
 }
+
+// A stub that negotiated "batch" may send BackendBatch; the gateway answers each
+// frame (singly or in a GatewayBatch). Without the capability a batch is just an
+// unknown body.
+func TestLink_BatchNegotiation(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	tp := newTopology(t)
+	defer tp.close()
+	cc, err := grpc.NewClient(tp.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { _ = cc.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	attach := func(caps ...string) linkpb.Link_AttachClient {
+		st, err := linkpb.NewLinkClient(cc).Attach(ctx)
+		require.NoError(t, err)
+		require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{
+			Backend: &linkpb.BackendInfo{Id: "stub", Proto: &linkpb.ProtoRange{Min: 1, Max: 1}, Caps: caps},
+		}}}))
+		f, err := st.Recv()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, f.GetHelloAck().GetProto())
+		return st
+	}
+	ctl := func(id uint64) *linkpb.BackendFrame {
+		return &linkpb.BackendFrame{Id: id, Body: &linkpb.BackendFrame_Control{Control: &linkpb.ControlRequest{
+			Target: &linkpb.SessionRef{Cpid: "CP_1", GatewayId: "gw-1"}, Op: 99}}}
+	}
+
+	st := attach(gateway.CapBatch)
+	require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Batch{Batch: &linkpb.BackendBatch{
+		Frames: []*linkpb.BackendFrame{ctl(1), ctl(2)}}}}))
+	seen := map[uint64]bool{}
+	for len(seen) < 2 {
+		f, err := st.Recv()
+		require.NoError(t, err)
+		frames := []*linkpb.GatewayFrame{f}
+		if b := f.GetBatch(); b != nil {
+			frames = b.Frames
+		}
+		for _, x := range frames {
+			require.Equal(t, "unsupported", x.GetControlAck().GetError().GetSentinel())
+			seen[x.Id] = true
+		}
+	}
+	_ = st.CloseSend()
+
+	old := attach() // no batch capability: a batch is an unknown body
+	require.NoError(t, old.Send(&linkpb.BackendFrame{Id: 7, Body: &linkpb.BackendFrame_Batch{Batch: &linkpb.BackendBatch{
+		Frames: []*linkpb.BackendFrame{ctl(1)}}}}))
+	f, err := old.Recv()
+	require.NoError(t, err)
+	require.EqualValues(t, 7, f.Id)
+	require.NotNil(t, f.GetUnsupported())
+	_ = old.CloseSend()
+}

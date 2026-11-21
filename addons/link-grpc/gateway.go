@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,7 +22,7 @@ var SupportedProto = gateway.ProtoRange{Min: 1, Max: 1}
 
 // supportedCaps are the capabilities this build advertises (both ends).
 var supportedCaps = []string{
-	gateway.CapNack, gateway.CapOrphan, gateway.CapAttrsSet, gateway.CapRouteV1, gateway.CapSend21, gateway.CapCancel, gateway.CapLocate,
+	gateway.CapNack, gateway.CapOrphan, gateway.CapAttrsSet, gateway.CapRouteV1, gateway.CapSend21, gateway.CapCancel, gateway.CapLocate, gateway.CapBatch,
 }
 
 const (
@@ -223,6 +224,7 @@ func (s *service) Attach(stream linkpb.Link_AttachServer) error {
 		info.ID = fmt.Sprintf("stream-%p", p)
 		p.info.ID = info.ID
 	}
+	p.initSend()
 	p.member = g.pools.Add(p.info, p)
 	defer func() {
 		g.pools.Remove(p.member)
@@ -240,15 +242,20 @@ type peer struct {
 	proto  uint32
 	member *gateway.Member
 
-	sendMu sync.Mutex
-	unary  *pendingSet[*linkpb.BackendFrame]
-	sem    chan struct{}
+	out   sendQueue[*linkpb.GatewayFrame]
+	unary *pendingSet[*linkpb.BackendFrame]
+	sem   chan struct{}
 }
 
-func (p *peer) send(f *linkpb.GatewayFrame) error {
-	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
-	return p.stream.Send(f)
+func (p *peer) send(f *linkpb.GatewayFrame) error { return p.out.push(f) }
+
+func (p *peer) initSend() {
+	p.out.write = p.stream.Send
+	if slices.Contains(p.info.Caps, gateway.CapBatch) {
+		p.out.batch = func(fs []*linkpb.GatewayFrame) error {
+			return p.stream.Send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Batch{Batch: &linkpb.GatewayBatch{Frames: fs}}})
+		}
+	}
 }
 
 func (p *peer) readLoop() error {
@@ -257,36 +264,46 @@ func (p *peer) readLoop() error {
 		if err != nil {
 			return nil // the stream ended; deferred cleanup fails pending requests
 		}
-		switch b := f.Body.(type) {
-		case *linkpb.BackendFrame_Reply, *linkpb.BackendFrame_ConnectReply, *linkpb.BackendFrame_NotifyAck, *linkpb.BackendFrame_Unsupported:
-			if u, ok := b.(*linkpb.BackendFrame_Unsupported); ok {
-				p.g.metrics.Unsupported("sent", u.Unsupported.GetWhat())
+		if bb, ok := f.Body.(*linkpb.BackendFrame_Batch); ok && p.out.batch != nil {
+			for _, sub := range bb.Batch.GetFrames() {
+				p.dispatch(sub)
 			}
-			p.unary.resolve(f.Id, f)
-		case *linkpb.BackendFrame_Call:
-			go p.serveCall(f.Id, b.Call, false)
-		case *linkpb.BackendFrame_Send:
-			go p.serveCall(f.Id, b.Send, true)
-		case *linkpb.BackendFrame_Control:
-			go p.serveControl(f.Id, b.Control)
-		case *linkpb.BackendFrame_Locate:
-			go p.serveLocate(f.Id, b.Locate)
-		case *linkpb.BackendFrame_Drain:
-			// No new work; the stream stays up until the backend closes it.
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-				defer cancel()
-				if err := p.g.pools.Drain(ctx, p.member); err == nil {
-					_ = p.send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_DrainAck{DrainAck: &linkpb.DrainAck{}}})
-				}
-			}()
-		default:
-			// Unknown body (a newer peer) or a repeated Hello: an answer, not a failure.
-			p.g.metrics.Unsupported("recv", fmt.Sprintf("%T", b))
-			_ = p.send(&linkpb.GatewayFrame{Id: f.Id, Body: &linkpb.GatewayFrame_Unsupported{
-				Unsupported: &linkpb.Unsupported{What: fmt.Sprintf("%T", b)},
-			}})
+			continue
 		}
+		p.dispatch(f)
+	}
+}
+
+func (p *peer) dispatch(f *linkpb.BackendFrame) {
+	switch b := f.Body.(type) {
+	case *linkpb.BackendFrame_Reply, *linkpb.BackendFrame_ConnectReply, *linkpb.BackendFrame_NotifyAck, *linkpb.BackendFrame_Unsupported:
+		if u, ok := b.(*linkpb.BackendFrame_Unsupported); ok {
+			p.g.metrics.Unsupported("sent", u.Unsupported.GetWhat())
+		}
+		p.unary.resolve(f.Id, f)
+	case *linkpb.BackendFrame_Call:
+		go p.serveCall(f.Id, b.Call, false)
+	case *linkpb.BackendFrame_Send:
+		go p.serveCall(f.Id, b.Send, true)
+	case *linkpb.BackendFrame_Control:
+		go p.serveControl(f.Id, b.Control)
+	case *linkpb.BackendFrame_Locate:
+		go p.serveLocate(f.Id, b.Locate)
+	case *linkpb.BackendFrame_Drain:
+		// No new work; the stream stays up until the backend closes it.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			if err := p.g.pools.Drain(ctx, p.member); err == nil {
+				_ = p.send(&linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_DrainAck{DrainAck: &linkpb.DrainAck{}}})
+			}
+		}()
+	default:
+		// Unknown body (a newer peer) or a repeated Hello: an answer, not a failure.
+		p.g.metrics.Unsupported("recv", fmt.Sprintf("%T", b))
+		_ = p.send(&linkpb.GatewayFrame{Id: f.Id, Body: &linkpb.GatewayFrame_Unsupported{
+			Unsupported: &linkpb.Unsupported{What: fmt.Sprintf("%T", b)},
+		}})
 	}
 }
 
