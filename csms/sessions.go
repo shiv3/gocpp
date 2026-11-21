@@ -308,6 +308,11 @@ func (m *sessionManager) reconcileOne(ctx context.Context, h sessionHolder, live
 	switch {
 	case s.Epoch == 0:
 		return m.reclaim(ctx, h, s)
+	case haveLive && rec.Epoch > s.Epoch && rec.GatewayID == s.GatewayID && rec.Boot == s.Boot:
+		// A newer record of this very process: a claim whose upgrade is still
+		// running (or failed and is being abandoned, which puts this socket's
+		// record back). Never a reason to close a live socket of ours.
+		return true
 	case haveLive && (rec.Epoch > s.Epoch || (rec.Epoch == s.Epoch && (rec.GatewayID != s.GatewayID || rec.Boot != s.Boot))):
 		m.displace(h, s, rec)
 		return true
@@ -330,6 +335,9 @@ func (m *sessionManager) reconcileOne(ctx context.Context, h sessionHolder, live
 		return true
 	}
 	if found {
+		if cur.Epoch > s.Epoch && cur.GatewayID == s.GatewayID && cur.Boot == s.Boot {
+			return true // see reconcileOne: an in-flight claim of this process
+		}
 		m.displace(h, s, cur)
 		return true
 	}
