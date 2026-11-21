@@ -262,6 +262,11 @@ func (e *edge) notify(env gateway.Envelope) {
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(e.s.ctx), timeout)
 	defer cancel()
+	// A server that starts closing while this notify waits for a backend (an
+	// empty pool holds for seconds) must not leave the goroutine behind: give the
+	// delivery the closing bound from that moment.
+	stop := context.AfterFunc(e.s.ctx, func() { time.AfterFunc(edgeNotifyClosing, cancel) })
+	defer stop()
 	if err := e.link.Notify(ctx, env); err != nil {
 		e.s.cfg.dispatcher.Logger.Warn("gateway: session event not delivered",
 			"cp_id", env.Session.CPID, "kind", env.Kind.String(), "error", err)

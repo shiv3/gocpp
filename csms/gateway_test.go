@@ -793,3 +793,46 @@ func TestGateway_RoutePolicyEngineWireIdentical(t *testing.T) {
 	require.Zero(t, served[0].Load())
 	require.NotZero(t, served[1].Load(), "CP_1 is in the 50% sample: the canary served")
 }
+
+// Session events are delivered by Notify, at-least-once and without a total
+// order. The consumer must still run the application's hooks in the order the
+// epochs imply: the replaced session's disconnect before the new session's
+// connect, even when SessionClosed(old) and SessionOpened(new) arrive
+// concurrently.
+func TestGateway_ConcurrentSessionEventsKeepHookOrder(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	for round := 0; round < 300; round++ {
+		var mu sync.Mutex
+		var evs []string
+		rec := func(s string) { mu.Lock(); evs = append(evs, s); mu.Unlock() }
+		hub := inproc.New()
+		be := csms.NewServer(csms.WithGatewayLink(hub.Backend()), csms.WithSubProtocols("ocpp1.6"),
+			csms.WithOnConnect(func(c *csms.Conn) { ref, _ := c.GatewaySession(); rec("connect"); _ = ref }),
+			csms.WithOnDisconnect(func(c *csms.Conn, _ error) { rec("disconnect") }))
+		up := be.Upstream()
+		ref := func(epoch uint64) gateway.SessionRef {
+			return gateway.SessionRef{CPID: "CP_1", GatewayID: "gw-1", Boot: "b", Epoch: epoch}
+		}
+		env := func(k gateway.Kind, epoch uint64) gateway.Envelope {
+			e := gateway.Envelope{Proto: gateway.ProtoVersion, Session: ref(epoch), Version: ocppj.V16, Kind: k, Attempt: 1}
+			if k == gateway.KindSessionOpened {
+				e.Open = &gateway.SessionInfo{}
+			}
+			if k == gateway.KindSessionClosed {
+				e.Close = &gateway.CloseInfo{Cause: gateway.SentinelName(ocppj.ErrConnReplaced)}
+			}
+			return e
+		}
+		ctx := context.Background()
+		require.NoError(t, up.Notify(ctx, env(gateway.KindSessionOpened, 1)))
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); _ = up.Notify(ctx, env(gateway.KindSessionClosed, 1)) }()
+		go func() { defer wg.Done(); _ = up.Notify(ctx, env(gateway.KindSessionOpened, 2)) }()
+		wg.Wait()
+		mu.Lock()
+		require.Equal(t, []string{"connect", "disconnect", "connect"}, evs, "round %d", round)
+		mu.Unlock()
+		be.Close()
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -174,11 +175,36 @@ func (p *proc) count(sub string) int {
 	return strings.Count(p.out.String(), sub)
 }
 
+var (
+	portMu     sync.Mutex
+	portIssued = map[int]bool{}
+)
+
+// freeAddr returns a loopback address that nothing listens on and that this
+// process has not handed out before. Ports come from below the kernel's
+// ephemeral range (32768+): a port taken from ":0" is released again before the
+// child process binds it, and in that window an outgoing connection of the test
+// (a charger, the broker client, a proxy) can be given the same ephemeral port as
+// its source, which made the child fail with "address already in use".
 func freeAddr(t *testing.T) string {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer func() { _ = l.Close() }()
-	return l.Addr().String()
+	t.Helper()
+	portMu.Lock()
+	defer portMu.Unlock()
+	for i := 0; i < 200; i++ {
+		port := 20000 + rand.IntN(12000)
+		if portIssued[port] {
+			continue
+		}
+		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		_ = l.Close()
+		portIssued[port] = true
+		return l.Addr().String()
+	}
+	t.Fatal("no free port")
+	return ""
 }
 
 type gw struct {
