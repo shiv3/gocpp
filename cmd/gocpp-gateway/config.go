@@ -19,6 +19,12 @@ type config struct {
 	Admin    string // /metrics /healthz /readyz
 	LinkAddr string // gRPC listener backends dial
 
+	Link       string // grpc | nats
+	NATSURL    string // NATS server URL(s) of the NATS link
+	NATSPrefix string // subject prefix of the NATS link
+	NATSCreds  string // optional NATS credentials file
+	NATSAccept time.Duration
+
 	TLSCert, TLSKey, TLSClientCA string
 	TicketSecret                 string
 	LinkTLSCert, LinkTLSKey      string
@@ -83,6 +89,11 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&c.Listen, "listen", env("LISTEN", ":8080"), "WebSocket listen address")
 	fs.StringVar(&c.Admin, "admin", env("ADMIN", ":9100"), "admin listen address (/metrics /healthz /readyz)")
 	fs.StringVar(&c.LinkAddr, "link-listen", env("LINK_LISTEN", ":9090"), "gRPC link listen address (backends dial it)")
+	fs.StringVar(&c.Link, "link", env("LINK", "grpc"), "link transport: grpc (backends dial the gateway) or nats (gateway and backends meet on a NATS server)")
+	fs.StringVar(&c.NATSURL, "nats-url", env("NATS_URL", "nats://127.0.0.1:4222"), "NATS server URL(s), comma separated (--link nats)")
+	fs.StringVar(&c.NATSPrefix, "nats-prefix", env("NATS_PREFIX", "gocpp"), "subject prefix of the NATS link; must match the backends'")
+	fs.StringVar(&c.NATSCreds, "nats-creds", env("NATS_CREDS", ""), "NATS credentials file (--link nats)")
+	fs.DurationVar(&c.NATSAccept, "nats-accept-timeout", envDur("NATS_ACCEPT_TIMEOUT", 5*time.Second), "fail a CALL no backend acknowledged within this long (--link nats)")
 	fs.StringVar(&c.TLSCert, "tls-cert", env("TLS_CERT", ""), "TLS certificate for the WebSocket listener")
 	fs.StringVar(&c.TLSKey, "tls-key", env("TLS_KEY", ""), "TLS key for the WebSocket listener")
 	fs.StringVar(&c.TLSClientCA, "tls-client-ca", env("TLS_CLIENT_CA", ""), "CA that verifies charge point client certificates (Security Profile 3)")
@@ -115,6 +126,9 @@ func parseConfig(args []string) (config, error) {
 	c.Subprotocols = strings.Split(*subs, ",")
 	if (c.TLSCert == "") != (c.TLSKey == "") || (c.LinkTLSCert == "") != (c.LinkTLSKey == "") {
 		return c, fmt.Errorf("certificate and key must be given together")
+	}
+	if c.Link != "grpc" && c.Link != "nats" {
+		return c, fmt.Errorf("--link must be grpc or nats, not %q", c.Link)
 	}
 	if c.ID == "" {
 		return c, fmt.Errorf("--id is required (no hostname)")

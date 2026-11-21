@@ -23,8 +23,10 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	natsd "github.com/nats-io/nats-server/v2/server"
 	"github.com/redis/go-redis/v9"
 	linkgrpc "github.com/shiv3/gocpp/addons/link-grpc"
+	linknats "github.com/shiv3/gocpp/addons/link-nats"
 	registryredis "github.com/shiv3/gocpp/addons/registry-redis"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/cp"
@@ -36,6 +38,59 @@ import (
 )
 
 var binDir string
+
+// linkKind selects the transport under test: GOCPP_CHAOS_LINK=nats runs the whole
+// suite over the NATS link (an embedded nats-server per test), default grpc.
+var linkKind = func() string {
+	if v := os.Getenv("GOCPP_CHAOS_LINK"); v != "" {
+		return v
+	}
+	return "grpc"
+}()
+
+var brokers sync.Map // *testing.T -> *broker
+
+type broker struct {
+	mu   sync.Mutex
+	ns   *natsd.Server
+	addr string
+}
+
+func startBroker(t *testing.T, port int) *natsd.Server {
+	t.Helper()
+	ns, err := natsd.NewServer(&natsd.Options{Host: "127.0.0.1", Port: port, NoLog: true, NoSigs: true})
+	require.NoError(t, err)
+	go ns.Start()
+	require.True(t, ns.ReadyForConnections(10*time.Second))
+	return ns
+}
+
+// restart stops the broker and starts a new one on the same port.
+func (b *broker) restart(t *testing.T, downFor time.Duration) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	port := b.ns.Addr().(*net.TCPAddr).Port
+	b.ns.Shutdown()
+	b.ns.WaitForShutdown()
+	time.Sleep(downFor)
+	b.ns = startBroker(t, port)
+}
+
+// brokerAddr starts (once per test) the embedded NATS server both tiers use in
+// nats mode.
+func brokerOf(t *testing.T) *broker {
+	t.Helper()
+	if b, ok := brokers.Load(t); ok {
+		return b.(*broker)
+	}
+	b := &broker{ns: startBroker(t, -1)}
+	b.addr = b.ns.Addr().String()
+	t.Cleanup(func() { b.mu.Lock(); b.ns.Shutdown(); b.ns.WaitForShutdown(); b.mu.Unlock(); brokers.Delete(t) })
+	brokers.Store(t, b)
+	return b
+}
+
+func brokerAddr(t *testing.T) string { return brokerOf(t).addr }
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "gocpp-chaos")
@@ -124,6 +179,10 @@ type gw struct {
 func startGateway(t *testing.T, id, redisAddr string, extra ...string) *gw {
 	t.Helper()
 	g := &gw{id: id, ws: freeAddr(t), link: freeAddr(t), admin: freeAddr(t)}
+	if linkKind == "nats" {
+		g.link = brokerAddr(t) // every gateway and backend meets on the broker
+		extra = append([]string{"--link", "nats", "--nats-url", "nats://" + g.link, "--nats-accept-timeout", "1500ms"}, extra...)
+	}
 	args := []string{"serve", "--id", id, "--listen", g.ws, "--link-listen", g.link, "--admin", g.admin,
 		"--subprotocols", "ocpp1.6", "--accept-rate", "0", "--upstream-wait", "1s", "--drain-window", "2s",
 		"--lease-ttl", "3s", "--lease-heartbeat", "500ms", "--reconcile-interval", "1s", "--claim-timeout", "500ms",
@@ -150,7 +209,11 @@ func (g *gw) ready() bool { return httpOK("http://" + g.admin + "/readyz") }
 
 func startBackend(t *testing.T, id, redisAddr string, gateways ...string) *proc {
 	t.Helper()
-	b := start(t, "testbackend:"+id, "-id", id, "-gateways", strings.Join(gateways, ","), "-redis", redisAddr)
+	args := []string{"-id", id, "-gateways", strings.Join(gateways, ","), "-redis", redisAddr}
+	if linkKind == "nats" {
+		args = []string{"-id", id, "-link", "nats", "-gateways", "nats://" + gateways[0], "-redis", redisAddr}
+	}
+	b := start(t, "testbackend:"+id, args...)
 	require.Eventually(t, func() bool { return b.count("READY") > 0 }, 10*time.Second, 20*time.Millisecond)
 	return b
 }
@@ -290,8 +353,20 @@ func (c *charger) heartbeat(ctx context.Context) error {
 // caller is an in-process processing-tier server in the caller role: it issues
 // CSMS calls through the same gateways, looking sessions up in the registry.
 func newCaller(t *testing.T, redisAddr string, gateways ...string) *csms.Server {
-	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(gateways...),
-		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())), linkgrpc.WithResolveInterval(100*time.Millisecond))
+	var be gateway.BackendLink
+	var liveGateways func() []string
+	if linkKind == "nats" {
+		nc, err := linknats.Connect("nats://"+gateways[0], "caller")
+		require.NoError(t, err)
+		nb, err := linknats.NewBackend(nc, linknats.WithHelloInterval(500*time.Millisecond))
+		require.NoError(t, err)
+		t.Cleanup(func() { nb.Close(); nc.Close() })
+		be, liveGateways = nb, nb.Gateways
+	} else {
+		gb := linkgrpc.NewBackend(linkgrpc.StaticTargets(gateways...),
+			linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())), linkgrpc.WithResolveInterval(100*time.Millisecond))
+		be, liveGateways = gb, gb.Gateways
+	}
 	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
 	srv := csms.NewServer(csms.WithGatewayLink(be), csms.WithSessionRegistry(registryredis.New(rdb)),
 		csms.WithBackendInfo(gateway.BackendInfo{ID: "caller", Role: gateway.RoleCaller}))
@@ -299,7 +374,7 @@ func newCaller(t *testing.T, redisAddr string, gateways ...string) *csms.Server 
 	done := make(chan struct{})
 	go func() { defer close(done); _ = srv.ServeGateway(ctx) }()
 	t.Cleanup(func() { cancel(); <-done; srv.Close(); _ = rdb.Close() })
-	require.Eventually(t, func() bool { return len(be.Gateways()) == len(gateways) }, 10*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return len(liveGateways()) == len(gateways) }, 10*time.Second, 50*time.Millisecond)
 	return srv
 }
 
@@ -622,4 +697,35 @@ func TestChaos_ProbeAndReadiness(t *testing.T) {
 	require.NoError(t, c.heartbeat(ctx))
 	c2 := newCharger(t, g.ws, "CP_2")
 	require.NoError(t, c2.heartbeat(ctx))
+}
+
+// NATS only: the broker restarts. Requests in flight fail once (the link cannot
+// know whether they were taken), the charger stays connected, both tiers
+// reconnect by themselves and traffic resumes without any process restart.
+func TestChaos_NATSBrokerRestart(t *testing.T) {
+	if linkKind != "nats" {
+		t.Skip("NATS link only")
+	}
+	mr := miniredis.RunT(t)
+	g := startGateway(t, "gw-1", mr.Addr())
+	startBackend(t, "b1", mr.Addr(), g.link)
+	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
+	c := newCharger(t, g.ws, "CP_1")
+	ctx, cancel := ctxT(30 * time.Second)
+	defer cancel()
+	require.NoError(t, c.heartbeat(ctx))
+
+	// A handler is running when the broker goes away.
+	errCh := make(chan error, 1)
+	go func() { errCh <- c.boot(ctx, "slow") }()
+	time.Sleep(200 * time.Millisecond)
+	brokerOf(t).restart(t, 500*time.Millisecond)
+	err := <-errCh
+	if err != nil { // the answer may also have made it out before the broker stopped
+		require.Equal(t, ocppj.ErrorCodeInternalError, callErrCode(err), "got %v", err)
+	}
+	require.True(t, c.IsConnected())
+	require.Zero(t, c.disconnects.get())
+	require.Eventually(t, func() bool { return c.heartbeat(ctx) == nil }, 20*time.Second, 200*time.Millisecond)
+	require.True(t, g.ready())
 }

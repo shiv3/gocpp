@@ -1,4 +1,6 @@
-package linkgrpc
+// Package linkconv converts between the gocpp.link.v1 protobuf messages and the
+// gateway package types; it is shared by the transports (link-grpc, link-nats).
+package linkconv
 
 import (
 	"encoding/json"
@@ -10,32 +12,32 @@ import (
 	"github.com/shiv3/gocpp/gateway"
 )
 
-func refToPB(r gateway.SessionRef) *linkpb.SessionRef {
+func RefToPB(r gateway.SessionRef) *linkpb.SessionRef {
 	return &linkpb.SessionRef{Cpid: r.CPID, GatewayId: r.GatewayID, Boot: r.Boot, Epoch: r.Epoch}
 }
 
-func refFromPB(r *linkpb.SessionRef) gateway.SessionRef {
+func RefFromPB(r *linkpb.SessionRef) gateway.SessionRef {
 	if r == nil {
 		return gateway.SessionRef{}
 	}
 	return gateway.SessionRef{CPID: r.Cpid, GatewayID: r.GatewayId, Boot: r.Boot, Epoch: r.Epoch}
 }
 
-func routeToPB(r *gateway.Route) *linkpb.Route {
+func RouteToPB(r *gateway.Route) *linkpb.Route {
 	if r == nil {
 		return nil
 	}
 	return &linkpb.Route{Pool: r.Pool, Fallback: r.Fallback, Rule: r.Rule, Rev: r.Rev}
 }
 
-func routeFromPB(r *linkpb.Route) *gateway.Route {
+func RouteFromPB(r *linkpb.Route) *gateway.Route {
 	if r == nil {
 		return nil
 	}
 	return &gateway.Route{Pool: r.Pool, Fallback: r.Fallback, Rule: r.Rule, Rev: r.Rev}
 }
 
-func errToPB(e *gateway.WireError) *linkpb.WireError {
+func ErrToPB(e *gateway.WireError) *linkpb.WireError {
 	if e == nil {
 		return nil
 	}
@@ -49,7 +51,7 @@ func errToPB(e *gateway.WireError) *linkpb.WireError {
 	}
 }
 
-func errFromPB(e *linkpb.WireError) *gateway.WireError {
+func ErrFromPB(e *linkpb.WireError) *gateway.WireError {
 	if e == nil {
 		return nil
 	}
@@ -63,7 +65,7 @@ func errFromPB(e *linkpb.WireError) *gateway.WireError {
 	return w
 }
 
-func headerToPB(h http.Header) map[string]*linkpb.HeaderValues {
+func HeaderToPB(h http.Header) map[string]*linkpb.HeaderValues {
 	if len(h) == 0 {
 		return nil
 	}
@@ -74,7 +76,7 @@ func headerToPB(h http.Header) map[string]*linkpb.HeaderValues {
 	return out
 }
 
-func headerFromPB(m map[string]*linkpb.HeaderValues) http.Header {
+func HeaderFromPB(m map[string]*linkpb.HeaderValues) http.Header {
 	if m == nil {
 		return nil
 	}
@@ -85,46 +87,46 @@ func headerFromPB(m map[string]*linkpb.HeaderValues) http.Header {
 	return out
 }
 
-func infoToPB(i *gateway.SessionInfo) *linkpb.SessionInfo {
+func InfoToPB(i *gateway.SessionInfo) *linkpb.SessionInfo {
 	if i == nil {
 		return nil
 	}
 	return &linkpb.SessionInfo{
-		RemoteAddr: i.RemoteAddr, Subprotocol: i.Subprotocol, Header: headerToPB(i.RequestHeader),
+		RemoteAddr: i.RemoteAddr, Subprotocol: i.Subprotocol, Header: HeaderToPB(i.RequestHeader),
 		PeerCerts: i.PeerCerts, Identity: i.Identity, Meta: i.Meta,
 	}
 }
 
-func infoFromPB(i *linkpb.SessionInfo) *gateway.SessionInfo {
+func InfoFromPB(i *linkpb.SessionInfo) *gateway.SessionInfo {
 	if i == nil {
 		return nil
 	}
 	return &gateway.SessionInfo{
-		RemoteAddr: i.RemoteAddr, Subprotocol: i.Subprotocol, RequestHeader: headerFromPB(i.Header),
+		RemoteAddr: i.RemoteAddr, Subprotocol: i.Subprotocol, RequestHeader: HeaderFromPB(i.Header),
 		PeerCerts: i.PeerCerts, Identity: i.Identity, Meta: i.Meta,
 	}
 }
 
-func nanos(t time.Time) int64 {
+func Nanos(t time.Time) int64 {
 	if t.IsZero() {
 		return 0
 	}
 	return t.UnixNano()
 }
 
-func fromNanos(n int64) time.Time {
+func FromNanos(n int64) time.Time {
 	if n == 0 {
 		return time.Time{}
 	}
 	return time.Unix(0, n)
 }
 
-func envToPB(e gateway.Envelope) *linkpb.Envelope {
+func EnvToPB(e gateway.Envelope) *linkpb.Envelope {
 	pb := &linkpb.Envelope{
-		Proto: e.Proto, Session: refToPB(e.Session), Version: string(e.Version), Kind: uint32(e.Kind),
+		Proto: e.Proto, Session: RefToPB(e.Session), Version: string(e.Version), Kind: uint32(e.Kind),
 		DeliveryId: e.DeliveryID, Attempt: e.Attempt, MsgId: e.MsgID, Action: e.Action, Payload: e.Payload,
-		ReceivedAtUnixNano: nanos(e.ReceivedAt), DeadlineUnixNano: nanos(e.Deadline), Trace: e.Trace,
-		Attrs: e.Attrs, Open: infoToPB(e.Open), Route: routeToPB(e.Route), CallId: e.CallID, Error: errToPB(e.Error),
+		ReceivedAtUnixNano: Nanos(e.ReceivedAt), DeadlineUnixNano: Nanos(e.Deadline), Trace: e.Trace,
+		Attrs: e.Attrs, Open: InfoToPB(e.Open), Route: RouteToPB(e.Route), CallId: e.CallID, Error: ErrToPB(e.Error),
 	}
 	if e.Close != nil {
 		pb.Close = &linkpb.CloseInfo{Cause: e.Close.Cause, Message: e.Close.Message}
@@ -132,12 +134,12 @@ func envToPB(e gateway.Envelope) *linkpb.Envelope {
 	return pb
 }
 
-func envFromPB(pb *linkpb.Envelope) gateway.Envelope {
+func EnvFromPB(pb *linkpb.Envelope) gateway.Envelope {
 	e := gateway.Envelope{
-		Proto: pb.Proto, Session: refFromPB(pb.Session), Version: ocppj.Version(pb.Version), Kind: gateway.Kind(pb.Kind),
+		Proto: pb.Proto, Session: RefFromPB(pb.Session), Version: ocppj.Version(pb.Version), Kind: gateway.Kind(pb.Kind),
 		DeliveryID: pb.DeliveryId, Attempt: pb.Attempt, MsgID: pb.MsgId, Action: pb.Action, Payload: pb.Payload,
-		ReceivedAt: fromNanos(pb.ReceivedAtUnixNano), Deadline: fromNanos(pb.DeadlineUnixNano), Trace: pb.Trace,
-		Attrs: pb.Attrs, Open: infoFromPB(pb.Open), Route: routeFromPB(pb.Route), CallID: pb.CallId, Error: errFromPB(pb.Error),
+		ReceivedAt: FromNanos(pb.ReceivedAtUnixNano), Deadline: FromNanos(pb.DeadlineUnixNano), Trace: pb.Trace,
+		Attrs: pb.Attrs, Open: InfoFromPB(pb.Open), Route: RouteFromPB(pb.Route), CallID: pb.CallId, Error: ErrFromPB(pb.Error),
 	}
 	if pb.Close != nil {
 		e.Close = &gateway.CloseInfo{Cause: pb.Close.Cause, Message: pb.Close.Message}
@@ -145,29 +147,29 @@ func envFromPB(pb *linkpb.Envelope) gateway.Envelope {
 	return e
 }
 
-func replyToPB(r gateway.Reply) *linkpb.Reply {
-	return &linkpb.Reply{Payload: r.Payload, Error: errToPB(r.Error), Nack: r.Nack, NoReply: r.NoReply}
+func ReplyToPB(r gateway.Reply) *linkpb.Reply {
+	return &linkpb.Reply{Payload: r.Payload, Error: ErrToPB(r.Error), Nack: r.Nack, NoReply: r.NoReply}
 }
 
-func replyFromPB(r *linkpb.Reply) gateway.Reply {
-	return gateway.Reply{Payload: r.Payload, Error: errFromPB(r.Error), Nack: r.Nack, NoReply: r.NoReply}
+func ReplyFromPB(r *linkpb.Reply) gateway.Reply {
+	return gateway.Reply{Payload: r.Payload, Error: ErrFromPB(r.Error), Nack: r.Nack, NoReply: r.NoReply}
 }
 
-func connectReqToPB(r gateway.ConnectRequest) *linkpb.ConnectRequest {
+func ConnectReqToPB(r gateway.ConnectRequest) *linkpb.ConnectRequest {
 	return &linkpb.ConnectRequest{
-		Cpid: r.CPID, Path: r.Path, RemoteAddr: r.RemoteAddr, Header: headerToPB(r.Header), PeerCerts: r.PeerCerts,
-		Subprotocol: r.Subprotocol, Gateway: refToPB(r.Gateway), Route: routeToPB(r.Route),
+		Cpid: r.CPID, Path: r.Path, RemoteAddr: r.RemoteAddr, Header: HeaderToPB(r.Header), PeerCerts: r.PeerCerts,
+		Subprotocol: r.Subprotocol, Gateway: RefToPB(r.Gateway), Route: RouteToPB(r.Route),
 	}
 }
 
-func connectReqFromPB(r *linkpb.ConnectRequest) gateway.ConnectRequest {
+func ConnectReqFromPB(r *linkpb.ConnectRequest) gateway.ConnectRequest {
 	return gateway.ConnectRequest{
-		CPID: r.Cpid, Path: r.Path, RemoteAddr: r.RemoteAddr, Header: headerFromPB(r.Header), PeerCerts: r.PeerCerts,
-		Subprotocol: r.Subprotocol, Gateway: refFromPB(r.Gateway), Route: routeFromPB(r.Route),
+		CPID: r.Cpid, Path: r.Path, RemoteAddr: r.RemoteAddr, Header: HeaderFromPB(r.Header), PeerCerts: r.PeerCerts,
+		Subprotocol: r.Subprotocol, Gateway: RefFromPB(r.Gateway), Route: RouteFromPB(r.Route),
 	}
 }
 
-func connectRepToPB(r gateway.ConnectReply) *linkpb.ConnectReply {
+func ConnectRepToPB(r gateway.ConnectReply) *linkpb.ConnectReply {
 	pb := &linkpb.ConnectReply{Cpid: r.CPID, Identity: r.Identity, Meta: r.Meta, Attrs: r.Attrs}
 	if r.Reject != nil {
 		pb.RejectStatus = int32(r.Reject.Status)
@@ -185,7 +187,7 @@ func connectRepToPB(r gateway.ConnectReply) *linkpb.ConnectReply {
 	return pb
 }
 
-func connectRepFromPB(pb *linkpb.ConnectReply) gateway.ConnectReply {
+func ConnectRepFromPB(pb *linkpb.ConnectReply) gateway.ConnectReply {
 	r := gateway.ConnectReply{CPID: pb.Cpid, Identity: pb.Identity, Meta: pb.Meta, Attrs: pb.Attrs}
 	if pb.RejectStatus != 0 {
 		r.Reject = &gateway.Rejection{Status: int(pb.RejectStatus), Message: pb.RejectMessage}
@@ -200,36 +202,36 @@ func connectRepFromPB(pb *linkpb.ConnectReply) gateway.ConnectReply {
 	return r
 }
 
-func callReqToPB(r gateway.CallRequest) *linkpb.CallRequest {
+func CallReqToPB(r gateway.CallRequest) *linkpb.CallRequest {
 	return &linkpb.CallRequest{
-		Target: refToPB(r.Target), CallId: r.CallID, Action: r.Action, Payload: r.Payload,
-		DeadlineUnixNano: nanos(r.Deadline), Trace: r.Trace,
+		Target: RefToPB(r.Target), CallId: r.CallID, Action: r.Action, Payload: r.Payload,
+		DeadlineUnixNano: Nanos(r.Deadline), Trace: r.Trace,
 	}
 }
 
-func callReqFromPB(r *linkpb.CallRequest) gateway.CallRequest {
+func CallReqFromPB(r *linkpb.CallRequest) gateway.CallRequest {
 	return gateway.CallRequest{
-		Target: refFromPB(r.Target), CallID: r.CallId, Action: r.Action, Payload: r.Payload,
-		Deadline: fromNanos(r.DeadlineUnixNano), Trace: r.Trace,
+		Target: RefFromPB(r.Target), CallID: r.CallId, Action: r.Action, Payload: r.Payload,
+		Deadline: FromNanos(r.DeadlineUnixNano), Trace: r.Trace,
 	}
 }
 
-func callRepToPB(r gateway.CallReply) *linkpb.CallReply {
-	return &linkpb.CallReply{Payload: r.Payload, Error: errToPB(r.Error), Sent: uint32(r.Sent), Session: refToPB(r.Session)}
+func CallRepToPB(r gateway.CallReply) *linkpb.CallReply {
+	return &linkpb.CallReply{Payload: r.Payload, Error: ErrToPB(r.Error), Sent: uint32(r.Sent), Session: RefToPB(r.Session)}
 }
 
-func callRepFromPB(r *linkpb.CallReply) gateway.CallReply {
-	return gateway.CallReply{Payload: r.Payload, Error: errFromPB(r.Error), Sent: gateway.Sent(r.Sent), Session: refFromPB(r.Session)}
+func CallRepFromPB(r *linkpb.CallReply) gateway.CallReply {
+	return gateway.CallReply{Payload: r.Payload, Error: ErrFromPB(r.Error), Sent: gateway.Sent(r.Sent), Session: RefFromPB(r.Session)}
 }
 
-func infoBackendToPB(b gateway.BackendInfo) *linkpb.BackendInfo {
+func InfoBackendToPB(b gateway.BackendInfo) *linkpb.BackendInfo {
 	return &linkpb.BackendInfo{
 		Id: b.ID, Pool: b.Pool, Version: b.Version, Role: uint32(b.Role),
 		Proto: &linkpb.ProtoRange{Min: b.Proto.Min, Max: b.Proto.Max}, Caps: b.Caps, Actions: b.Actions, Labels: b.Labels,
 	}
 }
 
-func infoBackendFromPB(b *linkpb.BackendInfo) gateway.BackendInfo {
+func InfoBackendFromPB(b *linkpb.BackendInfo) gateway.BackendInfo {
 	i := gateway.BackendInfo{
 		ID: b.Id, Pool: b.Pool, Version: b.Version, Role: gateway.Role(b.Role), Caps: b.Caps, Actions: b.Actions, Labels: b.Labels,
 	}

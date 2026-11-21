@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/shiv3/gocpp/addons/link-grpc/linkconv"
 	"github.com/shiv3/gocpp/addons/link-grpc/linkpb"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/gateway"
@@ -187,7 +188,7 @@ func (s *service) Attach(stream linkpb.Link_AttachServer) error {
 		g.metrics.AttachResult(0, "error")
 		return errors.New("linkgrpc: Hello without backend info")
 	}
-	info := infoBackendFromPB(hello.Backend)
+	info := linkconv.InfoBackendFromPB(hello.Backend)
 	proto := min(info.Proto.Max, g.proto.Max)
 	if info.Proto.Max == 0 || proto < info.Proto.Min || proto < g.proto.Min {
 		g.metrics.AttachResult(info.Proto.Max, "proto_mismatch")
@@ -302,7 +303,7 @@ func outcomeOfCall(rep gateway.CallReply, err error) string {
 func (p *peer) serveCall(id uint64, req *linkpb.CallRequest, isSend bool) {
 	d, ok := p.g.downstream(req.GetTarget().GetGatewayId())
 	ctx := p.stream.Context()
-	cr := callReqFromPB(req)
+	cr := linkconv.CallReqFromPB(req)
 	if !isSend {
 		var rep gateway.CallReply
 		var err error
@@ -315,14 +316,14 @@ func (p *peer) serveCall(id uint64, req *linkpb.CallRequest, isSend bool) {
 			}
 		}
 		p.g.metrics.DownstreamCall(p.info.Pool, p.info.Version, cr.Action, outcomeOfCall(rep, err))
-		_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_CallReply{CallReply: callRepToPB(rep)}})
+		_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_CallReply{CallReply: linkconv.CallRepToPB(rep)}})
 		return
 	}
 	var err error = ocppj.ErrNotConnected
 	if ok {
 		err = d.Send(ctx, cr)
 	}
-	_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_SendAck{SendAck: &linkpb.Ack{Error: errToPB(gateway.EncodeError(err))}}})
+	_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_SendAck{SendAck: &linkpb.Ack{Error: linkconv.ErrToPB(gateway.EncodeError(err))}}})
 }
 
 func (p *peer) serveControl(id uint64, req *linkpb.ControlRequest) {
@@ -337,10 +338,10 @@ func (p *peer) serveControl(id uint64, req *linkpb.ControlRequest) {
 		err = gateway.ErrUnsupported
 	default:
 		err = d.Control(p.stream.Context(), gateway.ControlRequest{
-			Target: refFromPB(req.Target), Op: gateway.ControlOp(req.Op), Reason: req.Reason, Attrs: req.Attrs,
+			Target: linkconv.RefFromPB(req.Target), Op: gateway.ControlOp(req.Op), Reason: req.Reason, Attrs: req.Attrs,
 		})
 	}
-	_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_ControlAck{ControlAck: &linkpb.Ack{Error: errToPB(gateway.EncodeError(err))}}})
+	_ = p.send(&linkpb.GatewayFrame{Id: id, Body: &linkpb.GatewayFrame_ControlAck{ControlAck: &linkpb.Ack{Error: linkconv.ErrToPB(gateway.EncodeError(err))}}})
 }
 
 // serveLocate answers a backend's question which session this gateway holds
@@ -350,7 +351,7 @@ func (p *peer) serveLocate(id uint64, req *linkpb.LocateRequest) {
 	if d, ok := p.g.downstream(""); ok {
 		if l, ok := d.(gateway.Locator); ok {
 			if loc, found := l.LocateSession(req.GetCpid()); found {
-				rep = &linkpb.LocateReply{Found: true, Session: refToPB(loc.Ref), Version: string(loc.Version), Info: infoToPB(loc.Info)}
+				rep = &linkpb.LocateReply{Found: true, Session: linkconv.RefToPB(loc.Ref), Version: string(loc.Version), Info: linkconv.InfoToPB(loc.Info)}
 			}
 		}
 	}
@@ -391,13 +392,13 @@ var errUnsupportedByPeer = fmt.Errorf("%w: peer does not know this frame", gatew
 
 // Connect implements gateway.Upstream on one stream.
 func (p *peer) Connect(ctx context.Context, req gateway.ConnectRequest) (gateway.ConnectReply, error) {
-	f, err := p.request(ctx, &linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Connect{Connect: connectReqToPB(req)}})
+	f, err := p.request(ctx, &linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Connect{Connect: linkconv.ConnectReqToPB(req)}})
 	if err != nil {
 		return gateway.ConnectReply{}, err
 	}
 	switch b := f.Body.(type) {
 	case *linkpb.BackendFrame_ConnectReply:
-		return connectRepFromPB(b.ConnectReply), nil
+		return linkconv.ConnectRepFromPB(b.ConnectReply), nil
 	case *linkpb.BackendFrame_Unsupported:
 		return gateway.ConnectReply{}, errUnsupportedByPeer
 	}
@@ -407,7 +408,7 @@ func (p *peer) Connect(ctx context.Context, req gateway.ConnectRequest) (gateway
 // Handle implements gateway.Upstream on one stream.
 func (p *peer) Handle(ctx context.Context, env gateway.Envelope) (gateway.Reply, error) {
 	start := time.Now()
-	f, err := p.request(ctx, &linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Handle{Handle: envToPB(env)}})
+	f, err := p.request(ctx, &linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Handle{Handle: linkconv.EnvToPB(env)}})
 	var rep gateway.Reply
 	outcome := "result"
 	switch {
@@ -424,7 +425,7 @@ func (p *peer) Handle(ctx context.Context, env gateway.Envelope) (gateway.Reply,
 	default:
 		switch b := f.Body.(type) {
 		case *linkpb.BackendFrame_Reply:
-			rep = replyFromPB(b.Reply)
+			rep = linkconv.ReplyFromPB(b.Reply)
 			switch {
 			case rep.Nack:
 				outcome = "nack"
@@ -443,13 +444,13 @@ func (p *peer) Handle(ctx context.Context, env gateway.Envelope) (gateway.Reply,
 
 // Notify implements gateway.Upstream on one stream.
 func (p *peer) Notify(ctx context.Context, env gateway.Envelope) error {
-	f, err := p.request(ctx, &linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Notify{Notify: envToPB(env)}})
+	f, err := p.request(ctx, &linkpb.GatewayFrame{Body: &linkpb.GatewayFrame_Notify{Notify: linkconv.EnvToPB(env)}})
 	if err != nil {
 		return err
 	}
 	switch b := f.Body.(type) {
 	case *linkpb.BackendFrame_NotifyAck:
-		if err := errFromPB(b.NotifyAck.GetError()).Err(); err != nil {
+		if err := linkconv.ErrFromPB(b.NotifyAck.GetError()).Err(); err != nil {
 			if errors.Is(err, gateway.ErrGatewayDraining) {
 				// The backend is draining and did not take the event: safe to
 				// give to another one.
