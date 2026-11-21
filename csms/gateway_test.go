@@ -16,6 +16,7 @@ import (
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/storage/memory"
 	"github.com/shiv3/gocpp/cp"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/gateway"
@@ -835,4 +836,43 @@ func TestGateway_ConcurrentSessionEventsKeepHookOrder(t *testing.T) {
 		mu.Unlock()
 		be.Close()
 	}
+}
+
+// The gateway copies the pool a session is routed to into the registry record
+// (Session.Meta["route.pool"]) when it changes, and the orphan result of a CSMS
+// call goes to the pool that issued the call.
+func TestGateway_RoutePoolRegistryCopy(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	reg := memory.NewSessionRegistry()
+	var pool atomic.Value
+	pool.Store("default")
+	router := gateway.RouterFunc(func(gateway.RouteInput) gateway.RouteDecision {
+		return gateway.RouteDecision{Pool: pool.Load().(string), Fallback: gateway.DefaultPool}
+	})
+	r := newRig(t, []csms.Option{csms.WithRouter(router), csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: "gw-1"})}, nil)
+	defer r.close()
+	r.serve()
+	canary := r.hub.AttachBackend(r.be.Upstream(), gateway.BackendInfo{Pool: "canary"})
+	defer func() { _ = canary(context.Background()) }()
+	client := r.client()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	routePool := func() string {
+		s, ok, err := reg.Lookup(ctx, "CP_1")
+		if err != nil || !ok {
+			return ""
+		}
+		return s.Meta["route.pool"]
+	}
+	require.NoError(t, csms.On(r.be, gwBootMsg, func(context.Context, *csms.Conn, gwBoot) (gwBootResp, error) {
+		return gwBootResp{Status: "Accepted"}, nil
+	}))
+	_, err := cp.Call(ctx, client, gwBootMsg, gwBoot{ChargePointVendor: "x"})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return routePool() == "default" }, 2*time.Second, 10*time.Millisecond)
+	pool.Store("canary")
+	require.Eventually(t, func() bool {
+		_, _ = cp.Call(ctx, client, gwBootMsg, gwBoot{ChargePointVendor: "x"})
+		return routePool() == "canary"
+	}, 2*time.Second, 10*time.Millisecond)
 }

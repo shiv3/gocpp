@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Staged releases, phase 7 leftovers: the gateway keeps the pool each session is
+  routed to in the registry (`Session.Meta["route.pool"]`, new optional
+  `storage.RouteWriter`, implemented by the memory registry and `registry-redis`),
+  the gateway exports `gocpp_gateway_late_replies_total{pool}` and
+  `gocpp_gateway_orphan_results_total{pool,outcome}` (link-grpc `RoutingMetrics`),
+  an orphan result goes to the pool of the calling backend (`CallRequest.CallerPool`),
+  and `addons/rollout` has the optional `late_orphan` gates. link-grpc metrics now
+  label the default pool `default` instead of an empty string.
 - Staged releases, phase 7c (docs/rollout.md part 4): `addons/rollout` (own module),
   the optional, default-off automatic promotion controller: stage plan, gates
   (failed-outcome ratio, CALLERROR code shares, p99 latency, minimum samples, your

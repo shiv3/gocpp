@@ -63,6 +63,14 @@ type Gates struct {
 	MaxP99Ratio float64 `json:"max_p99_ratio,omitempty"`
 	// MaxP99 is an absolute p99 budget (0 = none).
 	MaxP99 routepolicy.Duration `json:"max_p99,omitempty"`
+	// LateOrphan turns on the late_replies / orphan_results gates: the canary's
+	// count per request may exceed stable's by at most MaxLateOrphanDelta
+	// (design 5.4: "not above stable"). Needs gateways that export
+	// gocpp_gateway_late_replies_total and gocpp_gateway_orphan_results_total.
+	LateOrphan bool `json:"late_orphan,omitempty"`
+	// MaxLateOrphanDelta is the allowed excess of the per-request ratio of each
+	// of the two counters over stable's (default 0.001).
+	MaxLateOrphanDelta float64 `json:"max_late_orphan_delta,omitempty"`
 	// Checks are application-level queries (PromSource only): each must evaluate
 	// to at most Max.
 	Checks []Check `json:"checks,omitempty"`
@@ -85,6 +93,9 @@ func (g Gates) withDefaults() Gates {
 	}
 	if g.MaxCodeShareDelta <= 0 {
 		g.MaxCodeShareDelta = 0.01
+	}
+	if g.MaxLateOrphanDelta <= 0 {
+		g.MaxLateOrphanDelta = 0.001
 	}
 	if g.MaxP99Ratio <= 0 {
 		g.MaxP99Ratio = 1.5

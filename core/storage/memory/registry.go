@@ -93,6 +93,11 @@ func (r *connectionRegistry) SetAttrs(ctx context.Context, cpID string, epoch ui
 	return r.global.setAttrs(ctx, cpID, epoch, attrs)
 }
 
+// SetRoute implements storage.RouteWriter.
+func (r *connectionRegistry) SetRoute(ctx context.Context, cpID string, epoch uint64, route map[string]string) (bool, error) {
+	return r.global.setRoute(ctx, cpID, epoch, route)
+}
+
 func (r *connectionRegistry) Lookup(ctx context.Context, cpID string) (storage.Session, bool, error) {
 	return r.global.lookupSession(ctx, cpID)
 }

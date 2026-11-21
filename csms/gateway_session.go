@@ -21,6 +21,9 @@ type gwSession struct {
 	version ocppj.Version
 	infoP   atomic.Pointer[gateway.SessionInfo] // nil when the open event was not seen
 	attrsP  atomic.Pointer[map[string]string]   // session attributes (routing labels); see attrs()
+	// routePool is the pool of the last routing decision copied to the registry
+	// (Session.Meta["route.pool"]); nil until the first copy succeeded.
+	routePool atomic.Pointer[string]
 }
 
 func (g *gwSession) subprotocol() string {
@@ -41,6 +44,12 @@ func (g *gwSession) storageSession() storage.Session {
 	}
 	if g.info() != nil {
 		s.Meta = map[string]string{"remote_addr": g.info().RemoteAddr}
+	}
+	if p := g.routePool.Load(); p != nil {
+		if s.Meta == nil {
+			s.Meta = map[string]string{}
+		}
+		s.Meta[storage.RoutePrefix+routePoolKey] = *p
 	}
 	return s
 }

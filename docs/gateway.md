@@ -102,7 +102,11 @@ is byte-identical to embedded mode (`TestGateway_WireIdenticalToEmbedded`).
   whose epoch is not the session it holds (`gateway.ErrSessionStale`).
 - **Orphan results.** If the caller is gone by the time the charger answers a
   command that was already written, the answer is delivered to a backend as an
-  orphan result (`WithOnOrphanResult`) instead of being dropped.
+  orphan result (`WithOnOrphanResult`) instead of being dropped. It goes to the
+  pool of the backend that issued the call (any member), or to the default pool
+  when that pool has no backend left (the caller died);
+  `gocpp_gateway_orphan_results_total{pool,outcome}` counts them (`delivered`,
+  `fallback`, `dropped`).
 - **Idempotency key.** `CallRequest.CallID` makes duplicate requests that arrive
   while the first is in flight share its outcome (the charger sees one CALL).
 

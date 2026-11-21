@@ -113,6 +113,29 @@ func (d *globalDirectory) setAttrs(_ context.Context, cpID string, epoch uint64,
 	return true, nil
 }
 
+func (d *globalDirectory) setRoute(_ context.Context, cpID string, epoch uint64, route map[string]string) (bool, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	cur, ok := d.rec[cpID]
+	if !ok || cur.Epoch != epoch {
+		return false, nil
+	}
+	meta := make(map[string]string, len(cur.Meta)+len(route))
+	for k, v := range cur.Meta {
+		meta[k] = v
+	}
+	for k, v := range route {
+		if v == "" {
+			delete(meta, storage.RoutePrefix+k)
+		} else {
+			meta[storage.RoutePrefix+k] = v
+		}
+	}
+	cur.Meta = meta
+	d.rec[cpID] = cur
+	return true, nil
+}
+
 func (d *globalDirectory) release(_ context.Context, cpID string, epoch uint64) (bool, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

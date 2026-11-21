@@ -24,6 +24,12 @@ func metricsText(req map[string]float64, lat map[string][]float64) string {
 		pool, outcome, _ := strings.Cut(k, "/")
 		fmt.Fprintf(&b, "gocpp_gateway_upstream_requests_total{pool=%q,backend_version=\"v\",action=\"Heartbeat\",outcome=%q} %g\n", pool, outcome, v)
 	}
+	b.WriteString("# TYPE gocpp_gateway_late_replies_total counter\n")
+	for k, v := range req {
+		if pool, outcome, _ := strings.Cut(k, "/"); outcome == "late" {
+			fmt.Fprintf(&b, "gocpp_gateway_late_replies_total{pool=%q} %g\n", pool, v)
+		}
+	}
 	b.WriteString("# TYPE gocpp_gateway_upstream_seconds histogram\n")
 	les := []string{"0.01", "0.05", "0.1", "+Inf"}
 	for pool, counts := range lat { // cumulative counts per bucket
@@ -129,6 +135,8 @@ func TestPromSourceQueries(t *testing.T) {
 	require.Equal(t, map[string]float64{"callerror_FormationViolation": 7}, st.ByOutcome)
 	require.True(t, st.HasLatency)
 	require.InDelta(t, 0.045, st.P99, 1e-9)
+	require.Equal(t, 1000.0, st.LateReplies)
+	require.Equal(t, 1000.0, st.OrphanResults)
 	mu.Lock()
 	require.Contains(t, queries[0], `pool="canary"`)
 	require.Contains(t, queries[0], "[300s]")

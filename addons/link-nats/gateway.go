@@ -181,7 +181,23 @@ func (g *Gateway) Handle(ctx context.Context, env gateway.Envelope) (gateway.Rep
 
 // Notify implements gateway.Upstream.
 func (g *Gateway) Notify(ctx context.Context, env gateway.Envelope) error {
-	return g.pools.Notify(ctx, env)
+	availableBefore := env.Kind != gateway.KindOrphanResult || env.Route == nil || g.pools.Available(env.Route.Pool)
+	err := g.pools.Notify(ctx, env)
+	if env.Kind == gateway.KindOrphanResult {
+		pool := gateway.DefaultPool
+		if env.Route != nil && env.Route.Pool != "" {
+			pool = env.Route.Pool
+		}
+		outcome := "delivered"
+		switch {
+		case err != nil:
+			outcome = "dropped"
+		case !availableBefore:
+			outcome = "fallback"
+		}
+		linkgrpc.ReportOrphanResult(g.metrics, pool, outcome)
+	}
+	return err
 }
 
 func (g *Gateway) peerID() string {
@@ -580,6 +596,7 @@ func (g *Gateway) serveCall(d gateway.Downstream, ok bool, m *nats.Msg, isSend b
 		return
 	}
 	cr := linkconv.CallReqFromPB(&req)
+	cr.CallerPool, cr.CallerVersion = g.callerOf(m)
 	ctx, cancel := context.WithCancel(g.ctx)
 	defer cancel()
 	if !isSend {

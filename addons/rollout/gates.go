@@ -63,6 +63,21 @@ func evaluate(g Gates, canary, stable PoolStats) []GateResult {
 	}
 	out = append(out, r)
 
+	// Late replies and orphan results (optional).
+	if g.LateOrphan {
+		for _, c := range []struct {
+			name           string
+			canary, stable float64
+		}{{"late_replies", canary.LateReplies, stable.LateReplies}, {"orphan_results", canary.OrphanResults, stable.OrphanResults}} {
+			cr, sr := ratio(c.canary, canary.Requests), ratio(c.stable, stable.Requests)
+			r = GateResult{Name: c.name, Verdict: Pass, Detail: fmt.Sprintf("canary %.0f (%.4f/request), stable %.0f (%.4f/request), allowed +%.4f", c.canary, cr, c.stable, sr, g.MaxLateOrphanDelta)}
+			if cr > sr+g.MaxLateOrphanDelta {
+				r.Verdict = Fail
+			}
+			out = append(out, r)
+		}
+	}
+
 	// Latency.
 	switch {
 	case !canary.HasLatency:

@@ -111,7 +111,23 @@ func (g *Gateway) Handle(ctx context.Context, env gateway.Envelope) (gateway.Rep
 
 // Notify implements gateway.Upstream.
 func (g *Gateway) Notify(ctx context.Context, env gateway.Envelope) error {
-	return g.pools.Notify(ctx, env)
+	availableBefore := env.Kind != gateway.KindOrphanResult || env.Route == nil || g.pools.Available(env.Route.Pool)
+	err := g.pools.Notify(ctx, env)
+	if env.Kind == gateway.KindOrphanResult {
+		pool := gateway.DefaultPool
+		if env.Route != nil && env.Route.Pool != "" {
+			pool = env.Route.Pool
+		}
+		outcome := "delivered"
+		switch {
+		case err != nil:
+			outcome = "dropped"
+		case !availableBefore:
+			outcome = "fallback"
+		}
+		ReportOrphanResult(g.metrics, pool, outcome)
+	}
+	return err
 }
 
 // Attach implements gateway.GatewayLink: it makes the gateway's Downstream
@@ -198,6 +214,9 @@ func (s *service) Attach(stream linkpb.Link_AttachServer) error {
 		return errors.New("linkgrpc: Hello without backend info")
 	}
 	info := linkconv.InfoBackendFromPB(hello.Backend)
+	if info.Pool == "" {
+		info.Pool = gateway.DefaultPool // metric labels and caller pools name it
+	}
 	proto := min(info.Proto.Max, g.proto.Max)
 	if info.Proto.Max == 0 || proto < info.Proto.Min || proto < g.proto.Min {
 		g.metrics.AttachResult(info.Proto.Max, "proto_mismatch")
@@ -280,7 +299,11 @@ func (p *peer) dispatch(f *linkpb.BackendFrame) {
 		if u, ok := b.(*linkpb.BackendFrame_Unsupported); ok {
 			p.g.metrics.Unsupported("sent", u.Unsupported.GetWhat())
 		}
-		p.unary.resolve(f.Id, f)
+		if !p.unary.resolve(f.Id, f) {
+			if _, isReply := b.(*linkpb.BackendFrame_Reply); isReply {
+				ReportLateReply(p.g.metrics, p.info.Pool)
+			}
+		}
 	case *linkpb.BackendFrame_Call:
 		go p.serveCall(f.Id, b.Call, false)
 	case *linkpb.BackendFrame_Send:
@@ -329,6 +352,7 @@ func (p *peer) serveCall(id uint64, req *linkpb.CallRequest, isSend bool) {
 	d, ok := p.g.downstream(req.GetTarget().GetGatewayId())
 	ctx := p.stream.Context()
 	cr := linkconv.CallReqFromPB(req)
+	cr.CallerPool, cr.CallerVersion = p.info.Pool, p.info.Version
 	if !isSend {
 		var rep gateway.CallReply
 		var err error

@@ -243,6 +243,28 @@ func TestLatencyRegressionAndCodeShareRollBack(t *testing.T) {
 	}
 }
 
+// The late_replies / orphan_results gates are optional: a canary with more of
+// them per request than stable rolls back only when they are switched on.
+func TestLateRepliesAndOrphansGate(t *testing.T) {
+	noisy := func() rollout.PoolStats {
+		c := healthy(1000)
+		c.LateReplies, c.OrphanResults = 30, 0
+		return c
+	}
+	for _, on := range []bool{false, true} {
+		src := &series{canary: noisy, stable: func() rollout.PoolStats { return healthy(50000) }}
+		r := newRig(t, src, func(p *rollout.Plan) { p.Gates.LateOrphan = on })
+		ds := r.run(6, time.Minute)
+		last := ds[len(ds)-1]
+		if on {
+			require.Equal(t, rollout.ActionRollback, last.Action, last.Reason)
+			require.Contains(t, last.Reason, "late_replies")
+		} else {
+			require.NotEqual(t, rollout.ActionRollback, last.Action, last.Reason)
+		}
+	}
+}
+
 func TestTooFewSamplesMakesNoDecision(t *testing.T) {
 	src := &series{canary: func() rollout.PoolStats { return healthy(120) }, stable: func() rollout.PoolStats { return healthy(50000) }}
 	r := newRig(t, src, nil)

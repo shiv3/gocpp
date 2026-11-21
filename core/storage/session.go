@@ -46,6 +46,15 @@ type Session struct {
 	Meta map[string]string
 }
 
+// RouteWriter is implemented by registries that can store the routing decisions
+// a gateway keeps next to a session record: SetRoute merges route into the
+// Meta keys with the prefix RoutePrefix (key "pool" is stored as "route.pool";
+// an empty value deletes the key) if the record still has this epoch. A
+// registry without it simply keeps no routing copy.
+type RouteWriter interface {
+	SetRoute(ctx context.Context, cpID string, epoch uint64, route map[string]string) (ok bool, err error)
+}
+
 // Reserved prefixes of Session.Meta keys.
 const (
 	AttrPrefix  = "attr."

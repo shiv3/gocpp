@@ -141,6 +141,21 @@ end
 return 0
 `)
 
+// KEYS: record. ARGV: epoch, then route key/value pairs.
+var setRouteScript = redis.NewScript(`
+if redis.call('HGET', KEYS[1], 'epoch') == ARGV[1] then
+  for i = 2, #ARGV, 2 do
+    if ARGV[i + 1] == '' then
+      redis.call('HDEL', KEYS[1], 'm:route.' .. ARGV[i])
+    else
+      redis.call('HSET', KEYS[1], 'm:route.' .. ARGV[i], ARGV[i + 1])
+    end
+  end
+  return 1
+end
+return 0
+`)
+
 // KEYS: record. ARGV: epoch.
 var releaseScript = redis.NewScript(`
 if redis.call('HGET', KEYS[1], 'epoch') == ARGV[1] then
@@ -241,6 +256,16 @@ func (r *Registry) SetAttrs(ctx context.Context, cpID string, epoch uint64, attr
 	n, err := setAttrsScript.Run(ctx, r.rdb, []string{r.recKey(cpID)}, args...).Int()
 	if err != nil {
 		return false, fmt.Errorf("registryredis: set attrs %q: %w", cpID, err)
+	}
+	return n == 1, nil
+}
+
+// SetRoute implements storage.RouteWriter.
+func (r *Registry) SetRoute(ctx context.Context, cpID string, epoch uint64, route map[string]string) (bool, error) {
+	args := append([]any{strconv.FormatUint(epoch, 10)}, metaArgs(route)...)
+	n, err := setRouteScript.Run(ctx, r.rdb, []string{r.recKey(cpID)}, args...).Int()
+	if err != nil {
+		return false, fmt.Errorf("registryredis: set route %q: %w", cpID, err)
 	}
 	return n == 1, nil
 }
