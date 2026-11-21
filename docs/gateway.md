@@ -173,6 +173,45 @@ router sees them from the next message. A rollback is swapping the router; no
 socket is touched. The declarative policy engine, percentage rules and tooling
 are a later phase (design section 5).
 
+## Performance
+
+Measured with the load-test harness (`interop/loadtest` on branch `test/loadtest-4k`,
+`results/gateway-2026-11-21`): 4,000 chargers, loopback, gateway on 2 pinned cores,
+2 backends on 2 cores each, gRPC link, schema off, compared with one embedded server
+on 6 cores. Targets are those of design section 2.7.
+
+| Target | Result |
+|---|---|
+| Gateway >= 20,000 inbound CALLs/s per core | 22,700 msg/s per core at 36k msg/s (1.6 cores); the same gateway at 7.7k msg/s used 0.77 cores |
+| Added latency, p50 <= 0.5 ms, p99 <= 2 ms at 5k msg/s | +0.15 ms p50, +0.5 ms p99 at 7.7k msg/s (Heartbeat p50 0.20 -> 0.35 ms, p99 0.49 -> 0.96 ms) |
+| Gateway memory <= 16 KB per idle session | **not met**: 25 KB/session at 10,000 idle sessions (embedded server: 26 KB). Same per-session cost as embedded, so it is not the split; it is above docs/performance.md's 13.6 KB (a different measurement: heap of a benchmark vs process RSS) and is not investigated yet |
+| Backend rollout: 0 disconnects, 0 attributable CALLERRORs | met: 5 SIGTERM and 3 kill -9 restarts under load, 0 disconnects, restart-window Heartbeat p99 0.96 ms |
+| Gateway rollout, reconnects within the pace | drain of one of two gateways (2,000 chargers, 20 s window) moved all sessions through the other gateway; ~9% of chargers were disconnected at the deepest point; no freeze. The 10,000-charger / 5-minute / 3-gateway scale of the design was not run |
+| Gateway crash, accept capacity (500 handshakes/s per core) | not measured here (no TLS in the harness) |
+
+Cost of the split: total CPU is about 1.4x the embedded server (3.3 vs 2.4 cores at 37k
+msg/s); the gRPC hop is about 25 us of CPU per message over both ends. The profile
+(`results/.../profiles`) shows the gateway at 27% in `write(2)`: the WebSocket reply write
+and the link stream write, in roughly equal parts. Next steps are coalescing writes on
+the link stream and a second stream per backend. When the gateway is the bottleneck (it
+ran at 80% of its 2 cores in the two top steps) p99 grows to tens of milliseconds, which
+is queueing, not hop cost: size gateways below about 70% CPU.
+
+Gates in this repository (they fail the build on a regression, they do not claim the
+numbers above):
+
+- `benchmarks.TestGateHopOverhead` (CI, without `-race`): through the in-process link a
+  message may cost at most 0.5 ms more on average and 2 ms more at p99 than embedded
+  (measured: +13 us mean, +31 us p99). `BenchmarkGatewayHop` shows the allocation side:
+  17 allocs / 1.8 KB per round trip embedded, 31 allocs / 2.4 KB split.
+- `addons/link-grpc: TestGateGRPCHopLatency`: the gRPC hop at 5,000 msg/s open loop stays
+  under 5 ms p99 over loopback (measured: p50 0.10 ms, p99 0.3 ms). `BenchmarkGRPCHop`:
+  72 us sequential round trip, 4.6 us per message with 256 in flight (61 / 50 allocs).
+
+Verify on a real cluster (not measured): that an L4 load balancer keeps established
+connections to a pod that turns not-ready, and how new connections are spread when every
+pod is not-ready; TLS handshake capacity; the 10,000-charger gateway rollout of the design.
+
 ## Testing
 
 `GOCPP_TEST_SPLIT=1 go test ./internal/...` runs the conformance and e2e suites
