@@ -264,9 +264,10 @@ func (g gatedRegistry) PutGlobal(ctx context.Context, cpID, inst string) error {
 	return g.ConnectionRegistry.PutGlobal(ctx, cpID, inst)
 }
 
-// The session is claimed before the upgrade is accepted: a slow registry write
-// delays the handshake itself, so the connection never looks established (and
-// no inbound handler runs) before its route exists.
+// With the legacy adapter the route is written right after the upgrade is
+// accepted (a failed upgrade must not touch a live connection's route), and
+// before any inbound handler runs: a slow registry write delays the connection
+// becoming established, so no handler sees a connection without its route.
 func TestCluster_RouteClaimedBeforeUpgradeAccepted(t *testing.T) {
 	hub := memory.NewInProcessHub()
 	reg := gatedRegistry{hub.Registry(), make(chan struct{})}
@@ -290,19 +291,24 @@ func TestCluster_RouteClaimedBeforeUpgradeAccepted(t *testing.T) {
 			dialed <- c
 		}
 	}()
+	c := <-dialed
+	t.Cleanup(func() { _ = c.CloseNow() })
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"1","Heartbeat",{}]`)))
+	replies := make(chan []byte, 1)
+	go func() {
+		if _, data, err := c.Read(ctx); err == nil {
+			replies <- data
+		}
+	}()
 	select {
-	case <-dialed:
-		t.Fatal("upgrade accepted while the claim was pending")
+	case <-replies:
+		t.Fatal("handler ran while the route write was pending")
 	case <-time.After(150 * time.Millisecond):
 	}
 	_, connected := srv.Get("CP_1")
 	require.False(t, connected)
 	close(reg.release)
-	c := <-dialed
-	t.Cleanup(func() { _ = c.CloseNow() })
-	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"1","Heartbeat",{}]`)))
-	_, reply, err := c.Read(ctx)
-	require.NoError(t, err)
+	reply := <-replies
 	require.Contains(t, string(reply), `[3,"1"`)
 	require.Equal(t, "A", routeAtHandler.Load())
 }

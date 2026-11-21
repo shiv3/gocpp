@@ -120,17 +120,34 @@ func (b *backend) observe(ref gateway.SessionRef, version ocppj.Version, info *g
 	return cur, old
 }
 
-// forget drops the cached session if it is exactly ref. It reports whether it
-// was the newest one.
-func (b *backend) forget(ref gateway.SessionRef) bool {
+// forget handles the close of session ref. It drops the cached session when it
+// is ref, and reports whether the application should hear about the
+// disconnect. It should unless a newer session of the same charger is known (a
+// late close of a replaced session, already reported when it was replaced).
+// Nothing cached counts as "no newer session": the close may have been routed
+// to a different backend than the open, and that backend must still report it,
+// or the disconnect is lost.
+func (b *backend) forget(ref gateway.SessionRef) (fire bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	cur := b.sessions[ref.CPID]
-	if cur != nil && cur.ref == ref {
+	switch {
+	case cur == nil:
+		return true
+	case cur.ref == ref:
+		delete(b.sessions, ref.CPID)
+		return true
+	case sameSessionOwner(cur.ref, ref) && cur.ref.Epoch < ref.Epoch:
+		// The cache holds an older session of this charger whose own close went
+		// elsewhere; ref supersedes it.
 		delete(b.sessions, ref.CPID)
 		return true
 	}
 	return false
+}
+
+func sameSessionOwner(a, b gateway.SessionRef) bool {
+	return a.GatewayID == b.GatewayID && a.Boot == b.Boot
 }
 
 func (b *backend) cached(cpID string) *gwSession {
@@ -273,7 +290,7 @@ func (u backendUpstream) Notify(ctx context.Context, env gateway.Envelope) error
 		l.Lock()
 		defer l.Unlock()
 		if !u.b.forget(env.Session) {
-			return nil // stale: a newer session of this charger is known
+			return nil // a newer session of this charger is known
 		}
 		cause := closeCause(env.Close)
 		s.handleDisconnected(u.b.handle(&gwSession{ref: env.Session, version: env.Version}), cause)
