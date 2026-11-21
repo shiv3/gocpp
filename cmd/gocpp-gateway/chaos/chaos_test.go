@@ -107,6 +107,14 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 	}
+	// The operator CLI (its own module) drives the gateway canary scenarios.
+	ctlCmd := exec.Command("go", "build", "-o", filepath.Join(dir, "gocppctl"), ".")
+	ctlCmd.Dir = "../../gocppctl"
+	ctlCmd.Stdout, ctlCmd.Stderr = os.Stdout, os.Stderr
+	if err := ctlCmd.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "build gocppctl", err)
+		os.Exit(1)
+	}
 	// Mixed-version runs: use prebuilt binaries instead of the ones just built.
 	for out, envName := range map[string]string{"gocpp-gateway": "GOCPP_CHAOS_GATEWAY_BIN", "testbackend": "GOCPP_CHAOS_BACKEND_BIN"} {
 		if bin := os.Getenv(envName); bin != "" {

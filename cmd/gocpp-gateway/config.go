@@ -40,8 +40,15 @@ type config struct {
 
 	MaxConnections  int
 	SoftMaxSessions int
-	AcceptRate      float64
-	AcceptBurst     int
+
+	AdminToken                           string
+	AdvertiseAdmin                       string
+	AttrSourceFile                       string
+	AttrSourceURL                        string
+	AttrSourceToken                      string
+	AttrSourceTimeout, AttrSourceRefresh time.Duration
+	AcceptRate                           float64
+	AcceptBurst                          int
 
 	UpstreamWait time.Duration
 	HandlerTime  time.Duration
@@ -120,6 +127,13 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&c.RoutePolicyFile, "route-policy-file", env("ROUTE_POLICY_FILE", ""), "routing policy file (YAML or JSON), re-read on change; with a registry the policy stored there (gocppctl route apply) and this file both apply, the higher revision wins")
 	fs.DurationVar(&c.RoutePolicyInterval, "route-policy-interval", envDur("ROUTE_POLICY_INTERVAL", 30*time.Second), "full re-read interval of the policy file")
 	fs.IntVar(&c.MaxConnections, "max-connections", envInt("MAX_CONNECTIONS", 0), "hard cap on sessions (503 above it)")
+	fs.StringVar(&c.AdminToken, "admin-token", env("ADMIN_TOKEN", ""), "bearer token required by the /admin/* API (gocppctl gateway ...); empty = no check, bind the admin listener to an internal address")
+	fs.StringVar(&c.AdvertiseAdmin, "advertise-admin", env("ADVERTISE_ADMIN", ""), "host:port at which gocppctl reaches this gateway's admin listener (published in the lease label \"admin\"; e.g. $(POD_NAME).gateway:9100)")
+	fs.StringVar(&c.AttrSourceFile, "attr-source-file", env("ATTR_SOURCE_FILE", ""), "external session attributes from a YAML/JSON file (charger id -> labels), added as ext.<key>")
+	fs.StringVar(&c.AttrSourceURL, "attr-source-url", env("ATTR_SOURCE_URL", ""), "external session attributes from an HTTP GET (use {cpid} in the URL); added as ext.<key>")
+	fs.StringVar(&c.AttrSourceToken, "attr-source-token", env("ATTR_SOURCE_TOKEN", ""), "bearer token sent to --attr-source-url")
+	fs.DurationVar(&c.AttrSourceTimeout, "attr-source-timeout", envDur("ATTR_SOURCE_TIMEOUT", 200*time.Millisecond), "lookup timeout at connect (a failure means no external attributes)")
+	fs.DurationVar(&c.AttrSourceRefresh, "attr-source-refresh", envDur("ATTR_SOURCE_REFRESH", 0), "refresh the external attributes of connected sessions this often (0 = connect only)")
 	fs.IntVar(&c.SoftMaxSessions, "soft-max-sessions", envInt("SOFT_MAX_SESSIONS", 0), "sessions at which /readyz reports not-ready (the load balancer stops sending more); 0 = off")
 	fs.Float64Var(&c.AcceptRate, "accept-rate", envFloat("ACCEPT_RATE", 200), "upgrades admitted per second (0 = unlimited)")
 	fs.IntVar(&c.AcceptBurst, "accept-burst", envInt("ACCEPT_BURST", 400), "accept burst")

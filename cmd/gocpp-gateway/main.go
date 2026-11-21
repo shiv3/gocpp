@@ -37,6 +37,7 @@ import (
 	"github.com/shiv3/gocpp/core/transport"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/gateway"
+	"github.com/shiv3/gocpp/gateway/admin"
 	"github.com/shiv3/gocpp/gateway/routepolicy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -189,9 +190,17 @@ func serve(args []string) error {
 		policyStore = reg
 		opts = append(opts, csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: cfg.ID, LeaseTTL: cfg.LeaseTTL, HeartbeatInterval: cfg.HeartbeatEvery, ReconcileInterval: cfg.ReconcileEvery, ClaimTimeout: cfg.ClaimTimeout}))
 	}
+	if src := attrSource(cfg); src != nil {
+		am := newAttrSourceMetrics(wrapped)
+		opts = append(opts, csms.WithAttrSource(src, csms.AttrSourceOptions{
+			Timeout: cfg.AttrSourceTimeout, Refresh: cfg.AttrSourceRefresh, OnResult: am.result}))
+	}
 	gw = csms.NewGatewayServer(link, opts...)
 	gw.SetGatewayLabel(ctx, "version", cfg.Version)
 	gw.SetGatewayLabel(ctx, "policy_rev", "0")
+	if cfg.AdvertiseAdmin != "" {
+		gw.SetGatewayLabel(ctx, "admin", cfg.AdvertiseAdmin)
+	}
 	gw.SetGatewayLabel(ctx, "caps", "route.v1,attrs.set,send.21,cancel,orphan")
 
 	if cfg.RoutePolicyFile != "" {
@@ -252,6 +261,7 @@ func serve(args []string) error {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.Handle("/admin/", admin.Handler(gw, admin.Options{ID: cfg.ID, Version: cfg.Version, Token: cfg.AdminToken, Context: ctx}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	ready := gw.ReadyHandler()
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {

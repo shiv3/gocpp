@@ -6,6 +6,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -270,4 +272,31 @@ func httpBody(u string) string {
 	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	return string(b)
+}
+
+// Labels that live outside the backend (a file here; an HTTP service in
+// production) select the canary through the ext. attributes: no backend code.
+func TestChaos_ExternalAttrSourceSelectsCanary(t *testing.T) {
+	mr := miniredis.RunT(t)
+	labels := filepath.Join(t.TempDir(), "labels.yaml")
+	require.NoError(t, os.WriteFile(labels, []byte("CP_1: {label.canary: 1}\n"), 0o600))
+	g := startGateway(t, "gw-1", mr.Addr(), "--attr-source-file", labels)
+	def := startPoolBackend(t, "be-d", "", mr.Addr(), g.link)
+	can := startPoolBackend(t, "be-c", "canary", mr.Addr(), g.link)
+	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
+	ctl := controller(t, mr.Addr())
+	waitLeases(t, ctl)
+	p := routepolicy.Policy{Rules: []routepolicy.Rule{{Name: "lab", Pool: "canary", Match: routepolicy.Match{Attrs: map[string][]string{"ext.label.canary": {"1"}}}}}}
+	rev, err := ctl.Put(context.Background(), p, routepolicy.PutOptions{})
+	require.NoError(t, err)
+	_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
+	require.NoError(t, err)
+
+	c1, c2 := newCharger(t, g.ws, "CP_1"), newCharger(t, g.ws, "CP_2")
+	require.NoError(t, hb(t, c1))
+	require.NoError(t, hb(t, c2))
+	require.Equal(t, 1, can.count("HANDLED Heartbeat be-c CP_1"))
+	require.Zero(t, can.count("CP_2"))
+	require.Equal(t, 1, def.count("HANDLED Heartbeat be-d CP_2"))
+	require.Contains(t, metrics(t, g), "gocpp_gateway_attr_source_total{")
 }

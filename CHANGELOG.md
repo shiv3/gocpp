@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Staged releases, phase 7b (docs/rollout.md): `gateway/admin` (per-gateway admin
+  API: status, paced `shed` by count / min age / attributes, soft cap; client and
+  rebalance planner), `gocppctl gateway status|shed|cap|rebalance`,
+  `Server.SoftMaxConnections`, `gateway.AttrSource` + `csms.WithAttrSource` +
+  `gateway/attrsource` (file and HTTP; keys arrive as `ext.*`), gateway flags
+  `--admin-token`, `--advertise-admin`, `--attr-source-*`, `probe --interval` (a
+  continuous probe sidecar with `gocpp_probe_*` metrics), manifests with the probe
+  sidecar and the admin port, and real-process tests of a gateway canary
+  (soft cap, fill, rebalance, kill -9 of the canary, rollback during a shed,
+  registry outage during a shed).
 - Gateway options (phase 6): `csms.WithEdgeHeartbeat` / `WithEdgeResponder` /
   `WithOnEdgeResponse` (a gateway answers Heartbeat, or any configured action,
   itself without a backend hop; opt-in) and `csms.WithTenantLimits` (per-tenant

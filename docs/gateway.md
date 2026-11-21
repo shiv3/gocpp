@@ -335,6 +335,16 @@ stored in the session registry with compare-and-set and pushed to every gateway
 in well under a second, operated with `gocppctl route`. The runbook is
 [staged-releases.md](staged-releases.md).
 
+The connection tier has its own staged release (a canary gateway: the highest
+StatefulSet ordinal with a soft session cap, filled by a paced partial drain of
+the others, then rebalanced): each gateway serves `/admin/status`, `/admin/shed`
+and `/admin/soft-max` on its admin listener (`gateway/admin`, `--admin-token`,
+`--advertise-admin`), driven by `gocppctl gateway status|shed|cap|rebalance`.
+`probe --interval` is a sidecar that exercises an idle gateway continuously, and
+`--attr-source-file` / `--attr-source-url` (`csms.WithAttrSource`) add labels from
+outside the backend as `ext.*` session attributes. The runbook is
+[rollout.md](rollout.md).
+
 ## Performance
 
 Measured with the load-test harness (`interop/loadtest` on branch `test/loadtest-4k`,

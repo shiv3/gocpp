@@ -24,6 +24,10 @@ spec:
           args: ["serve", "--drain-window=5m", "--redis-addr=$(REDIS_ADDR)"]
           env:
             - {name: GOCPP_GATEWAY_ID, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+            # gocppctl finds each gateway's admin API through its lease; the
+            # headless Service gives every pod a stable name.
+            - {name: GOCPP_GATEWAY_ADVERTISE_ADMIN, value: "$(GOCPP_GATEWAY_ID).gateway-link:9100"}
+            - {name: GOCPP_GATEWAY_ADMIN_TOKEN, valueFrom: {secretKeyRef: {name: gateway-admin, key: token}}}
             - {name: REDIS_ADDR, value: "redis.example.invalid:6379"}
             - {name: GOCPP_GATEWAY_TLS_CERT, value: /tls/tls.crt}
             - {name: GOCPP_GATEWAY_TLS_KEY, value: /tls/tls.key}
@@ -49,6 +53,17 @@ spec:
           resources:
             requests: {cpu: "1", memory: 1Gi}
             limits: {memory: 1Gi}
+        # Continuous synthetic probe: an idle canary is still exercised, and the
+        # alert is on gocpp_probe_runs_total{result="error"}.
+        - name: probe
+          image: example.invalid/gocpp-gateway:latest
+          args: ["probe", "--insecure", "--url=wss://127.0.0.1:8080/ocpp/", "--id=$(GOCPP_GATEWAY_ID)", "--interval=30s", "--metrics=:9101"]
+          env:
+            - {name: GOCPP_GATEWAY_ID, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+          ports:
+            - {name: probe-metrics, containerPort: 9101}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
       volumes:
         - name: tls
           secret: {secretName: gateway-tls}
@@ -64,6 +79,7 @@ spec:
   selector: {app: gateway}
   ports:
     - {name: link, port: 9090}
+    - {name: admin, port: 9100}
 ---
 # Chargers connect here: L4 passthrough, TLS terminates in the gateway.
 apiVersion: v1

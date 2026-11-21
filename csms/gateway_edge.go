@@ -104,6 +104,9 @@ func newEdge(s *Server, link gateway.GatewayLink, id string) *edge {
 	s.reg.SetFallback(e.forward)
 	s.reg.SetSendFallback(e.forwardSend)
 	e.detach = link.Attach(id, edgeDownstream{e})
+	if s.cfg.attrSource != nil && s.cfg.attrSourceOpts.Refresh > 0 {
+		go e.refreshExt(s.cfg.attrSourceOpts.Refresh)
+	}
 	return e
 }
 
