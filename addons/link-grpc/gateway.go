@@ -34,6 +34,7 @@ const (
 // streams of backends once registered on a grpc.Server.
 type Gateway struct {
 	pools        *gateway.PoolSet
+	observer     gateway.RouteObserver
 	version      string
 	metrics      Metrics
 	helloTimeout time.Duration
@@ -62,6 +63,12 @@ func WithUpstreamWait(d time.Duration) GatewayOption {
 	return func(g *Gateway) { g.pools = gateway.NewPoolSet(d) }
 }
 
+// WithRouteObserver sets the gateway.RouteObserver told about fallbacks and
+// outcomes of routed messages (the routepolicy engine).
+func WithRouteObserver(o gateway.RouteObserver) GatewayOption {
+	return func(g *Gateway) { g.observer = o }
+}
+
 // WithMaxInFlight caps the requests in flight per backend stream (default 4096).
 func WithMaxInFlight(n int) GatewayOption { return func(g *Gateway) { g.maxInFlight = n } }
 
@@ -74,6 +81,7 @@ func NewGateway(opts ...GatewayOption) *Gateway {
 	for _, o := range opts {
 		o(g)
 	}
+	g.pools.SetObserver(g.observer)
 	return g
 }
 

@@ -44,15 +44,16 @@ const (
 // published to the backends' queue groups, and the Downstream attached to it
 // is served on the gateway's own subjects.
 type Gateway struct {
-	nc      *nats.Conn
-	prefix  string
-	version string
-	metrics Metrics
-	pools   *gateway.PoolSet
-	accept  time.Duration
-	boot    string
-	gwID    atomic.Value // string
-	mux     *mux
+	nc       *nats.Conn
+	prefix   string
+	version  string
+	metrics  Metrics
+	pools    *gateway.PoolSet
+	observer gateway.RouteObserver
+	accept   time.Duration
+	boot     string
+	gwID     atomic.Value // string
+	mux      *mux
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -78,6 +79,12 @@ type entry struct {
 
 // GatewayOption configures a Gateway.
 type GatewayOption func(*Gateway)
+
+// WithRouteObserver sets the gateway.RouteObserver told about fallbacks and
+// outcomes of routed messages (the routepolicy engine).
+func WithRouteObserver(o gateway.RouteObserver) GatewayOption {
+	return func(g *Gateway) { g.observer = o }
+}
 
 // WithGatewayVersion labels the gateway build (reported in HelloAck).
 func WithGatewayVersion(v string) GatewayOption { return func(g *Gateway) { g.version = v } }
@@ -115,6 +122,7 @@ func NewGateway(nc *nats.Conn, opts ...GatewayOption) (*Gateway, error) {
 	for _, o := range opts {
 		o(g)
 	}
+	g.pools.SetObserver(g.observer)
 	g.ctx, g.cancel = context.WithCancel(context.Background())
 	var err error
 	if g.mux, err = newMux(nc, g.prefix, "g"+g.boot); err != nil {

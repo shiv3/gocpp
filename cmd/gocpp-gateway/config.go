@@ -35,6 +35,9 @@ type config struct {
 	RedisAddr     string
 	RedisPassword string
 
+	RoutePolicyFile     string
+	RoutePolicyInterval time.Duration
+
 	MaxConnections  int
 	SoftMaxSessions int
 	AcceptRate      float64
@@ -111,6 +114,8 @@ func parseConfig(args []string) (config, error) {
 	subs := fs.String("subprotocols", env("SUBPROTOCOLS", "ocpp1.6,ocpp2.0.1"), "comma separated WebSocket subprotocols")
 	fs.StringVar(&c.RedisAddr, "redis-addr", env("REDIS_ADDR", ""), "Redis address of the session registry (empty: no registry, sessions are numbered locally)")
 	fs.StringVar(&c.RedisPassword, "redis-password", env("REDIS_PASSWORD", ""), "Redis password")
+	fs.StringVar(&c.RoutePolicyFile, "route-policy-file", env("ROUTE_POLICY_FILE", ""), "routing policy file (YAML or JSON), re-read on change; with a registry the policy stored there (gocppctl route apply) and this file both apply, the higher revision wins")
+	fs.DurationVar(&c.RoutePolicyInterval, "route-policy-interval", envDur("ROUTE_POLICY_INTERVAL", 30*time.Second), "full re-read interval of the policy file")
 	fs.IntVar(&c.MaxConnections, "max-connections", envInt("MAX_CONNECTIONS", 0), "hard cap on sessions (503 above it)")
 	fs.IntVar(&c.SoftMaxSessions, "soft-max-sessions", envInt("SOFT_MAX_SESSIONS", 0), "sessions at which /readyz reports not-ready (the load balancer stops sending more); 0 = off")
 	fs.Float64Var(&c.AcceptRate, "accept-rate", envFloat("ACCEPT_RATE", 200), "upgrades admitted per second (0 = unlimited)")

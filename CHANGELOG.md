@@ -22,6 +22,16 @@ All notable changes to this project are documented here. The format is based on
   from the registered handlers and honoured by `PoolSet` (unhandled actions fall
   back to the route's fallback pool and are counted), `csms.WithGatewayAuthCache`
   and `Server.InvalidateAuthCache`, and link protocol skew tests (v1/v2 ranges).
+- Staged releases, phase 7a (docs/staged-releases.md): `gateway/routepolicy`
+  (declarative routing policy: id / attribute / version / stable-hash percentage
+  rules, action rules with a transaction-group lint, `on_unavailable`, `hold: busy`,
+  suspend on fallback, error-rate guard; `Engine` implements `gateway.Router` and
+  the new `gateway.RouteObserver`), `storage.PolicyStore` (CAS + watch) with memory and
+  `addons/registry-redis` implementations, `gateway.PoolReject`, `PoolSet.SetObserver`,
+  `linkgrpc.WithRouteObserver`, `inproc.WithRouteObserver`, `cmd/gocppctl`
+  (`route validate|show|apply|rollback|status`), gateway flags `--route-policy-file`,
+  lease labels `policy_rev` and `suspended`, and the routing metrics
+  (`gocpp_gateway_route_*`).
 - Gateway performance gates and benchmarks (`benchmarks/gateway_hop_test.go`,
   `addons/link-grpc/hop_test.go`), pprof on the `gocpp-gateway` admin listener, and the
   measured results in docs/gateway.md.

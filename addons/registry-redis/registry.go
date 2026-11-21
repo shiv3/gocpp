@@ -25,6 +25,8 @@ type Registry struct {
 	prefix    string
 	recordTTL time.Duration
 	epochTTL  time.Duration
+
+	policyPoll time.Duration
 }
 
 var _ storage.SessionRegistry = (*Registry)(nil)
@@ -44,6 +46,9 @@ func WithRecordTTL(d time.Duration) Option { return func(r *Registry) { r.record
 // claim (default 30 days). The counter must outlive any record or a stale
 // writer could meet a reused epoch.
 func WithEpochTTL(d time.Duration) Option { return func(r *Registry) { r.epochTTL = d } }
+
+// WithPolicyPoll sets the backstop poll interval of WatchPolicy (default 5 s).
+func WithPolicyPoll(d time.Duration) Option { return func(r *Registry) { r.policyPoll = d } }
 
 // New returns a Registry using rdb.
 func New(rdb redis.UniversalClient, opts ...Option) *Registry {

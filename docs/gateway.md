@@ -302,8 +302,14 @@ Session attributes are the routing labels: `ConnectReply.Attrs` at connect, and
 `Conn.SetAttrs` (or `Server.SetSessionAttrs`) from the
 backend afterwards (merge; an empty value deletes; 1 KiB cap); the
 router sees them from the next message. A rollback is swapping the router; no
-socket is touched. The declarative policy engine, percentage rules and tooling
-are a later phase (design section 5).
+socket is touched.
+
+The built-in router is `gateway/routepolicy`: a declarative first-match policy
+(charger ids, attributes, OCPP versions, a stable-hash percentage, per-rule
+actions, `on_unavailable`, `hold: busy`, `suspend_for`, an error-rate `guard`),
+stored in the session registry with compare-and-set and pushed to every gateway
+in well under a second, operated with `gocppctl route`. The runbook is
+[staged-releases.md](staged-releases.md).
 
 ## Performance
 
