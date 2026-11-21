@@ -50,3 +50,18 @@ func TestProm_SessionMetrics(t *testing.T) {
 	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_session_duration_seconds"))
 	require.Equal(t, 2, testutil.CollectAndCount(reg, "gocpp_accepts_total"))
 }
+
+func TestProm_TenantAndEdgeMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := prom.New(reg)
+	tm := m.(observability.TenantMetrics)
+	tm.TenantSessions("a", 1)
+	tm.TenantSessions("a", 1)
+	tm.TenantSessions("a", -1)
+	tm.TenantRejected("a", "sessions")
+	tm.TenantRejected("a", "messages")
+	m.(observability.EdgeMetrics).EdgeResponse("1.6", "Heartbeat")
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_tenant_sessions"))
+	require.Equal(t, 2, testutil.CollectAndCount(reg, "gocpp_tenant_rejected_total"))
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_edge_responses_total"))
+}
