@@ -21,6 +21,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	registryredis "github.com/shiv3/gocpp/addons/registry-redis"
 	"github.com/shiv3/gocpp/cp"
+	"github.com/shiv3/gocpp/csms"
+	"github.com/shiv3/gocpp/gateway"
 	"github.com/stretchr/testify/require"
 )
 
@@ -134,6 +136,7 @@ type fleet struct {
 	first     map[string]bool
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
+	resets    atomic.Int64 // CSMS Reset calls the chargers executed
 }
 
 func (f *fleet) up() int {
@@ -185,6 +188,10 @@ func startFleet(t *testing.T, lbAddr string, n int) *fleet {
 				f.mu.Unlock()
 			}),
 			cp.WithOnDisconnect(func(error) { f.mu.Lock(); f.connected[id] = false; f.mu.Unlock() }))
+		_ = cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) {
+			f.resets.Add(1)
+			return resetResp{Status: "Accepted"}, nil
+		})
 		f.wg.Add(1)
 		go func() { defer f.wg.Done(); _ = c.Run(ctx) }()
 	}
@@ -303,6 +310,7 @@ func TestChaos_GatewayCanaryFillAndRebalance(t *testing.T) {
 	before := r.epochs(t, n)
 	require.Len(t, before, n)
 	r.fleet.resetReconnects()
+	calls := startCallLoad(t, r, n)
 
 	// The canary joins the balancer and the old gateways shed into it.
 	r.lb.add(r.gws[2])
@@ -342,6 +350,87 @@ func TestChaos_GatewayCanaryFillAndRebalance(t *testing.T) {
 	}
 	require.Positive(t, moved)
 	require.Less(t, r.fleet.maxPerSecond(), 31)
+
+	// No call that the gateways reported as NotSent was lost: every logical call
+	// issued while sessions moved ended up on its charger (after the retries a
+	// NotSent permits), and a NotSent call never ran.
+	calls.stop()
+	t.Logf("calls: %d logical, %d answered, %d written without an answer, %d NotSent retries, %d lost; chargers executed %d",
+		calls.logical.Load(), calls.answered.Load(), calls.noResponse.Load(), calls.notSentSeen.Load(), calls.lost.Load(), r.fleet.resets.Load())
+	require.Positive(t, calls.logical.Load())
+	require.Zero(t, calls.lost.Load(), "calls that stayed NotSent after retries: %s", calls.detail())
+	require.GreaterOrEqual(t, r.fleet.resets.Load(), calls.answered.Load(), "an answered call was not executed")
+	require.LessOrEqual(t, r.fleet.resets.Load(), calls.answered.Load()+calls.noResponse.Load(),
+		"a call reported NotSent was executed anyway (answered %d, no response %d, executed %d)",
+		calls.answered.Load(), calls.noResponse.Load(), r.fleet.resets.Load())
+}
+
+// callLoad issues CSMS Reset calls to random chargers from a processing-tier
+// caller while the fleet moves, retrying only what the library reports as NotSent.
+type callLoad struct {
+	cancel                                           context.CancelFunc
+	done                                             chan struct{}
+	logical, answered, noResponse, lost, notSentSeen atomic.Int64
+	mu                                               sync.Mutex
+	lastLost                                         string
+}
+
+func (c *callLoad) detail() string { c.mu.Lock(); defer c.mu.Unlock(); return c.lastLost }
+
+func (c *callLoad) stop() { c.cancel(); <-c.done }
+
+func startCallLoad(t *testing.T, r *canaryRig, n int) *callLoad {
+	var links []string
+	for _, g := range r.gws {
+		links = append(links, g.link)
+	}
+	caller := newCaller(t, r.mr.Addr(), links...)
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &callLoad{cancel: cancel, done: make(chan struct{})}
+	t.Cleanup(func() { cancel(); <-c.done })
+	go func() {
+		defer close(c.done)
+		for ctx.Err() == nil {
+			id := fmt.Sprintf("CP_%03d", rand.IntN(n))
+			c.logical.Add(1)
+			var last error
+			finished := false
+			// A NotSent call is safe to retry (the charger never saw it); give a
+			// moving session a few seconds to be reachable again.
+			for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline) && ctx.Err() == nil; {
+				cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
+				h, err := caller.Lookup(cctx, id)
+				if err == nil {
+					_, err = csms.Call(cctx, h, resetMsg, resetReq{Type: "Soft"})
+				} else {
+					err = fmt.Errorf("lookup: %w", err) // never written to a charger
+					err = gateway.WithSent(err, gateway.NotSent)
+				}
+				ccancel()
+				if err == nil {
+					c.answered.Add(1)
+					finished = true
+					break
+				}
+				last = err
+				if gateway.SentOf(err) != gateway.NotSent {
+					c.noResponse.Add(1) // written (or unknown): it may have run, no retry
+					finished = true
+					break
+				}
+				c.notSentSeen.Add(1)
+				time.Sleep(100 * time.Millisecond)
+			}
+			if !finished && ctx.Err() == nil {
+				c.lost.Add(1)
+				c.mu.Lock()
+				c.lastLost = fmt.Sprintf("%s: %v", id, last)
+				c.mu.Unlock()
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	return c
 }
 
 // kill -9 the canary gateway while it is being filled: its chargers reconnect
