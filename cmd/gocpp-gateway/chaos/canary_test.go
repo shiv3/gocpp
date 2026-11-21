@@ -112,7 +112,7 @@ func canaryRule(mut func(*routepolicy.Rule)) routepolicy.Policy {
 	return routepolicy.Policy{Salt: "chaos", Rules: []routepolicy.Rule{r}}
 }
 
-func hb(t *testing.T, c *charger) error {
+func hb(c *charger) error {
 	ctx, cancel := ctxT(10 * time.Second)
 	defer cancel()
 	return c.heartbeat(ctx)
@@ -135,7 +135,7 @@ func TestChaos_CanaryKilledFallsBackWithoutHold(t *testing.T) {
 	require.NoError(t, err, "%+v", st)
 
 	c := newCharger(t, g.ws, "CP_1")
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 1, can.count("HANDLED Heartbeat be-c CP_1"))
 	require.Zero(t, def.count("HANDLED Heartbeat"))
 
@@ -152,7 +152,7 @@ func TestChaos_CanaryKilledFallsBackWithoutHold(t *testing.T) {
 	require.Zero(t, def.count("HANDLED BootNotification"), "no redispatch after dispatch")
 
 	start := time.Now()
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Less(t, time.Since(start), 2*time.Second, "fallback must not wait for the upstream hold")
 	require.Equal(t, 1, def.count("HANDLED Heartbeat be-d CP_1"))
 	require.True(t, c.IsConnected())
@@ -180,18 +180,18 @@ func TestChaos_CanaryFlappingIsSuspended(t *testing.T) {
 	_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
 	require.NoError(t, err)
 	c := newCharger(t, g.ws, "CP_1")
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 1, can.count("HANDLED Heartbeat"))
 
 	can.kill9()
 	waitPoolMembers(t, g, "canary", 0)
-	require.NoError(t, hb(t, c)) // falls back, suspends the rule
+	require.NoError(t, hb(c)) // falls back, suspends the rule
 	// Crash loop: the canary restarts three times inside the window; none of it
 	// attracts the charger.
 	var restarted []*proc
 	for i := 0; i < 3; i++ {
 		restarted = append(restarted, startPoolBackend(t, "be-c"+string(rune('2'+i)), "canary", mr.Addr(), g.link))
-		require.NoError(t, hb(t, c))
+		require.NoError(t, hb(c))
 	}
 	for _, b := range restarted {
 		require.Zero(t, b.count("HANDLED Heartbeat"), "suspended rule: the charger stays on the default pool")
@@ -199,7 +199,7 @@ func TestChaos_CanaryFlappingIsSuspended(t *testing.T) {
 	require.GreaterOrEqual(t, def.count("HANDLED Heartbeat"), 4)
 
 	time.Sleep(8 * time.Second)
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	n := 0
 	for _, b := range restarted {
 		n += b.count("HANDLED Heartbeat")
@@ -227,13 +227,13 @@ func TestChaos_CanaryGuardTripsOnErrors(t *testing.T) {
 
 	failed := 0
 	for i := 0; i < 5; i++ {
-		if err := hb(t, c); err != nil {
+		if err := hb(c); err != nil {
 			require.Equal(t, ocppj.ErrorCodeInternalError, callErrCode(err))
 			failed++
 		}
 	}
 	require.Equal(t, 5, failed)
-	require.NoError(t, hb(t, c), "after the trip the default pool answers")
+	require.NoError(t, hb(c), "after the trip the default pool answers")
 	require.Equal(t, 5, can.count("HANDLED Heartbeat"))
 	require.Equal(t, 1, def.count("HANDLED Heartbeat"))
 	require.Eventually(t, func() bool {
@@ -248,7 +248,7 @@ func TestChaos_CanaryGuardTripsOnErrors(t *testing.T) {
 	require.NoError(t, err)
 	_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
 	require.NoError(t, err)
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 5, can.count("HANDLED Heartbeat"), "empty policy: everything on the default pool")
 }
 
@@ -268,7 +268,7 @@ func TestChaos_PolicyStoreDownAndInvalidPolicy(t *testing.T) {
 	_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
 	require.NoError(t, err)
 	c := newCharger(t, g.ws, "CP_1")
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 1, can.count("HANDLED Heartbeat"))
 
 	// Invalid document stored directly (a buggy writer): refused, revision stays.
@@ -280,14 +280,14 @@ func TestChaos_PolicyStoreDownAndInvalidPolicy(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return strings.Contains(metrics(t, g), "gocpp_gateway_route_policy_rejected_total{") && strings.Contains(metrics(t, g), "} 1\n")
 	}, 5*time.Second, 100*time.Millisecond)
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 2, can.count("HANDLED Heartbeat"), "still on the previous policy")
 
 	// Store down.
 	addr := mr.Addr()
 	mr.Close()
 	time.Sleep(500 * time.Millisecond)
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 3, can.count("HANDLED Heartbeat"), "the running gateway keeps its last policy")
 
 	// A restarted gateway has no policy: default pool, gauge raised.
@@ -295,7 +295,7 @@ func TestChaos_PolicyStoreDownAndInvalidPolicy(t *testing.T) {
 	def2 := startPoolBackend(t, "be-d2", "", "", g2.link)
 	require.Eventually(t, g2.ready, 5*time.Second, 50*time.Millisecond)
 	c2 := newCharger(t, g2.ws, "CP_2")
-	require.NoError(t, hb(t, c2))
+	require.NoError(t, hb(c2))
 	// (Over NATS every backend meets every gateway on the broker, so either default backend may serve it.)
 	require.Equal(t, 1, def1.count("HANDLED Heartbeat be-d CP_2")+def2.count("HANDLED Heartbeat be-d2 CP_2"))
 	require.Zero(t, can.count("CP_2"), "no policy: the canary pool gets nothing")
@@ -364,8 +364,8 @@ func TestChaos_ExternalAttrSourceSelectsCanary(t *testing.T) {
 	require.NoError(t, err)
 
 	c1, c2 := newCharger(t, g.ws, "CP_1"), newCharger(t, g.ws, "CP_2")
-	require.NoError(t, hb(t, c1))
-	require.NoError(t, hb(t, c2))
+	require.NoError(t, hb(c1))
+	require.NoError(t, hb(c2))
 	require.Equal(t, 1, can.count("HANDLED Heartbeat be-c CP_1"))
 	require.Zero(t, can.count("CP_2"))
 	require.Equal(t, 1, def.count("HANDLED Heartbeat be-d CP_2"))

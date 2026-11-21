@@ -104,7 +104,7 @@ func TestChaos_CrossPoolCallsReachTheCharger(t *testing.T) {
 		require.NoError(t, err)
 		_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
 		require.NoError(t, err)
-		require.Eventually(t, func() bool { _ = hb(t, c); return routePool(t, reg, "CP_1") == pool }, 5*time.Second, 50*time.Millisecond)
+		require.Eventually(t, func() bool { _ = hb(c); return routePool(t, reg, "CP_1") == pool }, 5*time.Second, 50*time.Millisecond)
 	}
 	callBoth := func() {
 		before := executed.Load()
@@ -157,7 +157,7 @@ func TestChaos_OrphanResultWhenCallingCanaryDies(t *testing.T) {
 			var executed atomic.Int64
 			entered, gate := make(chan struct{}, 1), make(chan struct{})
 			c := resetCharger(t, g.ws, "CP_1", &executed, entered, gate)
-			require.NoError(t, hb(t, c))
+			require.NoError(t, hb(c))
 
 			verdict := make(chan string, 1)
 			go func() { verdict <- backendCall(admin, "CP_1") }()
@@ -227,12 +227,12 @@ func TestChaos_HeldSessionDuringPromotionAndRollback(t *testing.T) {
 	require.Equal(t, 1, def.count("HANDLED BootNotification be-d CP_1 busy"))
 	put(100)
 	for i := 0; i < 3; i++ {
-		require.NoError(t, hb(t, c))
+		require.NoError(t, hb(c))
 	}
 	require.Equal(t, 3, def.count("HANDLED Heartbeat be-d CP_1"), "busy: held on the default pool across the increase")
 	require.Zero(t, can.count("HANDLED"))
 	boot(c, "idle") // still held while this message is handled, and it clears the flag
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 1, can.count("HANDLED Heartbeat be-c CP_1"), "idle again: the new percentage applies")
 
 	// Rollback. Busy on the canary; a plain revision back to 0% holds it there,
@@ -240,7 +240,7 @@ func TestChaos_HeldSessionDuringPromotionAndRollback(t *testing.T) {
 	boot(c, "busy")
 	require.Equal(t, 1, can.count("HANDLED BootNotification be-c CP_1 busy"))
 	put(0)
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, 2, can.count("HANDLED Heartbeat be-c CP_1"), "held on the canary by hold: busy")
 	rev, restored, err := ctl.Rollback(context.Background(), r1)
 	require.NoError(t, err)
@@ -248,7 +248,7 @@ func TestChaos_HeldSessionDuringPromotionAndRollback(t *testing.T) {
 	_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
 	require.NoError(t, err)
 	defBefore := def.count("HANDLED Heartbeat be-d CP_1")
-	require.NoError(t, hb(t, c))
+	require.NoError(t, hb(c))
 	require.Equal(t, defBefore+1, def.count("HANDLED Heartbeat be-d CP_1"), "rollback ignores the hold")
 	require.Equal(t, 2, can.count("HANDLED Heartbeat be-c CP_1"))
 	require.True(t, c.IsConnected())

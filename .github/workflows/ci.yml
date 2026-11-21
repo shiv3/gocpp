@@ -44,6 +44,11 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+      # cmd/gocpp-gateway is its own module, which the run above does not cover.
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          working-directory: cmd/gocpp-gateway
 
   vulncheck:
     runs-on: ubuntu-latest

@@ -3,7 +3,6 @@ package main
 import (
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shiv3/gocpp/gateway/routepolicy"
@@ -18,7 +17,6 @@ type routeMetrics struct {
 	missing   prometheus.Gauge
 	rejected  prometheus.Counter
 
-	mu    sync.Mutex
 	known map[string]bool // rules with a suspended series, to clear them on the next revision
 }
 
