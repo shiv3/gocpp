@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,6 +35,26 @@ func loopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+var (
+	plainClient = &http.Client{Timeout: 10 * time.Second}
+	tlsClients  sync.Map // *tls.Config -> *http.Client
+)
+
+// defaultHTTPClient returns the shared client for cfg (nil for plain HTTP), so
+// calls reuse connections instead of building a transport, and leaking its idle
+// connections, per request. Client is a value type, so the cache is global,
+// keyed by the TLS config.
+func defaultHTTPClient(cfg *tls.Config) *http.Client {
+	if cfg == nil {
+		return plainClient
+	}
+	if hc, ok := tlsClients.Load(cfg); ok {
+		return hc.(*http.Client)
+	}
+	hc, _ := tlsClients.LoadOrStore(cfg, &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: cfg}})
+	return hc.(*http.Client)
 }
 
 func (c Client) do(ctx context.Context, method, base, path string, body any, out any) error {
@@ -67,10 +88,7 @@ func (c Client) do(ctx context.Context, method, base, path string, body any, out
 	}
 	hc := c.HTTP
 	if hc == nil {
-		hc = &http.Client{Timeout: 10 * time.Second}
-		if c.TLS != nil {
-			hc.Transport = &http.Transport{TLSClientConfig: c.TLS}
-		}
+		hc = defaultHTTPClient(c.TLS)
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
