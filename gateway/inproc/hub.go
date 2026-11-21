@@ -22,6 +22,7 @@ import (
 // every gateway from every backend.
 type Hub struct {
 	pool         *gateway.PoolSet
+	observer     gateway.RouteObserver
 	drainTimeout time.Duration
 	backendSeq   atomic.Uint64
 
@@ -36,6 +37,12 @@ type Option func(*Hub)
 // backend is attached (default gateway.DefaultUpstreamWait).
 func WithUpstreamWait(d time.Duration) Option {
 	return func(h *Hub) { h.pool = gateway.NewPoolSet(d) }
+}
+
+// WithRouteObserver sets the gateway.RouteObserver told about fallbacks and
+// outcomes of routed messages (the routepolicy engine).
+func WithRouteObserver(o gateway.RouteObserver) Option {
+	return func(h *Hub) { h.observer = o }
 }
 
 // WithDrainTimeout bounds how long a backend waits for in-flight work when its
@@ -54,6 +61,7 @@ func New(opts ...Option) *Hub {
 	for _, o := range opts {
 		o(h)
 	}
+	h.pool.SetObserver(h.observer)
 	return h
 }
 

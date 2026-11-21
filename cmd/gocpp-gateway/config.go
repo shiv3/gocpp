@@ -19,6 +19,12 @@ type config struct {
 	Admin    string // /metrics /healthz /readyz
 	LinkAddr string // gRPC listener backends dial
 
+	Link       string // grpc | nats
+	NATSURL    string // NATS server URL(s) of the NATS link
+	NATSPrefix string // subject prefix of the NATS link
+	NATSCreds  string // optional NATS credentials file
+	NATSAccept time.Duration
+
 	TLSCert, TLSKey, TLSClientCA string
 	TicketSecret                 string
 	LinkTLSCert, LinkTLSKey      string
@@ -29,16 +35,44 @@ type config struct {
 	RedisAddr     string
 	RedisPassword string
 
+	RoutePolicyFile     string
+	RoutePolicyInterval time.Duration
+
 	MaxConnections  int
 	SoftMaxSessions int
-	AcceptRate      float64
-	AcceptBurst     int
+
+	AdminToken                           string
+	AdvertiseAdmin                       string
+	AttrSourceFile                       string
+	AttrSourceURL                        string
+	AttrSourceToken                      string
+	AttrSourceTimeout, AttrSourceRefresh time.Duration
+	AcceptRate                           float64
+	AcceptBurst                          int
 
 	UpstreamWait time.Duration
 	HandlerTime  time.Duration
 	CallTimeout  time.Duration
 	DrainWindow  time.Duration
 	LogLevel     string
+
+	EdgeHeartbeat bool
+	TapJSONL      string // file receiving frame/session events as JSON lines
+	TapNATS       bool   // publish frame/session events on NATS
+	TapSample     int    // export 1 frame in N
+	TapBuffer     int    // events buffered before dropping
+	TapMaxFrame   int    // bytes of each frame kept (negative: metadata only)
+	TapNoSessions bool
+	TapNoFrames   bool
+	TapSkipHB     bool
+
+	TenantHeader, TenantAttr string
+	TenantMaxSessions        int
+	TenantMessageRate        float64
+	TenantMessageBurst       int
+	TenantInFlightPool       int
+	TenantMaxInFlight        int
+	TenantWeights            string
 
 	LeaseTTL, HeartbeatEvery, ReconcileEvery, ClaimTimeout time.Duration
 	LinkKeepalive                                          time.Duration
@@ -83,6 +117,11 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&c.Listen, "listen", env("LISTEN", ":8080"), "WebSocket listen address")
 	fs.StringVar(&c.Admin, "admin", env("ADMIN", ":9100"), "admin listen address (/metrics /healthz /readyz)")
 	fs.StringVar(&c.LinkAddr, "link-listen", env("LINK_LISTEN", ":9090"), "gRPC link listen address (backends dial it)")
+	fs.StringVar(&c.Link, "link", env("LINK", "grpc"), "link transport: grpc (backends dial the gateway) or nats (gateway and backends meet on a NATS server)")
+	fs.StringVar(&c.NATSURL, "nats-url", env("NATS_URL", "nats://127.0.0.1:4222"), "NATS server URL(s), comma separated (--link nats)")
+	fs.StringVar(&c.NATSPrefix, "nats-prefix", env("NATS_PREFIX", "gocpp"), "subject prefix of the NATS link; must match the backends'")
+	fs.StringVar(&c.NATSCreds, "nats-creds", env("NATS_CREDS", ""), "NATS credentials file (--link nats)")
+	fs.DurationVar(&c.NATSAccept, "nats-accept-timeout", envDur("NATS_ACCEPT_TIMEOUT", 5*time.Second), "fail a CALL no backend acknowledged within this long (--link nats)")
 	fs.StringVar(&c.TLSCert, "tls-cert", env("TLS_CERT", ""), "TLS certificate for the WebSocket listener")
 	fs.StringVar(&c.TLSKey, "tls-key", env("TLS_KEY", ""), "TLS key for the WebSocket listener")
 	fs.StringVar(&c.TLSClientCA, "tls-client-ca", env("TLS_CLIENT_CA", ""), "CA that verifies charge point client certificates (Security Profile 3)")
@@ -94,7 +133,16 @@ func parseConfig(args []string) (config, error) {
 	subs := fs.String("subprotocols", env("SUBPROTOCOLS", "ocpp1.6,ocpp2.0.1"), "comma separated WebSocket subprotocols")
 	fs.StringVar(&c.RedisAddr, "redis-addr", env("REDIS_ADDR", ""), "Redis address of the session registry (empty: no registry, sessions are numbered locally)")
 	fs.StringVar(&c.RedisPassword, "redis-password", env("REDIS_PASSWORD", ""), "Redis password")
+	fs.StringVar(&c.RoutePolicyFile, "route-policy-file", env("ROUTE_POLICY_FILE", ""), "routing policy file (YAML or JSON), re-read on change; with a registry the policy stored there (gocppctl route apply) and this file both apply, the higher revision wins")
+	fs.DurationVar(&c.RoutePolicyInterval, "route-policy-interval", envDur("ROUTE_POLICY_INTERVAL", 30*time.Second), "full re-read interval of the policy file")
 	fs.IntVar(&c.MaxConnections, "max-connections", envInt("MAX_CONNECTIONS", 0), "hard cap on sessions (503 above it)")
+	fs.StringVar(&c.AdminToken, "admin-token", env("ADMIN_TOKEN", ""), "bearer token required by the /admin/* API (gocppctl gateway ...); empty = no check, bind the admin listener to an internal address")
+	fs.StringVar(&c.AdvertiseAdmin, "advertise-admin", env("ADVERTISE_ADMIN", ""), "host:port at which gocppctl reaches this gateway's admin listener (published in the lease label \"admin\"; e.g. $(POD_NAME).gateway:9100)")
+	fs.StringVar(&c.AttrSourceFile, "attr-source-file", env("ATTR_SOURCE_FILE", ""), "external session attributes from a YAML/JSON file (charger id -> labels), added as ext.<key>")
+	fs.StringVar(&c.AttrSourceURL, "attr-source-url", env("ATTR_SOURCE_URL", ""), "external session attributes from an HTTP GET (use {cpid} in the URL); added as ext.<key>")
+	fs.StringVar(&c.AttrSourceToken, "attr-source-token", env("ATTR_SOURCE_TOKEN", ""), "bearer token sent to --attr-source-url")
+	fs.DurationVar(&c.AttrSourceTimeout, "attr-source-timeout", envDur("ATTR_SOURCE_TIMEOUT", 200*time.Millisecond), "lookup timeout at connect (a failure means no external attributes)")
+	fs.DurationVar(&c.AttrSourceRefresh, "attr-source-refresh", envDur("ATTR_SOURCE_REFRESH", 0), "refresh the external attributes of connected sessions this often (0 = connect only)")
 	fs.IntVar(&c.SoftMaxSessions, "soft-max-sessions", envInt("SOFT_MAX_SESSIONS", 0), "sessions at which /readyz reports not-ready (the load balancer stops sending more); 0 = off")
 	fs.Float64Var(&c.AcceptRate, "accept-rate", envFloat("ACCEPT_RATE", 200), "upgrades admitted per second (0 = unlimited)")
 	fs.IntVar(&c.AcceptBurst, "accept-burst", envInt("ACCEPT_BURST", 400), "accept burst")
@@ -102,6 +150,23 @@ func parseConfig(args []string) (config, error) {
 	fs.DurationVar(&c.HandlerTime, "handler-timeout", envDur("HANDLER_TIMEOUT", 25*time.Second), "deadline for the backend to answer a CALL")
 	fs.DurationVar(&c.CallTimeout, "call-timeout", envDur("CALL_TIMEOUT", 30*time.Second), "timeout of CSMS calls to chargers")
 	fs.DurationVar(&c.DrainWindow, "drain-window", envDur("DRAIN_WINDOW", 5*time.Minute), "window in which sessions are closed on SIGTERM")
+	fs.BoolVar(&c.EdgeHeartbeat, "edge-heartbeat", env("EDGE_HEARTBEAT", "") == "true", "answer Heartbeat at the gateway without a backend hop (the backend no longer sees Heartbeats)")
+	fs.StringVar(&c.TapJSONL, "tap-jsonl", env("TAP_JSONL", ""), "append frame and session events to this file as JSON lines (lossy, bounded; never slows connections)")
+	fs.BoolVar(&c.TapNATS, "tap-nats", env("TAP_NATS", "") == "true", "publish frame and session events on NATS (<nats-prefix>.tap.frame.<cp>, .tap.session.<cp>); uses --nats-url")
+	fs.IntVar(&c.TapSample, "tap-sample", envInt("TAP_SAMPLE", 1), "export one frame out of every N (sessions are never sampled)")
+	fs.IntVar(&c.TapBuffer, "tap-buffer", envInt("TAP_BUFFER", 4096), "events buffered for the tap sinks before dropping (counted in gocpp_tap_events_total)")
+	fs.IntVar(&c.TapMaxFrame, "tap-max-frame", envInt("TAP_MAX_FRAME", 2048), "bytes of each frame kept in the tap (negative: metadata only)")
+	fs.BoolVar(&c.TapNoFrames, "tap-no-frames", env("TAP_NO_FRAMES", "") == "true", "tap session events only")
+	fs.BoolVar(&c.TapNoSessions, "tap-no-sessions", env("TAP_NO_SESSIONS", "") == "true", "tap frames only")
+	fs.BoolVar(&c.TapSkipHB, "tap-skip-heartbeat", env("TAP_SKIP_HEARTBEAT", "") == "true", "leave Heartbeat frames out of the tap")
+	fs.StringVar(&c.TenantHeader, "tenant-header", env("TENANT_HEADER", ""), "request header naming the tenant of a charger (per-tenant limits)")
+	fs.StringVar(&c.TenantAttr, "tenant-attr", env("TENANT_ATTR", "tenant"), "session attribute (set by the backend at connect) naming the tenant when the header is absent")
+	fs.IntVar(&c.TenantMaxSessions, "tenant-max-sessions", envInt("TENANT_MAX_SESSIONS", 0), "sessions allowed per tenant (503 above it); 0 = unlimited")
+	fs.Float64Var(&c.TenantMessageRate, "tenant-message-rate", envFloat("TENANT_MESSAGE_RATE", 0), "inbound messages per second allowed per tenant (CALLERROR above it); 0 = unlimited")
+	fs.IntVar(&c.TenantInFlightPool, "tenant-inflight-pool", envInt("TENANT_INFLIGHT_POOL", 0), "inbound CALLs in flight across all tenants, split by weight (CALLERROR above a tenant's share when others need it); 0 = off")
+	fs.IntVar(&c.TenantMaxInFlight, "tenant-max-inflight", envInt("TENANT_MAX_INFLIGHT", 0), "inbound CALLs in flight allowed per tenant; 0 = unlimited")
+	fs.StringVar(&c.TenantWeights, "tenant-weights", env("TENANT_WEIGHTS", ""), "weights of the in-flight pool as tenant=weight,... (default weight 1)")
+	fs.IntVar(&c.TenantMessageBurst, "tenant-message-burst", envInt("TENANT_MESSAGE_BURST", 0), "token bucket depth of the tenant message limit (default: one second of the rate)")
 	fs.DurationVar(&c.LeaseTTL, "lease-ttl", envDur("LEASE_TTL", 15*time.Second), "gateway lease lifetime in the session registry")
 	fs.DurationVar(&c.HeartbeatEvery, "lease-heartbeat", envDur("LEASE_HEARTBEAT", 5*time.Second), "lease renewal interval")
 	fs.DurationVar(&c.ReconcileEvery, "reconcile-interval", envDur("RECONCILE_INTERVAL", 30*time.Second), "full registry reconcile pass interval")
@@ -115,6 +180,9 @@ func parseConfig(args []string) (config, error) {
 	c.Subprotocols = strings.Split(*subs, ",")
 	if (c.TLSCert == "") != (c.TLSKey == "") || (c.LinkTLSCert == "") != (c.LinkTLSKey == "") {
 		return c, fmt.Errorf("certificate and key must be given together")
+	}
+	if c.Link != "grpc" && c.Link != "nats" {
+		return c, fmt.Errorf("--link must be grpc or nats, not %q", c.Link)
 	}
 	if c.ID == "" {
 		return c, fmt.Errorf("--id is required (no hostname)")

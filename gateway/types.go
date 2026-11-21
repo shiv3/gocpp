@@ -392,7 +392,7 @@ type BackendLink interface {
 
 // Locator is optionally implemented by a gateway's Downstream so a link can
 // find the session of a charge point without a registry (the in-process link
-// uses it; networked links use the session registry instead).
+// and the gRPC link, which asks every attached gateway, use it).
 type Locator interface {
 	LocateSession(cpID string) (Located, bool)
 }
@@ -462,6 +462,8 @@ const (
 	CapSend21     = "send.21"
 	CapCancel     = "cancel"
 	CapActionList = "actions.list"
+	CapLocate     = "locate"
+	CapBatch      = "batch" // several frames per stream message (link-grpc)
 )
 
 // BackendInfo is what a backend announces when it attaches to a link.
@@ -472,7 +474,7 @@ type BackendInfo struct {
 	Role    Role              // RoleWorker | RoleCaller
 	Proto   ProtoRange        // link protocol versions it speaks
 	Caps    []string          // capability names
-	Actions []string          // optional: actions it has handlers for; empty = all
+	Actions []string          // actions it has handlers for (csms fills it in); empty = all
 	Labels  map[string]string // free form, exported in status output only
 }
 
@@ -480,6 +482,20 @@ type BackendInfo struct {
 func (b BackendInfo) Has(c string) bool {
 	for _, x := range b.Caps {
 		if x == c {
+			return true
+		}
+	}
+	return false
+}
+
+// Handles reports whether the backend serves action: it lists it, or lists
+// none (an empty Actions means all).
+func (b BackendInfo) Handles(action string) bool {
+	if len(b.Actions) == 0 {
+		return true
+	}
+	for _, x := range b.Actions {
+		if x == action {
 			return true
 		}
 	}
@@ -525,3 +541,37 @@ type DefaultRouter struct{}
 
 // Route implements Router.
 func (DefaultRouter) Route(RouteInput) RouteDecision { return RouteDecision{Pool: DefaultPool} }
+
+// PoolReject is a reserved pool name: a message routed to it is refused at
+// once (ErrNoBackend, the charger gets InternalError) instead of being held. A
+// router uses it for a suspended rule whose actions only the canary handles.
+const PoolReject = "$reject"
+
+// RouteObserver is told what happened to routed messages. A Router that also
+// implements it (the routepolicy engine does) is wired to the link with its
+// route-observer option; it drives fallback accounting, rule suspension and the
+// error-rate guard. Methods are called on the dispatch path and must not block.
+type RouteObserver interface {
+	// RouteFallback reports that a message routed by r was sent to r.Fallback
+	// because r.Pool had no available member ("unavailable") or every member
+	// refused it ("nack").
+	RouteFallback(r Route, reason string)
+	// RouteOutcome reports how an inbound CALL routed by r ended on r.Pool:
+	// "result", "callerror_<Code>", "timeout", "stream_broken" or "no_backend".
+	// It is not called for messages that were sent to the fallback pool.
+	RouteOutcome(r Route, outcome string)
+}
+
+// ExtAttrPrefix is the prefix of the session attributes an AttrSource provides.
+const ExtAttrPrefix = "ext."
+
+// AttrSource supplies routing attributes from a system the processing tier does
+// not own (a fleet database, a labelling service). The gateway asks it at
+// connect, under a short timeout (a failure means no external attributes, and is
+// counted), and refreshes the attributes of connected sessions on an interval.
+// Keys are prefixed "ext." by the gateway and can never override attributes the
+// backend set (ConnectReply.Attrs, SetAttrs). Implementations must be safe for
+// concurrent use; see package gateway/attrsource for a file and an HTTP source.
+type AttrSource interface {
+	Attrs(ctx context.Context, cpID string) (map[string]string, error)
+}

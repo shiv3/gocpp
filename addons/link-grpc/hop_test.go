@@ -132,3 +132,54 @@ func TestGateGRPCHopLatency(t *testing.T) {
 		t.Errorf("p99 %v above the 5 ms gate", p99)
 	}
 }
+
+// TestStreamsAndBatching drives many concurrent requests over several streams
+// per backend; every one must be answered (batches are unpacked, ids stay
+// correlated).
+func TestStreamsAndBatching(t *testing.T) {
+	g := linkgrpc.NewGateway()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gs := grpc.NewServer()
+	g.Register(gs)
+	go func() { _ = gs.Serve(lis) }()
+	defer gs.Stop()
+	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(lis.Addr().String()), linkgrpc.WithStreams(3),
+		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())), linkgrpc.WithResolveInterval(50*time.Millisecond))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = be.Serve(ctx, echoUpstream{reply: []byte("ok")}, gateway.BackendInfo{ID: "be-1"})
+	}()
+	defer func() { cancel(); <-done }()
+	deadline := time.Now().Add(5 * time.Second)
+	for len(be.Gateways()) == 0 || !g.Available(gateway.DefaultPool) {
+		if time.Now().After(deadline) {
+			t.Fatal("backend did not attach")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for w := 0; w < 64; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				rep, err := g.Handle(context.Background(), hopEnv())
+				if err != nil || string(rep.Payload) != "ok" {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("request failed: %v", err)
+	}
+}

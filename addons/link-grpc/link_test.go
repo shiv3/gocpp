@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -59,9 +60,14 @@ type topology struct {
 
 func newTopology(t *testing.T, gwOpts ...linkgrpc.GatewayOption) *topology {
 	t.Helper()
+	return newTopologyWith(t, nil, gwOpts...)
+}
+
+func newTopologyWith(t *testing.T, csmsOpts []csms.Option, gwOpts ...linkgrpc.GatewayOption) *topology {
+	t.Helper()
 	tp := &topology{t: t, reg: memory.NewSessionRegistry()}
 	tp.link = linkgrpc.NewGateway(gwOpts...)
-	tp.gw = csms.NewGatewayServer(tp.link, csms.WithGatewayID("gw-1"), csms.WithSessionRegistry(tp.reg))
+	tp.gw = csms.NewGatewayServer(tp.link, append([]csms.Option{csms.WithGatewayID("gw-1"), csms.WithSessionRegistry(tp.reg)}, csmsOpts...)...)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	tp.gs = grpc.NewServer()
@@ -83,10 +89,17 @@ type backendNode struct {
 
 func (tp *topology) addBackend(info gateway.BackendInfo, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
 	tp.t.Helper()
-	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(tp.addr),
+	return tp.addBackendWith(info, nil, []csms.Option{csms.WithSessionRegistry(tp.reg)}, handler)
+}
+
+// addBackendWith is addBackend with extra link options and server options (the
+// session registry is not implied).
+func (tp *topology) addBackendWith(info gateway.BackendInfo, beOpts []linkgrpc.BackendOption, srvOpts []csms.Option, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
+	tp.t.Helper()
+	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(tp.addr), append([]linkgrpc.BackendOption{
 		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
-		linkgrpc.WithResolveInterval(50*time.Millisecond), linkgrpc.WithDrainTimeout(5*time.Second))
-	srv := csms.NewServer(csms.WithGatewayLink(be), csms.WithSessionRegistry(tp.reg), csms.WithBackendInfo(info))
+		linkgrpc.WithResolveInterval(50 * time.Millisecond), linkgrpc.WithDrainTimeout(5 * time.Second)}, beOpts...)...)
+	srv := csms.NewServer(append([]csms.Option{csms.WithGatewayLink(be), csms.WithBackendInfo(info)}, srvOpts...)...)
 	require.NoError(tp.t, csms.On(srv, bootMsg, handler))
 	ctx, cancel := context.WithCancel(context.Background())
 	n := &backendNode{srv: srv, stop: cancel, done: make(chan struct{})}
@@ -336,4 +349,195 @@ func TestLink_ProtocolNegotiationAndUnknownFrames(t *testing.T) {
 	require.NoError(t, st2.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Drain{Drain: &linkpb.Drain{}}}))
 	require.Eventually(t, func() bool { return !tp.link.Available(gateway.DefaultPool) }, 2*time.Second, 10*time.Millisecond)
 	_ = st2.CloseSend()
+}
+
+// A backend without a session registry finds a charger through the link.
+func TestLink_LocateWithoutSessionRegistry(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	tp := newTopology(t)
+	defer tp.close()
+	n := tp.addBackendWith(gateway.BackendInfo{}, nil, nil, ok)
+	c := tp.client("CP_1")
+	defer c.Close()
+	require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) { return resetResp{Status: "Accepted"}, nil }))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// The backend has seen no message from CP_1: only Locate can find it.
+	h, err := n.srv.Lookup(ctx, "CP_1")
+	require.NoError(t, err)
+	got, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Hard"})
+	require.NoError(t, err)
+	require.Equal(t, "Accepted", got.Status)
+	ref, found := h.GatewaySession()
+	require.True(t, found)
+	require.Equal(t, "gw-1", ref.GatewayID)
+
+	_, err = n.srv.Lookup(ctx, "CP_unknown")
+	require.ErrorIs(t, err, ocppj.ErrNotConnected)
+}
+
+// Protocol skew: ranges overlap on the lower version; the higher end's extra
+// capabilities are not used on a stream that negotiated the lower one's.
+func TestLink_ProtocolSkew(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	v1 := gateway.ProtoRange{Min: 1, Max: 1}
+	v12 := gateway.ProtoRange{Min: 1, Max: 2}
+	v2 := gateway.ProtoRange{Min: 2, Max: 2}
+	cases := []struct {
+		name    string
+		gw, be  gateway.ProtoRange
+		attach  bool
+		wantCap bool
+	}{
+		{"old backend, new gateway", v12, v1, true, false},
+		{"new backend, old gateway", v1, v12, true, false},
+		{"both new", v12, v12, true, true},
+		{"v2-only backend, old gateway", v1, v2, false, false},
+		{"v1-only backend, v2-only gateway", v2, v1, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// A build that speaks v2 also offers the capability that came with it.
+			capsOf := func(r gateway.ProtoRange) []string {
+				if r.Max >= 2 {
+					return []string{"fake.v2"}
+				}
+				return nil
+			}
+			tp := newTopology(t, linkgrpc.GatewayProtoForTest(tc.gw, capsOf(tc.gw)...))
+			defer tp.close()
+			be := linkgrpc.NewBackend(linkgrpc.StaticTargets(tp.addr),
+				linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
+				linkgrpc.WithResolveInterval(50*time.Millisecond), linkgrpc.WithDrainTimeout(2*time.Second),
+				linkgrpc.BackendProtoForTest(tc.be, capsOf(tc.be)...))
+			srv := csms.NewServer(csms.WithGatewayLink(be), csms.WithSessionRegistry(tp.reg))
+			require.NoError(t, csms.On(srv, bootMsg, ok))
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+			go func() { defer close(done); _ = srv.ServeGateway(ctx) }()
+			defer func() { cancel(); <-done; srv.Close() }()
+
+			if !tc.attach {
+				time.Sleep(400 * time.Millisecond) // several attach attempts
+				require.False(t, tp.link.Available(gateway.DefaultPool), "disjoint ranges must not attach")
+				require.Empty(t, be.Gateways())
+				return
+			}
+			require.Eventually(t, func() bool { return tp.link.Available(gateway.DefaultPool) }, 5*time.Second, 10*time.Millisecond)
+			var caps []string
+			for _, p := range tp.link.Pools() {
+				for _, m := range p.Members {
+					caps = m.Caps
+				}
+			}
+			require.Equal(t, tc.wantCap, slices.Contains(caps, "fake.v2"), "caps %v", caps)
+			// Traffic flows whatever the negotiated version.
+			c := tp.client("CP_1")
+			defer c.Close()
+			cctx, ccancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer ccancel()
+			resp, err := cp.Call(cctx, c, bootMsg, bootReq{ChargePointVendor: "x"})
+			require.NoError(t, err)
+			require.Equal(t, 60, resp.Interval)
+		})
+	}
+}
+
+// BackendInfo.Actions is filled from the registered handlers, and a router that
+// names a pool without a handler for the action falls back to the default pool.
+func TestLink_UnhandledActionInRoutedPoolFallsBack(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	router := gateway.RouterFunc(func(gateway.RouteInput) gateway.RouteDecision {
+		return gateway.RouteDecision{Pool: "canary", Fallback: gateway.DefaultPool}
+	})
+	tp := newTopologyWith(t, []csms.Option{csms.WithRouter(router)})
+	defer tp.close()
+	var stable, canary atomic.Int64
+	tp.addBackend(gateway.BackendInfo{ID: "stable"}, func(ctx context.Context, c *csms.Conn, r bootReq) (bootResp, error) {
+		stable.Add(1)
+		return ok(ctx, c, r)
+	})
+	// The canary announces (explicitly) that it handles another action only.
+	tp.addBackend(gateway.BackendInfo{ID: "canary", Pool: "canary", Actions: []string{"Other"}}, func(ctx context.Context, c *csms.Conn, r bootReq) (bootResp, error) {
+		canary.Add(1)
+		return ok(ctx, c, r)
+	})
+	var announced []string
+	for _, p := range tp.link.Pools() {
+		for _, m := range p.Members {
+			if m.ID == "stable" {
+				announced = m.Actions
+			}
+		}
+	}
+	require.Equal(t, []string{"BootNotification"}, announced, "filled from the registered handlers")
+
+	c := tp.client("CP_1")
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for i := 0; i < 5; i++ {
+		_, err := cp.Call(ctx, c, bootMsg, bootReq{ChargePointVendor: "x"})
+		require.NoError(t, err)
+	}
+	require.EqualValues(t, 5, stable.Load())
+	require.EqualValues(t, 0, canary.Load())
+	require.Equal(t, uint64(5), tp.link.Unhandled()[[2]string{"canary", "BootNotification"}])
+}
+
+// A stub that negotiated "batch" may send BackendBatch; the gateway answers each
+// frame (singly or in a GatewayBatch). Without the capability a batch is just an
+// unknown body.
+func TestLink_BatchNegotiation(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
+	tp := newTopology(t)
+	defer tp.close()
+	cc, err := grpc.NewClient(tp.addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer func() { _ = cc.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	attach := func(caps ...string) linkpb.Link_AttachClient {
+		st, err := linkpb.NewLinkClient(cc).Attach(ctx)
+		require.NoError(t, err)
+		require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{
+			Backend: &linkpb.BackendInfo{Id: "stub", Proto: &linkpb.ProtoRange{Min: 1, Max: 1}, Caps: caps},
+		}}}))
+		f, err := st.Recv()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, f.GetHelloAck().GetProto())
+		return st
+	}
+	ctl := func(id uint64) *linkpb.BackendFrame {
+		return &linkpb.BackendFrame{Id: id, Body: &linkpb.BackendFrame_Control{Control: &linkpb.ControlRequest{
+			Target: &linkpb.SessionRef{Cpid: "CP_1", GatewayId: "gw-1"}, Op: 99}}}
+	}
+
+	st := attach(gateway.CapBatch)
+	require.NoError(t, st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Batch{Batch: &linkpb.BackendBatch{
+		Frames: []*linkpb.BackendFrame{ctl(1), ctl(2)}}}}))
+	seen := map[uint64]bool{}
+	for len(seen) < 2 {
+		f, err := st.Recv()
+		require.NoError(t, err)
+		frames := []*linkpb.GatewayFrame{f}
+		if b := f.GetBatch(); b != nil {
+			frames = b.Frames
+		}
+		for _, x := range frames {
+			require.Equal(t, "unsupported", x.GetControlAck().GetError().GetSentinel())
+			seen[x.Id] = true
+		}
+	}
+	_ = st.CloseSend()
+
+	old := attach() // no batch capability: a batch is an unknown body
+	require.NoError(t, old.Send(&linkpb.BackendFrame{Id: 7, Body: &linkpb.BackendFrame_Batch{Batch: &linkpb.BackendBatch{
+		Frames: []*linkpb.BackendFrame{ctl(1)}}}}))
+	f, err := old.Recv()
+	require.NoError(t, err)
+	require.EqualValues(t, 7, f.Id)
+	require.NotNil(t, f.GetUnsupported())
+	_ = old.CloseSend()
 }

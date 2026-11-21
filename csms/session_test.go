@@ -162,6 +162,7 @@ func TestSession_NotClusteredHasNoSession(t *testing.T) {
 	c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = c.CloseNow() })
+	require.Eventually(t, func() bool { _, ok := srv.Get("CP_1"); return ok }, 2*time.Second, 5*time.Millisecond)
 	conn, ok := srv.Get("CP_1")
 	require.True(t, ok)
 	_, has := conn.Session()

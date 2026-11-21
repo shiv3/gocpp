@@ -8,6 +8,72 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Staged releases, phase 7b (docs/rollout.md): `gateway/admin` (per-gateway admin
+  API: status, paced `shed` by count / min age / attributes, soft cap; client and
+  rebalance planner), `gocppctl gateway status|shed|cap|rebalance`,
+  `Server.SoftMaxConnections`, `gateway.AttrSource` + `csms.WithAttrSource` +
+  `gateway/attrsource` (file and HTTP; keys arrive as `ext.*`), gateway flags
+  `--admin-token`, `--advertise-admin`, `--attr-source-*`, `probe --interval` (a
+  continuous probe sidecar with `gocpp_probe_*` metrics), manifests with the probe
+  sidecar and the admin port, and real-process tests of a gateway canary
+  (soft cap, fill, rebalance, kill -9 of the canary, rollback during a shed,
+  registry outage during a shed).
+- `BenchmarkGatewayIdleFootprint` and `TestGatewayIdleFootprintBounds` (16 KB heap+stack per idle gateway session); `TestIdleFootprintBounds` bounds tightened to 9 KB heap / 6 KB stack so a regression of a few hundred bytes per connection fails. docs/performance.md: "RSS versus live memory".
+- Gateway options (phase 6): `csms.WithEdgeHeartbeat` / `WithEdgeResponder` /
+  `WithOnEdgeResponse` (a gateway answers Heartbeat, or any configured action,
+  itself without a backend hop; opt-in) and `csms.WithTenantLimits` (per-tenant
+  session cap checked before the upgrade and a fairly shared per-tenant message
+  rate budget; tenant from a request resolver, a cp id mapping or the session
+  attributes). `dispatcher.Conn.SetInboundGate`, the optional metrics
+  extensions `observability.TenantMetrics` and `EdgeMetrics` (Prometheus and
+  OpenTelemetry), `gocpp-gateway --edge-heartbeat --tenant-*` flags, benchmark
+  `BenchmarkEdgeAndTenant` and gate `TestGateEdgeAndTenantOverhead`.
+- Weighted in-flight caps per tenant (`csms.TenantLimits.InFlightPool`,
+  `TenantLimit.Weight` / `MaxInFlight`): the pool is split by weight among the
+  tenants with sessions, a tenant is always admitted up to its share and may
+  borrow only what other active tenants cannot claim, refusals answer with
+  `RejectCode` and count as `kind="inflight"`. `dispatcher.Conn.SetInboundDone`,
+  optional `observability.TenantInflightMetrics` (`gocpp_tenant_inflight`),
+  `gocpp-gateway --tenant-inflight-pool --tenant-max-inflight --tenant-weights`.
+- `storage.MessageRouter`, `csms.WithMessageRouter` and the router addons
+  (`router-redis`, `router-nats`, `router-temporal`) are **deprecated** in favour
+  of `gateway.Downstream` over a gateway link (design: docs/design/gateway.md).
+  Nothing changes at runtime and nothing is removed before v0.4. Migration:
+  `csms.RouterDownstream(router)` exposes an existing router as a
+  `gateway.Downstream` and `csms.DownstreamRouter(downstream)` exposes a
+  `Downstream` to `WithMessageRouter`; docs/clustering.md ("Moving to the gateway
+  link") maps each old construct to its replacement. Linters (staticcheck SA1019)
+  will flag the deprecated identifiers.
+- Frame and session tap exporters (`core/observability/tap`): bounded, lossy,
+  never blocking the hot path, with sampling and filters; `tap.JSONL` /
+  `JSONLFile` / `Multi` sinks and `linknats.NewTapSink` (NATS subjects per charge
+  point); `csms.WithSessionObserver` and `observability.SessionEvent` (opened /
+  closed once, on embedded servers and gateways); `gocpp-gateway --tap-*` flags and
+  `gocpp_tap_events_total`.
+- Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
+  capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
+  from the registered handlers and honoured by `PoolSet` (unhandled actions fall
+  back to the route's fallback pool and are counted), `csms.WithGatewayAuthCache`
+  and `Server.InvalidateAuthCache`, and link protocol skew tests (v1/v2 ranges).
+- Staged releases, phase 7a (docs/staged-releases.md): `gateway/routepolicy`
+  (declarative routing policy: id / attribute / version / stable-hash percentage
+  rules, action rules with a transaction-group lint, `on_unavailable`, `hold: busy`,
+  suspend on fallback, error-rate guard; `Engine` implements `gateway.Router` and
+  the new `gateway.RouteObserver`), `storage.PolicyStore` (CAS + watch) with memory and
+  `addons/registry-redis` implementations, `gateway.PoolReject`, `PoolSet.SetObserver`,
+  `linkgrpc.WithRouteObserver`, `inproc.WithRouteObserver`, `cmd/gocppctl`
+  (`route validate|show|apply|rollback|status`), gateway flags `--route-policy-file`,
+  lease labels `policy_rev` and `suspended`, and the routing metrics
+  (`gocpp_gateway_route_*`).
+
+- `addons/link-grpc`: write coalescing on the link stream (frames queued while a write is
+  in progress go out together; as one `Batch` message when both ends advertise the new
+  `batch` capability, `gateway.CapBatch`; no timer, a lone frame is written at once) and
+  `WithStreams(n)` for N Attach streams per gateway. Link protocol stays v1: an older peer
+  simply does not negotiate `batch`. Backend request goroutines reserve stack up front.
+- Gateway performance gates and benchmarks (`benchmarks/gateway_hop_test.go`,
+  `addons/link-grpc/hop_test.go`), pprof on the `gocpp-gateway` admin listener, and the
+  measured results in docs/gateway.md.
 - `addons/link-grpc` (own module): gRPC link between gateways and backends
   (protobuf contract `gocpp.link.v1`, backends dial gateways, Hello/HelloAck
   protocol and capability negotiation, Drain/DrainAck, Unsupported answers).
@@ -105,6 +171,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- The `ConnectionCount` gauge (`gocpp_connections`) drifted negative when a connection
+  was closed twice (a replaced connection is closed by the replacement and by its own
+  teardown); the close is now counted once.
 - `gocpp_outbound_queue_depth` / `gocpp.outbound_queue.depth` help text and the
   `dispatcher.Conn` doc comment described the removed writer-goroutine queue. The
   metric samples senders waiting for or holding the per-connection write lock

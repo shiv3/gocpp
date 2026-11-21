@@ -454,6 +454,13 @@ func (s *Server) info() gateway.BackendInfo {
 	i := s.cfg.backendInfo
 	i.Proto = gateway.ProtoRange{Min: gateway.ProtoVersion, Max: gateway.ProtoVersion}
 	i.Caps = []string{gateway.CapNack, gateway.CapOrphan, gateway.CapAttrsSet, gateway.CapSend21, gateway.CapRouteV1}
+	if len(i.Actions) == 0 {
+		// What this build has handlers for, so a gateway can notice a router
+		// sending an action to a pool that cannot serve it. Handlers registered
+		// after ServeGateway are not announced; none registered announces
+		// nothing (= all).
+		i.Actions = s.handlers.actions()
+	}
 	return i
 }
 

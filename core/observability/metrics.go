@@ -45,6 +45,33 @@ type SessionMetrics interface {
 	UpgradeResult(result string)
 }
 
+// TenantMetrics is an optional extension of Metrics for the per-tenant limits of
+// csms.WithTenantLimits. The tenant label is bounded by the server (tenants
+// beyond its label budget are reported as "other").
+type TenantMetrics interface {
+	// TenantSessions adds delta to the number of sessions of tenant.
+	TenantSessions(tenant string, delta int)
+	// TenantRejected counts one refusal: kind is "sessions" (an upgrade refused
+	// with 503) or "messages" (an inbound CALL/SEND refused).
+	TenantRejected(tenant, kind string)
+}
+
+// TenantInflightMetrics is an optional extension of Metrics for the weighted
+// in-flight limits of csms.WithTenantLimits (rejections are counted by
+// TenantMetrics.TenantRejected with kind "inflight").
+type TenantInflightMetrics interface {
+	// TenantInflight adds delta to the number of inbound CALLs and SENDs of tenant
+	// that are in flight.
+	TenantInflight(tenant string, delta int)
+}
+
+// EdgeMetrics is an optional extension of Metrics for gateways that answer some
+// actions themselves (csms.WithEdgeResponder).
+type EdgeMetrics interface {
+	// EdgeResponse counts one CALL answered at the gateway without a backend hop.
+	EdgeResponse(version, action string)
+}
+
 // ConnectionMetrics is an optional extension of Metrics. A Metrics value that
 // also implements it receives per-connection health samples; implementations
 // of Metrics that do not are unaffected.

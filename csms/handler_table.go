@@ -2,6 +2,7 @@ package csms
 
 import (
 	"context"
+	"sort"
 	"sync"
 )
 
@@ -52,4 +53,23 @@ func (t *handlerTable) send(action string) (connSendHandler, bool) {
 	defer t.mu.RUnlock()
 	h, ok := t.sends[action]
 	return h, ok
+}
+
+// actions lists the actions with a registered call or send handler, sorted.
+func (t *handlerTable) actions() []string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	seen := make(map[string]struct{}, len(t.calls)+len(t.sends))
+	for a := range t.calls {
+		seen[a] = struct{}{}
+	}
+	for a := range t.sends {
+		seen[a] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for a := range seen {
+		out = append(out, a)
+	}
+	sort.Strings(out)
+	return out
 }

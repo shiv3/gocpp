@@ -68,6 +68,9 @@ type Server struct {
 	drainRetryAfter atomic.Int64
 	acceptRejected  atomic.Uint64
 	drainRejected   atomic.Uint64
+
+	// tenants holds the per-tenant limits (WithTenantLimits); nil when unset.
+	tenants *tenants
 }
 
 // NewServer creates a CSMS server.
@@ -130,6 +133,9 @@ func NewServer(opts ...Option) *Server {
 	}
 	s.softMax.Store(int64(cfg.softMax))
 	s.sessMetrics, _ = cfg.metrics.(observability.SessionMetrics)
+	if cfg.tenantLimits != nil {
+		s.tenants = newTenants(*cfg.tenantLimits, cfg.metrics)
+	}
 	if cfg.link == nil {
 		// A processing tier holds no sockets, so it has nothing to claim or
 		// reconcile; it only reads the registry (see lookupGateway).
@@ -169,6 +175,7 @@ func (s *Server) ListenAndServe(addr string) error {
 }
 
 func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
+	var tenantRelease func() // the tenant session slot until it is handed to the Conn
 	// Refuse before upgrading once the server is shutting down or closed, so a
 	// charge point sees a plain HTTP failure it can retry elsewhere instead of a
 	// connect that is closed immediately.
@@ -218,6 +225,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		if edgeReply.CPID != "" {
 			cpID = edgeReply.CPID
 		}
+		edgeReply.Attrs = s.edge.withExtAttrs(r.Context(), cpID, edgeReply.Attrs)
 	} else {
 		id, err := s.cfg.auth.Authenticate(r, cpID)
 		if err != nil {
@@ -287,6 +295,24 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.sessionAttrs != nil {
 		attrs = s.cfg.sessionAttrs(r, cpID)
 	}
+	// Per-tenant admission: the tenant is known now (request, or the attributes the
+	// processing tier returned), and the upgrade is still a plain HTTP request.
+	var tenant *tenantState
+	if s.tenants != nil {
+		ts, rel, ok := s.tenants.admit(s.tenants.resolve(r, cpID, attrs), s.hasConn(cpID))
+		if !ok {
+			w.Header().Set("Retry-After", jitterRetryAfter(s.tenants.cfg.RetryAfter))
+			s.upgradeResult("tenant_limit")
+			http.Error(w, "tenant session limit reached", http.StatusServiceUnavailable)
+			return
+		}
+		tenant, tenantRelease = ts, rel
+		defer func() {
+			if tenantRelease != nil { // not handed to the connection
+				tenantRelease()
+			}
+		}()
+	}
 	if s.sessions != nil && s.upgradeWillSucceed(r) {
 		sess, claimed = s.claimSession(r, cpID, attrs)
 		defer func() {
@@ -351,6 +377,14 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		meta.Owner = gws
 	}
 	dconn = dispatcher.NewConnShared(cpID, ws, dcfgp, s.reg, meta)
+	if tenant != nil {
+		if tc := s.tenants.newConn(tenant); tc != nil {
+			dconn.SetInboundGate(tc.gate)
+			dconn.SetInboundDone(tc.done)
+			release := tenantRelease
+			tenantRelease = func() { tc.close(); release() }
+		}
+	}
 	switch {
 	case claimed:
 		dconn.SetAttachment(&sessionRef{s: sess, srv: s})
@@ -360,7 +394,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		local.Meta, _ = storage.MergeAttrs(nil, attrs)
 		dconn.SetAttachment(&sessionRef{s: local, srv: s})
 	}
-	conn := &Conn{inner: dconn, gone: make(chan struct{}), gw: gws}
+	conn := &Conn{inner: dconn, gone: make(chan struct{}), gw: gws, tenantRelease: tenantRelease, openedAt: time.Now()}
 	// gone is closed by connCleanup once the connection is registered; every
 	// earlier return closes it here.
 	registered := false
@@ -391,6 +425,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	registeredSession = true
 	s.upgradeResult("ok")
 	s.handleConnected(conn)
+	s.observeSession(conn, observability.SessionOpened, nil)
 	if s.edge != nil {
 		s.edge.opened(conn, r, edgeReply)
 	}
@@ -403,6 +438,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// cancellation net/http applies on return is harmless. The cleanup closure
 	// must not capture r or w.
 	registered = true
+	tenantRelease = nil // the connection owns the slot now
 	context.AfterFunc(dconn.Context(), func() { s.connCleanup(cpID, conn) })
 }
 
@@ -413,9 +449,13 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 // admission slot needs no release here: addConn consumed it at registration.
 func (s *Server) connCleanup(cpID string, conn *Conn) {
 	defer close(conn.gone)
+	if conn.tenantRelease != nil {
+		defer conn.tenantRelease()
+	}
 	dconn := conn.inner
 	cause := context.Cause(dconn.Context())
 	s.handleDisconnected(conn, cause)
+	s.observeSession(conn, observability.SessionClosed, cause)
 	if s.edge != nil {
 		// Like the disconnect callback, before the close handshake, which can
 		// take as long as an unresponsive peer likes.
@@ -562,6 +602,7 @@ func (s *Server) addConn(id string, c *Conn, res ...*slotReservation) bool {
 		// runs in the background. The caller fires connect(new) after we return.
 		old.inner.Abort(ocppj.ErrConnReplaced)
 		s.handleDisconnected(old, ocppj.ErrConnReplaced)
+		s.observeSession(old, observability.SessionClosed, ocppj.ErrConnReplaced)
 		go func() { _ = old.inner.Close(nil) }()
 	}
 	return true
@@ -575,6 +616,43 @@ func (s *Server) removeConn(id string, c *Conn) bool {
 	}
 	delete(s.conns, id)
 	return true
+}
+
+// observeSession reports a session event of a connection this server terminates
+// to WithSessionObserver. The closed event fires once even though a replaced
+// connection is torn down by both the replacement and its own cleanup.
+func (s *Server) observeSession(c *Conn, kind observability.SessionEventKind, cause error) {
+	fn := s.cfg.sessionObs
+	if fn == nil || c.inner == nil {
+		return
+	}
+	emit := func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.cfg.dispatcher.Logger.Error("csms session observer panic recovered",
+					"cp_id", c.ID(), "panic", r)
+			}
+		}()
+		sess, _ := c.Session()
+		ev := observability.SessionEvent{
+			Kind: kind, CPID: c.ID(), Version: c.Version(), RemoteAddr: c.RemoteAddr(),
+			Epoch: sess.Epoch, Attrs: sess.Attrs(), Time: time.Now(),
+		}
+		if kind == observability.SessionClosed {
+			if cause != nil && !errors.Is(cause, ocppj.ErrConnClosed) {
+				ev.Cause = cause.Error()
+			}
+			if !c.openedAt.IsZero() {
+				ev.Duration = ev.Time.Sub(c.openedAt)
+			}
+		}
+		fn(s.ctx, ev)
+	}
+	if kind == observability.SessionOpened {
+		emit()
+		return
+	}
+	c.tapOnce.Do(emit)
 }
 
 func (s *Server) handleConnected(c *Conn) {

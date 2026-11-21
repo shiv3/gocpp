@@ -17,6 +17,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/shiv3/gocpp/csms"
+	"github.com/shiv3/gocpp/gateway/inproc"
 	"github.com/shiv3/gocpp/v16/messages"
 	"github.com/shiv3/gocpp/v16/profiles"
 )
@@ -131,7 +132,32 @@ func perConn(after, before memSnap, n int) footprint {
 // go idle, snapshots, sends one Heartbeat on each, and snapshots again.
 func measureFootprint(tb testing.TB, n int) (idle, afterHB footprint) {
 	tb.Helper()
-	srv, ts := newHeartbeatServer(tb)
+	return measureFootprintWith(tb, n, func(tb testing.TB) (*csms.Server, *httptest.Server, func()) {
+		srv, ts := newHeartbeatServer(tb)
+		return srv, ts, func() {}
+	})
+}
+
+// measureGatewayFootprint is measureFootprint for the connection-terminating
+// tier of a split deployment: a gateway server whose backend is attached over
+// the in-process link. The snapshot covers both tiers (one process), so it is a
+// slight over-estimate of the gateway alone.
+func measureGatewayFootprint(tb testing.TB, n int) (idle, afterHB footprint) {
+	tb.Helper()
+	return measureFootprintWith(tb, n, func(tb testing.TB) (*csms.Server, *httptest.Server, func()) {
+		hub := inproc.New()
+		gw := csms.NewGatewayServer(hub.Gateway(), csms.WithSubProtocols("ocpp1.6"), csms.WithLogger(quiet))
+		be := csms.NewServer(csms.WithGatewayLink(hub.Backend()), csms.WithSubProtocols("ocpp1.6"), csms.WithLogger(quiet))
+		register(tb, be)
+		drain := hub.AttachBackend(be.Upstream(), gwInfo())
+		return gw, httptest.NewServer(gw.Handler()), func() { _ = drain(context.Background()); be.Close() }
+	})
+}
+
+func measureFootprintWith(tb testing.TB, n int, start func(testing.TB) (*csms.Server, *httptest.Server, func())) (idle, afterHB footprint) {
+	tb.Helper()
+	srv, ts, stopBackend := start(tb)
+	defer stopBackend()
 	defer ts.Close()
 	addr := strings.TrimPrefix(ts.URL, "http://")
 
@@ -198,13 +224,35 @@ func BenchmarkIdleFootprint(b *testing.B) {
 	b.ReportMetric(hb.GoroutinesPerConn, "hb-goroutines/conn")
 }
 
+// BenchmarkGatewayIdleFootprint is BenchmarkIdleFootprint for the gateway tier.
+func BenchmarkGatewayIdleFootprint(b *testing.B) {
+	var idle, hb footprint
+	for i := 0; i < b.N; i++ {
+		idle, hb = measureGatewayFootprint(b, footprintConns)
+	}
+	b.ReportMetric(idle.HeapPerConn, "idle-heap-B/conn")
+	b.ReportMetric(idle.StackPerConn, "idle-stack-B/conn")
+	b.ReportMetric(idle.GoroutinesPerConn, "idle-goroutines/conn")
+	b.ReportMetric(hb.HeapPerConn, "hb-heap-B/conn")
+	b.ReportMetric(hb.StackPerConn, "hb-stack-B/conn")
+	b.ReportMetric(hb.GoroutinesPerConn, "hb-goroutines/conn")
+}
+
 // Upper bounds on the per-connection footprint. They sit a little above what
 // the implementation measures today and are meant to be ratcheted down as the
 // footprint shrinks; a failure means a per-connection cost was added.
 const (
-	maxIdleHeapPerConn   = 10 << 10 // measured ~8.6 KB; headroom for runtime and CI variance
-	maxIdleStackPerConn  = 9 << 10  // measured ~4.3 KB (idle and after a Heartbeat); stack size classes jump by 4 KB // after-Heartbeat stack varies 20-25 KB with GC stack shrinking
-	maxIdleGoroutinesPer = 1.5
+	// Measured on the embedded server (v0.2.0 and integ/gateway alike): 7.8-8.0
+	// KB heap, 4.1 KB stack, 1 goroutine. The bounds sit ~10% above heap so a
+	// regression of a few hundred bytes per connection fails; stack size classes
+	// jump by 4 KB, so one extra size class (8 KB) is allowed to fail the test.
+	maxIdleHeapPerConn   = 9000
+	maxIdleStackPerConn  = 6 << 10
+	maxIdleGoroutinesPer = 1.2
+
+	// Gateway tier (design target: 16 KB per session in total).
+	maxGatewayIdleHeapPerConn = 10 << 10
+	maxGatewayTotalPerConn    = 16 << 10
 )
 
 // TestIdleFootprintBounds guards the idle footprint. The race detector inflates
@@ -230,6 +278,32 @@ func TestIdleFootprintBounds(t *testing.T) {
 		}
 		if f.GoroutinesPerConn > maxIdleGoroutinesPer {
 			t.Errorf("%s goroutines %.2f/conn exceeds %.1f", name, f.GoroutinesPerConn, maxIdleGoroutinesPer)
+		}
+	}
+}
+
+// TestGatewayIdleFootprintBounds guards the gateway tier against the design
+// target of 16 KB (heap plus stacks) per idle session.
+func TestGatewayIdleFootprintBounds(t *testing.T) {
+	n := footprintConns
+	if testing.Short() {
+		n = 500
+	}
+	idle, hb := measureGatewayFootprint(t, n)
+	t.Logf("n=%d gateway idle: heap=%.0f B/conn stack=%.0f B/conn goroutines=%.2f/conn", n, idle.HeapPerConn, idle.StackPerConn, idle.GoroutinesPerConn)
+	t.Logf("n=%d gateway after heartbeat: heap=%.0f B/conn stack=%.0f B/conn goroutines=%.2f/conn", n, hb.HeapPerConn, hb.StackPerConn, hb.GoroutinesPerConn)
+	if raceEnabled {
+		t.Skip("bounds are not asserted under the race detector")
+	}
+	for name, f := range map[string]footprint{"idle": idle, "after-heartbeat": hb} {
+		if f.HeapPerConn > maxGatewayIdleHeapPerConn {
+			t.Errorf("gateway %s heap %.0f B/conn exceeds %d", name, f.HeapPerConn, maxGatewayIdleHeapPerConn)
+		}
+		if tot := f.HeapPerConn + f.StackPerConn; tot > maxGatewayTotalPerConn {
+			t.Errorf("gateway %s heap+stack %.0f B/conn exceeds %d", name, tot, maxGatewayTotalPerConn)
+		}
+		if f.GoroutinesPerConn > maxIdleGoroutinesPer {
+			t.Errorf("gateway %s goroutines %.2f/conn exceeds %.1f", name, f.GoroutinesPerConn, maxIdleGoroutinesPer)
 		}
 	}
 }

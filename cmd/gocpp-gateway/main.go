@@ -19,18 +19,26 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	linkgrpc "github.com/shiv3/gocpp/addons/link-grpc"
+	linknats "github.com/shiv3/gocpp/addons/link-nats"
 	registryredis "github.com/shiv3/gocpp/addons/registry-redis"
 	"github.com/shiv3/gocpp/core/observability/metrics/prom"
+	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/transport"
 	"github.com/shiv3/gocpp/csms"
+	"github.com/shiv3/gocpp/gateway"
+	"github.com/shiv3/gocpp/gateway/admin"
+	"github.com/shiv3/gocpp/gateway/routepolicy"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -92,9 +100,50 @@ func serve(args []string) error {
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{"gateway_id": cfg.ID, "gateway_version": cfg.Version}, reg)
 
-	link := linkgrpc.NewGateway(
-		linkgrpc.WithGatewayVersion(cfg.Version), linkgrpc.WithGatewayMetrics(newLinkMetrics(wrapped)),
-		linkgrpc.WithUpstreamWait(cfg.UpstreamWait))
+	// Routing policy (design 5.1): the engine routes every message to a backend
+	// pool; without a policy everything goes to the default pool.
+	var gw *csms.Server
+	engine := routepolicy.NewEngine(routepolicy.WithMetrics(newRouteMetrics(wrapped)), routepolicy.WithLogger(log),
+		routepolicy.WithOnApply(func(rev uint64) {
+			if gw != nil {
+				gw.SetGatewayLabel(ctx, "policy_rev", strconv.FormatUint(rev, 10))
+			}
+		}),
+		routepolicy.WithOnSuspend(func(rules []string) {
+			if gw != nil {
+				gw.SetGatewayLabel(ctx, "suspended", joinRules(rules))
+			}
+		}))
+	wrapped.MustRegister(heldCollector{engine})
+
+	var link gatewayLink
+	var grpcLink *linkgrpc.Gateway
+	switch cfg.Link {
+	case "nats":
+		var nopts []nats.Option
+		if cfg.NATSCreds != "" {
+			nopts = append(nopts, nats.UserCredentials(cfg.NATSCreds))
+		}
+		nopts = append(nopts, nats.PingInterval(cfg.LinkKeepalive))
+		nc, err := linknats.Connect(cfg.NATSURL, "gocpp-gateway-"+cfg.ID, nopts...)
+		if err != nil {
+			return err
+		}
+		defer nc.Close()
+		nl, err := linknats.NewGateway(nc, linknats.WithPrefix(cfg.NATSPrefix),
+			linknats.WithRouteObserver(engine), linknats.WithGatewayVersion(cfg.Version), linknats.WithGatewayMetrics(newLinkMetrics(wrapped)),
+			linknats.WithUpstreamWait(cfg.UpstreamWait), linknats.WithAcceptTimeout(cfg.NATSAccept))
+		if err != nil {
+			return err
+		}
+		defer nl.Close()
+		link = nl
+	default:
+		grpcLink = linkgrpc.NewGateway(linkgrpc.WithRouteObserver(engine),
+			linkgrpc.WithGatewayVersion(cfg.Version), linkgrpc.WithGatewayMetrics(newLinkMetrics(wrapped)),
+			linkgrpc.WithUpstreamWait(cfg.UpstreamWait))
+		link = grpcLink
+	}
 	wrapped.MustRegister(poolCollector{link})
 
 	opts := []csms.Option{
@@ -102,17 +151,84 @@ func serve(args []string) error {
 		csms.WithHandlerTimeout(cfg.HandlerTime), csms.WithCallTimeout(cfg.CallTimeout),
 		csms.WithMaxConnections(cfg.MaxConnections), csms.WithSoftMaxConnections(cfg.SoftMaxSessions),
 		csms.WithAcceptRateLimit(cfg.AcceptRate, cfg.AcceptBurst),
-		csms.WithMetrics(prom.New(wrapped)), csms.WithLogger(log),
+		csms.WithMetrics(prom.New(wrapped)), csms.WithLogger(log), csms.WithRouter(engine),
+	}
+	if cfg.EdgeHeartbeat {
+		opts = append(opts, csms.WithEdgeHeartbeat())
+	}
+	if cfg.TenantMaxSessions > 0 || cfg.TenantMessageRate > 0 || cfg.TenantInFlightPool > 0 || cfg.TenantMaxInFlight > 0 {
+		tl := csms.TenantLimits{
+			AttrKey:      cfg.TenantAttr,
+			InFlightPool: cfg.TenantInFlightPool,
+			Default: csms.TenantLimit{MaxSessions: cfg.TenantMaxSessions, MessageRate: cfg.TenantMessageRate,
+				MessageBurst: cfg.TenantMessageBurst, MaxInFlight: cfg.TenantMaxInFlight},
+		}
+		if cfg.TenantWeights != "" {
+			tl.Tenants = map[string]csms.TenantLimit{}
+			for _, kv := range strings.Split(cfg.TenantWeights, ",") {
+				name, ws, ok := strings.Cut(strings.TrimSpace(kv), "=")
+				w, err := strconv.ParseFloat(ws, 64)
+				if !ok || err != nil || w <= 0 {
+					return fmt.Errorf("--tenant-weights: %q is not tenant=weight", kv)
+				}
+				l := tl.Default
+				l.Weight = w
+				tl.Tenants[name] = l
+			}
+		}
+		if h := cfg.TenantHeader; h != "" {
+			tl.Resolver = csms.TenantFromRequest(func(r *http.Request) (string, bool) { v := r.Header.Get(h); return v, v != "" })
+		}
+		opts = append(opts, csms.WithTenantLimits(tl))
+	}
+	tapEx, err := newTap(cfg, wrapped, log)
+	if err != nil {
+		return err
+	}
+	if tapEx != nil {
+		if !cfg.TapNoFrames {
+			opts = append(opts, csms.WithFrameObserver(tapEx.FrameObserver()))
+		}
+		if !cfg.TapNoSessions {
+			opts = append(opts, csms.WithSessionObserver(tapEx.SessionObserver()))
+		}
+		// Flush last, after the server stopped producing events.
+		defer func() {
+			fctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = tapEx.Close(fctx)
+		}()
 	}
 	var rdb *redis.Client
+	var policyStore storage.PolicyStore
 	if cfg.RedisAddr != "" {
 		rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr, Password: cfg.RedisPassword})
 		defer func() { _ = rdb.Close() }()
-		opts = append(opts, csms.WithSessionRegistry(registryredis.New(rdb), csms.SessionConfig{GatewayID: cfg.ID, LeaseTTL: cfg.LeaseTTL, HeartbeatInterval: cfg.HeartbeatEvery, ReconcileInterval: cfg.ReconcileEvery, ClaimTimeout: cfg.ClaimTimeout}))
+		reg := registryredis.New(rdb)
+		policyStore = reg
+		opts = append(opts, csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: cfg.ID, LeaseTTL: cfg.LeaseTTL, HeartbeatInterval: cfg.HeartbeatEvery, ReconcileInterval: cfg.ReconcileEvery, ClaimTimeout: cfg.ClaimTimeout}))
 	}
-	gw := csms.NewGatewayServer(link, opts...)
+	if src := attrSource(cfg); src != nil {
+		am := newAttrSourceMetrics(wrapped)
+		opts = append(opts, csms.WithAttrSource(src, csms.AttrSourceOptions{
+			Timeout: cfg.AttrSourceTimeout, Refresh: cfg.AttrSourceRefresh, OnResult: am.result}))
+	}
+	gw = csms.NewGatewayServer(link, opts...)
 	gw.SetGatewayLabel(ctx, "version", cfg.Version)
+	gw.SetGatewayLabel(ctx, "policy_rev", "0")
+	if cfg.AdvertiseAdmin != "" {
+		gw.SetGatewayLabel(ctx, "admin", cfg.AdvertiseAdmin)
+	}
 	gw.SetGatewayLabel(ctx, "caps", "route.v1,attrs.set,send.21,cancel,orphan")
+
+	if cfg.RoutePolicyFile != "" {
+		go func() {
+			_ = engine.Watch(ctx, routepolicy.FileSource{Path: cfg.RoutePolicyFile, Interval: cfg.RoutePolicyInterval})
+		}()
+	}
+	if policyStore != nil {
+		go func() { _ = engine.Watch(ctx, routepolicy.StoreSource{Store: policyStore}) }()
+	}
 
 	// WebSocket listener.
 	lis, err := net.Listen("tcp", cfg.Listen)
@@ -146,38 +262,14 @@ func serve(args []string) error {
 		}
 	}()
 
-	// Link listener (backends dial it).
-	llis, err := net.Listen("tcp", cfg.LinkAddr)
-	if err != nil {
-		return err
-	}
-	gopts := []grpc.ServerOption{
-		grpc.KeepaliveParams(keepalive.ServerParameters{Time: cfg.LinkKeepalive, Timeout: max(cfg.LinkKeepalive/2, time.Second)}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: time.Second, PermitWithoutStream: true}),
-	}
-	if cfg.LinkTLSCert != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.LinkTLSCert, cfg.LinkTLSKey)
-		if err != nil {
+	// Link listener (backends dial it); the NATS link needs none.
+	var gs *grpc.Server
+	if grpcLink != nil {
+		var err error
+		if gs, err = startLinkListener(cfg, grpcLink, log, stop); err != nil {
 			return err
 		}
-		tc := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
-		if cfg.LinkClientCA != "" {
-			pool, err := loadPool(cfg.LinkClientCA)
-			if err != nil {
-				return err
-			}
-			tc.ClientCAs, tc.ClientAuth = pool, tls.RequireAndVerifyClientCert
-		}
-		gopts = append(gopts, grpc.Creds(credentials.NewTLS(tc)))
 	}
-	gs := grpc.NewServer(gopts...)
-	link.Register(gs)
-	go func() {
-		if err := gs.Serve(llis); err != nil {
-			log.Error("link listener stopped", "error", err)
-			stop()
-		}
-	}()
 
 	// Admin: metrics and probes.
 	mux := http.NewServeMux()
@@ -187,6 +279,7 @@ func serve(args []string) error {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.Handle("/admin/", admin.Handler(gw, admin.Options{ID: cfg.ID, Version: cfg.Version, Token: cfg.AdminToken, Context: ctx}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	ready := gw.ReadyHandler()
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -206,7 +299,7 @@ func serve(args []string) error {
 		}
 	}()
 
-	log.Info("gateway started", "id", cfg.ID, "version", cfg.Version, "ws", cfg.Listen, "link", cfg.LinkAddr,
+	log.Info("gateway started", "id", cfg.ID, "version", cfg.Version, "ws", cfg.Listen, "link", cfg.Link, "link_addr", cfg.LinkAddr, "nats", cfg.NATSURL,
 		"admin", cfg.Admin, "registry", cfg.RedisAddr != "")
 	<-ctx.Done()
 
@@ -229,14 +322,16 @@ func serve(args []string) error {
 	}
 	_ = gw.Shutdown(dctx)
 	_ = wsSrv.Shutdown(dctx)
-	gs.GracefulStop()
+	if gs != nil {
+		gs.GracefulStop()
+	}
 	_ = adminSrv.Shutdown(dctx)
 	return nil
 }
 
 // poolCollector exports the attached backends per pool and version
 // (gocpp_gateway_pool_members).
-type poolCollector struct{ l *linkgrpc.Gateway }
+type poolCollector struct{ l gatewayLink }
 
 var poolDesc = prometheus.NewDesc("gocpp_gateway_pool_members", "attached backends", []string{"pool", "backend_version"}, nil)
 
@@ -255,4 +350,48 @@ func (c poolCollector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(poolDesc, prometheus.GaugeValue, float64(n), p.Name, v)
 		}
 	}
+}
+
+// gatewayLink is what the binary needs from either link: the csms gateway
+// server's link, plus the readiness and pool views.
+type gatewayLink interface {
+	gateway.GatewayLink
+	Pools() []gateway.PoolStatus
+	Available(pool string) bool
+}
+
+// startLinkListener serves the gRPC link on cfg.LinkAddr.
+func startLinkListener(cfg config, link *linkgrpc.Gateway, log *slog.Logger, stop context.CancelFunc) (*grpc.Server, error) {
+	llis, err := net.Listen("tcp", cfg.LinkAddr)
+	if err != nil {
+		return nil, err
+	}
+	gopts := []grpc.ServerOption{
+		grpc.KeepaliveParams(keepalive.ServerParameters{Time: cfg.LinkKeepalive, Timeout: max(cfg.LinkKeepalive/2, time.Second)}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: time.Second, PermitWithoutStream: true}),
+	}
+	if cfg.LinkTLSCert != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.LinkTLSCert, cfg.LinkTLSKey)
+		if err != nil {
+			return nil, err
+		}
+		tc := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
+		if cfg.LinkClientCA != "" {
+			pool, err := loadPool(cfg.LinkClientCA)
+			if err != nil {
+				return nil, err
+			}
+			tc.ClientCAs, tc.ClientAuth = pool, tls.RequireAndVerifyClientCert
+		}
+		gopts = append(gopts, grpc.Creds(credentials.NewTLS(tc)))
+	}
+	gs := grpc.NewServer(gopts...)
+	link.Register(gs)
+	go func() {
+		if err := gs.Serve(llis); err != nil {
+			log.Error("link listener stopped", "error", err)
+			stop()
+		}
+	}()
+	return gs, nil
 }

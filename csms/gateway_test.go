@@ -20,6 +20,7 @@ import (
 	"github.com/shiv3/gocpp/csms"
 	"github.com/shiv3/gocpp/gateway"
 	"github.com/shiv3/gocpp/gateway/inproc"
+	"github.com/shiv3/gocpp/gateway/routepolicy"
 	"github.com/shiv3/gocpp/v16"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -683,4 +684,112 @@ func TestGateway_SetAttrsDrivesRouting(t *testing.T) {
 	require.NoError(t, err)
 	v, _ = seen.Load("BootNotification")
 	require.Equal(t, "", v)
+}
+
+func TestGateway_AuthCache(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	var decisions atomic.Int64
+	r := newRig(t, []csms.Option{csms.WithGatewayAuthCache(csms.AuthCacheConfig{TTL: 150 * time.Millisecond, StaleIfError: time.Hour})},
+		[]csms.Option{csms.WithAuthenticator(auth.BasicAuth(func(cpID, pw string) (auth.Identity, error) {
+			decisions.Add(1)
+			if pw != "secret" {
+				return auth.Identity{}, auth.ErrUnauthorized
+			}
+			return auth.Identity{CPID: cpID}, nil
+		}))}, inproc.WithUpstreamWait(100*time.Millisecond))
+	defer r.close()
+	r.serve()
+
+	dial := func(pw string) int {
+		h := http.Header{}
+		h.Set("Authorization", "Basic "+basic("CP_1", pw))
+		c, resp, err := websocket.Dial(context.Background(), r.url+"CP_1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}, HTTPHeader: h})
+		if err != nil {
+			return resp.StatusCode
+		}
+		_ = c.CloseNow()
+		return http.StatusSwitchingProtocols
+	}
+	require.Equal(t, 101, dial("secret"))
+	require.EqualValues(t, 1, decisions.Load())
+	require.Equal(t, 101, dial("secret"), "within the TTL: from the cache")
+	require.EqualValues(t, 1, decisions.Load())
+	require.Equal(t, 401, dial("wrong"), "another credential is another key, and a rejection is final")
+	require.EqualValues(t, 2, decisions.Load())
+
+	time.Sleep(200 * time.Millisecond) // past the TTL: asked again
+	require.Equal(t, 101, dial("secret"))
+	require.EqualValues(t, 3, decisions.Load())
+
+	// Backend gone: the stale accepted decision still admits; an unknown one does not.
+	r.stopFn()
+	r.stopFn = nil
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, 101, dial("secret"))
+	require.Equal(t, 503, dial("other"))
+	// Invalidated (credential changed): no stale decision left.
+	r.gw.InvalidateAuthCache("CP_1")
+	require.Equal(t, 503, dial("secret"))
+}
+
+// A real routing policy at 50% (the salt is chosen so that CP_1 is in the
+// sample) with a canary pool: the frames written to the charger are
+// byte-identical to embedded mode, the canary served, the default pool did not.
+func TestGateway_RoutePolicyEngineWireIdentical(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	reg := schema.NewRegistry()
+	require.NoError(t, v16.RegisterSchemas(reg))
+	handler := func(ctx context.Context, c *csms.Conn, req gwBoot) (gwBootResp, error) {
+		switch req.ChargePointVendor {
+		case "boom":
+			panic("boom")
+		case "nope":
+			return gwBootResp{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, "no thanks", map[string]any{"k": "v"})
+		}
+		return gwBootResp{Status: "Accepted", Interval: 300, CurrentTime: "2026-06-15T00:00:00Z"}, nil
+	}
+	common := []csms.Option{csms.WithSchemaRegistry(reg), csms.WithStrictSchema(true)}
+	embedded := frames(t, func(obs csms.Option) (http.Handler, func()) {
+		s := csms.NewServer(append(common, obs)...)
+		require.NoError(t, csms.On(s, gwBootMsg, handler))
+		return s.Handler(), s.Close
+	})
+
+	salt := ""
+	for i := 0; routepolicy.Bucket(salt, "CP_1") >= 5000; i++ {
+		salt = "s" + string(rune('a'+i))
+	}
+	pc := 50.0
+	engine := routepolicy.NewEngine()
+	require.NoError(t, engine.Apply(routepolicy.Policy{Revision: 1, Salt: salt,
+		Rules: []routepolicy.Rule{{Name: "half", Pool: "canary", Match: routepolicy.Match{Percent: &pc}}}}))
+
+	var served [2]atomic.Int64
+	split := frames(t, func(obs csms.Option) (http.Handler, func()) {
+		hub := inproc.New(inproc.WithRouteObserver(engine))
+		gw := csms.NewGatewayServer(hub.Gateway(), append(common, obs, csms.WithRouter(engine))...)
+		var stops []func(context.Context) error
+		var bes []*csms.Server
+		for i, pool := range []string{"", "canary"} {
+			be := csms.NewServer(append(common, csms.WithGatewayLink(hub.Backend()), csms.WithBackendInfo(gateway.BackendInfo{Pool: pool}))...)
+			require.NoError(t, csms.On(be, gwBootMsg, func(ctx context.Context, c *csms.Conn, req gwBoot) (gwBootResp, error) {
+				served[i].Add(1)
+				return handler(ctx, c, req)
+			}))
+			stops = append(stops, hub.AttachBackend(be.Upstream(), gateway.BackendInfo{Pool: pool, Caps: []string{gateway.CapSend21}}))
+			bes = append(bes, be)
+		}
+		return gw.Handler(), func() {
+			gw.Close()
+			for _, s := range stops {
+				_ = s(context.Background())
+			}
+			for _, b := range bes {
+				b.Close()
+			}
+		}
+	})
+	require.Equal(t, embedded, split)
+	require.Zero(t, served[0].Load())
+	require.NotZero(t, served[1].Load(), "CP_1 is in the 50% sample: the canary served")
 }

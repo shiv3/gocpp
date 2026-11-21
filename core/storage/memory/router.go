@@ -10,7 +10,7 @@ type router struct{}
 
 // NewRouter returns a single-instance no-op router. CallRemote always returns
 // storage.ErrRouterNotImplemented; ServeRemote blocks until ctx is cancelled.
-func NewRouter() storage.MessageRouter { return router{} }
+func NewRouter() storage.MessageRouter { return router{} } //nolint:staticcheck // legacy interface, kept for compatibility (deprecated in favour of gateway.Downstream)
 
 func (router) CallLocal(context.Context, string, string, []byte) ([]byte, error) {
 	return nil, storage.ErrNotLocal

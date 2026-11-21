@@ -27,6 +27,9 @@ type Conn struct {
 	// session of a handle or message on a processing tier (see GatewaySession).
 	gw *gwSession
 
+	// tenantRelease returns the tenant session slot (WithTenantLimits).
+	tenantRelease func()
+
 	// gone is closed once the server has finished tearing this connection down:
 	// disconnect callback fired and the connection removed from the registry. Nil
 	// for the short-lived wrappers handed to typed handlers, which only wait for
@@ -41,6 +44,11 @@ type Conn struct {
 	// concurrent callers until the first call returns, which orders the
 	// replacement's connect notification after the old disconnect.
 	disconnectOnce sync.Once
+
+	// tapOnce makes the session-closed observation fire once; openedAt dates the
+	// session for its duration (WithSessionObserver).
+	tapOnce  sync.Once
+	openedAt time.Time
 }
 
 // ID returns the charge point identifier.

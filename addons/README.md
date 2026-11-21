@@ -49,3 +49,4 @@ not collide). Pure Go, no external dependency.
 See each addon's own README for the full API and examples.
 
 - `link-grpc`: gRPC link between gateways and backends (gateway mode, see docs/gateway.md).
+- `link-nats`: NATS link between gateways and backends (queue groups, request-reply; see docs/gateway.md).

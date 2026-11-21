@@ -33,6 +33,11 @@ type Conn struct {
 
 	// attachment is owner-defined data hung on the connection (see SetAttachment).
 	attachment atomic.Value
+	// inboundGate, when set, filters inbound CALL/SEND before they are scheduled.
+	inboundGate InboundGate
+	// inboundDone, when set, is called once for every frame the gate admitted, after
+	// its handler returned.
+	inboundDone func(f ocppj.Frame)
 
 	// wlock is the write lock: a channel of capacity 1 so that waiting for it can
 	// honour a context and blocked senders are served FIFO. A sender holds it
@@ -386,6 +391,27 @@ func (c *Conn) SetAttachment(v any) { c.attachment.Store(v) }
 // Attachment returns the value stored by SetAttachment, or nil.
 func (c *Conn) Attachment() any { return c.attachment.Load() }
 
+// InboundGate decides, for every inbound CALL and SEND, whether it is scheduled
+// at all. It returns nil to admit the frame, or the error to refuse it with: a
+// refused CALL is answered with that CALLERROR (counted against the same bound
+// on queued error replies as other built-in errors), a refused SEND is dropped.
+// Nothing about the frame has been validated or decoded when the gate runs, so it
+// must be cheap and must not block. It is called on the connection's reader
+// goroutine, one frame at a time.
+type InboundGate func(f ocppj.Frame) *ocppj.CallError
+
+// SetInboundGate installs g (nil removes it). Call it before Start: the reader
+// reads the field without synchronisation.
+func (c *Conn) SetInboundGate(g InboundGate) { c.inboundGate = g }
+
+// SetInboundDone installs a callback that runs after the handler of every inbound
+// CALL and SEND has returned (and its reply was queued), so a gate that counts
+// admitted frames, such as a concurrency limit, can release them. Frames the gate
+// admitted but that never reach a handler because the connection ended are not
+// reported: the owner reconciles its count when it tears the connection down.
+// Call it before Start. It runs on the handler goroutine and must not block.
+func (c *Conn) SetInboundDone(f func(ocppj.Frame)) { c.inboundDone = f }
+
 // drainBit marks Conn.calls as draining.
 const drainBit = int64(1) << 62
 
@@ -584,6 +610,14 @@ func (c *Conn) routeInbound(frame ocppj.Frame) bool {
 		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, IsResultError: true}
 		c.pending.resolve(frame.MsgID, rawResult{err: ce})
 	case ocppj.Call, ocppj.Send:
+		if g := c.inboundGate; g != nil {
+			if ce := g(frame); ce != nil {
+				if frame.Type == ocppj.Call && frame.MsgID != "" {
+					c.trySendCallErrorWire(frame.MsgID, ce.WireCode(c.version), ce.Description)
+				}
+				return true
+			}
+		}
 		return c.enqueueInbound(frame)
 	}
 	return true

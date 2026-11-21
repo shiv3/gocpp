@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/shiv3/gocpp/addons/link-grpc/linkconv"
 	"github.com/shiv3/gocpp/addons/link-grpc/linkpb"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/gateway"
@@ -52,9 +54,13 @@ type Backend struct {
 	resolveEvery time.Duration
 	drainTimeout time.Duration
 	keepalive    keepalive.ClientParameters
+	proto        gateway.ProtoRange // link versions spoken (SupportedProto)
+	caps         []string           // capabilities offered (supportedCaps)
 
-	mu      sync.RWMutex
-	streams map[string]*stream // by gateway id
+	mu       sync.RWMutex
+	streams  map[string][]*stream // by gateway id; nStreams entries each when all are attached
+	rr       atomic.Uint64
+	nStreams int
 }
 
 // BackendOption configures a Backend.
@@ -63,6 +69,14 @@ type BackendOption func(*Backend)
 // WithDialOptions adds grpc dial options (credentials above all).
 func WithDialOptions(o ...grpc.DialOption) BackendOption {
 	return func(b *Backend) { b.dialOpts = append(b.dialOpts, o...) }
+}
+
+// WithStreams sets how many Attach streams (each on its own connection) the
+// backend keeps to every gateway (default 1). More streams spread the link's
+// write and read work over more goroutines and sockets; one is enough until a
+// single gateway-backend pair carries tens of thousands of messages per second.
+func WithStreams(n int) BackendOption {
+	return func(b *Backend) { b.nStreams = max(n, 1) }
 }
 
 // WithBackendMetrics sets the metrics sink.
@@ -88,7 +102,7 @@ func NewBackend(resolve Resolver, opts ...BackendOption) *Backend {
 	b := &Backend{
 		resolve: resolve, metrics: NopMetrics{}, resolveEvery: 5 * time.Second, drainTimeout: 30 * time.Second,
 		keepalive: keepalive.ClientParameters{Time: 10 * time.Second, Timeout: 5 * time.Second, PermitWithoutStream: true},
-		streams:   make(map[string]*stream),
+		streams:   make(map[string][]*stream), nStreams: 1, proto: SupportedProto, caps: supportedCaps,
 	}
 	for _, o := range opts {
 		o(b)
@@ -115,7 +129,7 @@ type stream struct {
 	proto   uint32
 	caps    []string
 	st      linkpb.Link_AttachClient
-	sendMu  sync.Mutex
+	out     sendQueue[*linkpb.BackendFrame]
 	unary   *pendingSet[*linkpb.GatewayFrame]
 	closing atomic.Bool
 
@@ -125,21 +139,26 @@ type stream struct {
 	drainOne sync.Once
 }
 
-func (s *stream) send(f *linkpb.BackendFrame) error {
-	s.sendMu.Lock()
-	defer s.sendMu.Unlock()
-	return s.st.Send(f)
+func (s *stream) send(f *linkpb.BackendFrame) error { return s.out.push(f) }
+
+func (s *stream) initSend() {
+	s.out.write = s.st.Send
+	if slices.Contains(s.caps, gateway.CapBatch) {
+		s.out.batch = func(fs []*linkpb.BackendFrame) error {
+			return s.st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Batch{Batch: &linkpb.BackendBatch{Frames: fs}}})
+		}
+	}
 }
 
 func (b *Backend) stream(id string) (*stream, bool) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	if s, ok := b.streams[id]; ok {
-		return s, true
+	if ss := b.streams[id]; len(ss) > 0 {
+		return ss[int(b.rr.Add(1)%uint64(len(ss)))], true
 	}
 	if id == "" && len(b.streams) == 1 {
-		for _, s := range b.streams {
-			return s, true
+		for _, ss := range b.streams {
+			return ss[int(b.rr.Add(1)%uint64(len(ss)))], true
 		}
 	}
 	return nil, false
@@ -150,8 +169,8 @@ func (b *Backend) stream(id string) (*stream, bool) {
 // gateway to send no new work, work in flight is allowed to finish (up to the
 // drain timeout), and the streams close.
 func (b *Backend) Serve(ctx context.Context, up gateway.Upstream, info gateway.BackendInfo) error {
-	info.Proto = SupportedProto
-	info.Caps = supportedCaps
+	info.Proto = b.proto
+	info.Caps = b.caps
 	runCtx, cancelRun := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelRun()
 
@@ -170,11 +189,13 @@ func (b *Backend) Serve(ctx context.Context, up gateway.Upstream, info gateway.B
 			if _, ok := active[a]; !ok {
 				tctx, tcancel := context.WithCancel(runCtx)
 				active[a] = tcancel
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					b.runTarget(tctx, a, up, info)
-				}()
+				for range b.nStreams {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						b.runTarget(tctx, a, up, info)
+					}()
+				}
 			}
 		}
 		for a, c := range active {
@@ -199,8 +220,8 @@ loop:
 	// Drain: stop new work everywhere, wait for what is in flight.
 	b.mu.RLock()
 	ss := make([]*stream, 0, len(b.streams))
-	for _, s := range b.streams {
-		ss = append(ss, s)
+	for _, l := range b.streams {
+		ss = append(ss, l...)
 	}
 	b.mu.RUnlock()
 	for _, s := range ss {
@@ -269,7 +290,7 @@ func (b *Backend) attachOnce(ctx context.Context, addr string, up gateway.Upstre
 	if err != nil {
 		return err
 	}
-	if err := st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{Backend: infoBackendToPB(info)}}}); err != nil {
+	if err := st.Send(&linkpb.BackendFrame{Body: &linkpb.BackendFrame_Hello{Hello: &linkpb.Hello{Backend: linkconv.InfoBackendToPB(info)}}}); err != nil {
 		return err
 	}
 	f, err := st.Recv()
@@ -286,13 +307,16 @@ func (b *Backend) attachOnce(ctx context.Context, addr string, up gateway.Upstre
 	}
 	b.metrics.AttachResult(ack.Proto, "ok")
 	s := &stream{b: b, addr: addr, gw: ack.Gateway, proto: ack.Proto, caps: ack.Caps, st: st, unary: newPendingSet[*linkpb.GatewayFrame](), drained: make(chan struct{})}
+	s.initSend()
 	gwID := ack.Gateway.GetId()
 	b.mu.Lock()
-	b.streams[gwID] = s
+	b.streams[gwID] = append(b.streams[gwID], s)
 	b.mu.Unlock()
 	defer func() {
 		b.mu.Lock()
-		if b.streams[gwID] == s {
+		if l := slices.DeleteFunc(b.streams[gwID], func(x *stream) bool { return x == s }); len(l) > 0 {
+			b.streams[gwID] = l
+		} else {
 			delete(b.streams, gwID)
 		}
 		b.mu.Unlock()
@@ -308,43 +332,53 @@ func (s *stream) readLoop(ctx context.Context, up gateway.Upstream, info gateway
 		if err != nil {
 			return err
 		}
-		switch b := f.Body.(type) {
-		case *linkpb.GatewayFrame_CallReply, *linkpb.GatewayFrame_SendAck, *linkpb.GatewayFrame_ControlAck, *linkpb.GatewayFrame_Unsupported:
-			if u, ok := b.(*linkpb.GatewayFrame_Unsupported); ok {
-				s.b.metrics.Unsupported("sent", u.Unsupported.GetWhat())
+		if bb, ok := f.Body.(*linkpb.GatewayFrame_Batch); ok && s.out.batch != nil {
+			for _, sub := range bb.Batch.GetFrames() {
+				s.dispatch(ctx, up, sub)
 			}
-			s.unary.resolve(f.Id, f)
-		case *linkpb.GatewayFrame_Connect:
-			s.spawn(func() {
-				rep, err := up.Connect(ctx, connectReqFromPB(b.Connect))
-				if err != nil {
-					// The backend could not decide: refuse rather than guess.
-					rep = gateway.ConnectReply{Reject: &gateway.Rejection{Status: 503, Message: "service unavailable"}}
-				}
-				_ = s.send(&linkpb.BackendFrame{Id: f.Id, Body: &linkpb.BackendFrame_ConnectReply{ConnectReply: connectRepToPB(rep)}})
-			})
-		case *linkpb.GatewayFrame_Handle:
-			s.spawn(func() { s.handle(ctx, up, f.Id, b.Handle) })
-		case *linkpb.GatewayFrame_Notify:
-			s.spawn(func() {
-				var e *linkpb.WireError
-				if s.closing.Load() && gateway.Kind(b.Notify.Kind) != gateway.KindSessionClosed {
-					e = errToPB(gateway.EncodeError(gateway.ErrGatewayDraining))
-				} else {
-					e = errToPB(gateway.EncodeError(up.Notify(ctx, envFromPB(b.Notify))))
-				}
-				_ = s.send(&linkpb.BackendFrame{Id: f.Id, Body: &linkpb.BackendFrame_NotifyAck{NotifyAck: &linkpb.Ack{Error: e}}})
-			})
-		case *linkpb.GatewayFrame_DrainAck:
-			s.drainOne.Do(func() { close(s.drained) })
-		case *linkpb.GatewayFrame_Cancel:
-			if c, ok := s.cancels.Load(f.Id); ok {
-				c.(context.CancelFunc)()
-			}
-		default:
-			s.b.metrics.Unsupported("recv", fmt.Sprintf("%T", b))
-			_ = s.send(&linkpb.BackendFrame{Id: f.Id, Body: &linkpb.BackendFrame_Unsupported{Unsupported: &linkpb.Unsupported{What: fmt.Sprintf("%T", b)}}})
+			continue
 		}
+		s.dispatch(ctx, up, f)
+	}
+}
+
+func (s *stream) dispatch(ctx context.Context, up gateway.Upstream, f *linkpb.GatewayFrame) {
+	switch b := f.Body.(type) {
+	case *linkpb.GatewayFrame_CallReply, *linkpb.GatewayFrame_SendAck, *linkpb.GatewayFrame_ControlAck, *linkpb.GatewayFrame_LocateReply, *linkpb.GatewayFrame_Unsupported:
+		if u, ok := b.(*linkpb.GatewayFrame_Unsupported); ok {
+			s.b.metrics.Unsupported("sent", u.Unsupported.GetWhat())
+		}
+		s.unary.resolve(f.Id, f)
+	case *linkpb.GatewayFrame_Connect:
+		s.spawn(func() {
+			rep, err := up.Connect(ctx, linkconv.ConnectReqFromPB(b.Connect))
+			if err != nil {
+				// The backend could not decide: refuse rather than guess.
+				rep = gateway.ConnectReply{Reject: &gateway.Rejection{Status: 503, Message: "service unavailable"}}
+			}
+			_ = s.send(&linkpb.BackendFrame{Id: f.Id, Body: &linkpb.BackendFrame_ConnectReply{ConnectReply: linkconv.ConnectRepToPB(rep)}})
+		})
+	case *linkpb.GatewayFrame_Handle:
+		s.spawn(func() { s.handle(ctx, up, f.Id, b.Handle) })
+	case *linkpb.GatewayFrame_Notify:
+		s.spawn(func() {
+			var e *linkpb.WireError
+			if s.closing.Load() && gateway.Kind(b.Notify.Kind) != gateway.KindSessionClosed {
+				e = linkconv.ErrToPB(gateway.EncodeError(gateway.ErrGatewayDraining))
+			} else {
+				e = linkconv.ErrToPB(gateway.EncodeError(up.Notify(ctx, linkconv.EnvFromPB(b.Notify))))
+			}
+			_ = s.send(&linkpb.BackendFrame{Id: f.Id, Body: &linkpb.BackendFrame_NotifyAck{NotifyAck: &linkpb.Ack{Error: e}}})
+		})
+	case *linkpb.GatewayFrame_DrainAck:
+		s.drainOne.Do(func() { close(s.drained) })
+	case *linkpb.GatewayFrame_Cancel:
+		if c, ok := s.cancels.Load(f.Id); ok {
+			c.(context.CancelFunc)()
+		}
+	default:
+		s.b.metrics.Unsupported("recv", fmt.Sprintf("%T", b))
+		_ = s.send(&linkpb.BackendFrame{Id: f.Id, Body: &linkpb.BackendFrame_Unsupported{Unsupported: &linkpb.Unsupported{What: fmt.Sprintf("%T", b)}}})
 	}
 }
 
@@ -352,6 +386,8 @@ func (s *stream) spawn(fn func()) {
 	s.inflight.Add(1)
 	go func() {
 		defer s.inflight.Add(-1)
+		var reserve [handlerStack]byte
+		reserveStack(&reserve)
 		fn()
 	}()
 }
@@ -362,7 +398,7 @@ func (s *stream) handle(ctx context.Context, up gateway.Upstream, id uint64, pb 
 		_ = s.send(&linkpb.BackendFrame{Id: id, Body: &linkpb.BackendFrame_Reply{Reply: &linkpb.Reply{Nack: true}}})
 		return
 	}
-	env := envFromPB(pb)
+	env := linkconv.EnvFromPB(pb)
 	hctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s.cancels.Store(id, context.CancelFunc(cancel))
@@ -373,7 +409,7 @@ func (s *stream) handle(ctx context.Context, up gateway.Upstream, id uint64, pb 
 			Kind: gateway.ErrKindCallError, Code: "InternalError", Description: "internal error",
 		}}
 	}
-	_ = s.send(&linkpb.BackendFrame{Id: id, Body: &linkpb.BackendFrame_Reply{Reply: replyToPB(rep)}})
+	_ = s.send(&linkpb.BackendFrame{Id: id, Body: &linkpb.BackendFrame_Reply{Reply: linkconv.ReplyToPB(rep)}})
 }
 
 // request sends f to the gateway and waits for the answer.
@@ -406,7 +442,7 @@ func (b *Backend) Call(ctx context.Context, req gateway.CallRequest) (gateway.Ca
 	if !ok {
 		return gateway.CallReply{Sent: gateway.NotSent, Error: gateway.EncodeError(ocppj.ErrNotConnected)}, nil
 	}
-	r, sent, err := s.request(ctx, &linkpb.BackendFrame{Body: &linkpb.BackendFrame_Call{Call: callReqToPB(req)}})
+	r, sent, err := s.request(ctx, &linkpb.BackendFrame{Body: &linkpb.BackendFrame_Call{Call: linkconv.CallReqToPB(req)}})
 	if err != nil {
 		out := gateway.CallReply{Sent: gateway.NotSent}
 		if sent {
@@ -417,7 +453,7 @@ func (b *Backend) Call(ctx context.Context, req gateway.CallRequest) (gateway.Ca
 	}
 	switch body := r.Body.(type) {
 	case *linkpb.GatewayFrame_CallReply:
-		return callRepFromPB(body.CallReply), nil
+		return linkconv.CallRepFromPB(body.CallReply), nil
 	case *linkpb.GatewayFrame_Unsupported:
 		return gateway.CallReply{Sent: gateway.NotSent, Error: gateway.EncodeError(gateway.ErrUnsupported)}, nil
 	}
@@ -430,12 +466,12 @@ func (b *Backend) Send(ctx context.Context, req gateway.CallRequest) error {
 	if !ok {
 		return ocppj.ErrNotConnected
 	}
-	r, _, err := s.request(ctx, &linkpb.BackendFrame{Body: &linkpb.BackendFrame_Send{Send: callReqToPB(req)}})
+	r, _, err := s.request(ctx, &linkpb.BackendFrame{Body: &linkpb.BackendFrame_Send{Send: linkconv.CallReqToPB(req)}})
 	if err != nil {
 		return err
 	}
 	if body, ok := r.Body.(*linkpb.GatewayFrame_SendAck); ok {
-		return errFromPB(body.SendAck.GetError()).Err()
+		return linkconv.ErrFromPB(body.SendAck.GetError()).Err()
 	}
 	return gateway.ErrUnsupported
 }
@@ -447,19 +483,70 @@ func (b *Backend) Control(ctx context.Context, req gateway.ControlRequest) error
 		return ocppj.ErrNotConnected
 	}
 	r, _, err := s.request(ctx, &linkpb.BackendFrame{Body: &linkpb.BackendFrame_Control{Control: &linkpb.ControlRequest{
-		Target: refToPB(req.Target), Op: uint32(req.Op), Reason: req.Reason, Attrs: req.Attrs,
+		Target: linkconv.RefToPB(req.Target), Op: uint32(req.Op), Reason: req.Reason, Attrs: req.Attrs,
 	}}})
 	if err != nil {
 		return err
 	}
 	if body, ok := r.Body.(*linkpb.GatewayFrame_ControlAck); ok {
-		return errFromPB(body.ControlAck.GetError()).Err()
+		return linkconv.ErrFromPB(body.ControlAck.GetError()).Err()
 	}
 	return gateway.ErrUnsupported
 }
 
-// Locate is not provided by this link: the session registry is the directory
-// of sessions across gateways.
-func (b *Backend) Locate(context.Context, string) (gateway.Located, bool, error) {
-	return gateway.Located{}, false, nil
+// Locate asks every attached gateway that supports it which session it holds for
+// cpID, so a backend without a session registry can still address a charger it
+// has not seen a message from. It returns the first answer that has one. A
+// gateway that does not know the question (an older build) counts as not found.
+func (b *Backend) Locate(ctx context.Context, cpID string) (gateway.Located, bool, error) {
+	b.mu.RLock()
+	ss := make([]*stream, 0, len(b.streams))
+	for _, l := range b.streams {
+		if s := l[0]; slices.Contains(s.caps, gateway.CapLocate) { // one stream per gateway is enough
+			ss = append(ss, s)
+		}
+	}
+	b.mu.RUnlock()
+	if len(ss) == 0 {
+		return gateway.Located{}, false, nil
+	}
+	type result struct {
+		loc gateway.Located
+		ok  bool
+		err error
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	res := make(chan result, len(ss))
+	for _, s := range ss {
+		go func() {
+			r, _, err := s.request(ctx, &linkpb.BackendFrame{Body: &linkpb.BackendFrame_Locate{Locate: &linkpb.LocateRequest{Cpid: cpID}}})
+			if err != nil {
+				res <- result{err: err}
+				return
+			}
+			lr, isReply := r.Body.(*linkpb.GatewayFrame_LocateReply)
+			if !isReply || !lr.LocateReply.GetFound() {
+				res <- result{}
+				return
+			}
+			l := lr.LocateReply
+			res <- result{ok: true, loc: gateway.Located{
+				Ref: linkconv.RefFromPB(l.Session), Version: ocppj.Version(l.Version), Info: linkconv.InfoFromPB(l.Info),
+			}}
+		}()
+	}
+	var firstErr error
+	for range ss {
+		r := <-res
+		switch {
+		case r.ok:
+			return r.loc, true, nil
+		case r.err != nil && firstErr == nil:
+			firstErr = r.err
+		}
+	}
+	// Every gateway answered "not here", or some failed: an error only when
+	// nobody could say.
+	return gateway.Located{}, false, firstErr
 }

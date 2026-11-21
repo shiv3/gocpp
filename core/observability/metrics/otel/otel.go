@@ -27,6 +27,10 @@ type metrics struct {
 	sessDur     metric.Float64Histogram
 	closes      metric.Int64Counter
 	accepts     metric.Int64Counter
+	tenantSess  metric.Int64UpDownCounter
+	tenantRej   metric.Int64Counter
+	tenantInfl  metric.Int64UpDownCounter
+	edgeResp    metric.Int64Counter
 }
 
 // New builds an observability.Metrics backed by OTel instruments from mp.
@@ -97,7 +101,32 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 		return nil, err
 	}
 
+	tenantSess, err := m.Int64UpDownCounter("gocpp.tenant.sessions",
+		metric.WithDescription("sessions per tenant (csms.WithTenantLimits)"))
+	if err != nil {
+		return nil, err
+	}
+	tenantInfl, err := m.Int64UpDownCounter("gocpp.tenant.inflight",
+		metric.WithDescription("inbound messages in flight per tenant (csms.WithTenantLimits)"))
+	if err != nil {
+		return nil, err
+	}
+	tenantRej, err := m.Int64Counter("gocpp.tenant.rejected",
+		metric.WithDescription("upgrades and messages refused by a per-tenant limit"))
+	if err != nil {
+		return nil, err
+	}
+	edgeResp, err := m.Int64Counter("gocpp.edge.responses",
+		metric.WithDescription("CALLs answered at the gateway without a backend hop"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &metrics{
+		tenantSess:  tenantSess,
+		tenantRej:   tenantRej,
+		tenantInfl:  tenantInfl,
+		edgeResp:    edgeResp,
 		sessDur:     sessDur,
 		closes:      closes,
 		accepts:     accepts,
@@ -170,4 +199,20 @@ func (m *metrics) SessionClosed(version string, d time.Duration, code, cause str
 
 func (m *metrics) UpgradeResult(result string) {
 	m.accepts.Add(context.Background(), 1, metric.WithAttributes(attribute.String("result", result)))
+}
+
+func (m *metrics) TenantSessions(tenant string, delta int) {
+	m.tenantSess.Add(context.Background(), int64(delta), metric.WithAttributes(attribute.String("tenant", tenant)))
+}
+
+func (m *metrics) TenantRejected(tenant, kind string) {
+	m.tenantRej.Add(context.Background(), 1, metric.WithAttributes(attribute.String("tenant", tenant), attribute.String("kind", kind)))
+}
+
+func (m *metrics) EdgeResponse(version, action string) {
+	m.edgeResp.Add(context.Background(), 1, metric.WithAttributes(attribute.String("version", version), attribute.String("action", action)))
+}
+
+func (m *metrics) TenantInflight(tenant string, delta int) {
+	m.tenantInfl.Add(context.Background(), int64(delta), metric.WithAttributes(attribute.String("tenant", tenant)))
 }

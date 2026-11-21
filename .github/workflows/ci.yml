@@ -68,8 +68,19 @@ jobs:
       # gRPC hop latency gate (skipped under -race).
       - run: go test -count=1 -run TestGateGRPCHopLatency ./...
         working-directory: addons/link-grpc
+      - run: go test -race -count=1 ./...
+        working-directory: addons/link-nats
       - run: go test -count=1 -timeout 5m ./...
         working-directory: cmd/gocpp-gateway
+      # The same chaos suite over the NATS link.
+      - run: go test -count=1 -timeout 5m ./chaos
+        working-directory: cmd/gocpp-gateway
+        env:
+          GOCPP_CHAOS_LINK: nats
+      - run: go test -race -count=1 ./...
+        working-directory: cmd/gocppctl
+      - run: go test -race -count=1 ./...
+        working-directory: addons/registry-redis
 
   gateway-compat:
     # Previous-release compatibility (design 5.3): build the gateway and the

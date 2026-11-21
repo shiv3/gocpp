@@ -285,3 +285,75 @@ func TestPool_SendNeedsCapability(t *testing.T) {
 	p.Add(gateway.BackendInfo{ID: "new", Caps: []string{gateway.CapSend21}}, &fakeUp{handle: ok})
 	require.NoError(t, p.Notify(context.Background(), gateway.Envelope{Kind: gateway.KindSend}))
 }
+
+func TestPoolSet_UnhandledActionFallsBack(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	s := gateway.NewPoolSet(200 * time.Millisecond)
+	var stable, canary atomic.Int64
+	s.Add(gateway.BackendInfo{ID: "s", Pool: gateway.DefaultPool, Actions: []string{"Heartbeat", "NewThing"}},
+		&fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) {
+			stable.Add(1)
+			return gateway.Reply{}, nil
+		}})
+	s.Add(gateway.BackendInfo{ID: "c", Pool: "canary", Actions: []string{"Heartbeat"}},
+		&fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) {
+			canary.Add(1)
+			return gateway.Reply{}, nil
+		}})
+	var seen atomic.Int64
+	s.SetUnhandledObserver(func(pool, action string) {
+		require.Equal(t, "canary", pool)
+		require.Equal(t, "NewThing", action)
+		seen.Add(1)
+	})
+	ctx := context.Background()
+	route := &gateway.Route{Pool: "canary", Fallback: gateway.DefaultPool}
+
+	// Served by the canary: no fallback.
+	_, err := s.Handle(ctx, gateway.Envelope{Kind: gateway.KindCall, Action: "Heartbeat", Route: route})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, canary.Load())
+
+	// The canary has no handler for NewThing: the fallback pool takes it.
+	_, err = s.Handle(ctx, gateway.Envelope{Kind: gateway.KindCall, Action: "NewThing", Route: route})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, stable.Load())
+	require.EqualValues(t, 1, canary.Load())
+	require.EqualValues(t, 1, seen.Load())
+	require.Equal(t, map[[2]string]uint64{{"canary", "NewThing"}: 1}, s.Unhandled())
+
+	// No fallback configured (an error-mode rule): the routed pool keeps the
+	// message, immediately (no hold), and the miss is counted.
+	_, err = s.Handle(ctx, gateway.Envelope{Kind: gateway.KindCall, Action: "NewThing", Route: &gateway.Route{Pool: "canary"}})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, canary.Load())
+	require.EqualValues(t, 2, seen.Load())
+
+	// Session events carry no action check.
+	_, err = s.Handle(ctx, gateway.Envelope{Kind: gateway.KindSessionOpened, Route: route})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, seen.Load())
+}
+
+func TestPool_PicksOnlyMembersThatServeTheAction(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	s := gateway.NewPoolSet(time.Second)
+	var old, cur atomic.Int64
+	s.Add(gateway.BackendInfo{ID: "old", Actions: []string{"A"}},
+		&fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) {
+			old.Add(1)
+			return gateway.Reply{}, nil
+		}})
+	s.Add(gateway.BackendInfo{ID: "new", Actions: []string{"A", "B"}},
+		&fakeUp{handle: func(context.Context, gateway.Envelope) (gateway.Reply, error) {
+			cur.Add(1)
+			return gateway.Reply{}, nil
+		}})
+	for i := 0; i < 30; i++ {
+		_, err := s.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Action: "B"})
+		require.NoError(t, err)
+	}
+	require.EqualValues(t, 0, old.Load())
+	require.EqualValues(t, 30, cur.Load())
+	require.Empty(t, s.Unhandled())
+}

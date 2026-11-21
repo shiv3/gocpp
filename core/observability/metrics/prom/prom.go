@@ -20,6 +20,10 @@ type metrics struct {
 	sessDur     *prometheus.HistogramVec
 	closes      *prometheus.CounterVec
 	accepts     *prometheus.CounterVec
+	tenantSess  *prometheus.GaugeVec
+	tenantRej   *prometheus.CounterVec
+	tenantInfl  *prometheus.GaugeVec
+	edgeResp    *prometheus.CounterVec
 }
 
 // New creates a Prometheus-backed Metrics and registers collectors with reg.
@@ -36,8 +40,12 @@ func New(reg prometheus.Registerer) observability.Metrics {
 		sessDur:     prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "gocpp_session_duration_seconds", Help: "connection lifetime, observed at close", Buckets: []float64{1, 5, 30, 60, 300, 600, 1800, 3600, 6 * 3600, 24 * 3600}}, []string{"version"}),
 		closes:      prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_closes_total", Help: "connections closed, by WebSocket close code and cause"}, []string{"version", "code", "cause"}),
 		accepts:     prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_accepts_total", Help: "upgrade attempts by result"}, []string{"result"}),
+		tenantSess:  prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "gocpp_tenant_sessions", Help: "sessions per tenant (csms.WithTenantLimits)"}, []string{"tenant"}),
+		tenantInfl:  prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "gocpp_tenant_inflight", Help: "inbound messages in flight per tenant (csms.WithTenantLimits)"}, []string{"tenant"}),
+		tenantRej:   prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_tenant_rejected_total", Help: "upgrades and messages refused (kind sessions, messages or inflight) by a per-tenant limit"}, []string{"tenant", "kind"}),
+		edgeResp:    prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_edge_responses_total", Help: "CALLs answered at the gateway without a backend hop"}, []string{"version", "action"}),
 	}
-	reg.MustRegister(m.connections, m.pending, m.calls, m.callDur, m.schemaFails, m.queueDepth, m.pingLatency, m.softViol, m.sessDur, m.closes, m.accepts)
+	reg.MustRegister(m.tenantInfl, m.tenantSess, m.tenantRej, m.edgeResp, m.connections, m.pending, m.calls, m.callDur, m.schemaFails, m.queueDepth, m.pingLatency, m.softViol, m.sessDur, m.closes, m.accepts)
 	return m
 }
 
@@ -71,3 +79,16 @@ func (m *metrics) SessionClosed(version string, d time.Duration, code, cause str
 	m.closes.WithLabelValues(version, code, cause).Inc()
 }
 func (m *metrics) UpgradeResult(result string) { m.accepts.WithLabelValues(result).Inc() }
+
+func (m *metrics) TenantSessions(tenant string, delta int) {
+	m.tenantSess.WithLabelValues(tenant).Add(float64(delta))
+}
+func (m *metrics) TenantInflight(tenant string, delta int) {
+	m.tenantInfl.WithLabelValues(tenant).Add(float64(delta))
+}
+func (m *metrics) TenantRejected(tenant, kind string) {
+	m.tenantRej.WithLabelValues(tenant, kind).Inc()
+}
+func (m *metrics) EdgeResponse(version, action string) {
+	m.edgeResp.WithLabelValues(version, action).Inc()
+}

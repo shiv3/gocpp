@@ -95,6 +95,19 @@ Measured with `BenchmarkIdleFootprint` (2,000 connections) and the 10,000-connec
 
 The 1.0-1.5 goroutine ratio under load comes from handlers and outbound-call timers in flight. The socket buffers are 1 KB + 1 KB of that (`WithIOBufferSizes`).
 
+## RSS versus live memory
+
+Heap plus stack per connection (the table above, `BenchmarkIdleFootprint`) is the
+live cost: 12 KB embedded and 11-14 KB for a gateway session. The process RSS of
+a server that has just taken 10,000 real clients (BootNotification and status
+traffic during a 2-minute ramp) is about 23 KB per session, for the embedded
+server and for a gateway alike (checked against the v0.2.0 code: the same). The
+difference is garbage from the connect storm that the next GC has not freed and
+heap spans the scavenger has not returned yet (about 1.7x live at the default
+`GOGC=100`). `GOGC=50` brings it to about 21 KB at the price of more GC CPU;
+`GOMEMLIMIT` bounds it from above. The 13.6 KB RSS figure above was taken with
+idle connections that sent nothing.
+
 ## Schema validation cost
 
 Validation is the largest per-request cost after the transport. In `BenchmarkDispatchRoundTrip` (one inbound CALL, typed handler, CALLRESULT, in-memory transport):
@@ -139,6 +152,9 @@ server's. RSS is typically 1.5-2x heap+stack because of GC headroom and
 runtime overhead. The per-message benchmarks use a `coder/websocket` client in
 the same process, so their allocations include the client side.
 
+`BenchmarkGatewayIdleFootprint` and `TestGatewayIdleFootprintBounds` do the same
+for the connection-terminating tier of a split deployment (gateway server with an
+in-process link to a backend; the design target is 16 KB heap+stack per session).
 `TestIdleFootprintBounds` fails if the per-connection heap, stack or goroutine
 count exceeds fixed upper bounds. The bounds are ratcheted down as the footprint
 shrinks. The race detector inflates heap and stack several-fold, so the test

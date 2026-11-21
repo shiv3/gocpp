@@ -43,13 +43,14 @@ type serverConfig struct {
 
 	auth           auth.Authenticator
 	connReg        storage.ConnectionRegistry
-	router         storage.MessageRouter
+	router         storage.MessageRouter //nolint:staticcheck // legacy interface, kept for compatibility (deprecated in favour of gateway.Downstream)
 	txStore        storage.TransactionStore
 	cfgStore       storage.ConfigStore
 	metrics        observability.Metrics
 	tracerProvider trace.TracerProvider
 	onConnect      func(*Conn)
 	onDisconnect   func(*Conn, error)
+	sessionObs     observability.SessionObserver
 	connConfig     func(r *http.Request, cpID string, t *ConnTimeouts)
 
 	originPatterns           []string
@@ -63,7 +64,18 @@ type serverConfig struct {
 	splitInProcess bool
 	backendInfo    gateway.BackendInfo
 	gwRouter       gateway.Router
+	gwAuthCache    *AuthCacheConfig
+	attrSource     gateway.AttrSource
+	attrSourceOpts AttrSourceOptions
 	onOrphan       func(cpID, callID, action string, payload []byte, err error)
+	edgeResponders map[string]EdgeResponder
+	// edgeTimeEncoding is timeEncoding as the gateway keeps it (the processing tier applies it otherwise).
+	edgeTimeEncoding  schema.TimeEncoding
+	onEdgeResponse    func(cpID, action string)
+	edgeHeartbeat     bool
+	edgeHeartbeatWhen []func(EdgeRequest) bool
+
+	tenantLimits *TenantLimits
 }
 
 func defaultServerConfig() serverConfig {
@@ -304,6 +316,16 @@ func WithOnDisconnect(fn func(*Conn, error)) Option {
 	return optionFunc(func(c *serverConfig) { c.onDisconnect = fn })
 }
 
+// WithSessionObserver installs a callback that sees the lifecycle of every
+// WebSocket session this server terminates: opened once the connection is
+// registered, closed once when it ends (with the cause and the duration). It
+// works on an embedded server and on a gateway alike (unlike WithOnConnect, which
+// belongs to the processing tier), and runs inline, so it must not block; see
+// observability/tap for an exporter that does not. Panics are recovered.
+func WithSessionObserver(fn observability.SessionObserver) Option {
+	return optionFunc(func(c *serverConfig) { c.sessionObs = fn })
+}
+
 // WithInstanceID sets this CSMS instance's identifier and turns on multi-instance
 // routing: the instance registers every charge point it holds in the registry's
 // global table under this id, serves calls forwarded by other instances through
@@ -469,6 +491,11 @@ func WithConnectionRegistry(r storage.ConnectionRegistry) Option {
 }
 
 // WithMessageRouter sets the inter-instance message router (default no-op).
+//
+// Deprecated: use a gateway link (WithGatewayLink on the processing tier,
+// NewGatewayServer for the connection tier) so CSMS-initiated calls travel as
+// gateway.Downstream requests; csms.DownstreamRouter adapts a Downstream for
+// callers that cannot move yet. Removed no earlier than v0.4.
 func WithMessageRouter(r storage.MessageRouter) Option {
 	return optionFunc(func(c *serverConfig) { c.router = r })
 }
@@ -589,4 +616,53 @@ func WithBackendInfo(info gateway.BackendInfo) Option {
 // action and the session attributes. Default gateway.DefaultRouter.
 func WithRouter(r gateway.Router) Option {
 	return optionFunc(func(c *serverConfig) { c.gwRouter = r })
+}
+
+// AuthCacheConfig configures the gateway's cache of connect decisions.
+type AuthCacheConfig struct {
+	// TTL is how long an accepted connect is answered from the cache without
+	// asking the backend. Default 5 minutes.
+	TTL time.Duration
+	// StaleIfError is how long past TTL an accepted decision is still served when
+	// the backend cannot be reached (no backend attached, link failure). 0 serves
+	// no stale decision. Default 1 hour.
+	StaleIfError time.Duration
+	// MaxEntries bounds the cache (default 100000); at the limit expired entries
+	// go first, then an arbitrary one.
+	MaxEntries int
+}
+
+// WithGatewayAuthCache makes a gateway (NewGatewayServer) remember the backend's
+// positive connect decisions, keyed by a hash of what the decision can depend
+// on: the charge point id, request path, Authorization header, offered
+// subprotocols and the client certificate. Within TTL a reconnect is admitted
+// without a round trip (a reconnect storm does not hit the backend's credential
+// store), and after TTL the backend is asked again; if it cannot be reached an
+// accepted decision up to StaleIfError old is reused, so charge points keep
+// reconnecting through a backend outage. Rejections are never cached and drop
+// the entry. Do not enable it when the backend decides on other request headers;
+// call Server.InvalidateAuthCache after a credential change.
+func WithGatewayAuthCache(cfg AuthCacheConfig) Option {
+	return optionFunc(func(c *serverConfig) { c.gwAuthCache = &cfg })
+}
+
+// AttrSourceOptions tunes WithAttrSource.
+type AttrSourceOptions struct {
+	// Timeout bounds the lookup at connect (default 200 ms); on failure the
+	// session starts without external attributes.
+	Timeout time.Duration
+	// Refresh, if positive, re-reads the attributes of every connected session at
+	// this interval and updates them (a failed lookup keeps the old ones).
+	Refresh time.Duration
+	// OnResult is called once per lookup with "ok", "timeout" or "error", for
+	// metrics.
+	OnResult func(result string)
+}
+
+// WithAttrSource makes a gateway (NewGatewayServer) add the attributes of src to
+// every session, prefixed "ext." (gateway.ExtAttrPrefix), after the processing
+// tier's own: rules can match them like any attribute, and they can never
+// override one the backend set. See gateway.AttrSource.
+func WithAttrSource(src gateway.AttrSource, o AttrSourceOptions) Option {
+	return optionFunc(func(c *serverConfig) { c.attrSource, c.attrSourceOpts = src, o })
 }
