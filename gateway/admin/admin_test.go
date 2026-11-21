@@ -157,6 +157,10 @@ func TestPlanRebalance(t *testing.T) {
 	even := []admin.Load{{ID: "a", Sessions: 105, Serving: true}, {ID: "b", Sessions: 100, Serving: true}, {ID: "c", Sessions: 95, Serving: true}}
 	require.Empty(t, admin.PlanRebalance(even, 1.1))
 	require.True(t, admin.Balanced(even, 1.1))
+	// 46/45/29: nobody is far above fair (40) but one is far below: still a plan.
+	skew := []admin.Load{{ID: "a", Sessions: 46, Serving: true}, {ID: "b", Sessions: 45, Serving: true}, {ID: "c", Sessions: 29, Serving: true}}
+	require.False(t, admin.Balanced(skew, 1.15))
+	require.Equal(t, []admin.Shed{{ID: "a", Count: 6}, {ID: "b", Count: 5}}, admin.PlanRebalance(skew, 1.15))
 	require.Empty(t, admin.PlanRebalance(nil, 1.1))
 	require.Empty(t, admin.PlanRebalance([]admin.Load{{ID: "x", Sessions: 5, Serving: false}}, 1.1))
 }

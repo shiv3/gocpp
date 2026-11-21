@@ -46,6 +46,13 @@ func PlanRebalance(gws []Load, tolerance float64) []Shed {
 		tolerance = 1
 	}
 	fair := FairShare(gws)
+	if !Balanced(gws, tolerance) {
+		// Somebody is far below its share (a fresh canary, a restarted pod) while
+		// nobody may be far enough above to cross the threshold: shed from
+		// everything above the fair share, or the plan would stay empty while the
+		// fleet is uneven.
+		tolerance = 1
+	}
 	var out []Shed
 	for _, g := range gws {
 		if !g.Serving || float64(g.Sessions) <= fair*tolerance {
