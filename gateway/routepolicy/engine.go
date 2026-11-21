@@ -222,7 +222,7 @@ func (e *Engine) decide(c *compiled, in gateway.RouteInput) gateway.RouteDecisio
 				st = e.state(in.CPID)
 			}
 		}
-		if r.matches(in, c, st, busy, now, e) {
+		if r.matches(in, st, busy, now, e) {
 			d := gateway.RouteDecision{Pool: r.pool, Rule: r.name, Rev: c.p.Revision}
 			if !r.errMode && r.pool != c.def {
 				d.Fallback = c.def
@@ -500,7 +500,7 @@ func (r *rule) actionOK(in gateway.RouteInput) bool {
 	return r.actions == nil || r.actions[in.Action]
 }
 
-func (r *rule) matches(in gateway.RouteInput, c *compiled, st *sessState, busy bool, now time.Time, e *Engine) bool {
+func (r *rule) matches(in gateway.RouteInput, st *sessState, busy bool, now time.Time, e *Engine) bool {
 	if !r.actionOK(in) {
 		return false
 	}

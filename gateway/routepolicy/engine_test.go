@@ -285,8 +285,8 @@ func (u *up) Handle(_ context.Context, env gateway.Envelope) (gateway.Reply, err
 }
 func (u *up) Notify(context.Context, gateway.Envelope) error { return nil }
 
-func route(e *routepolicy.Engine, cp string) *gateway.Route {
-	d := e.Route(gateway.RouteInput{CPID: cp, Action: "Heartbeat", Kind: gateway.KindCall})
+func route(e *routepolicy.Engine) *gateway.Route {
+	d := e.Route(gateway.RouteInput{CPID: "cp", Action: "Heartbeat", Kind: gateway.KindCall})
 	return &d
 }
 
@@ -301,14 +301,14 @@ func TestPoolSetFallbackSuspendsAndRecovers(t *testing.T) {
 	ps.Add(gateway.BackendInfo{ID: "d", Pool: "default"}, def)
 	m := ps.Add(gateway.BackendInfo{ID: "c", Pool: "canary"}, can)
 
-	rep, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e, "cp")})
+	rep, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e)})
 	require.NoError(t, err)
 	require.Contains(t, string(rep.Payload), "can")
 
 	// Canary dies (kill -9): the next message falls back at once, no 20 s hold.
 	ps.Remove(m)
 	start := time.Now()
-	rep, err = ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e, "cp")})
+	rep, err = ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e)})
 	require.NoError(t, err)
 	require.Contains(t, string(rep.Payload), "def")
 	require.Less(t, time.Since(start), time.Second)
@@ -316,10 +316,10 @@ func TestPoolSetFallbackSuspendsAndRecovers(t *testing.T) {
 
 	// The canary returns, but the rule stays suspended for its window.
 	ps.Add(gateway.BackendInfo{ID: "c2", Pool: "canary"}, can)
-	rep, _ = ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e, "cp")})
+	rep, _ = ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e)})
 	require.Contains(t, string(rep.Payload), "def")
 	clk.advance(11 * time.Second)
-	rep, _ = ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e, "cp")})
+	rep, _ = ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e)})
 	require.Contains(t, string(rep.Payload), "can")
 }
 
@@ -338,11 +338,11 @@ func TestPoolSetGuardTripsOnErrorInjectingCanary(t *testing.T) {
 	ps.Add(gateway.BackendInfo{ID: "c", Pool: "canary"}, bad)
 	n := 0
 	for ; n < 100 && len(e.Suspended()) == 0; n++ {
-		_, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e, "cp")})
+		_, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e)})
 		require.NoError(t, err)
 	}
 	require.Equal(t, 20, n, "tripped at min_requests")
-	rep, _ := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e, "cp")})
+	rep, _ := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e)})
 	require.Contains(t, string(rep.Payload), "def")
 }
 
@@ -356,7 +356,7 @@ func TestPoolSetNackFallsBackAndCounts(t *testing.T) {
 	nack := &up{result: func(gateway.Envelope) (gateway.Reply, error) { return gateway.Reply{Nack: true}, nil }}
 	ps.Add(gateway.BackendInfo{ID: "d"}, &up{tag: "def"})
 	ps.Add(gateway.BackendInfo{ID: "c", Pool: "canary"}, nack)
-	rep, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e, "cp"), Deadline: time.Now().Add(time.Second)})
+	rep, err := ps.Handle(context.Background(), gateway.Envelope{Kind: gateway.KindCall, Route: route(e), Deadline: time.Now().Add(time.Second)})
 	require.NoError(t, err)
 	require.Contains(t, string(rep.Payload), "def")
 	require.Equal(t, 1, m.fallbacks)

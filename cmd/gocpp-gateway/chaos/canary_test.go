@@ -36,6 +36,24 @@ func controller(t *testing.T, addr string) routepolicy.Controller {
 	return routepolicy.Controller{Store: reg, Registry: reg}
 }
 
+// waitLeases waits until the gateway has published its capabilities (the
+// labels are set just after the lease first appears).
+func waitLeases(t *testing.T, ctl routepolicy.Controller) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		s, err := ctl.Status(context.Background())
+		if err != nil || len(s.Gateways) != 1 {
+			return false
+		}
+		for _, g := range s.Gateways {
+			if len(g.Caps) == 0 {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 50*time.Millisecond)
+}
+
 func canaryRule(mut func(*routepolicy.Rule)) routepolicy.Policy {
 	pc := 100.0
 	r := routepolicy.Rule{Name: "canary", Pool: "canary", Match: routepolicy.Match{Percent: &pc}}
@@ -61,6 +79,7 @@ func TestChaos_CanaryKilledFallsBackWithoutHold(t *testing.T) {
 	can := startPoolBackend(t, "be-c", "canary", mr.Addr(), g.link)
 	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
 	ctl := controller(t, mr.Addr())
+	waitLeases(t, ctl)
 	rev, err := ctl.Put(context.Background(), canaryRule(nil), routepolicy.PutOptions{})
 	require.NoError(t, err)
 	st, err := ctl.WaitConverged(context.Background(), rev, 5*time.Second)
@@ -106,7 +125,8 @@ func TestChaos_CanaryFlappingIsSuspended(t *testing.T) {
 	can := startPoolBackend(t, "be-c1", "canary", mr.Addr(), g.link)
 	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
 	ctl := controller(t, mr.Addr())
-	rev, err := ctl.Put(context.Background(), canaryRule(func(r *routepolicy.Rule) { r.SuspendFor = routepolicy.Duration(4 * time.Second) }), routepolicy.PutOptions{})
+	waitLeases(t, ctl)
+	rev, err := ctl.Put(context.Background(), canaryRule(func(r *routepolicy.Rule) { r.SuspendFor = routepolicy.Duration(8 * time.Second) }), routepolicy.PutOptions{})
 	require.NoError(t, err)
 	_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
 	require.NoError(t, err)
@@ -128,7 +148,7 @@ func TestChaos_CanaryFlappingIsSuspended(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, def.count("HANDLED Heartbeat"), 4)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(8 * time.Second)
 	require.NoError(t, hb(t, c))
 	n := 0
 	for _, b := range restarted {
@@ -146,6 +166,7 @@ func TestChaos_CanaryGuardTripsOnErrors(t *testing.T) {
 	can := startPoolBackend(t, "be-c", "canary", mr.Addr(), g.link, "-fail-heartbeat")
 	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
 	ctl := controller(t, mr.Addr())
+	waitLeases(t, ctl)
 	rev, err := ctl.Put(context.Background(), canaryRule(func(r *routepolicy.Rule) {
 		r.Guard = &routepolicy.Guard{MinRequests: 5, MaxErrorRatio: 0.5, Window: routepolicy.Duration(30 * time.Second)}
 	}), routepolicy.PutOptions{})
@@ -191,6 +212,7 @@ func TestChaos_PolicyStoreDownAndInvalidPolicy(t *testing.T) {
 	can := startPoolBackend(t, "be-c", "canary", "", g.link)
 	require.Eventually(t, g.ready, 5*time.Second, 50*time.Millisecond)
 	ctl := controller(t, mr.Addr())
+	waitLeases(t, ctl)
 	rev, err := ctl.Put(context.Background(), canaryRule(nil), routepolicy.PutOptions{})
 	require.NoError(t, err)
 	_, err = ctl.WaitConverged(context.Background(), rev, 5*time.Second)
