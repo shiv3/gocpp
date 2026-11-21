@@ -22,15 +22,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	linkgrpc "github.com/shiv3/gocpp/addons/link-grpc"
+	linknats "github.com/shiv3/gocpp/addons/link-nats"
 	registryredis "github.com/shiv3/gocpp/addons/registry-redis"
 	"github.com/shiv3/gocpp/core/observability/metrics/prom"
 	"github.com/shiv3/gocpp/core/transport"
 	"github.com/shiv3/gocpp/csms"
+	"github.com/shiv3/gocpp/gateway"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
@@ -92,9 +95,34 @@ func serve(args []string) error {
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{"gateway_id": cfg.ID, "gateway_version": cfg.Version}, reg)
 
-	link := linkgrpc.NewGateway(
-		linkgrpc.WithGatewayVersion(cfg.Version), linkgrpc.WithGatewayMetrics(newLinkMetrics(wrapped)),
-		linkgrpc.WithUpstreamWait(cfg.UpstreamWait))
+	var link gatewayLink
+	var grpcLink *linkgrpc.Gateway
+	switch cfg.Link {
+	case "nats":
+		var nopts []nats.Option
+		if cfg.NATSCreds != "" {
+			nopts = append(nopts, nats.UserCredentials(cfg.NATSCreds))
+		}
+		nopts = append(nopts, nats.PingInterval(cfg.LinkKeepalive))
+		nc, err := linknats.Connect(cfg.NATSURL, "gocpp-gateway-"+cfg.ID, nopts...)
+		if err != nil {
+			return err
+		}
+		defer nc.Close()
+		nl, err := linknats.NewGateway(nc, linknats.WithPrefix(cfg.NATSPrefix),
+			linknats.WithGatewayVersion(cfg.Version), linknats.WithGatewayMetrics(newLinkMetrics(wrapped)),
+			linknats.WithUpstreamWait(cfg.UpstreamWait), linknats.WithAcceptTimeout(cfg.NATSAccept))
+		if err != nil {
+			return err
+		}
+		defer nl.Close()
+		link = nl
+	default:
+		grpcLink = linkgrpc.NewGateway(
+			linkgrpc.WithGatewayVersion(cfg.Version), linkgrpc.WithGatewayMetrics(newLinkMetrics(wrapped)),
+			linkgrpc.WithUpstreamWait(cfg.UpstreamWait))
+		link = grpcLink
+	}
 	wrapped.MustRegister(poolCollector{link})
 
 	opts := []csms.Option{
@@ -146,38 +174,14 @@ func serve(args []string) error {
 		}
 	}()
 
-	// Link listener (backends dial it).
-	llis, err := net.Listen("tcp", cfg.LinkAddr)
-	if err != nil {
-		return err
-	}
-	gopts := []grpc.ServerOption{
-		grpc.KeepaliveParams(keepalive.ServerParameters{Time: cfg.LinkKeepalive, Timeout: max(cfg.LinkKeepalive/2, time.Second)}),
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: time.Second, PermitWithoutStream: true}),
-	}
-	if cfg.LinkTLSCert != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.LinkTLSCert, cfg.LinkTLSKey)
-		if err != nil {
+	// Link listener (backends dial it); the NATS link needs none.
+	var gs *grpc.Server
+	if grpcLink != nil {
+		var err error
+		if gs, err = startLinkListener(cfg, grpcLink, log, stop); err != nil {
 			return err
 		}
-		tc := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
-		if cfg.LinkClientCA != "" {
-			pool, err := loadPool(cfg.LinkClientCA)
-			if err != nil {
-				return err
-			}
-			tc.ClientCAs, tc.ClientAuth = pool, tls.RequireAndVerifyClientCert
-		}
-		gopts = append(gopts, grpc.Creds(credentials.NewTLS(tc)))
 	}
-	gs := grpc.NewServer(gopts...)
-	link.Register(gs)
-	go func() {
-		if err := gs.Serve(llis); err != nil {
-			log.Error("link listener stopped", "error", err)
-			stop()
-		}
-	}()
 
 	// Admin: metrics and probes.
 	mux := http.NewServeMux()
@@ -206,7 +210,7 @@ func serve(args []string) error {
 		}
 	}()
 
-	log.Info("gateway started", "id", cfg.ID, "version", cfg.Version, "ws", cfg.Listen, "link", cfg.LinkAddr,
+	log.Info("gateway started", "id", cfg.ID, "version", cfg.Version, "ws", cfg.Listen, "link", cfg.Link, "link_addr", cfg.LinkAddr, "nats", cfg.NATSURL,
 		"admin", cfg.Admin, "registry", cfg.RedisAddr != "")
 	<-ctx.Done()
 
@@ -229,14 +233,16 @@ func serve(args []string) error {
 	}
 	_ = gw.Shutdown(dctx)
 	_ = wsSrv.Shutdown(dctx)
-	gs.GracefulStop()
+	if gs != nil {
+		gs.GracefulStop()
+	}
 	_ = adminSrv.Shutdown(dctx)
 	return nil
 }
 
 // poolCollector exports the attached backends per pool and version
 // (gocpp_gateway_pool_members).
-type poolCollector struct{ l *linkgrpc.Gateway }
+type poolCollector struct{ l gatewayLink }
 
 var poolDesc = prometheus.NewDesc("gocpp_gateway_pool_members", "attached backends", []string{"pool", "backend_version"}, nil)
 
@@ -255,4 +261,48 @@ func (c poolCollector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(poolDesc, prometheus.GaugeValue, float64(n), p.Name, v)
 		}
 	}
+}
+
+// gatewayLink is what the binary needs from either link: the csms gateway
+// server's link, plus the readiness and pool views.
+type gatewayLink interface {
+	gateway.GatewayLink
+	Pools() []gateway.PoolStatus
+	Available(pool string) bool
+}
+
+// startLinkListener serves the gRPC link on cfg.LinkAddr.
+func startLinkListener(cfg config, link *linkgrpc.Gateway, log *slog.Logger, stop context.CancelFunc) (*grpc.Server, error) {
+	llis, err := net.Listen("tcp", cfg.LinkAddr)
+	if err != nil {
+		return nil, err
+	}
+	gopts := []grpc.ServerOption{
+		grpc.KeepaliveParams(keepalive.ServerParameters{Time: cfg.LinkKeepalive, Timeout: max(cfg.LinkKeepalive/2, time.Second)}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: time.Second, PermitWithoutStream: true}),
+	}
+	if cfg.LinkTLSCert != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.LinkTLSCert, cfg.LinkTLSKey)
+		if err != nil {
+			return nil, err
+		}
+		tc := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}
+		if cfg.LinkClientCA != "" {
+			pool, err := loadPool(cfg.LinkClientCA)
+			if err != nil {
+				return nil, err
+			}
+			tc.ClientCAs, tc.ClientAuth = pool, tls.RequireAndVerifyClientCert
+		}
+		gopts = append(gopts, grpc.Creds(credentials.NewTLS(tc)))
+	}
+	gs := grpc.NewServer(gopts...)
+	link.Register(gs)
+	go func() {
+		if err := gs.Serve(llis); err != nil {
+			log.Error("link listener stopped", "error", err)
+			stop()
+		}
+	}()
+	return gs, nil
 }

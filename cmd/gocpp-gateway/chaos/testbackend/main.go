@@ -16,6 +16,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	linkgrpc "github.com/shiv3/gocpp/addons/link-grpc"
+	linknats "github.com/shiv3/gocpp/addons/link-nats"
 	registryredis "github.com/shiv3/gocpp/addons/registry-redis"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/csms"
@@ -41,15 +42,27 @@ type hbResp struct {
 func main() {
 	id := flag.String("id", "be", "backend id")
 	pool := flag.String("pool", "", "backend pool")
-	targets := flag.String("gateways", "", "comma separated gateway link addresses")
+	targets := flag.String("gateways", "", "comma separated gateway link addresses (gRPC), or the NATS server URL")
+	linkKind := flag.String("link", "grpc", "grpc|nats")
 	redisAddr := flag.String("redis", "", "registry address")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(strings.Split(*targets, ",")...),
-		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
-		linkgrpc.WithResolveInterval(100*time.Millisecond), linkgrpc.WithDrainTimeout(20*time.Second))
+	var be gateway.BackendLink
+	if *linkKind == "nats" {
+		nc, err := linknats.Connect(*targets, "testbackend-"+*id)
+		must(err)
+		defer nc.Close()
+		nb, err := linknats.NewBackend(nc, linknats.WithHelloInterval(500*time.Millisecond), linknats.WithDrainTimeout(20*time.Second))
+		must(err)
+		defer nb.Close()
+		be = nb
+	} else {
+		be = linkgrpc.NewBackend(linkgrpc.StaticTargets(strings.Split(*targets, ",")...),
+			linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
+			linkgrpc.WithResolveInterval(100*time.Millisecond), linkgrpc.WithDrainTimeout(20*time.Second))
+	}
 	opts := []csms.Option{csms.WithGatewayLink(be), csms.WithSubProtocols("ocpp1.6"),
 		csms.WithBackendInfo(gateway.BackendInfo{ID: *id, Pool: *pool, Version: "test"})}
 	if *redisAddr != "" {

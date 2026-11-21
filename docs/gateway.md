@@ -145,12 +145,74 @@ Failure behaviour is exercised with real processes in
 load, kill -9 a gateway, gateway/backend and gateway/registry partitions with a
 TCP fault proxy, the same charger id on two gateways).
 
+## The NATS link
+
+`addons/link-nats` (its own module) carries the same contract (`gocpp.link.v1`
+messages, Hello/HelloAck with protocol range and capabilities, Drain/DrainAck,
+Nack, `Sent` classification, unknown requests answered `Unsupported`) over NATS
+core request-reply and queue groups. Use it where NATS already runs, where
+non-Go consumers must handle some actions, or where per-action worker pools by
+subject are wanted; gRPC stays the default (the design explains why: the broker
+sits on the path of every message and NATS drops rather than backpressures).
+
+```go
+// gateway
+nc, _ := linknats.Connect("nats://nats:4222", "gw-3")
+link, _ := linknats.NewGateway(nc, linknats.WithGatewayVersion(v))
+gw := csms.NewGatewayServer(link, csms.WithGatewayID("gw-3"), ...)
+
+// backend
+nc, _ := linknats.Connect("nats://nats:4222", "backend")
+be, _ := linknats.NewBackend(nc)
+srv := csms.NewServer(csms.WithGatewayLink(be), csms.WithBackendInfo(gateway.BackendInfo{Pool: "default"}), ...)
+srv.ServeGateway(ctx)
+```
+
+`cmd/gocpp-gateway --link nats --nats-url nats://...` runs the reference gateway
+on it (no link listener). Subjects (prefix `gocpp`, configurable, one token per
+dynamic part): inbound CALLs on `gocpp.in.<pool>.<version>.<action>` in the queue
+group `gocpp.<pool>` (`WithActionSubjects` makes a backend subscribe only to
+those actions, which is how a per-action worker pool is built), `connect.<pool>`
+and `notify.<pool>` in the same group, CSMS-initiated work on
+`gocpp.gw.<gatewayID>.call|send|control|locate`, `hello`/`drain`/`who`/`cancel` for
+membership.
+
+What is different from the gRPC link, all inherent to NATS core:
+
+- **Membership by lease.** A backend sends `Hello` every interval
+  (`WithHelloInterval`, default 5 s); a gateway answers `HelloAck` and drops a
+  backend after three missed intervals, a backend drops a gateway likewise. That
+  is the failure detection time of the link (there is no stream to break), so
+  size the interval like the gRPC keepalive.
+- **Who has the request.** The broker, not the gateway, picks the backend of a
+  queue group. The backend therefore sends an interim "accepted" frame the moment
+  it receives a request; the gateway knows who works on it and fails it
+  (InternalError, never a redispatch) when that backend's lease lapses. A request
+  no backend acknowledged within `WithAcceptTimeout` (default 5 s) is failed the
+  same way. "No responders" (nobody subscribed) is the fast path to the hold and
+  `ErrNoBackend`.
+- **At most once, no flow control.** A backend over `WithMaxInFlight` answers
+  `Nack` and the gateway asks again (the broker picks another member); the
+  gateway's own in-flight caps remain the only other limit.
+- **Drain.** A stopping backend unsubscribes from its queue group first (what it
+  had buffered is Nacked), tells the gateways, and each answers `DrainAck` when
+  the requests it had dispatched to that backend are answered.
+- **Connection options.** `linknats.Connect` sets no reconnect buffering (a
+  request must never be delivered after its deadline), endless reconnects and a
+  2 s ping. A dropped connection fails every request in flight on it
+  (`stream_broken`): after a broker restart both tiers reconnect by themselves.
+
+Failure behaviour is exercised by the chaos suite with the NATS link
+(`GOCPP_CHAOS_LINK=nats go test ./chaos`, an embedded `nats-server` per test):
+the same scenarios as for gRPC plus a broker restart.
+
 ## Links
 
 | Link | Package | Use |
 |---|---|---|
 | in-process | `gateway/inproc` | tests, conformance, single-binary deployments |
 | gRPC (backends dial gateways) | `addons/link-grpc` (own module) | the default for separate processes |
+| NATS (queue groups) | `addons/link-nats` (own module) | deployments that already run NATS, non-Go consumers, per-action worker pools |
 
 A link implements `gateway.GatewayLink` (the gateway end: `Upstream` plus
 `Attach`) and `gateway.BackendLink` (the backend end: `Downstream` plus `Serve`
@@ -243,7 +305,10 @@ it off when the backend decides on other request headers.
 `GOCPP_TEST_SPLIT=1 go test ./internal/...` runs the conformance and e2e suites
 with every server split through the in-process link (CI does this on every PR).
 Tests create servers with `internal/splitmode.NewServer`, which is
-`csms.NewServer` plus `WithSplitInProcess` when the variable is set.
+`csms.NewServer` plus `WithSplitInProcess` when the variable is set. The NATS link
+has its own tests (`addons/link-nats`: the link contract over a real
+`nats-server`, and a wire-identity test that diffs the frames of an embedded
+server against a gateway with a NATS backend) and runs the whole chaos suite.
 
 ## Not yet
 
