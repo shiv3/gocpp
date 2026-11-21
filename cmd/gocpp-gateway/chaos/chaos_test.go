@@ -7,7 +7,6 @@
 package chaos
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -136,27 +135,41 @@ func TestMain(m *testing.M) {
 
 // ---- processes -------------------------------------------------------------
 
-type syncBuf struct {
-	mu sync.Mutex
-	b  bytes.Buffer
+// procOut is a child's combined stdout and stderr. It is a real file handed to
+// the child, not a pipe drained by a goroutine of this process: a line the child
+// printed before answering a request is then already readable when the request
+// returns, so assertions on what a backend handled need no sleeping or polling.
+type procOut struct{ f *os.File }
+
+func newProcOut(t *testing.T) *procOut {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(t.TempDir(), "out.log"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+	return &procOut{f: f}
 }
 
-func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
-func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
+func (o *procOut) String() string {
+	b, err := os.ReadFile(o.f.Name())
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
 
 type proc struct {
 	t    *testing.T
 	name string
 	cmd  *exec.Cmd
-	out  *syncBuf
+	out  *procOut
 	done chan struct{}
 }
 
 func start(t *testing.T, name string, args ...string) *proc {
 	t.Helper()
-	p := &proc{t: t, name: name, out: &syncBuf{}, done: make(chan struct{})}
+	p := &proc{t: t, name: name, out: newProcOut(t), done: make(chan struct{})}
 	p.cmd = exec.Command(filepath.Join(binDir, strings.Split(name, ":")[0]), args...)
-	p.cmd.Stdout, p.cmd.Stderr = p.out, p.out
+	p.cmd.Stdout, p.cmd.Stderr = p.out.f, p.out.f
 	require.NoError(t, p.cmd.Start())
 	go func() { _ = p.cmd.Wait(); close(p.done) }()
 	t.Cleanup(func() {

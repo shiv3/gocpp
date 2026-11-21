@@ -531,8 +531,35 @@ func (d edgeDownstream) call(ctx context.Context, c *Conn, req gateway.CallReque
 		}
 		return out
 	}
+	// orphan reports the answer of a call whose caller is gone.
+	orphan := func(r result) {
+		if r.err != nil && !errors.As(r.err, new(*ocppj.CallError)) {
+			return // no answer arrived; nothing to report
+		}
+		env := gateway.Envelope{
+			Proto: gateway.ProtoVersion, Session: c.gw.ref, Version: c.gw.version,
+			Kind: gateway.KindOrphanResult, DeliveryID: d.e.deliveryID(), Attempt: 1,
+			CallID: req.CallID, Action: req.Action, Payload: r.payload, ReceivedAt: time.Now(),
+			Error: gateway.EncodeError(r.err),
+		}
+		if req.CallerPool != "" {
+			// The answer goes back to the pool that asked, not to wherever the
+			// charger is routed now; if that pool has no backend left (the
+			// caller died, say) the default pool takes it.
+			env.Route = &gateway.Route{Pool: req.CallerPool, Fallback: gateway.DefaultPool, Rule: "$orphan"}
+		}
+		d.e.notify(env)
+	}
 	select {
 	case r := <-resCh:
+		if ctx.Err() != nil && sent.Load() {
+			// The caller went away and the answer came in at the same moment (the
+			// select above picks at random when both are ready): the caller is
+			// gone, so the answer is an orphan, not a reply nobody reads.
+			orphan(r)
+			return gateway.CallReply{Sent: gateway.SentNoResponse, Session: c.gw.ref,
+				Error: gateway.EncodeError(ctx.Err())}, nil
+		}
 		return reply(r), nil
 	case <-ctx.Done():
 		if !sent.Load() {
@@ -549,25 +576,7 @@ func (d edgeDownstream) call(ctx context.Context, c *Conn, req gateway.CallReque
 			return rep, nil
 		}
 		// Written, caller gone: wait for the answer in the background.
-		go func() {
-			r := <-resCh
-			if r.err != nil && !errors.As(r.err, new(*ocppj.CallError)) {
-				return // no answer arrived; nothing to report
-			}
-			env := gateway.Envelope{
-				Proto: gateway.ProtoVersion, Session: c.gw.ref, Version: c.gw.version,
-				Kind: gateway.KindOrphanResult, DeliveryID: d.e.deliveryID(), Attempt: 1,
-				CallID: req.CallID, Action: req.Action, Payload: r.payload, ReceivedAt: time.Now(),
-				Error: gateway.EncodeError(r.err),
-			}
-			if req.CallerPool != "" {
-				// The answer goes back to the pool that asked, not to wherever the
-				// charger is routed now; if that pool has no backend left (the
-				// caller died, say) the default pool takes it.
-				env.Route = &gateway.Route{Pool: req.CallerPool, Fallback: gateway.DefaultPool, Rule: "$orphan"}
-			}
-			d.e.notify(env)
-		}()
+		go func() { orphan(<-resCh) }()
 		return gateway.CallReply{Sent: gateway.SentNoResponse, Session: c.gw.ref,
 			Error: gateway.EncodeError(ctx.Err())}, nil
 	}

@@ -325,10 +325,10 @@ func (b *Backend) attachOnce(ctx context.Context, addr string, up gateway.Upstre
 		s.unary.close()
 		s.drainOne.Do(func() { close(s.drained) }) // a dead stream needs no acknowledgement
 	}()
-	return s.readLoop(sctx, up, info)
+	return s.readLoop(sctx, up)
 }
 
-func (s *stream) readLoop(ctx context.Context, up gateway.Upstream, info gateway.BackendInfo) error {
+func (s *stream) readLoop(ctx context.Context, up gateway.Upstream) error {
 	for {
 		f, err := s.st.Recv()
 		if err != nil {
@@ -403,7 +403,7 @@ func (s *stream) handle(ctx context.Context, up gateway.Upstream, id uint64, pb 
 	env := linkconv.EnvFromPB(pb)
 	hctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s.cancels.Store(id, context.CancelFunc(cancel))
+	s.cancels.Store(id, cancel)
 	defer s.cancels.Delete(id)
 	rep, err := up.Handle(hctx, env)
 	if err != nil {

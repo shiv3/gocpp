@@ -89,16 +89,16 @@ type backendNode struct {
 
 func (tp *topology) addBackend(info gateway.BackendInfo, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
 	tp.t.Helper()
-	return tp.addBackendWith(info, nil, []csms.Option{csms.WithSessionRegistry(tp.reg)}, handler)
+	return tp.addBackendWith(info, []csms.Option{csms.WithSessionRegistry(tp.reg)}, handler)
 }
 
-// addBackendWith is addBackend with extra link options and server options (the
+// addBackendWith is addBackend with extra server options (the
 // session registry is not implied).
-func (tp *topology) addBackendWith(info gateway.BackendInfo, beOpts []linkgrpc.BackendOption, srvOpts []csms.Option, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
+func (tp *topology) addBackendWith(info gateway.BackendInfo, srvOpts []csms.Option, handler func(context.Context, *csms.Conn, bootReq) (bootResp, error)) *backendNode {
 	tp.t.Helper()
-	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(tp.addr), append([]linkgrpc.BackendOption{
+	be := linkgrpc.NewBackend(linkgrpc.StaticTargets(tp.addr),
 		linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
-		linkgrpc.WithResolveInterval(50 * time.Millisecond), linkgrpc.WithDrainTimeout(5 * time.Second)}, beOpts...)...)
+		linkgrpc.WithResolveInterval(50*time.Millisecond), linkgrpc.WithDrainTimeout(5*time.Second))
 	srv := csms.NewServer(append([]csms.Option{csms.WithGatewayLink(be), csms.WithBackendInfo(info)}, srvOpts...)...)
 	require.NoError(tp.t, csms.On(srv, bootMsg, handler))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -129,7 +129,8 @@ func (n *backendNode) shutdown() {
 	})
 }
 
-func (tp *topology) client(id string) *cp.Client {
+func (tp *topology) client() *cp.Client {
+	const id = "CP_1"
 	c := cp.NewClient(id, tp.wsURL+id, cp.WithSubProtocols("ocpp1.6"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -165,7 +166,7 @@ func TestLink_InboundCallAndCSMSCallOverGRPC(t *testing.T) {
 		return ok(ctx, c, r)
 	})
 
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) { return resetResp{Status: "Accepted"}, nil }))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -205,7 +206,7 @@ func TestLink_BackendDrainLosesNothing(t *testing.T) {
 		}
 		return ok(ctx, c, r)
 	})
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -261,7 +262,7 @@ func TestLink_BrokenStreamAfterDispatchIsNotRetried(t *testing.T) {
 		other.Add(1)
 		return ok(ctx, c, r)
 	})
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	defer tp.close() // gateway first: the client's disconnect is reported to nobody
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -356,8 +357,8 @@ func TestLink_LocateWithoutSessionRegistry(t *testing.T) {
 	defer goleak.VerifyNone(t, goleak.IgnoreAnyFunction("google.golang.org/grpc/internal/grpcsync.(*CallbackSerializer).run"))
 	tp := newTopology(t)
 	defer tp.close()
-	n := tp.addBackendWith(gateway.BackendInfo{}, nil, nil, ok)
-	c := tp.client("CP_1")
+	n := tp.addBackendWith(gateway.BackendInfo{}, nil, ok)
+	c := tp.client()
 	defer c.Close()
 	require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) { return resetResp{Status: "Accepted"}, nil }))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -433,7 +434,7 @@ func TestLink_ProtocolSkew(t *testing.T) {
 			}
 			require.Equal(t, tc.wantCap, slices.Contains(caps, "fake.v2"), "caps %v", caps)
 			// Traffic flows whatever the negotiated version.
-			c := tp.client("CP_1")
+			c := tp.client()
 			defer c.Close()
 			cctx, ccancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer ccancel()
@@ -473,7 +474,7 @@ func TestLink_UnhandledActionInRoutedPoolFallsBack(t *testing.T) {
 	}
 	require.Equal(t, []string{"BootNotification"}, announced, "filled from the registered handlers")
 
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -547,6 +548,22 @@ type routingRecorder struct {
 	mu       sync.Mutex
 	late     map[string]int
 	orphaned map[string]int
+	calls    map[string]int // outcome of CSMS calls served for backends
+}
+
+func (r *routingRecorder) DownstreamCall(_, _, _, outcome string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.calls == nil {
+		r.calls = map[string]int{}
+	}
+	r.calls[outcome]++
+}
+
+func (r *routingRecorder) callsN(outcome string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls[outcome]
 }
 
 func (r *routingRecorder) LateReply(pool string) {
@@ -590,7 +607,7 @@ func TestLink_LateReplyIsCounted(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		return ok(ctx, c, r)
 	})
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -616,14 +633,14 @@ func TestLink_OrphanResultGoesToCallerPool(t *testing.T) {
 			stableOrphans := make(chan struct{}, 2)
 			canaryOrphans := make(chan struct{}, 2)
 			regOpt := csms.WithSessionRegistry(tp.reg)
-			tp.addBackendWith(gateway.BackendInfo{}, nil, []csms.Option{regOpt,
+			tp.addBackendWith(gateway.BackendInfo{}, []csms.Option{regOpt,
 				csms.WithOnOrphanResult(func(string, string, string, []byte, error) { stableOrphans <- struct{}{} })}, ok)
-			canary := tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, nil, []csms.Option{regOpt}, ok)
+			canary := tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, []csms.Option{regOpt}, ok)
 			if tc.secondCanary {
-				tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, nil, []csms.Option{regOpt,
+				tp.addBackendWith(gateway.BackendInfo{Pool: "canary"}, []csms.Option{regOpt,
 					csms.WithOnOrphanResult(func(string, string, string, []byte, error) { canaryOrphans <- struct{}{} })}, ok)
 			}
-			c := tp.client("CP_1")
+			c := tp.client()
 			defer c.Close()
 			got := make(chan struct{}, 1)
 			gate := make(chan struct{})
@@ -640,7 +657,12 @@ func TestLink_OrphanResultGoesToCallerPool(t *testing.T) {
 			go func() { _, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Soft"}); errCh <- err }()
 			<-got
 			canary.srv.Close() // the caller (its stream) goes away after the frame was written
-			<-errCh
+			require.Error(t, <-errCh, "the abandoned call fails")
+			// The gateway must have seen the caller go before the charger answers: an
+			// answer that races the gateway noticing the broken stream is written to
+			// the dead stream and is not an orphan. The abandoned call's outcome
+			// (reported when the gateway stops waiting for it) shows it did.
+			require.Eventually(t, func() bool { return rec.callsN("no_response") == 1 }, 5*time.Second, time.Millisecond)
 			close(gate)
 			want, other := canaryOrphans, stableOrphans
 			if !tc.secondCanary {
