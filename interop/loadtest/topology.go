@@ -91,7 +91,7 @@ func newTopology(g *gen) (*topology, error) {
 	for i := 0; i < c.Gateways; i++ {
 		p := &proc{name: fmt.Sprintf("gw-%d", i), role: "gateway", taskset: c.GwTaskset,
 			ws: hostPort(c.Addr, 100+i), link: hostPort(c.Addr, 200+i), admin: hostPort(c.Addr, 300+i)}
-		p.args = []string{"serve", "--id", p.name, "--listen", p.ws, "--link-listen", p.link, "--admin", p.admin,
+		p.args = []string{"serve", "--id", p.name, "--listen", p.ws, "--link-listen", p.link, "--metrics-listen", p.admin, "--admin", hostPort(c.Addr, 500+i), "--link-insecure",
 			"--subprotocols", "ocpp1.6", "--redis-addr", t.redis.Addr(), "--accept-rate", "0",
 			"--drain-window", "20s", "--call-timeout", c.CallTimeout.String(), "--handler-timeout", "25s", "--log-level", "warn"}
 		p.args = append(p.args, strings.Fields(c.GwArgs)...)
