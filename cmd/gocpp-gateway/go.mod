@@ -13,6 +13,7 @@ require (
 	github.com/shiv3/gocpp/addons/link-grpc v0.0.0
 	github.com/shiv3/gocpp/addons/link-nats v0.0.0
 	github.com/shiv3/gocpp/addons/registry-redis v0.0.0
+	github.com/shiv3/gocpp/addons/rollout v0.0.0
 	github.com/stretchr/testify v1.12.1
 	google.golang.org/grpc v1.85.0
 )
@@ -57,4 +58,5 @@ replace (
 	github.com/shiv3/gocpp/addons/link-grpc => ../../addons/link-grpc
 	github.com/shiv3/gocpp/addons/link-nats => ../../addons/link-nats
 	github.com/shiv3/gocpp/addons/registry-redis => ../../addons/registry-redis
+	github.com/shiv3/gocpp/addons/rollout => ../../addons/rollout
 )

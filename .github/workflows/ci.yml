@@ -81,6 +81,8 @@ jobs:
         working-directory: cmd/gocppctl
       - run: go test -race -count=1 ./...
         working-directory: addons/registry-redis
+      - run: go test -race -count=1 ./...
+        working-directory: addons/rollout
 
   gateway-compat:
     # Previous-release compatibility (design 5.3): build the gateway and the
