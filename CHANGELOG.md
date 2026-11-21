@@ -50,6 +50,11 @@ All notable changes to this project are documented here. The format is based on
   point); `csms.WithSessionObserver` and `observability.SessionEvent` (opened /
   closed once, on embedded servers and gateways); `gocpp-gateway --tap-*` flags and
   `gocpp_tap_events_total`.
+- Conformance and e2e suites in split mode over NATS (`scripts/split-nats-suite.sh`,
+  CI job `gateway-modules`): `csms.WithSplitLink` / `csms.SplitLink` (the
+  `WithSplitInProcess` topology over any link), `splitmode.Register`
+  (`GOCPP_TEST_SPLIT=<name>`), and `addons/link-nats/splitharness`. The main
+  module does not depend on `addons/link-nats`.
 - Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
   capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
   from the registered handlers and honoured by `PoolSet` (unhandled actions fall

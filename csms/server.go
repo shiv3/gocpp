@@ -85,10 +85,17 @@ func NewServer(opts ...Option) *Server {
 	if cfg.gatewayID != "" && cfg.sessionCfg.GatewayID == "" {
 		cfg.sessionCfg.GatewayID = cfg.gatewayID
 	}
-	var splitHub *inproc.Hub
-	if cfg.splitInProcess && cfg.link == nil {
-		splitHub = inproc.New()
-		cfg.link = splitHub.Backend()
+	var splitHub SplitLink
+	if cfg.link == nil {
+		switch {
+		case cfg.splitLink != nil:
+			splitHub = cfg.splitLink
+		case cfg.splitInProcess:
+			splitHub = inproc.New()
+		}
+		if splitHub != nil {
+			cfg.link = splitHub.Backend()
+		}
 	}
 	if cfg.registry != nil && !cfg.timeEncoding.IsZero() {
 		cfg.dispatcher.OutboundTransform = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, error) {
