@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"maps"
 	"sync"
 	"time"
 
@@ -99,6 +100,18 @@ func (d *globalDirectory) claim(_ context.Context, s storage.Session) (uint64, *
 	s.Epoch = d.epoch[s.CPID]
 	d.rec[s.CPID] = s
 	return s.Epoch, prev, nil
+}
+
+func (d *globalDirectory) setAttrs(_ context.Context, cpID string, epoch uint64, attrs map[string]string) (bool, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	cur, ok := d.rec[cpID]
+	if !ok || cur.Epoch != epoch {
+		return false, nil
+	}
+	cur.Attrs = maps.Clone(attrs)
+	d.rec[cpID] = cur
+	return true, nil
 }
 
 func (d *globalDirectory) release(_ context.Context, cpID string, epoch uint64) (bool, error) {

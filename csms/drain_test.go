@@ -333,3 +333,71 @@ func TestRateLimitListener(t *testing.T) {
 	require.GreaterOrEqual(t, dropped, 3, "connections over the burst are closed at accept")
 	require.LessOrEqual(t, len(accepted), 5)
 }
+
+func TestDrain_PartialSelectsByAttrsCPIDsAndFraction(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	reg := memory.NewSessionRegistry()
+	srv, ts := newDrainServer(t,
+		csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: "A", Version: "v2", Label: "canary"}),
+		csms.WithSessionAttributes(func(r *http.Request, cpID string) map[string]string {
+			site := "s1"
+			if cpID >= "CP_0020" {
+				site = "s2"
+			}
+			return map[string]string{"site": site, "vendor": "acme"}
+		}))
+	cps := connectAll(ctx, t, srv, ts.URL, 40)
+	closed := func() (n int) {
+		for _, cp := range cps {
+			if cp.closedAt.Load() != 0 {
+				n++
+			}
+		}
+		return n
+	}
+
+	// The registry record carries attributes and the gateway's release.
+	rec, found, err := reg.Lookup(ctx, "CP_0000")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, map[string]string{"site": "s1", "vendor": "acme"}, rec.Attrs)
+	require.Equal(t, "v2", rec.GatewayVersion)
+	require.Equal(t, "canary", rec.GatewayLabel)
+
+	// Attributes can be updated later, locally and in the registry.
+	require.NoError(t, srv.SetSessionAttrs(ctx, "CP_0000", map[string]string{"site": "s1", "firmware": "1.2"}))
+	rec, _, _ = reg.Lookup(ctx, "CP_0000")
+	require.Equal(t, "1.2", rec.Attrs["firmware"])
+	conn, _ := srv.Get("CP_0000")
+	require.Equal(t, "1.2", conn.Attrs()["firmware"])
+	require.NoError(t, srv.SetSessionAttrs(ctx, "CP_0000", map[string]string{"site": "s1", "vendor": "acme"}))
+
+	// Fraction of one site: half of the 20 sessions at s2.
+	require.NoError(t, srv.Drain(ctx, csms.DrainOptions{Attrs: map[string]string{"site": "s2"}, Fraction: 0.5, Window: 2 * time.Second}))
+	require.False(t, srv.Draining(), "a partial drain keeps accepting")
+	require.Eventually(t, func() bool { return closed() == 10 }, 3*time.Second, 10*time.Millisecond)
+	st := srv.DrainStatus()
+	require.False(t, st.Active)
+	require.True(t, st.Partial)
+	require.Equal(t, 10, st.Total)
+	require.Equal(t, 10, st.Closed)
+	for _, cp := range cps {
+		if cp.closedAt.Load() != 0 {
+			require.GreaterOrEqual(t, cp.id, "CP_0020")
+			require.Equal(t, int32(websocket.StatusServiceRestart), cp.code.Load())
+		}
+	}
+	// New upgrades are still admitted.
+	extra := dialDrainCP(ctx, t, ts.URL, "NEW_1")
+	require.Zero(t, extra.closedAt.Load())
+
+	// By id list, then by Select with a count.
+	require.NoError(t, srv.Drain(ctx, csms.DrainOptions{CPIDs: []string{"CP_0000", "CP_0001", "CP_9999"}, Window: time.Second}))
+	require.Eventually(t, func() bool { return cps[0].closedAt.Load() != 0 && cps[1].closedAt.Load() != 0 }, 3*time.Second, 10*time.Millisecond)
+	require.Equal(t, 2, srv.DrainStatus().Total)
+	before := closed()
+	require.NoError(t, srv.Drain(ctx, csms.DrainOptions{
+		Select: func(s storage.Session) bool { return s.Attrs["site"] == "s1" }, Count: 3, Window: time.Second}))
+	require.Eventually(t, func() bool { return closed() == before+3 }, 3*time.Second, 10*time.Millisecond)
+}

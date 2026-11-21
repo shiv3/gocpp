@@ -3,6 +3,7 @@ package csms
 import (
 	"context"
 	"crypto/tls"
+	"maps"
 	"net/http"
 	"sync"
 	"time"
@@ -65,11 +66,40 @@ func (c *Conn) Session() (s storage.Session, ok bool) {
 		}
 		return *c.session, true
 	}
-	p, _ := c.inner.Attachment().(*storage.Session)
+	p, _ := c.inner.Attachment().(*sessionRef)
 	if p == nil {
 		return storage.Session{}, false
 	}
-	return *p, true
+	return p.s, true
+}
+
+// Attrs returns a copy of the session attributes (see WithSessionAttributes and
+// SetAttrs); nil when there are none.
+func (c *Conn) Attrs() map[string]string {
+	s, _ := c.Session()
+	return maps.Clone(s.Attrs)
+}
+
+// SetAttrs replaces the session attributes. With a session registry the record
+// is updated there too (compare-and-set on the epoch); the local value is
+// updated first, so a registry error leaves the next reconcile pass to repair
+// the record. Not supported on a remote handle (ErrRemoteConn).
+func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
+	if c.inner == nil {
+		return ErrRemoteConn
+	}
+	ref, _ := c.inner.Attachment().(*sessionRef)
+	if ref == nil {
+		ref = &sessionRef{s: storage.Session{CPID: c.inner.ID()}, srv: c.srv}
+	}
+	s := ref.s
+	s.Attrs = maps.Clone(attrs)
+	c.inner.SetAttachment(&sessionRef{s: s, srv: ref.srv})
+	if ref.srv == nil || ref.srv.sessions == nil || s.Epoch == 0 {
+		return nil
+	}
+	_, err := ref.srv.sessions.reg.SetAttrs(ctx, s.CPID, s.Epoch, s.Attrs)
+	return err
 }
 
 // sessionHolder implementation, used by the session manager.
@@ -81,7 +111,20 @@ func (c *Conn) holderSession() storage.Session {
 	return s
 }
 
-func (c *Conn) setHolderSession(s storage.Session) { c.inner.SetAttachment(&s) }
+func (c *Conn) setHolderSession(s storage.Session) {
+	var srv *Server
+	if ref, _ := c.inner.Attachment().(*sessionRef); ref != nil {
+		srv = ref.srv
+	}
+	c.inner.SetAttachment(&sessionRef{s: s, srv: srv})
+}
+
+// sessionRef is what the server hangs on a dispatcher connection: the session
+// snapshot and the server that owns it.
+type sessionRef struct {
+	s   storage.Session
+	srv *Server
+}
 
 func (c *Conn) alive() bool { return c.inner.Context().Err() == nil }
 

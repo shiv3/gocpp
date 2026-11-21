@@ -3,13 +3,17 @@ package csms
 import (
 	"context"
 	"errors"
+	"hash/fnv"
 	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/shiv3/gocpp/core/storage"
 )
 
 // Defaults of DrainOptions.
@@ -45,6 +49,23 @@ type DrainOptions struct {
 	// with the 503 that refuses new upgrades while draining (default 10s; the
 	// value is spread over 0.5x to 1.5x of it).
 	RetryAfter time.Duration
+	// Selection. With none of the following set, every session is drained, new
+	// upgrades are refused and readiness fails (a full drain, for a deploy of this
+	// process). With any set, only the matching sessions are closed, at the given
+	// pace, and the server keeps accepting upgrades: a partial drain, for a rollout
+	// controller that migrates sessions gradually (canary gateways, version skew).
+	// The reconnecting chargers land wherever the load balancer sends them.
+	//
+	// CPIDs limits the drain to these charge point ids, Attrs to sessions whose
+	// attributes equal all of these pairs (see WithSessionAttributes), Select to
+	// sessions it returns true for (all three must hold). Count and Fraction (0 to
+	// 1) then take at most that many, or that share, of the matching sessions, in
+	// a stable pseudo-random order by id so repeated calls pick the same ones first.
+	CPIDs    []string
+	Attrs    map[string]string
+	Select   func(storage.Session) bool
+	Count    int
+	Fraction float64
 	// OnProgress, if set, is called about once a second and when the drain ends.
 	OnProgress func(DrainProgress)
 }
@@ -59,6 +80,115 @@ type DrainProgress struct {
 	// Remaining is Total - Closed.
 	Remaining int
 	Elapsed   time.Duration
+}
+
+func (o DrainOptions) partial() bool {
+	return len(o.CPIDs) > 0 || len(o.Attrs) > 0 || o.Select != nil || o.Count > 0 || o.Fraction > 0
+}
+
+// DrainStatus is the state of the current or last drain, for metrics and rollout
+// controllers (see Server.DrainStatus).
+type DrainStatus struct {
+	Active  bool
+	Partial bool
+	// Total sessions selected, Closed so far (Forced of them after grace or window).
+	Total, Closed, Forced, Remaining int
+	// Rate is the configured pace in sessions per second.
+	Rate    float64
+	Started time.Time
+	Elapsed time.Duration
+}
+
+type drainState struct {
+	mu sync.Mutex
+	st DrainStatus
+}
+
+func (d *drainState) set(f func(*DrainStatus)) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	f(&d.st)
+	if d.st.Active {
+		d.st.Elapsed = time.Since(d.st.Started)
+	}
+	d.st.Remaining = d.st.Total - d.st.Closed
+	d.mu.Unlock()
+}
+
+// DrainStatus returns the state of the running drain, or of the last one.
+func (s *Server) DrainStatus() DrainStatus {
+	s.drainSt.mu.Lock()
+	defer s.drainSt.mu.Unlock()
+	st := s.drainSt.st
+	if st.Active {
+		st.Elapsed = time.Since(st.Started)
+	}
+	return st
+}
+
+// selectSessions applies the selection of opts to the live connections.
+func (s *Server) selectSessions(opts DrainOptions) []*Conn {
+	s.mu.RLock()
+	all := make([]*Conn, 0, len(s.conns))
+	for _, c := range s.conns {
+		all = append(all, c)
+	}
+	s.mu.RUnlock()
+	if !opts.partial() {
+		return all
+	}
+	var ids map[string]struct{}
+	if len(opts.CPIDs) > 0 {
+		ids = make(map[string]struct{}, len(opts.CPIDs))
+		for _, id := range opts.CPIDs {
+			ids[id] = struct{}{}
+		}
+	}
+	var out []*Conn
+	for _, c := range all {
+		if ids != nil {
+			if _, ok := ids[c.ID()]; !ok {
+				continue
+			}
+		}
+		sess, _ := c.Session()
+		if sess.CPID == "" {
+			sess.CPID = c.ID()
+		}
+		match := true
+		for k, v := range opts.Attrs {
+			if got, ok := sess.Attrs[k]; !ok || got != v {
+				match = false
+				break
+			}
+		}
+		if match && opts.Select != nil && !opts.Select(sess) {
+			match = false
+		}
+		if match {
+			out = append(out, c)
+		}
+	}
+	if opts.Count > 0 || opts.Fraction > 0 {
+		sort.Slice(out, func(i, j int) bool { return idHash(out[i].ID()) < idHash(out[j].ID()) })
+		n := len(out)
+		if opts.Fraction > 0 {
+			n = min(n, int(math.Ceil(opts.Fraction*float64(len(out)))))
+		}
+		if opts.Count > 0 {
+			n = min(n, opts.Count)
+		}
+		out = out[:n]
+	}
+	return out
+}
+
+func idHash(id string) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(id))
+	return h.Sum64()
 }
 
 func (o DrainOptions) withDefaults(sessions int) DrainOptions {
@@ -133,24 +263,34 @@ func (s *Server) AdmissionStats() AdmissionStats {
 // stop the HTTP server or the Server; call Shutdown afterwards. Only one Drain
 // can run at a time (ErrDrainInProgress).
 func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
-	if !s.draining.CompareAndSwap(false, true) {
+	partial := opts.partial()
+	if !s.drainActive.CompareAndSwap(false, true) {
 		return ErrDrainInProgress
 	}
-	var targets []drainTarget
-	s.mu.RLock()
-	opts = opts.withDefaults(len(s.conns))
-	s.drainRetryAfter.Store(int64(opts.RetryAfter))
-	for _, c := range s.conns {
-		targets = append(targets, connTarget{c})
+	defer s.drainActive.Store(false)
+	if !partial {
+		s.draining.Store(true)
 	}
-	s.mu.RUnlock()
-	s.cfg.dispatcher.Logger.Info("csms: drain started", "sessions", len(targets),
+	conns := s.selectSessions(opts)
+	opts = opts.withDefaults(len(conns))
+	if !partial {
+		s.drainRetryAfter.Store(int64(opts.RetryAfter))
+	}
+	targets := make([]drainTarget, len(conns))
+	for i, c := range conns {
+		targets[i] = connTarget{c}
+	}
+	s.drainSt.set(func(d *DrainStatus) {
+		*d = DrainStatus{Active: true, Partial: partial, Total: len(targets), Rate: opts.Rate, Started: time.Now()}
+	})
+	defer s.drainSt.set(func(d *DrainStatus) { d.Active = false })
+	s.cfg.dispatcher.Logger.Info("csms: drain started", "sessions", len(targets), "partial", partial,
 		"window", opts.Window, "rate_per_s", opts.Rate)
-	if s.sessions != nil {
+	if s.sessions != nil && !partial {
 		s.sessions.draining.Store(true)
 		s.sessions.heartbeat(ctx)
 	}
-	err := runDrain(ctx, targets, opts)
+	err := runDrain(ctx, targets, opts, s.drainSt)
 	s.cfg.dispatcher.Logger.Info("csms: drain finished", "error", err)
 	return err
 }
@@ -174,7 +314,7 @@ type busyTarget struct {
 }
 
 // runDrain closes targets at opts.Rate, idle first, within opts.Window.
-func runDrain(ctx context.Context, targets []drainTarget, opts DrainOptions) error {
+func runDrain(ctx context.Context, targets []drainTarget, opts DrainOptions, st *drainState) error {
 	start := time.Now()
 	deadline := start.Add(opts.Window)
 	total := len(targets)
@@ -204,6 +344,10 @@ func runDrain(ctx context.Context, targets []drainTarget, opts DrainOptions) err
 		}
 		closed++
 		closedTargets = append(closedTargets, t)
+		st.set(func(d *DrainStatus) {
+			d.Closed = closed
+			d.Forced = forced
+		})
 	}
 	// pick returns the next session to close within the rate: an idle one from the
 	// queue first (busy ones are parked with their grace deadline), then a parked
@@ -216,6 +360,7 @@ func runDrain(ctx context.Context, targets []drainTarget, opts DrainOptions) err
 			select {
 			case <-t.done():
 				total-- // went away by itself
+				st.set(func(d *DrainStatus) { d.Total = total })
 				continue
 			default:
 			}
@@ -234,6 +379,7 @@ func runDrain(ctx context.Context, targets []drainTarget, opts DrainOptions) err
 			select {
 			case <-b.t.done():
 				total--
+				st.set(func(d *DrainStatus) { d.Total = total })
 				busy = append(busy[:i], busy[i+1:]...)
 				i--
 				continue

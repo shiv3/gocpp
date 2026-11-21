@@ -45,6 +45,7 @@ func TestSession_ClaimedBeforeAcceptAndReleasedOnClose(t *testing.T) {
 	a := newSessNode(t, reg, "A", csms.SessionConfig{})
 	c := a.dial(ctx, t)
 
+	require.Eventually(t, func() bool { _, ok := a.srv.Get("CP_1"); return ok }, 2*time.Second, 5*time.Millisecond)
 	conn, ok := a.srv.Get("CP_1")
 	require.True(t, ok)
 	sess, ok := conn.Session()
@@ -68,6 +69,7 @@ func TestSession_ReconnectToOtherGatewayDisplacesOldSocket(t *testing.T) {
 	a, b := newSessNode(t, reg, "A", cfg), newSessNode(t, reg, "B", cfg)
 
 	old := a.dial(ctx, t)
+	require.Eventually(t, func() bool { _, ok := a.srv.Get("CP_1"); return ok }, 2*time.Second, 5*time.Millisecond)
 	aConn, _ := a.srv.Get("CP_1")
 	oldSess, _ := aConn.Session()
 	b.dial(ctx, t)
@@ -120,6 +122,7 @@ func TestSession_RegistryOutageAcceptsUnclaimedThenClaims(t *testing.T) {
 	a := newSessNode(t, reg, "A", csms.SessionConfig{ClaimTimeout: 100 * time.Millisecond})
 	a.dial(ctx, t)
 
+	require.Eventually(t, func() bool { _, ok := a.srv.Get("CP_1"); return ok }, 2*time.Second, 5*time.Millisecond)
 	conn, ok := a.srv.Get("CP_1")
 	require.True(t, ok, "connection served while the registry is unreachable")
 	sess, ok := conn.Session()

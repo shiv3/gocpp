@@ -39,6 +39,14 @@ All notable changes to this project are documented here. The format is based on
   at the end of the window the rest are closed with `ocppj.ErrDrainTimeout`.
   `dispatcher.Conn.TryDrain` / `Quiesce` / `ForceDrain` / `Draining` are the
   per-connection primitives.
+- Session attributes and release: `storage.Session` gains `Attrs`, `GatewayVersion`,
+  `GatewayLabel` (and `GatewayInfo` `Version`, `Label`); `SessionRegistry.SetAttrs`
+  (compare-and-set on the epoch); `csms.SessionConfig.Version/Label`,
+  `csms.WithSessionAttributes`, `Conn.Attrs/SetAttrs`, `Server.SetSessionAttrs`.
+  Lookups return them (memory and Redis).
+- Targeted drain for rollouts: `DrainOptions.CPIDs/Attrs/Select/Count/Fraction`
+  close only the selected sessions (idle first, paced, 1012) while the server keeps
+  accepting; `Server.DrainStatus` reports progress.
 - `csms.WithAcceptRateLimit(rate, burst)` (token bucket in front of the upgrade,
   `503` + jittered `Retry-After`), `csms.RateLimitListener` (shed connections at TCP
   accept, before TLS), `Server.AdmissionStats`.

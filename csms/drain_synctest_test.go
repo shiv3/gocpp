@@ -64,7 +64,7 @@ func TestRunDrain_PacesClosesAtRate(t *testing.T) {
 		// 300 sessions in a 10 s window: paced over 9 s, 33.3 per second.
 		opts := DrainOptions{Window: 10 * time.Second}.withDefaults(len(fs))
 		require.InDelta(t, 300.0/9, opts.Rate, 0.001)
-		require.NoError(t, runDrain(context.Background(), targetsOf(fs), opts))
+		require.NoError(t, runDrain(context.Background(), targetsOf(fs), opts, nil))
 
 		perSecond := map[int]int{}
 		for _, f := range fs {
@@ -90,7 +90,7 @@ func TestRunDrain_IdleFirst(t *testing.T) {
 			f.busyUntil = start.Add(3 * time.Second)
 		}
 		opts := DrainOptions{Window: 20 * time.Second, Rate: 5, IdleGrace: time.Minute}.withDefaults(len(fs))
-		require.NoError(t, runDrain(context.Background(), targetsOf(fs), opts))
+		require.NoError(t, runDrain(context.Background(), targetsOf(fs), opts, nil))
 		var lastIdle time.Time
 		for _, f := range fs[5:] {
 			if f.closedAt.After(lastIdle) {
@@ -111,7 +111,7 @@ func TestRunDrain_GraceThenForce(t *testing.T) {
 		start := time.Now()
 		f.busyUntil = start.Add(time.Hour) // never idle in time
 		opts := DrainOptions{Window: time.Minute, Rate: 10, IdleGrace: 5 * time.Second}.withDefaults(1)
-		require.NoError(t, runDrain(context.Background(), []drainTarget{f}, opts))
+		require.NoError(t, runDrain(context.Background(), []drainTarget{f}, opts, nil))
 		require.True(t, f.forced)
 		require.InDelta(t, 5, f.closedAt.Sub(start).Seconds(), 0.2, "forced when the grace ran out")
 	})
@@ -125,7 +125,7 @@ func TestRunDrain_WindowForcesTheRest(t *testing.T) {
 			f.busyUntil = start.Add(time.Hour)
 		}
 		opts := DrainOptions{Window: 8 * time.Second, Rate: 10, IdleGrace: time.Hour}.withDefaults(2)
-		require.NoError(t, runDrain(context.Background(), targetsOf(fs), opts))
+		require.NoError(t, runDrain(context.Background(), targetsOf(fs), opts, nil))
 		for _, f := range fs {
 			require.True(t, f.forced)
 			require.InDelta(t, 8, f.closedAt.Sub(start).Seconds(), 0.2)
@@ -142,7 +142,7 @@ func TestRunDrain_ContextCancelLeavesSessionsOpen(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		opts := DrainOptions{Window: time.Hour, Rate: 10}.withDefaults(len(fs))
-		require.ErrorIs(t, runDrain(ctx, targetsOf(fs), opts), context.DeadlineExceeded)
+		require.ErrorIs(t, runDrain(ctx, targetsOf(fs), opts, nil), context.DeadlineExceeded)
 		closed := 0
 		for _, f := range fs {
 			if !f.closedAt.IsZero() {

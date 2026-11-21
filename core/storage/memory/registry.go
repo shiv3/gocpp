@@ -89,6 +89,10 @@ func (r *connectionRegistry) Reassert(ctx context.Context, s storage.Session) (b
 	return r.global.reassert(ctx, s)
 }
 
+func (r *connectionRegistry) SetAttrs(ctx context.Context, cpID string, epoch uint64, attrs map[string]string) (bool, error) {
+	return r.global.setAttrs(ctx, cpID, epoch, attrs)
+}
+
 func (r *connectionRegistry) Lookup(ctx context.Context, cpID string) (storage.Session, bool, error) {
 	return r.global.lookupSession(ctx, cpID)
 }

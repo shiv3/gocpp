@@ -58,6 +58,35 @@ Kubernetes: give the pod a `terminationGracePeriodSeconds` larger than the drain
 window, run `Drain` from a `preStop` hook or the SIGTERM handler, roll one pod at
 a time (`maxUnavailable: 1`) and keep capacity for `N-1` pods.
 
+## Partial drains for rollouts
+
+Give `DrainOptions` a selection and `Drain` becomes a partial drain: only the
+matching sessions are closed, at the given pace, idle first, with the same 1012
+close, and the server keeps accepting upgrades and stays ready. A rollout
+controller uses it to move sessions gradually, for example off a canary gateway or
+onto a new release.
+
+```go
+srv := csms.NewServer(
+    csms.WithSessionRegistry(reg, csms.SessionConfig{Version: "v2", Label: "canary"}),
+    csms.WithSessionAttributes(func(r *http.Request, id string) map[string]string {
+        return map[string]string{"site": siteOf(id), "vendor": vendorOf(r)}
+    }))
+
+// move a tenth of site "s2" at 5 sessions per second
+err := srv.Drain(ctx, csms.DrainOptions{
+    Attrs: map[string]string{"site": "s2"}, Fraction: 0.1, Rate: 5, Window: 10 * time.Minute})
+st := srv.DrainStatus() // Total, Closed, Forced, Remaining, Rate, Elapsed
+```
+
+Selectors: `CPIDs`, `Attrs` (all pairs equal), `Select` (any predicate on
+`storage.Session`), then `Count` / `Fraction` pick a stable subset by id hash.
+Attributes are set at connect (`WithSessionAttributes`) and can be replaced later
+(`Conn.SetAttrs`, `Server.SetSessionAttrs`) when they become known, such as the
+firmware version from BootNotification. With a session registry they are stored in
+the record together with the owning gateway's `Version` and `Label`, so other
+processes see them in `Lookup`.
+
 ## Admission control
 
 * `WithMaxConnections(n)`: capacity cap (exists).

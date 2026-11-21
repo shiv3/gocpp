@@ -116,3 +116,17 @@ func TestConnectionRegistry_GlobalRoutesAreSessions(t *testing.T) {
 	ok, _ := hub.Registry().(storage.OwnedGlobalDeleter).DeleteGlobalIf(ctx, "CP", "A")
 	require.False(t, ok)
 }
+
+func TestSessionRegistry_AttrsAndGatewayRelease(t *testing.T) {
+	ctx := context.Background()
+	r := memory.NewSessionRegistry()
+	e, _, _ := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", GatewayVersion: "v2", GatewayLabel: "canary", Attrs: map[string]string{"site": "x"}})
+	ok, err := r.SetAttrs(ctx, "CP", e, map[string]string{"site": "y"})
+	require.NoError(t, err)
+	require.True(t, ok)
+	s, _, _ := r.Lookup(ctx, "CP")
+	require.Equal(t, "y", s.Attrs["site"])
+	require.Equal(t, "v2", s.GatewayVersion)
+	ok, _ = r.SetAttrs(ctx, "CP", e+1, map[string]string{"site": "z"})
+	require.False(t, ok, "stale epoch")
+}

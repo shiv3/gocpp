@@ -49,6 +49,8 @@ type Server struct {
 	// draining is set by Drain: new upgrades are refused. drainRetryAfter is the
 	// base of their Retry-After; acceptRejected and drainRejected count refusals.
 	draining        atomic.Bool
+	drainActive     atomic.Bool
+	drainSt         *drainState
 	drainRetryAfter atomic.Int64
 	acceptRejected  atomic.Uint64
 	drainRejected   atomic.Uint64
@@ -94,11 +96,12 @@ func NewServer(opts ...Option) *Server {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
-		cfg:    cfg,
-		reg:    dispatcher.NewHandlerRegistry(),
-		conns:  make(map[string]*Conn),
-		ctx:    ctx,
-		cancel: cancel,
+		cfg:     cfg,
+		reg:     dispatcher.NewHandlerRegistry(),
+		conns:   make(map[string]*Conn),
+		ctx:     ctx,
+		cancel:  cancel,
+		drainSt: &drainState{},
 	}
 	s.initSessions()
 	if s.clustered() {
@@ -197,8 +200,12 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// nothing; one that fails after the claim releases it.
 	var sess storage.Session
 	claimed, registeredSession := false, false
+	var attrs map[string]string
+	if s.cfg.sessionAttrs != nil {
+		attrs = s.cfg.sessionAttrs(r, cpID)
+	}
 	if s.sessions != nil && s.upgradeWillSucceed(r) {
-		sess, claimed = s.claimSession(r, cpID)
+		sess, claimed = s.claimSession(r, cpID, attrs)
 		defer func() {
 			if claimed && !registeredSession {
 				s.releaseSession(sess)
@@ -252,8 +259,12 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		RequestHeader: r.Header,
 		TLS:           r.TLS,
 	})
-	if claimed {
-		dconn.SetAttachment(&sess)
+	switch {
+	case claimed:
+		dconn.SetAttachment(&sessionRef{s: sess, srv: s})
+	case s.cfg.sessionAttrs != nil:
+		// Not clustered (or unclaimed): attributes still travel with the connection.
+		dconn.SetAttachment(&sessionRef{s: storage.Session{CPID: cpID, ConnectedAt: time.Now(), Attrs: attrs}, srv: s})
 	}
 	conn := &Conn{inner: dconn, gone: make(chan struct{})}
 	// gone is closed by connCleanup once the connection is registered; every
