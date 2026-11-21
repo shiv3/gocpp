@@ -18,7 +18,7 @@
 <a class="skip" href="#main">Skip to content</a>
 <div class="top"><div class="wrap">
 <a class="brand" href="#top" aria-label="gocpp, back to top"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="6" fill="var(--accent)"/><path d="M13.2 4.8 7.4 13h3.9l-.9 6.2 6.2-8.6h-4z" fill="#fff"/></svg><span>gocpp</span></a>
-<nav aria-label="Sections"><ul><li><a href="#why">Why</a></li><li><a href="#start">Quick start</a></li><li><a href="#typed">Typed</a></li><li><a href="#spec">Spec</a></li><li><a href="#safety">Safety</a></li><li><a href="#footprint">Footprint</a></li><li><a href="#testing">Testing</a></li><li><a href="#scale">Scale-out</a></li><li><a href="#observe">Observability</a></li><li><a href="#matrix">Features</a></li><li><a href="#compare">vs ocpp-go</a></li><li><a href="#docs">Docs</a></li></ul></nav>
+<nav aria-label="Sections"><ul><li><a href="#why">Why</a></li><li><a href="#start">Quick start</a></li><li><a href="#typed">Typed</a></li><li><a href="#spec">Spec</a></li><li><a href="#safety">Safety</a></li><li><a href="#footprint">Footprint</a></li><li><a href="#testing">Testing</a></li><li><a href="#scale">Scale-out</a></li><li><a href="#observe">Observability</a></li><li><a href="#matrix">Features</a></li><li><a href="#compare">vs ocpp-go</a></li><li><a href="#docs">Docs</a></li><li><a href="architecture.html">Architecture</a></li></ul></nav>
 <div class="tools"><button class="btn" id="themebtn" type="button">Theme</button><a class="btn gh" href="https://github.com/shiv3/gocpp">GitHub</a></div>
 </div></div>
 <main id="main"><span id="top"></span>
@@ -31,6 +31,7 @@
 <span class="install"><code>go get github.com/shiv3/gocpp</code><button class="copy" type="button" data-copy="go get github.com/shiv3/gocpp">Copy</button></span>
 <a class="btn primary" href="#start">Quick start</a>
 <a class="btn" href="https://github.com/shiv3/gocpp">GitHub</a>
+<a class="btn" href="architecture.html">Architecture and performance</a>
 <a class="btn" href="https://pkg.go.dev/github.com/shiv3/gocpp">API reference</a>
 </div>
 <ul class="badges" aria-label="Project facts"><li>OCPP 1.6 · 2.0.1 · 2.1</li><li>CSMS and charge point</li><li>Go 1.26+</li><li>MIT license</li><li>pre-v1: the API may still change before v1.0</li></ul>
@@ -240,6 +241,7 @@
 <h3>Tuning the garbage collector</h3>
 <p>Above roughly 10k requests per second, a larger <code>GOGC</code> trades memory for a shorter tail. Always set <code>GOMEMLIMIT</code>.</p>
 <div class="tablewrap "><table><caption>4,000 chargers, server pinned to 4 cores, lenient schema, one run per row.</caption><thead><tr><th scope="col">GOGC</th><th scope="col" class="num">Messages/s</th><th scope="col" class="num">Heartbeat p99</th><th scope="col" class="num">Max RSS</th><th scope="col" class="num">Server CPU (cores)</th></tr></thead><tbody><tr><th scope="row">100 (Go default)</th><td class="num">30k</td><td class="num">1.7 ms</td><td class="num">151 MB</td><td class="num">1.16</td></tr><tr><th scope="row">300</th><td class="num">30k</td><td class="num">1.0 ms</td><td class="num">264 MB</td><td class="num">1.10</td></tr><tr><th scope="row">100 (Go default)</th><td class="num">60k</td><td class="num">7.4 ms</td><td class="num">151 MB</td><td class="num">2.11</td></tr><tr><th scope="row">300</th><td class="num">60k</td><td class="num">4.2 ms</td><td class="num">270 MB</td><td class="num">2.01</td></tr></tbody></table></div>
+<p>The connection model, the message paths and the full set of measurements (soak, drain, gateway hop) are on the <a href="architecture.html">architecture and performance page</a>.</p>
 <p class="src">Sources: <a href="https://github.com/shiv3/gocpp/blob/main/docs/performance.md">docs/performance.md</a> (cost model, runtime settings, handler pool sizing, every tuning knob), <code>benchmarks/footprint_test.go</code>, and <a href="https://github.com/shiv3/gocpp/blob/test/loadtest-4k/interop/loadtest/results/2026-11-21-final/report.md">interop/loadtest/results/2026-11-21-final/report.md</a> on branch <code>test/loadtest-4k</code>.</p>
 </div></section>
 <section id="testing" aria-labelledby="testing-h"><div class="wrap"><p class="eyebrow">Commitment 5</p><h2 id="testing-h">Behaviour is tested, not assumed</h2><p class="sub">Claims about wire behaviour, failure handling and performance are backed by tests that run in CI.</p>
