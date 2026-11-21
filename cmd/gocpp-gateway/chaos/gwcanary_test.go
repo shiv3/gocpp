@@ -217,6 +217,26 @@ func newCanaryRig(t *testing.T, n, cap int, redisForGateways func(real string) s
 		t.Skip("gateway canary scenarios do not depend on the link")
 	}
 	r := &canaryRig{mr: miniredis.RunT(t)}
+	// miniredis does not let time pass by itself, so the lease of a gateway that
+	// was stopped or killed would stay in the registry for ever, with its last
+	// session count. Let the clock run like a real Redis does: leases (3 s here)
+	// then lapse after the gateway is gone and live ones are renewed in time.
+	clockDone := make(chan struct{})
+	clockStopped := make(chan struct{})
+	go func() {
+		defer close(clockStopped)
+		tk := time.NewTicker(100 * time.Millisecond)
+		defer tk.Stop()
+		for {
+			select {
+			case <-clockDone:
+				return
+			case <-tk.C:
+				r.mr.FastForward(100 * time.Millisecond)
+			}
+		}
+	}()
+	t.Cleanup(func() { close(clockDone); <-clockStopped })
 	rdb := redis.NewClient(&redis.Options{Addr: r.mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	r.reg = registryredis.New(rdb)
@@ -287,7 +307,7 @@ func (r *canaryRig) settled(t *testing.T, total int, within time.Duration) map[s
 			sum += n
 		}
 		return sum == total
-	}, within, 200*time.Millisecond, "sessions per gateway never added up to %d: %v", total, c)
+	}, within, 200*time.Millisecond, "sessions per gateway never added up to %d: %v (registry keys: %v)", total, c, r.mr.Keys())
 	return c
 }
 

@@ -24,6 +24,9 @@ type gwSession struct {
 	// routePool is the pool of the last routing decision copied to the registry
 	// (Session.Meta["route.pool"]); nil until the first copy succeeded.
 	routePool atomic.Pointer[string]
+	// routeBusy is set while a registry write of the copy is in flight: one at a
+	// time per session, so an older value cannot overtake a newer one.
+	routeBusy atomic.Bool
 }
 
 func (g *gwSession) subprotocol() string {

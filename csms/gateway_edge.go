@@ -352,13 +352,17 @@ func (e *edge) noteRoute(dc *dispatcher.Conn, sess *gwSession, pool string) {
 	if ref == nil || ref.s.Epoch == 0 {
 		return // not claimed yet: the claim carries the value
 	}
+	if !sess.routeBusy.CompareAndSwap(false, true) {
+		return // a write for this session is in flight; the next message tries again
+	}
 	select {
 	case e.routeWrites <- struct{}{}:
 	default:
+		sess.routeBusy.Store(false)
 		return // busy; the next message tries again
 	}
 	go func() {
-		defer func() { <-e.routeWrites }()
+		defer func() { <-e.routeWrites; sess.routeBusy.Store(false) }()
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(e.s.ctx), edgeNotifyTimeout)
 		defer cancel()
 		written, err := rw.SetRoute(ctx, ref.s.CPID, ref.s.Epoch, map[string]string{routePoolKey: pool})
