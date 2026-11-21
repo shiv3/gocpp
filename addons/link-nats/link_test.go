@@ -141,7 +141,8 @@ func (n *backendNode) shutdown() {
 	})
 }
 
-func (tp *topology) client(id string) *cp.Client {
+func (tp *topology) client() *cp.Client {
+	const id = "CP_1"
 	c := cp.NewClient(id, tp.wsURL+id, cp.WithSubProtocols("ocpp1.6"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -177,7 +178,7 @@ func TestLink_InboundCallAndCSMSCallOverNATS(t *testing.T) {
 		return ok(ctx, c, r)
 	})
 
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	require.NoError(t, cp.On(c, resetMsg, func(context.Context, resetReq) (resetResp, error) { return resetResp{Status: "Accepted"}, nil }))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -216,7 +217,7 @@ func TestLink_BackendDrainLosesNothing(t *testing.T) {
 		}
 		return ok(ctx, c, r)
 	})
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -270,7 +271,7 @@ func TestLink_DeadBackendAfterDispatchIsNotRetried(t *testing.T) {
 		})
 	}
 	n1, n2 := mk(&runs), mk(&other)
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	defer tp.close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -346,7 +347,7 @@ func TestLink_NoBackendHoldsThenInternalError(t *testing.T) {
 	tp := newTopology(t, linknats.WithUpstreamWait(300*time.Millisecond))
 	defer tp.close()
 	n := tp.addBackend(gateway.BackendInfo{}, ok)
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	n.shutdown() // the pool is empty now
 	require.Eventually(t, func() bool { return !tp.link.Available(gateway.DefaultPool) }, 2*time.Second, 10*time.Millisecond)
@@ -425,7 +426,7 @@ func TestLink_MaxPayloadIsNotAnUndeliveredRetry(t *testing.T) {
 	}
 	n := tp.addBackend(gateway.BackendInfo{ID: "a"}, h)
 	tp.addBackend(gateway.BackendInfo{ID: "b"}, h)
-	c := tp.client("CP_1")
+	c := tp.client()
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
