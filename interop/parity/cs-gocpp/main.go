@@ -56,6 +56,7 @@ func main() {
 	acceptBurst := flag.Int("accept-burst", 0, "burst for -accept-rate (default 2x the rate)")
 	failRate := flag.Float64("fail-rate", 0, "load-test fault injection: answer this fraction of Heartbeat/MeterValues/StatusNotification with an InternalError CALLERROR (an error-injecting canary)")
 	handledLog := flag.String("handled-log", "", "append one line `unix_ms charger action` per handled Heartbeat/MeterValues to this file (routing correctness checks)")
+	linkLinger := flag.Duration("link-write-linger", 0, "backend mode: linkgrpc.WithBackendWriteLinger (reply frames gather for up to this long on a busy link; 0 = off)")
 	flag.Parse()
 	if *pprofAddr != "" {
 		go func() { log.Println(http.ListenAndServe(*pprofAddr, nil)) }()
@@ -127,7 +128,7 @@ func main() {
 	var link *linkgrpc.Backend
 	if *mode == "backend" {
 		rec.AssumeConnected(true)
-		link = linkgrpc.NewBackend(linkgrpc.StaticTargets(strings.Split(*gateways, ",")...),
+		link = linkgrpc.NewBackend(linkgrpc.StaticTargets(strings.Split(*gateways, ",")...), linkgrpc.WithBackendWriteLinger(*linkLinger),
 			linkgrpc.WithDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
 			linkgrpc.WithResolveInterval(500*time.Millisecond), linkgrpc.WithDrainTimeout(30*time.Second))
 		opts = append(opts, csms.WithGatewayLink(link), csms.WithBackendInfo(gateway.BackendInfo{ID: *beID, Pool: *pool, Version: "loadtest"}))

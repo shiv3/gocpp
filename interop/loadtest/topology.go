@@ -94,6 +94,9 @@ func newTopology(g *gen) (*topology, error) {
 		p.args = []string{"serve", "--id", p.name, "--listen", p.ws, "--link-listen", p.link, "--metrics-listen", p.admin, "--admin", hostPort(c.Addr, 500+i), "--link-insecure",
 			"--subprotocols", "ocpp1.6", "--redis-addr", t.redis.Addr(), "--accept-rate", "0",
 			"--drain-window", "20s", "--call-timeout", c.CallTimeout.String(), "--handler-timeout", "25s", "--log-level", "warn"}
+		if c.LinkLinger > 0 {
+			p.args = append(p.args, "--link-write-linger", c.LinkLinger.String())
+		}
 		p.args = append(p.args, strings.Fields(c.GwArgs)...)
 		t.gws = append(t.gws, p)
 	}
@@ -117,6 +120,9 @@ func newTopology(g *gen) (*topology, error) {
 			p.args = []string{"-mode", "backend", "-listen", listen, "-lite", "-call-timeout", c.CallTimeout.String(),
 				"-gateways", strings.Join(links, ","), "-redis", t.redis.Addr(), "-pool", pool, "-id", p.name,
 				"-schema", "off"}
+			if c.LinkLinger > 0 {
+				p.args = append(p.args, "-link-write-linger", c.LinkLinger.String())
+			}
 			p.args = append(p.args, strings.Fields(c.ServerArgs)...)
 			p.args = append(p.args, strings.Fields(poolArgsFor(c.PoolArgs, ps.name))...)
 			if c.HandledLog {

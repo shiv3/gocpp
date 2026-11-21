@@ -46,6 +46,7 @@ type config struct {
 	HotShare                                                float64
 	// Split topology (see topology.go).
 	GatewayBin, BackendPools, GwTaskset, BeTaskset, GwArgs, RestartTarget, RestartMode, Plan string
+	LinkLinger                                                                               time.Duration
 	Gateways                                                                                 int
 	// Rollout scenarios (see rollout.go).
 	PoolArgs   string
@@ -145,6 +146,7 @@ func main() {
 	flag.StringVar(&c.BackendPools, "backend-pools", "default:2", "backend pools, name:count,... (the first backend serves /control at -addr)")
 	flag.StringVar(&c.GwTaskset, "gw-taskset", "", "cpu list for each gateway")
 	flag.StringVar(&c.BeTaskset, "be-taskset", "", "cpu list for each backend")
+	flag.DurationVar(&c.LinkLinger, "link-write-linger", 0, "gRPC link write linger on both sides (gateways --link-write-linger, backends -link-write-linger); 0 = off")
 	flag.StringVar(&c.GwArgs, "gw-args", "", "extra gateway args (space separated)")
 	flag.StringVar(&c.RestartTarget, "restart-target", "server", "what -restarts acts on: server | backend | gateway | pool:NAME")
 	flag.StringVar(&c.Plan, "plan", "", "mixed restart plan, comma separated target:mode (target server|backend|gateway|pool:NAME, mode term|kill), spread evenly over the first step; replaces -restarts")
