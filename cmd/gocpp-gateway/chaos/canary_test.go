@@ -23,7 +23,11 @@ import (
 
 func startPoolBackend(t *testing.T, id, pool, redisAddr string, link string, extra ...string) *proc {
 	t.Helper()
-	args := append([]string{"-id", id, "-pool", pool, "-gateways", link, "-redis", redisAddr}, extra...)
+	args := []string{"-id", id, "-pool", pool, "-gateways", link, "-redis", redisAddr}
+	if linkKind == "nats" {
+		args = []string{"-id", id, "-pool", pool, "-link", "nats", "-gateways", "nats://" + link, "-redis", redisAddr}
+	}
+	args = append(args, extra...)
 	b := start(t, "testbackend:"+id, args...)
 	require.Eventually(t, func() bool { return b.count("READY") > 0 }, 10*time.Second, 20*time.Millisecond)
 	return b
