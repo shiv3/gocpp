@@ -60,8 +60,11 @@ func TestProm_TenantAndEdgeMetrics(t *testing.T) {
 	tm.TenantSessions("a", -1)
 	tm.TenantRejected("a", "sessions")
 	tm.TenantRejected("a", "messages")
+	tm.TenantRejected("a", "inflight")
+	m.(observability.TenantInflightMetrics).TenantInflight("a", 2)
 	m.(observability.EdgeMetrics).EdgeResponse("1.6", "Heartbeat")
 	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_tenant_sessions"))
-	require.Equal(t, 2, testutil.CollectAndCount(reg, "gocpp_tenant_rejected_total"))
+	require.Equal(t, 3, testutil.CollectAndCount(reg, "gocpp_tenant_rejected_total"))
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_tenant_inflight"))
 	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_edge_responses_total"))
 }

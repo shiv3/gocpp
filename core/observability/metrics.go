@@ -56,6 +56,15 @@ type TenantMetrics interface {
 	TenantRejected(tenant, kind string)
 }
 
+// TenantInflightMetrics is an optional extension of Metrics for the weighted
+// in-flight limits of csms.WithTenantLimits (rejections are counted by
+// TenantMetrics.TenantRejected with kind "inflight").
+type TenantInflightMetrics interface {
+	// TenantInflight adds delta to the number of inbound CALLs and SENDs of tenant
+	// that are in flight.
+	TenantInflight(tenant string, delta int)
+}
+
 // EdgeMetrics is an optional extension of Metrics for gateways that answer some
 // actions themselves (csms.WithEdgeResponder).
 type EdgeMetrics interface {

@@ -54,6 +54,9 @@ type config struct {
 	TenantMaxSessions        int
 	TenantMessageRate        float64
 	TenantMessageBurst       int
+	TenantInFlightPool       int
+	TenantMaxInFlight        int
+	TenantWeights            string
 
 	LeaseTTL, HeartbeatEvery, ReconcileEvery, ClaimTimeout time.Duration
 	LinkKeepalive                                          time.Duration
@@ -129,6 +132,9 @@ func parseConfig(args []string) (config, error) {
 	fs.StringVar(&c.TenantAttr, "tenant-attr", env("TENANT_ATTR", "tenant"), "session attribute (set by the backend at connect) naming the tenant when the header is absent")
 	fs.IntVar(&c.TenantMaxSessions, "tenant-max-sessions", envInt("TENANT_MAX_SESSIONS", 0), "sessions allowed per tenant (503 above it); 0 = unlimited")
 	fs.Float64Var(&c.TenantMessageRate, "tenant-message-rate", envFloat("TENANT_MESSAGE_RATE", 0), "inbound messages per second allowed per tenant (CALLERROR above it); 0 = unlimited")
+	fs.IntVar(&c.TenantInFlightPool, "tenant-inflight-pool", envInt("TENANT_INFLIGHT_POOL", 0), "inbound CALLs in flight across all tenants, split by weight (CALLERROR above a tenant's share when others need it); 0 = off")
+	fs.IntVar(&c.TenantMaxInFlight, "tenant-max-inflight", envInt("TENANT_MAX_INFLIGHT", 0), "inbound CALLs in flight allowed per tenant; 0 = unlimited")
+	fs.StringVar(&c.TenantWeights, "tenant-weights", env("TENANT_WEIGHTS", ""), "weights of the in-flight pool as tenant=weight,... (default weight 1)")
 	fs.IntVar(&c.TenantMessageBurst, "tenant-message-burst", envInt("TENANT_MESSAGE_BURST", 0), "token bucket depth of the tenant message limit (default: one second of the rate)")
 	fs.DurationVar(&c.LeaseTTL, "lease-ttl", envDur("LEASE_TTL", 15*time.Second), "gateway lease lifetime in the session registry")
 	fs.DurationVar(&c.HeartbeatEvery, "lease-heartbeat", envDur("LEASE_HEARTBEAT", 5*time.Second), "lease renewal interval")

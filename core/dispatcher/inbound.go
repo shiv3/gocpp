@@ -64,6 +64,9 @@ func (c *Conn) enqueueInbound(f ocppj.Frame) bool {
 func (c *Conn) handlerLoop(f ocppj.Frame) {
 	for {
 		c.runHandler(f)
+		if d := c.inboundDone; d != nil {
+			d(f)
+		}
 		c.inMu.Lock()
 		if len(c.inQ) == 0 || c.ctx.Err() != nil {
 			c.inQ = nil

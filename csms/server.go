@@ -377,7 +377,12 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 	dconn = dispatcher.NewConnShared(cpID, ws, dcfgp, s.reg, meta)
 	if tenant != nil {
-		dconn.SetInboundGate(s.tenants.gate(tenant))
+		if tc := s.tenants.newConn(tenant); tc != nil {
+			dconn.SetInboundGate(tc.gate)
+			dconn.SetInboundDone(tc.done)
+			release := tenantRelease
+			tenantRelease = func() { tc.close(); release() }
+		}
 	}
 	switch {
 	case claimed:

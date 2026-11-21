@@ -35,6 +35,9 @@ type Conn struct {
 	attachment atomic.Value
 	// inboundGate, when set, filters inbound CALL/SEND before they are scheduled.
 	inboundGate InboundGate
+	// inboundDone, when set, is called once for every frame the gate admitted, after
+	// its handler returned.
+	inboundDone func(f ocppj.Frame)
 
 	// wlock is the write lock: a channel of capacity 1 so that waiting for it can
 	// honour a context and blocked senders are served FIFO. A sender holds it
@@ -400,6 +403,14 @@ type InboundGate func(f ocppj.Frame) *ocppj.CallError
 // SetInboundGate installs g (nil removes it). Call it before Start: the reader
 // reads the field without synchronisation.
 func (c *Conn) SetInboundGate(g InboundGate) { c.inboundGate = g }
+
+// SetInboundDone installs a callback that runs after the handler of every inbound
+// CALL and SEND has returned (and its reply was queued), so a gate that counts
+// admitted frames, such as a concurrency limit, can release them. Frames the gate
+// admitted but that never reach a handler because the connection ended are not
+// reported: the owner reconciles its count when it tears the connection down.
+// Call it before Start. It runs on the handler goroutine and must not block.
+func (c *Conn) SetInboundDone(f func(ocppj.Frame)) { c.inboundDone = f }
 
 // drainBit marks Conn.calls as draining.
 const drainBit = int64(1) << 62

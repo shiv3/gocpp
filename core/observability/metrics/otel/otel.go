@@ -29,6 +29,7 @@ type metrics struct {
 	accepts     metric.Int64Counter
 	tenantSess  metric.Int64UpDownCounter
 	tenantRej   metric.Int64Counter
+	tenantInfl  metric.Int64UpDownCounter
 	edgeResp    metric.Int64Counter
 }
 
@@ -105,6 +106,11 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 	if err != nil {
 		return nil, err
 	}
+	tenantInfl, err := m.Int64UpDownCounter("gocpp.tenant.inflight",
+		metric.WithDescription("inbound messages in flight per tenant (csms.WithTenantLimits)"))
+	if err != nil {
+		return nil, err
+	}
 	tenantRej, err := m.Int64Counter("gocpp.tenant.rejected",
 		metric.WithDescription("upgrades and messages refused by a per-tenant limit"))
 	if err != nil {
@@ -119,6 +125,7 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 	return &metrics{
 		tenantSess:  tenantSess,
 		tenantRej:   tenantRej,
+		tenantInfl:  tenantInfl,
 		edgeResp:    edgeResp,
 		sessDur:     sessDur,
 		closes:      closes,
@@ -204,4 +211,8 @@ func (m *metrics) TenantRejected(tenant, kind string) {
 
 func (m *metrics) EdgeResponse(version, action string) {
 	m.edgeResp.Add(context.Background(), 1, metric.WithAttributes(attribute.String("version", version), attribute.String("action", action)))
+}
+
+func (m *metrics) TenantInflight(tenant string, delta int) {
+	m.tenantInfl.Add(context.Background(), int64(delta), metric.WithAttributes(attribute.String("tenant", tenant)))
 }

@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -154,10 +155,25 @@ func serve(args []string) error {
 	if cfg.EdgeHeartbeat {
 		opts = append(opts, csms.WithEdgeHeartbeat())
 	}
-	if cfg.TenantMaxSessions > 0 || cfg.TenantMessageRate > 0 {
+	if cfg.TenantMaxSessions > 0 || cfg.TenantMessageRate > 0 || cfg.TenantInFlightPool > 0 || cfg.TenantMaxInFlight > 0 {
 		tl := csms.TenantLimits{
-			AttrKey: cfg.TenantAttr,
-			Default: csms.TenantLimit{MaxSessions: cfg.TenantMaxSessions, MessageRate: cfg.TenantMessageRate, MessageBurst: cfg.TenantMessageBurst},
+			AttrKey:      cfg.TenantAttr,
+			InFlightPool: cfg.TenantInFlightPool,
+			Default: csms.TenantLimit{MaxSessions: cfg.TenantMaxSessions, MessageRate: cfg.TenantMessageRate,
+				MessageBurst: cfg.TenantMessageBurst, MaxInFlight: cfg.TenantMaxInFlight},
+		}
+		if cfg.TenantWeights != "" {
+			tl.Tenants = map[string]csms.TenantLimit{}
+			for _, kv := range strings.Split(cfg.TenantWeights, ",") {
+				name, ws, ok := strings.Cut(strings.TrimSpace(kv), "=")
+				w, err := strconv.ParseFloat(ws, 64)
+				if !ok || err != nil || w <= 0 {
+					return fmt.Errorf("--tenant-weights: %q is not tenant=weight", kv)
+				}
+				l := tl.Default
+				l.Weight = w
+				tl.Tenants[name] = l
+			}
 		}
 		if h := cfg.TenantHeader; h != "" {
 			tl.Resolver = csms.TenantFromRequest(func(r *http.Request) (string, bool) { v := r.Header.Get(h); return v, v != "" })
