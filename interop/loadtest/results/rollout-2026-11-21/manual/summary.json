@@ -1,0 +1,283 @@
+{
+ "abort_reason": "",
+ "aborted": false,
+ "call_latency_ms": {
+  "not_connected": {
+   "n": 26141,
+   "P50": 0.31,
+   "P95": 0.488,
+   "P99": 0.768,
+   "Max": 17.643,
+   "Mean": 0
+  },
+  "ok": {
+   "n": 7801,
+   "P50": 0.768,
+   "P95": 1.21,
+   "P99": 2.995,
+   "Max": 22.185,
+   "Mean": 0
+  },
+  "timeout": {
+   "n": 4866,
+   "P50": 30010.575,
+   "P95": 30010.575,
+   "P99": 30010.575,
+   "Max": 30010.575,
+   "Mean": 0
+  }
+ },
+ "calls": {
+  "not_connected": 26141,
+  "ok": 7801,
+  "timeout": 4866
+ },
+ "config": {
+  "ServerBin": "/work/scratch/gw7c/bin/cs-gocpp",
+  "ServerArgs": "",
+  "Addr": "127.0.0.1:9700",
+  "Taskset": "",
+  "Pprof": "127.0.0.1:6160",
+  "Out": "/work/scratch/gw7c/rollout-2026-11-21/manual",
+  "Label": "rollout-manual",
+  "ServerProcs": 1,
+  "Steps": [
+   {
+    "N": 4000,
+    "Rate": 50,
+    "Dur": 780000000000,
+    "Speed": 1
+   }
+  ],
+  "Ramp": 60000000000,
+  "HB": 15000000000,
+  "ReconnBase": 1000000000,
+  "ReconnCap": 30000000000,
+  "ReconnJitter0": 3000000000,
+  "RestartGap": 2000000000,
+  "Sample": 5000000000,
+  "FreezeThresh": 10000000000,
+  "CallTimeout": 30000000000,
+  "TxCycle": 40000000000,
+  "TxLen": 25000000000,
+  "Meter": 5000000000,
+  "HBJitter": 0.1,
+  "Mute": 0.4,
+  "TxFrac": 0.15,
+  "Flappers": 0,
+  "Dups": 0,
+  "Restarts": 0,
+  "Connectors": 2,
+  "MinAvailMB": 1500,
+  "Attach": false,
+  "GCTrace": false,
+  "Hot": 0,
+  "HotShare": 0.9,
+  "GatewayBin": "/work/scratch/gw7c/bin/gocpp-gateway",
+  "BackendPools": "default:3,canary:2",
+  "GwTaskset": "16-17",
+  "BeTaskset": "18-19",
+  "GwArgs": "",
+  "RestartTarget": "server",
+  "RestartMode": "term",
+  "Gateways": 2,
+  "PoolArgs": "",
+  "HandledLog": true,
+  "Hooks": [
+   "180s=date +%s.%N; /work/scratch/gw7c/bin/gocppctl route apply /work/wt/gocpp-gw7c/interop/loadtest/rollout/policy-1.yaml --redis-addr $LT_REDIS --wait 10s; date +%s.%N",
+   "300s=date +%s.%N; /work/scratch/gw7c/bin/gocppctl route apply /work/wt/gocpp-gw7c/interop/loadtest/rollout/policy-10.yaml --redis-addr $LT_REDIS --wait 10s; date +%s.%N",
+   "420s=date +%s.%N; /work/scratch/gw7c/bin/gocppctl route apply /work/wt/gocpp-gw7c/interop/loadtest/rollout/policy-50.yaml --redis-addr $LT_REDIS --wait 10s; date +%s.%N",
+   "540s=date +%s.%N; /work/scratch/gw7c/bin/gocppctl route apply /work/wt/gocpp-gw7c/interop/loadtest/rollout/policy-100.yaml --redis-addr $LT_REDIS --wait 10s; date +%s.%N",
+   "660s=date +%s.%N; /work/scratch/gw7c/bin/gocppctl route apply /work/wt/gocpp-gw7c/interop/loadtest/rollout/policy-0.yaml --redis-addr $LT_REDIS --wait 10s; date +%s.%N"
+  ]
+ },
+ "connect_errors": {},
+ "csms_calls_delivered": {
+  "muted_dropped": 5012,
+  "unmuted": 7801
+ },
+ "duration_s": 780.036004242,
+ "final_up": 4000,
+ "freezes": null,
+ "label": "rollout-manual",
+ "latency_all_ms": {
+  "Authorize": {
+   "n": 10341,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.904,
+   "Max": 34.479,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 4000,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 10.253,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 189350,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.904,
+   "Max": 43.931,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 50728,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 2.132,
+   "Max": 44.665,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 10341,
+   "P50": 0.347,
+   "P95": 0.613,
+   "P99": 0.964,
+   "Max": 18.874,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 32357,
+   "P50": 0.31,
+   "P95": 0.547,
+   "P99": 0.768,
+   "Max": 24.214,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 10016,
+   "P50": 0.347,
+   "P95": 0.613,
+   "P99": 1.355,
+   "Max": 33.112,
+   "Mean": 0
+  }
+ },
+ "latency_by_step_steady_ms": {
+  "0": {
+   "Authorize": {
+    "n": 10341,
+    "P50": 0.488,
+    "P95": 0.861,
+    "P99": 1.904,
+    "Max": 34.479,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 4000,
+    "P50": 0.547,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 10.253,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 189350,
+    "P50": 0.488,
+    "P95": 0.861,
+    "P99": 1.904,
+    "Max": 43.931,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 50728,
+    "P50": 0.547,
+    "P95": 0.861,
+    "P99": 2.132,
+    "Max": 44.665,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 10341,
+    "P50": 0.347,
+    "P95": 0.613,
+    "P99": 0.964,
+    "Max": 18.874,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 32357,
+    "P50": 0.31,
+    "P95": 0.547,
+    "P99": 0.768,
+    "Max": 24.214,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 10016,
+    "P50": 0.347,
+    "P95": 0.613,
+    "P99": 1.355,
+    "Max": 33.112,
+    "Mean": 0
+   }
+  }
+ },
+ "latency_restart_windows_ms": {},
+ "latency_steady_ms": {
+  "Authorize": {
+   "n": 10341,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.904,
+   "Max": 34.479,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 4000,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 10.253,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 189350,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.904,
+   "Max": 43.931,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 50728,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 2.132,
+   "Max": 44.665,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 10341,
+   "P50": 0.347,
+   "P95": 0.613,
+   "P99": 0.964,
+   "Max": 18.874,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 32357,
+   "P50": 0.31,
+   "P95": 0.547,
+   "P99": 0.768,
+   "Max": 24.214,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 10016,
+   "P50": 0.347,
+   "P95": 0.613,
+   "P99": 1.355,
+   "Max": 33.112,
+   "Mean": 0
+  }
+ },
+ "request_errors": {},
+ "restarts": null,
+ "server_crashes": 0
+}

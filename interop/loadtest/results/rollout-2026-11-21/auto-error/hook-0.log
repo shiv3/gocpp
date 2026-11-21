@@ -1,0 +1,6 @@
+1795252544.658506496
+time=2026-11-21T18:15:44.680+09:00 level=INFO msg="rollout decision" action=apply stage=0 percent=1 revision=1 reason="applied stage one, waiting for the gateways" dry_run=false
+time=2026-11-21T18:15:54.684+09:00 level=INFO msg="rollout decision" action=hold stage=0 percent=1 revision=1 reason="every gateway runs the stage; soaking" dry_run=false
+time=2026-11-21T18:16:04.680+09:00 level=WARN msg="rollout decision" action=rollback stage=0 percent=1 revision=2 reason="rolled back: gate failed: failed_ratio (canary 0.2091, stable 0.0000, allowed +0.0050)" dry_run=false gate.samples="pass: 110 canary requests" gate.failed_ratio="fail: canary 0.2091, stable 0.0000, allowed +0.0050" gate.callerror_codes="fail: callerror_InternalError: canary share 0.2091, stable 0.0000, allowed +0.0100" gate.p99="pass: canary 16.384s, stable 16.384s, allowed x1.50"
+gocppctl: rolled back
+1795252564.681814434

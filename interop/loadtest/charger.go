@@ -287,6 +287,9 @@ func (s *sess) call(action, payload string) ([]json.RawMessage, error) {
 			c.g.met.req(action, d)
 		}
 		if r == nil {
+			if !c.canary {
+				c.g.met.reqErr(action, "callerror")
+			}
 			return nil, fmt.Errorf("callerror")
 		}
 		return r, nil

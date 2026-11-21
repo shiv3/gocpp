@@ -1,0 +1,7 @@
+window_start_s,step,kind,n
+180,0,Heartbeat/callerror,7
+180,0,StatusNotification/callerror,9
+180,0,MeterValues/callerror,1
+190,0,MeterValues/callerror,2
+190,0,StatusNotification/callerror,10
+190,0,Heartbeat/callerror,11

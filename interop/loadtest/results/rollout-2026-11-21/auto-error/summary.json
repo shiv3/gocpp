@@ -1,0 +1,292 @@
+{
+ "abort_reason": "",
+ "aborted": false,
+ "call_latency_ms": {
+  "not_connected": {
+   "n": 16304,
+   "P50": 0.347,
+   "P95": 0.547,
+   "P99": 0.613,
+   "Max": 19.457,
+   "Mean": 0
+  },
+  "ok": {
+   "n": 4643,
+   "P50": 0.768,
+   "P95": 1.21,
+   "P99": 1.355,
+   "Max": 7.53,
+   "Mean": 0
+  },
+  "other": {
+   "n": 2,
+   "P50": 10477.033,
+   "P95": 22703.456,
+   "P99": 22703.456,
+   "Max": 22703.456,
+   "Mean": 0
+  },
+  "timeout": {
+   "n": 2853,
+   "P50": 30008.98,
+   "P95": 30008.98,
+   "P99": 30008.98,
+   "Max": 30008.98,
+   "Mean": 0
+  }
+ },
+ "calls": {
+  "not_connected": 16304,
+  "ok": 4643,
+  "other": 2,
+  "timeout": 2853
+ },
+ "config": {
+  "ServerBin": "/work/scratch/gw7c/bin/cs-gocpp",
+  "ServerArgs": "",
+  "Addr": "127.0.0.1:9700",
+  "Taskset": "",
+  "Pprof": "127.0.0.1:6160",
+  "Out": "/work/scratch/gw7c/rollout-2026-11-21/auto-error",
+  "Label": "rollout-auto-error",
+  "ServerProcs": 1,
+  "Steps": [
+   {
+    "N": 4000,
+    "Rate": 50,
+    "Dur": 480000000000,
+    "Speed": 1
+   }
+  ],
+  "Ramp": 60000000000,
+  "HB": 15000000000,
+  "ReconnBase": 1000000000,
+  "ReconnCap": 30000000000,
+  "ReconnJitter0": 3000000000,
+  "RestartGap": 2000000000,
+  "Sample": 5000000000,
+  "FreezeThresh": 10000000000,
+  "CallTimeout": 30000000000,
+  "TxCycle": 40000000000,
+  "TxLen": 25000000000,
+  "Meter": 5000000000,
+  "HBJitter": 0.1,
+  "Mute": 0.4,
+  "TxFrac": 0.15,
+  "Flappers": 0,
+  "Dups": 0,
+  "Restarts": 0,
+  "Connectors": 2,
+  "MinAvailMB": 1500,
+  "Attach": false,
+  "GCTrace": false,
+  "Hot": 0,
+  "HotShare": 0.9,
+  "GatewayBin": "/work/scratch/gw7c/bin/gocpp-gateway",
+  "BackendPools": "default:3,canary:2",
+  "GwTaskset": "16-17",
+  "BeTaskset": "18-19",
+  "GwArgs": "",
+  "RestartTarget": "server",
+  "RestartMode": "term",
+  "Gateways": 2,
+  "PoolArgs": "canary=-fail-rate 0.3",
+  "HandledLog": true,
+  "Hooks": [
+   "180s=date +%s.%N; /work/scratch/gw7c/bin/gocppctl rollout run /work/wt/gocpp-gw7c/interop/loadtest/rollout/plan-auto.yaml --redis-addr $LT_REDIS --scrape $LT_GW_METRICS; date +%s.%N"
+  ]
+ },
+ "connect_errors": {},
+ "csms_calls_delivered": {
+  "muted_dropped": 3015,
+  "unmuted": 4643
+ },
+ "duration_s": 480.03771923,
+ "final_up": 4000,
+ "freezes": null,
+ "label": "rollout-auto-error",
+ "latency_all_ms": {
+  "Authorize": {
+   "n": 6222,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 8.873,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 4040,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 26.391,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 113590,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 8.936,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 30020,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 9.972,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 6222,
+   "P50": 0.389,
+   "P95": 0.613,
+   "P99": 0.686,
+   "Max": 4.194,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 24184,
+   "P50": 0.31,
+   "P95": 0.488,
+   "P99": 0.613,
+   "Max": 7.922,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 5867,
+   "P50": 0.347,
+   "P95": 0.547,
+   "P99": 0.686,
+   "Max": 9.587,
+   "Mean": 0
+  }
+ },
+ "latency_by_step_steady_ms": {
+  "0": {
+   "Authorize": {
+    "n": 6222,
+    "P50": 0.547,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 8.873,
+    "Mean": 0
+   },
+   "BootNotification": {
+    "n": 4040,
+    "P50": 0.547,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 26.391,
+    "Mean": 0
+   },
+   "Heartbeat": {
+    "n": 113590,
+    "P50": 0.488,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 8.936,
+    "Mean": 0
+   },
+   "MeterValues": {
+    "n": 30020,
+    "P50": 0.547,
+    "P95": 0.861,
+    "P99": 1.08,
+    "Max": 9.972,
+    "Mean": 0
+   },
+   "StartTransaction": {
+    "n": 6222,
+    "P50": 0.389,
+    "P95": 0.613,
+    "P99": 0.686,
+    "Max": 4.194,
+    "Mean": 0
+   },
+   "StatusNotification": {
+    "n": 24184,
+    "P50": 0.31,
+    "P95": 0.488,
+    "P99": 0.613,
+    "Max": 7.922,
+    "Mean": 0
+   },
+   "StopTransaction": {
+    "n": 5867,
+    "P50": 0.347,
+    "P95": 0.547,
+    "P99": 0.686,
+    "Max": 9.587,
+    "Mean": 0
+   }
+  }
+ },
+ "latency_restart_windows_ms": {},
+ "latency_steady_ms": {
+  "Authorize": {
+   "n": 6222,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 8.873,
+   "Mean": 0
+  },
+  "BootNotification": {
+   "n": 4040,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 26.391,
+   "Mean": 0
+  },
+  "Heartbeat": {
+   "n": 113590,
+   "P50": 0.488,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 8.936,
+   "Mean": 0
+  },
+  "MeterValues": {
+   "n": 30020,
+   "P50": 0.547,
+   "P95": 0.861,
+   "P99": 1.08,
+   "Max": 9.972,
+   "Mean": 0
+  },
+  "StartTransaction": {
+   "n": 6222,
+   "P50": 0.389,
+   "P95": 0.613,
+   "P99": 0.686,
+   "Max": 4.194,
+   "Mean": 0
+  },
+  "StatusNotification": {
+   "n": 24184,
+   "P50": 0.31,
+   "P95": 0.488,
+   "P99": 0.613,
+   "Max": 7.922,
+   "Mean": 0
+  },
+  "StopTransaction": {
+   "n": 5867,
+   "P50": 0.347,
+   "P95": 0.547,
+   "P99": 0.686,
+   "Max": 9.587,
+   "Mean": 0
+  }
+ },
+ "request_errors": {
+  "Heartbeat/callerror": 18,
+  "MeterValues/callerror": 3,
+  "StatusNotification/callerror": 19
+ },
+ "restarts": null,
+ "server_crashes": 0
+}

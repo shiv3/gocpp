@@ -79,10 +79,11 @@ def expand_auto(d, ph, hooks, unix0, dur):
         if not starts:
             out.append((name, a, b))
             continue
-        out.append(("controller start", a, starts[0][0]))
+        if starts[0][0] - a >= 2:
+            out.append(("controller start", a, starts[0][0]))
         for k, (t, n) in enumerate(starts):
             nxt = starts[k + 1][0] if k + 1 < len(starts) else endt
-            out.append((n, t, min(nxt, b)))
+            out.append((n, a if k == 0 and starts[0][0] - a < 2 else t, min(nxt, b)))
         if endt < b:
             out.append((end_name, endt, b))
     return out
@@ -173,7 +174,7 @@ def routing_section(d, unix0, ph, dur):
     # after a finished rollout (done) every charger is on the canary
     nominal["done"] = 100
     for name, a, b in ph:
-        lo = a + 25 if name != "baseline" else a  # give the revision time to apply and each charger a heartbeat
+        lo = a + 25 if name != "baseline" and b - a >= 45 else a  # give the revision time to apply and each charger a heartbeat
         seen = on = 0
         for cp, v in seq.items():
             last = None
@@ -221,7 +222,7 @@ def routing_section(d, unix0, ph, dur):
     return out + [""]
 
 
-def errors_section(d, ph):
+def errors_section(d, ph, dur):
     out = ["### Errors and connections", ""]
     errs = defaultdict(lambda: defaultdict(int))
     p = os.path.join(d, "errors.csv")
@@ -235,7 +236,7 @@ def errors_section(d, ph):
     out.append("| phase | window | charger request errors | chargers up (min) | server_connected (min) |")
     out.append("|---|---|---|---:|---:|")
     for name, a, b in ph:
-        w = [r for r in rows if a <= float(r["t_s"]) < b]
+        w = [r for r in rows if a <= float(r["t_s"]) < min(b, dur - 10)]  # the last samples are the teardown
         up = min((float(r["chargers_up"]) for r in w), default=0)
         sc = min((float(r["server_connected"]) for r in w), default=0)
         e = errs[name]
@@ -315,6 +316,27 @@ def cost_section(d, ph, rows):
     return out + [""]
 
 
+def calls_section(d, ph):
+    out = ["### CSMS-initiated calls (issued from the control backend in the default pool to chargers in either pool)", "",
+           "| phase | ok | ok p50 ms | ok p99 ms (max of windows) | timeout (muted chargers) | not_connected |", "|---|---:|---:|---:|---:|---:|"]
+    rows = list(csv.DictReader(open(os.path.join(d, "calls.csv"))))
+    for name, a, b in ph:
+        w = [r for r in rows if a <= float(r["window_start_s"]) < b]
+        n = defaultdict(int)
+        for r in w:
+            n[r["outcome"]] += int(r["n"])
+        ok = [r for r in w if r["outcome"] == "ok"]
+        okn = sum(int(r["n"]) for r in ok)
+        p50 = sum(float(r["p50_ms"]) * int(r["n"]) for r in ok) / okn if okn else 0
+        p99 = max((float(r["p99_ms"]) for r in ok), default=0)
+        out.append(f"| {name} | {n['ok']} | {p50:.2f} | {p99:.1f} | {n['timeout']} | {n['not_connected']} |")
+    s = json.load(open(os.path.join(d, "summary.json")))
+    out.append("")
+    out.append(f"Whole run: calls {s.get('calls')}, delivered {s.get('csms_calls_delivered')} (a timeout is a call to a muted charger, which drops it by design; not_connected is the "
+               f"harness' own pre-check: the control backend only knows the chargers whose session events it received, a third to a half of the fleet in split mode, so it is not a CSMS failure).")
+    return out + [""]
+
+
 def hooks_section(d, hooks, ends):
     out = ["### Hooks", ""]
     for i, (t, name) in enumerate(hooks):
@@ -338,8 +360,8 @@ def main():
         rows = gwmetrics(d)
         print(f"## {s.get('label', os.path.basename(d))}\n")
         print("Phases: " + ", ".join(f"{n} {a:.0f}-{b:.0f}s" for n, a, b in ph) + "\n")
-        for part in (routing_section(d, unix0, ph, s["duration_s"]), errors_section(d, ph), pool_latency_section(d, ph, rows),
-                     harness_latency(d, ph), cost_section(d, ph, rows), hooks_section(d, hooks, ends)):
+        for part in (routing_section(d, unix0, ph, s["duration_s"]), errors_section(d, ph, s["duration_s"]), pool_latency_section(d, ph, rows),
+                     harness_latency(d, ph), calls_section(d, ph), cost_section(d, ph, rows), hooks_section(d, hooks, ends)):
             print("\n".join(part))
 
 
