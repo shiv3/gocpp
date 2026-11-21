@@ -46,8 +46,8 @@ func (s *memSink) all() []tap.Event {
 	return append([]tap.Event(nil), s.events...)
 }
 
-func frame(cp, action string, raw string) observability.FrameEvent {
-	return observability.FrameEvent{CPID: cp, Version: ocppj.V16, Direction: observability.FrameIn, Raw: []byte(raw),
+func frame(action, raw string) observability.FrameEvent {
+	return observability.FrameEvent{CPID: "CP1", Version: ocppj.V16, Direction: observability.FrameIn, Raw: []byte(raw),
 		Type: ocppj.Call, MsgID: "m", Action: action, Time: time.Now()}
 }
 
@@ -56,7 +56,7 @@ func TestExporter_ExportsFramesAndSessions(t *testing.T) {
 	sink := &memSink{}
 	e := tap.New(sink, tap.WithSource("gw-1"), tap.WithBatch(2, time.Hour))
 	raw := []byte(`[2,"m","Heartbeat",{}]`)
-	e.FrameObserver()(context.Background(), frame("CP1", "Heartbeat", string(raw)))
+	e.FrameObserver()(context.Background(), frame("Heartbeat", string(raw)))
 	// The frame is copied: reusing the connection's buffer must not change the event.
 	raw[2] = 'X'
 	e.SessionObserver()(context.Background(), observability.SessionEvent{
@@ -86,10 +86,10 @@ func TestExporter_TruncatesAndCanOmitFrames(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	sink := &memSink{}
 	e := tap.New(sink, tap.WithMaxFrame(10))
-	e.FrameObserver()(context.Background(), frame("CP1", "X", strings.Repeat("a", 100)))
+	e.FrameObserver()(context.Background(), frame("X", strings.Repeat("a", 100)))
 	meta := &memSink{}
 	e2 := tap.New(meta, tap.WithMaxFrame(-1))
-	e2.FrameObserver()(context.Background(), frame("CP1", "X", "secret"))
+	e2.FrameObserver()(context.Background(), frame("X", "secret"))
 	require.NoError(t, e.Close(context.Background()))
 	require.NoError(t, e2.Close(context.Background()))
 	require.Equal(t, strings.Repeat("a", 10), sink.all()[0].Frame)
@@ -107,7 +107,7 @@ func TestExporter_NeverBlocksTheHotPath(t *testing.T) {
 	obs := e.FrameObserver()
 	start := time.Now()
 	for i := 0; i < 10_000; i++ {
-		obs(context.Background(), frame("CP1", "Heartbeat", "[]"))
+		obs(context.Background(), frame("Heartbeat", "[]"))
 	}
 	require.Less(t, time.Since(start), 2*time.Second, "10k observations did not wait for the stuck sink")
 	st := e.Stats()
@@ -131,8 +131,8 @@ func TestExporter_SamplingAndFilter(t *testing.T) {
 		tap.WithFrameFilter(func(ev observability.FrameEvent) bool { return ev.Action != "Heartbeat" }))
 	obs := e.FrameObserver()
 	for i := 0; i < 100; i++ {
-		obs(context.Background(), frame("CP1", "MeterValues", "[]"))
-		obs(context.Background(), frame("CP1", "Heartbeat", "[]"))
+		obs(context.Background(), frame("MeterValues", "[]"))
+		obs(context.Background(), frame("Heartbeat", "[]"))
 	}
 	e.SessionObserver()(context.Background(), observability.SessionEvent{Kind: observability.SessionOpened, CPID: "CP1"})
 	require.NoError(t, e.Close(context.Background()))
@@ -156,7 +156,7 @@ func TestExporter_SinkErrorsAreCountedNotFatal(t *testing.T) {
 	sink := &memSink{err: errors.New("down")}
 	e := tap.New(sink, tap.WithBatch(1, time.Hour))
 	for i := 0; i < 5; i++ {
-		e.FrameObserver()(context.Background(), frame("CP1", "X", "[]"))
+		e.FrameObserver()(context.Background(), frame("X", "[]"))
 	}
 	require.NoError(t, e.Close(context.Background()))
 	require.EqualValues(t, 5, e.Stats().Failed)
@@ -167,7 +167,7 @@ func TestExporter_FlushesOnInterval(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	sink := &memSink{}
 	e := tap.New(sink, tap.WithBatch(1000, 20*time.Millisecond))
-	e.FrameObserver()(context.Background(), frame("CP1", "X", "[]"))
+	e.FrameObserver()(context.Background(), frame("X", "[]"))
 	require.Eventually(t, func() bool { return len(sink.all()) == 1 }, 2*time.Second, 5*time.Millisecond)
 	require.NoError(t, e.Close(context.Background()))
 }
@@ -183,7 +183,7 @@ func TestExporter_AfterCloseDropsAndConcurrentUseIsSafe(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < 500; i++ {
-				e.FrameObserver()(context.Background(), frame("CP1", "X", "[]"))
+				e.FrameObserver()(context.Background(), frame("X", "[]"))
 				calls.Add(1)
 			}
 		}()
@@ -200,7 +200,7 @@ func TestJSONL_OneObjectPerLine(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	var buf bytes.Buffer
 	e := tap.New(tap.JSONL(&buf), tap.WithSource("s"))
-	e.FrameObserver()(context.Background(), frame("CP1", "Heartbeat", `[2,"m","Heartbeat",{}]`))
+	e.FrameObserver()(context.Background(), frame("Heartbeat", `[2,"m","Heartbeat",{}]`))
 	e.SessionObserver()(context.Background(), observability.SessionEvent{Kind: observability.SessionOpened, CPID: "CP1", RemoteAddr: "1.2.3.4:5"})
 	require.NoError(t, e.Close(context.Background()))
 	sc := bufio.NewScanner(&buf)
@@ -221,7 +221,7 @@ func TestJSONL_OneObjectPerLine(t *testing.T) {
 func BenchmarkFrameObserver(b *testing.B) {
 	e := tap.New(&memSink{err: errors.New("discard")}, tap.WithBuffer(1<<16), tap.WithBatch(1024, time.Hour))
 	obs := e.FrameObserver()
-	ev := frame("CP1", "MeterValues", `[2,"m","MeterValues",{"connectorId":1,"meterValue":[{"timestamp":"2026-01-01T00:00:00Z","sampledValue":[{"value":"1"}]}]}]`)
+	ev := frame("MeterValues", `[2,"m","MeterValues",{"connectorId":1,"meterValue":[{"timestamp":"2026-01-01T00:00:00Z","sampledValue":[{"value":"1"}]}]}]`)
 	ctx := context.Background()
 	b.ReportAllocs()
 	b.ResetTimer()
