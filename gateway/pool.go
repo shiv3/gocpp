@@ -75,6 +75,19 @@ func (p *Pool) Available() bool {
 	return false
 }
 
+// Handles reports whether a non-draining member serves action (see
+// BackendInfo.Handles).
+func (p *Pool) Handles(action string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, m := range p.members {
+		if !m.draining.Load() && m.info.Handles(action) {
+			return true
+		}
+	}
+	return false
+}
+
 // Add attaches a backend that announced itself with info. The returned Member
 // can be drained with Drain.
 func (p *Pool) Add(info BackendInfo, up Upstream) *Member {
@@ -142,7 +155,7 @@ func (m *Member) done() {
 
 // pick chooses a member not in tried by power of two choices, waiting up to
 // until for one to appear.
-func (p *Pool) pick(ctx context.Context, need string, tried map[*Member]bool, until time.Time) (*Member, error) {
+func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]bool, until time.Time) (*Member, error) {
 	for {
 		p.mu.Lock()
 		var cand [2]*Member
@@ -150,7 +163,7 @@ func (p *Pool) pick(ctx context.Context, need string, tried map[*Member]bool, un
 		// Reservoir-sample two eligible members.
 		seen := 0
 		for _, m := range p.members {
-			if m.draining.Load() || tried[m] || (need != "" && !m.info.Has(need)) {
+			if m.draining.Load() || tried[m] || (need != "" && !m.info.Has(need)) || (action != "" && !m.info.Handles(action)) {
 				continue
 			}
 			seen++
@@ -226,7 +239,7 @@ func needCap(env Envelope) string {
 // Connect implements Upstream.
 func (p *Pool) Connect(ctx context.Context, req ConnectRequest) (ConnectReply, error) {
 	var out ConnectReply
-	err := p.dispatch(ctx, "", time.Time{}, func(m *Member) (bool, error) {
+	err := p.dispatch(ctx, "", "", time.Time{}, func(m *Member) (bool, error) {
 		r, err := m.up.Connect(ctx, req)
 		out = r
 		return false, err
@@ -236,12 +249,17 @@ func (p *Pool) Connect(ctx context.Context, req ConnectRequest) (ConnectReply, e
 
 // Handle implements Upstream.
 func (p *Pool) Handle(ctx context.Context, env Envelope) (Reply, error) {
+	return p.handle(ctx, env, "")
+}
+
+// handle is Handle restricted to members that serve action ("" = any member).
+func (p *Pool) handle(ctx context.Context, env Envelope, action string) (Reply, error) {
 	var out Reply
 	attempt := env.Attempt
 	if attempt == 0 {
 		attempt = 1
 	}
-	err := p.dispatch(ctx, "", env.Deadline, func(m *Member) (bool, error) {
+	err := p.dispatch(ctx, "", action, env.Deadline, func(m *Member) (bool, error) {
 		e := env
 		e.Attempt = attempt
 		attempt++
@@ -260,18 +278,22 @@ func (p *Pool) Handle(ctx context.Context, env Envelope) (Reply, error) {
 
 // Notify implements Upstream.
 func (p *Pool) Notify(ctx context.Context, env Envelope) error {
-	return p.dispatch(ctx, needCap(env), env.Deadline, func(m *Member) (bool, error) {
+	return p.notify(ctx, env, "")
+}
+
+func (p *Pool) notify(ctx context.Context, env Envelope, action string) error {
+	return p.dispatch(ctx, needCap(env), action, env.Deadline, func(m *Member) (bool, error) {
 		return false, m.up.Notify(ctx, env)
 	})
 }
 
 // dispatch runs fn on a member, moving to another one when fn asks to retry
 // (Nack) or fails with ErrNotDelivered.
-func (p *Pool) dispatch(ctx context.Context, need string, deadline time.Time, fn func(m *Member) (retry bool, err error)) error {
+func (p *Pool) dispatch(ctx context.Context, need, action string, deadline time.Time, fn func(m *Member) (retry bool, err error)) error {
 	until := p.holdUntil(deadline)
 	var tried map[*Member]bool
 	for {
-		m, err := p.pick(ctx, need, tried, until)
+		m, err := p.pick(ctx, need, action, tried, until)
 		if err != nil {
 			return err
 		}

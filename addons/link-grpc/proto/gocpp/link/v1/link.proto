@@ -189,6 +189,18 @@ message Unsupported {
 
 // Drain announces that a backend takes no new work; the gateway lets work in
 // flight finish.
+// LocateRequest asks a gateway which session, if any, it holds for a charge point.
+message LocateRequest {
+  string cpid = 1;
+}
+
+message LocateReply {
+  bool found = 1;
+  SessionRef session = 2;
+  string version = 3;
+  SessionInfo info = 4;
+}
+
 message Drain {}
 
 // DrainAck is the gateway's answer to Drain, sent once it has stopped choosing
@@ -211,6 +223,7 @@ message BackendFrame {
     CallRequest send = 7;
     ControlRequest control = 8;
     Drain drain = 9;
+    LocateRequest locate = 10;
     Unsupported unsupported = 20;
   }
 }
@@ -227,6 +240,7 @@ message GatewayFrame {
     Ack control_ack = 8;
     Cancel cancel = 9;
     DrainAck drain_ack = 10;
+    LocateReply locate_reply = 11;
     Unsupported unsupported = 20;
   }
 }

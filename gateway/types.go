@@ -392,7 +392,7 @@ type BackendLink interface {
 
 // Locator is optionally implemented by a gateway's Downstream so a link can
 // find the session of a charge point without a registry (the in-process link
-// uses it; networked links use the session registry instead).
+// and the gRPC link, which asks every attached gateway, use it).
 type Locator interface {
 	LocateSession(cpID string) (Located, bool)
 }
@@ -462,6 +462,7 @@ const (
 	CapSend21     = "send.21"
 	CapCancel     = "cancel"
 	CapActionList = "actions.list"
+	CapLocate     = "locate"
 )
 
 // BackendInfo is what a backend announces when it attaches to a link.
@@ -472,7 +473,7 @@ type BackendInfo struct {
 	Role    Role              // RoleWorker | RoleCaller
 	Proto   ProtoRange        // link protocol versions it speaks
 	Caps    []string          // capability names
-	Actions []string          // optional: actions it has handlers for; empty = all
+	Actions []string          // actions it has handlers for (csms fills it in); empty = all
 	Labels  map[string]string // free form, exported in status output only
 }
 
@@ -480,6 +481,20 @@ type BackendInfo struct {
 func (b BackendInfo) Has(c string) bool {
 	for _, x := range b.Caps {
 		if x == c {
+			return true
+		}
+	}
+	return false
+}
+
+// Handles reports whether the backend serves action: it lists it, or lists
+// none (an empty Actions means all).
+func (b BackendInfo) Handles(action string) bool {
+	if len(b.Actions) == 0 {
+		return true
+	}
+	for _, x := range b.Actions {
+		if x == action {
 			return true
 		}
 	}

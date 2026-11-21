@@ -124,6 +124,11 @@ every request it had in flight and acknowledges (`DrainAck`), and only then does
 the backend close: a backend deploy is invisible to chargers. The wire contract is
 `addons/link-grpc/proto/gocpp/link/v1/link.proto` (`buf lint`, `buf generate`).
 
+`Backend.Locate` (used by `Server.Lookup` on a backend without
+`csms.WithSessionRegistry`) asks every attached gateway that offers the `locate`
+capability which session it holds for a charge point; an older gateway counts as
+"not here". With a session registry the registry stays the authority.
+
 `cmd/gocpp-gateway` (own module) is the reference gateway: WebSocket listener
 (TLS, optional client-certificate verification, shared TLS ticket keys, accept
 rate limit), the link listener (optional mTLS between tiers), the Redis session
@@ -165,6 +170,16 @@ change by itself. A pool with no available member falls back to
 `Route.Fallback` at once; if every member Nacks the message is redispatched on
 the fallback. `PoolSet` (used by every link) implements this; `Envelope.Route`
 tells the backend which pool and rule the message went through.
+
+`BackendInfo.Actions` is filled in by `csms` from the handlers registered when
+`ServeGateway` starts (an empty list means "all", as for a backend with no
+handlers). A message routed to a pool in which no available member lists its
+action goes to `Route.Fallback` if that pool serves it, otherwise it stays on
+the routed pool (an `on_unavailable: error` rule: the backend answers
+`NotImplemented`); either way it is counted (`Gateway.Unhandled`,
+`PoolSet.SetUnhandledObserver`). Inside a pool, members that do not list the
+action are not picked while others do, so a partially rolled-out action reaches
+only the builds that have it.
 
 Session attributes are the routing labels: `ConnectReply.Attrs` at connect, and
 `Conn.SetAttrs` (or `Server.SetSessionAttrs`) from the
@@ -211,6 +226,17 @@ numbers above):
 Verify on a real cluster (not measured): that an L4 load balancer keeps established
 connections to a pod that turns not-ready, and how new connections are spread when every
 pod is not-ready; TLS handshake capacity; the 10,000-charger gateway rollout of the design.
+
+## Connect-decision cache
+
+`csms.WithGatewayAuthCache(csms.AuthCacheConfig{TTL, StaleIfError, MaxEntries})`
+on a gateway remembers accepted connect decisions (key: hash of charge point id,
+path, `Authorization`, offered subprotocols and client certificate). Within `TTL`
+(default 5 minutes) a reconnect skips the backend; after it the backend decides
+again, and if it cannot be reached an accepted decision up to `StaleIfError`
+(default 1 hour) old is reused. Rejections are never cached.
+`Server.InvalidateAuthCache(cpID)` drops entries after a credential change. Leave
+it off when the backend decides on other request headers.
 
 ## Testing
 
