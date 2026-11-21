@@ -27,6 +27,8 @@ type serverConfig struct {
 	path            string
 	cpIDExtractor   CPIDExtractor
 	instanceID      string
+	sessionReg      storage.SessionRegistry
+	sessionCfg      SessionConfig
 	registry        *schema.Registry
 	duplicatePolicy DuplicatePolicy
 
@@ -295,6 +297,11 @@ func WithOnDisconnect(fn func(*Conn, error)) Option {
 // the message router (WithMessageRouter), and Server.Lookup can forward calls to
 // charge points held elsewhere. The id must be unique per running instance. See
 // docs/clustering.md.
+//
+// Routes are recorded through a storage.SessionRegistry: the connection registry
+// itself when it implements the interface (the in-memory registries do), else an
+// adapter over its PutGlobal / LookupGlobal / DeleteGlobal with the guarantees
+// those calls always had. Prefer WithSessionRegistry for new code.
 func WithInstanceID(id string) Option {
 	return optionFunc(func(c *serverConfig) { c.instanceID = id })
 }
@@ -411,6 +418,26 @@ func WithLenientTimeLocation(loc *time.Location) Option {
 // WithAuthenticator sets the connection authenticator (default auth.None).
 func WithAuthenticator(a auth.Authenticator) Option {
 	return optionFunc(func(c *serverConfig) { c.auth = a })
+}
+
+// WithSessionRegistry makes the server record every connection it holds in reg
+// under a registry-assigned epoch and turns on multi-instance routing, like
+// WithInstanceID (whose value, if set, becomes the gateway id unless cfg gives
+// one). The registry claims the session before the WebSocket upgrade is accepted,
+// releases it with a compare-and-delete when the connection ends, keeps a
+// gateway lease alive and runs a reconcile loop that closes sockets superseded
+// by a newer connection elsewhere. At most one SessionConfig may be given; omit
+// it for the defaults. See docs/clustering.md.
+//
+// Servers that share one registry see each other's sessions; use
+// memory.NewSessionRegistry in tests and addons/registry-redis in production.
+func WithSessionRegistry(reg storage.SessionRegistry, cfg ...SessionConfig) Option {
+	return optionFunc(func(c *serverConfig) {
+		c.sessionReg = reg
+		if len(cfg) > 0 {
+			c.sessionCfg = cfg[0]
+		}
+	})
 }
 
 // WithConnectionRegistry sets the connection registry (default in-memory).

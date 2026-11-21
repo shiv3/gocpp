@@ -14,6 +14,7 @@ import (
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/schema"
+	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/transport"
 	"golang.org/x/sync/semaphore"
 )
@@ -33,6 +34,10 @@ type Server struct {
 	// reserved counts upgrades admitted under WithMaxConnections that have not
 	// yet registered; guarded by mu together with conns.
 	reserved int
+
+	// sessions is nil unless the server is clustered (WithInstanceID or
+	// WithSessionRegistry).
+	sessions *sessionManager
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -88,7 +93,9 @@ func NewServer(opts ...Option) *Server {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+	s.initSessions()
 	if s.clustered() {
+		go s.sessions.run(ctx)
 		// Serve calls other instances forward to the charge points connected here,
 		// until Shutdown or Close.
 		go s.serveRemote()
@@ -165,6 +172,21 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 
+	// Claim the session before accepting the upgrade, so the registry's epoch
+	// order follows the order in which sockets were established. An upgrade that
+	// cannot succeed (not a WebSocket request, no common subprotocol) claims
+	// nothing; one that fails after the claim releases it.
+	var sess storage.Session
+	claimed, registeredSession := false, false
+	if s.sessions != nil && s.upgradeWillSucceed(r) {
+		sess, claimed = s.claimSession(r, cpID)
+		defer func() {
+			if claimed && !registeredSession {
+				s.releaseSession(sess)
+			}
+		}()
+	}
+
 	var dconn *dispatcher.Conn
 	acceptOpts := &websocket.AcceptOptions{
 		Subprotocols:   s.cfg.subProtocols,
@@ -211,6 +233,9 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		RequestHeader: r.Header,
 		TLS:           r.TLS,
 	})
+	if claimed {
+		dconn.SetAttachment(&sess)
+	}
 	conn := &Conn{inner: dconn, gone: make(chan struct{})}
 	// gone is closed by connCleanup once the connection is registered; every
 	// earlier return closes it here.
@@ -239,9 +264,9 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		// of live connections may have missed this one.
 		dconn.Abort(ocppj.ErrConnClosed)
 	}
+	registeredSession = true
 	s.handleConnected(conn)
 	_ = s.cfg.connReg.PutLocal(s.ctx, cpID, dconn)
-	s.publishGlobal(cpID)
 	dconn.ReleaseInbound()
 	// From here the connection's lifetime is not tied to this HTTP handler:
 	// it returns now, releasing its goroutine and the *http.Request, and the
@@ -265,7 +290,9 @@ func (s *Server) connCleanup(cpID string, conn *Conn) {
 	_ = dconn.Close(nil)
 	if s.removeConn(cpID, conn) {
 		_ = s.cfg.connReg.DeleteLocal(s.ctx, cpID)
-		s.retractGlobal(cpID)
+		// Compare-and-delete on the epoch: a newer connection of the same id,
+		// here or on another instance, keeps its record.
+		s.releaseSession(conn.holderSession())
 	}
 }
 
@@ -293,6 +320,25 @@ func (s *Server) extractCPID(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return cpID, validCPID(cpID)
+}
+
+// upgradeWillSucceed is a cheap pre-check, run before a session is claimed, that
+// the request is a WebSocket upgrade offering a subprotocol this server speaks.
+func (s *Server) upgradeWillSucceed(r *http.Request) bool {
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
+	for _, h := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, p := range strings.Split(h, ",") {
+			p = strings.TrimSpace(p)
+			for _, ours := range s.cfg.subProtocols {
+				if p == ours {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func validCPID(cpID string) bool {

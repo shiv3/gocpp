@@ -25,6 +25,9 @@ type Conn struct {
 	version ocppj.Version
 	meta    ConnMetadata
 
+	// attachment is owner-defined data hung on the connection (see SetAttachment).
+	attachment atomic.Value
+
 	// wlock is the write lock: a channel of capacity 1 so that waiting for it can
 	// honour a context and blocked senders are served FIFO. A sender holds it
 	// across ws.Write and the frame-observer call (wire order). wwait counts
@@ -352,6 +355,15 @@ func (c *Conn) Start(parent context.Context) {
 	// immediately when parent is already cancelled.
 	context.AfterFunc(c.ctx, c.teardown)
 }
+
+// SetAttachment stores owner data on the connection so that code holding only
+// the *Conn (a handler reaching it through ConnFromContext) can find it. The
+// stored values must all have the same concrete type. The CSMS server keeps the
+// connection's registry session here.
+func (c *Conn) SetAttachment(v any) { c.attachment.Store(v) }
+
+// Attachment returns the value stored by SetAttachment, or nil.
+func (c *Conn) Attachment() any { return c.attachment.Load() }
 
 // Abort cancels the connection with cause without waiting for teardown. The
 // socket is then closed in the background with a close frame matching cause
