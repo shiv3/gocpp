@@ -540,3 +540,42 @@ func TestDrain_CancelledDrainRestoresQuiescedSessionsAndUndrain(t *testing.T) {
 	require.NoError(t, err)
 	_ = c2.CloseNow()
 }
+
+// Undrain racing a Drain that starts right after it must not clear that
+// drain's flags: while a Drain runs, Draining reports true (review N8).
+func TestDrain_UndrainRacingDrainKeepsDrainingTrue(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	srv, ts := newDrainServer(t)
+	connectAll(ctx, t, srv, ts.URL, 1)
+	for i := 0; i < 300; i++ {
+		dctx, dcancel := context.WithCancel(ctx)
+		drained := make(chan error, 1)
+		go func() { // far too slow a rate to close the session during the test
+			drained <- srv.Drain(dctx, csms.DrainOptions{Window: time.Hour, Rate: 0.001, IdleGrace: time.Hour})
+		}()
+		undrained := make(chan struct{})
+		var wg sync.WaitGroup
+		for range 3 { // spin until the drain is running
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-undrained:
+						return
+					default:
+						_ = srv.Undrain(ctx)
+					}
+				}
+			}()
+		}
+		require.Eventually(t, func() bool { return srv.DrainStatus().Active }, 2*time.Second, time.Millisecond)
+		close(undrained)
+		wg.Wait()
+		require.True(t, srv.Draining(), "an Undrain that raced the Drain cleared its flag (iteration %d)", i)
+		dcancel()
+		require.ErrorIs(t, <-drained, context.Canceled)
+		require.NoError(t, srv.Undrain(ctx))
+	}
+}

@@ -62,6 +62,7 @@ type Server struct {
 	// base of their Retry-After; acceptRejected and drainRejected count refusals.
 	draining        atomic.Bool
 	drainActive     atomic.Bool
+	drainMu         sync.Mutex // see Drain and Undrain
 	partialDrain    atomic.Bool
 	softMax         atomic.Int64
 	sessMetrics     observability.SessionMetrics
