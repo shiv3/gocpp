@@ -6,6 +6,43 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+### Highlights
+
+- **Gateway mode (Experimental).** Run gocpp as a connection tier
+  (`csms.NewGatewayServer`, `cmd/gocpp-gateway`) in front of stateless backends
+  (`csms.WithGatewayLink`) over in-process, gRPC (`addons/link-grpc`) or NATS
+  (`addons/link-nats`) links. Backends can be redeployed without disconnecting
+  chargers. Design: docs/design/gateway.md; guide: docs/gateway.md.
+- **Session registry with epoch fencing** (`csms.WithSessionRegistry`,
+  `addons/registry-redis`), replacing PutGlobal-style registration for clustered
+  servers.
+- **Draining and admission control** for every server, embedded or gateway:
+  `Server.Drain` (idle-first, paced, close 1012), `WithAcceptRateLimit`, soft
+  connection caps and readiness, tenant limits, edge Heartbeat.
+- **Staged releases**: routing policies for backend canaries
+  (`gateway/routepolicy`, `gocppctl route`), gateway canary tooling
+  (`gocppctl gateway`), optional automatic promotion (`addons/rollout`).
+- **Observability**: frame/session taps, bounded action labels in metrics,
+  session and routing metrics.
+- **Performance**: optional adaptive link write linger; handler stack reservation
+  that makes embedded dispatch faster than 0.2.0 (see docs/performance.md).
+
+### Upgrade notes
+
+- Embedded single-process servers with default options behave as in 0.2.0.
+- Clustered users of `WithInstanceID` keep working through a legacy adapter;
+  moving to `WithSessionRegistry` is recommended. `storage.MessageRouter` and the
+  router addons are deprecated in favour of the gateway link (removal not before
+  v0.4).
+- Everything under `gateway/`, the gateway-related csms options, the new storage
+  interfaces and the listed dispatcher hooks are **Experimental** and may change
+  before v1.0 (see "Stability" in docs/gateway.md).
+- Addons and commands are separate modules tagged `addons/<name>/v0.3.0` and
+  `cmd/<name>/v0.3.0`.
+
+
 ### Added
 
 - Stability: the public API added for gateway mode is marked experimental ("Experimental:
@@ -855,7 +892,8 @@ All additions are opt-in and preserve prior default behavior.
 ### OCPP spec compatibility
 - OCPP 1.6 (edition 2 + Security Whitepaper), 2.0.1, 2.1.
 
-[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/shiv3/gocpp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/shiv3/gocpp/releases/tag/v0.2.0
 [0.1.3]: https://github.com/shiv3/gocpp/releases/tag/v0.1.3
 [0.1.2]: https://github.com/shiv3/gocpp/releases/tag/v0.1.2

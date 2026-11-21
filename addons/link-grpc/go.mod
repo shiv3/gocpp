@@ -3,7 +3,7 @@ module github.com/shiv3/gocpp/addons/link-grpc
 go 1.26.0
 
 require (
-	github.com/shiv3/gocpp v0.0.0-00010101000000-000000000000
+	github.com/shiv3/gocpp v0.3.0
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0
 	google.golang.org/grpc v1.85.0
