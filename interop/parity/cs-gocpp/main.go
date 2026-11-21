@@ -12,8 +12,10 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"runtime/debug"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
@@ -37,6 +39,9 @@ func main() {
 	pprofAddr := flag.String("pprof", "", "serve net/http/pprof on this address, e.g. 127.0.0.1:6060")
 	handlerPool := flag.Int("handler-pool", 0, "run inbound handlers on N resident workers (csms.WithHandlerPool); 0 = goroutine per message")
 	outboundValidation := flag.Bool("outbound-validation", true, "validate payloads produced by local handlers (csms.WithOutboundValidation)")
+	drainWindow := flag.Duration("drain-window", 0, "on SIGTERM, Server.Drain over this window (new upgrades get 503, readiness at /ready fails) before exiting; 0 = exit at once")
+	acceptRate := flag.Float64("accept-rate", 0, "csms.WithAcceptRateLimit rate per second (0 = off)")
+	acceptBurst := flag.Int("accept-burst", 0, "burst for -accept-rate (default 2x the rate)")
 	flag.Parse()
 	if *pprofAddr != "" {
 		go func() { log.Println(http.ListenAndServe(*pprofAddr, nil)) }()
@@ -64,6 +69,13 @@ func main() {
 	}
 	if *handlerPool > 0 {
 		opts = append(opts, csms.WithHandlerPool(dispatcher.NewHandlerPool(*handlerPool)))
+	}
+	if *acceptRate > 0 {
+		burst := *acceptBurst
+		if burst <= 0 {
+			burst = int(2 * *acceptRate)
+		}
+		opts = append(opts, csms.WithAcceptRateLimit(*acceptRate, burst))
 	}
 	if !*outboundValidation {
 		opts = append(opts, csms.WithOutboundValidation(false))
@@ -106,8 +118,22 @@ func main() {
 	be := &backend{srv: srv}
 	mux := http.NewServeMux()
 	mux.Handle("/control/", common.Control(rec, be, *callTimeout))
+	mux.Handle("/ready", srv.ReadyHandler())
 	mux.Handle("/", srv.Handler())
 	fmt.Fprintf(os.Stderr, "cs-gocpp listening on %s (schema=%s)\n", *listen, *schemaMode)
+	if *drainWindow > 0 {
+		go func() {
+			sig := make(chan os.Signal, 1)
+			signal.Notify(sig, syscall.SIGTERM)
+			<-sig
+			fmt.Fprintf(os.Stderr, "SIGTERM: draining over %s\n", *drainWindow)
+			ctx, cancel := context.WithTimeout(context.Background(), *drainWindow+30*time.Second)
+			defer cancel()
+			err := srv.Drain(ctx, csms.DrainOptions{Window: *drainWindow, RetryAfter: 10 * time.Second})
+			fmt.Fprintf(os.Stderr, "drain finished: %v\n", err)
+			os.Exit(0)
+		}()
+	}
 	log.Fatal((&http.Server{Addr: *listen, Handler: mux}).ListenAndServe())
 }
 

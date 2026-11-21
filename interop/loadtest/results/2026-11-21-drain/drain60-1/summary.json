@@ -1,0 +1,17 @@
+{
+  "chargers": 4000,
+  "fleet_peak_drops_per_s": 75,
+  "min_up": 3839,
+  "mode": "drain",
+  "new_connect_attempts_total": 4000,
+  "new_cpu_seconds_during_event": 2.18,
+  "new_peak_connect_attempts_per_s": 90,
+  "new_peak_cpu_cores_250ms": 0.12,
+  "new_peak_upgrades_per_s": 90,
+  "pre_up": 4000,
+  "retry_max_s": 30,
+  "retry_min_s": 2,
+  "seconds_below_99pct": 54.8,
+  "t99_from_sigterm_s": 55.5,
+  "window_s": 60
+}
