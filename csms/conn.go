@@ -9,6 +9,7 @@ import (
 
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/storage"
 )
 
 // Conn is a CSMS-side connection to a charge point.
@@ -26,6 +27,9 @@ type Conn struct {
 	// for the short-lived wrappers handed to typed handlers, which only wait for
 	// the inner connection.
 	gone chan struct{}
+
+	// session is the registry record of a remote handle (see Server.Lookup).
+	session *storage.Session
 
 	// disconnectOnce makes the disconnect notification fire exactly once, whether
 	// it comes from a replacement or from the connection's own teardown. Do blocks
@@ -46,6 +50,42 @@ func (c *Conn) ID() string {
 // instance (see Server.Lookup) rather than a live local connection. Connection
 // details such as Version, RemoteAddr and TLS are empty for it.
 func (c *Conn) Remote() bool { return c.inner == nil }
+
+// Session returns the registry record of this connection: for a live local
+// connection the session this server claimed for it, for a remote handle the
+// record that Lookup found. ok is false when the server runs without a session
+// registry (and clustering), and for a connection accepted while the registry
+// was unreachable until it has been claimed (Epoch is 0 until then). The value
+// is a snapshot; the epoch of a connection can change when the server re-claims
+// it.
+func (c *Conn) Session() (s storage.Session, ok bool) {
+	if c.inner == nil {
+		if c.session == nil {
+			return storage.Session{}, false
+		}
+		return *c.session, true
+	}
+	p, _ := c.inner.Attachment().(*storage.Session)
+	if p == nil {
+		return storage.Session{}, false
+	}
+	return *p, true
+}
+
+// sessionHolder implementation, used by the session manager.
+
+func (c *Conn) holderID() string { return c.inner.ID() }
+
+func (c *Conn) holderSession() storage.Session {
+	s, _ := c.Session()
+	return s
+}
+
+func (c *Conn) setHolderSession(s storage.Session) { c.inner.SetAttachment(&s) }
+
+func (c *Conn) alive() bool { return c.inner.Context().Err() == nil }
+
+func (c *Conn) displace() { c.inner.Abort(ocppj.ErrConnReplaced) }
 
 // Version returns the negotiated OCPP version.
 func (c *Conn) Version() ocppj.Version {

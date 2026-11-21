@@ -1,0 +1,524 @@
+# 2026/11/21 13:03:23.360953 [TestSessionRegistry_Property] [rapid] draw steps: 46
+# 2026/11/21 13:03:23.360965 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.360974 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.360981 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.360989 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.360996 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361001 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361009 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361013 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361017 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361025 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361030 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361035 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361041 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361046 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361051 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361057 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361061 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361065 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361071 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361077 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361081 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361086 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361089 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361093 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361098 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361102 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361106 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361112 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361115 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361119 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361124 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361127 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361132 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361137 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361141 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361145 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361151 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361154 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361158 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361168 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361172 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361175 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361180 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361184 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361188 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361194 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361198 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361201 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361207 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361211 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361214 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361220 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361224 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361228 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361233 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361237 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361241 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361246 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361250 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361253 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361258 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361262 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361266 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361271 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361275 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361278 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361284 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361287 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361292 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361296 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361300 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361305 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361310 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361314 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361318 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361323 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361327 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361331 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361344 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361347 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361352 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361356 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361360 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361364 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361370 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361374 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361379 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361384 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361387 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361391 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361396 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361400 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361404 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361408 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361412 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361416 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361422 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361425 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361429 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361435 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361438 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361442 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361446 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361450 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361453 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361459 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361462 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361466 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361471 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361474 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361478 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361483 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361487 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361490 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361495 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361498 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361502 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361507 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361512 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361515 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361521 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361524 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361528 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361534 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361538 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361542 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361547 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361550 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361554 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361559 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361563 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361566 [TestSessionRegistry_Property] [rapid] draw op: 0
+# 2026/11/21 13:03:23.361572 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361575 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361579 [TestSessionRegistry_Property] [rapid] draw op: 4
+# 2026/11/21 13:03:23.361600 [TestSessionRegistry_Property] [rapid] draw gw: 0
+# 2026/11/21 13:03:23.361604 [TestSessionRegistry_Property] [rapid] draw cp: "CP_1"
+# 2026/11/21 13:03:23.361608 [TestSessionRegistry_Property] [rapid] draw op: 7
+# 2026/11/21 13:03:23.361611 [TestSessionRegistry_Property] [rapid] draw really: true
+# 2026/11/21 13:03:23.361762 [TestSessionRegistry_Property] 
+# 	Error Trace:	/work/wt/gocpp-gw1/csms/sessions_property_test.go:193
+# 	            				/home/sandbox/go/pkg/mod/pgregory.net/rapid@v1.3.0/engine.go:458
+# 	            				/home/sandbox/go/pkg/mod/pgregory.net/rapid@v1.3.0/engine.go:467
+# 	            				/home/sandbox/go/pkg/mod/pgregory.net/rapid@v1.3.0/engine.go:292
+# 	            				/home/sandbox/go/pkg/mod/pgregory.net/rapid@v1.3.0/engine.go:207
+# 	            				/work/wt/gocpp-gw1/csms/sessions_property_test.go:48
+# 	Error:      	Should be false
+# 	Test:       	TestSessionRegistry_Property
+# 	Messages:   	routes to crashed gateway: {CPID:CP_1 GatewayID:G0 Boot: Epoch:1 Version: ConnectedAt:0001-01-01 00:00:00 +0000 UTC Meta:map[]}
+# 
+v0.4.8#13802684707242915739
+0x0
+0xe3e05a098777c
+0x2d
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x6b74f03291620
+0x4
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1f2b5a0e61c3a6
+0x0
+0x1

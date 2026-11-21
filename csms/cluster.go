@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/shiv3/gocpp/core/dispatcher"
@@ -23,54 +24,65 @@ const globalOpTimeout = 5 * time.Second
 var ErrRemoteConn = errors.New("csms: operation not supported on a connection held by another instance")
 
 // clustered reports whether the server takes part in multi-instance routing: it
-// does once an instance id is configured with WithInstanceID.
-func (s *Server) clustered() bool { return s.cfg.instanceID != "" }
+// does once an instance id or a session registry is configured.
+func (s *Server) clustered() bool { return s.sessions != nil }
 
 func (s *Server) globalCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(s.ctx), globalOpTimeout)
 }
 
-// publishGlobal records this instance as the owner of cpID. The last instance to
-// register wins.
-func (s *Server) publishGlobal(cpID string) {
-	if !s.clustered() {
+// initSessions sets up the session manager for a clustered configuration.
+func (s *Server) initSessions() {
+	cfg := s.cfg
+	if cfg.sessionReg == nil && cfg.instanceID == "" {
 		return
 	}
-	ctx, cancel := s.globalCtx()
-	defer cancel()
-	if err := s.cfg.connReg.PutGlobal(ctx, cpID, s.cfg.instanceID); err != nil {
-		s.cfg.dispatcher.Logger.Error("csms: register global route failed",
-			"cp_id", cpID, "instance", s.cfg.instanceID, "error", err)
+	scfg := cfg.sessionCfg
+	if scfg.GatewayID == "" {
+		scfg.GatewayID = cfg.instanceID
 	}
-}
-
-// retractGlobal removes the global route of cpID, but only while it still names
-// this instance: a charge point that reconnected to another instance has already
-// replaced the route, and this instance's late disconnect must not erase it.
-func (s *Server) retractGlobal(cpID string) {
-	if !s.clustered() {
-		return
-	}
-	ctx, cancel := s.globalCtx()
-	defer cancel()
-	var err error
-	if d, ok := s.cfg.connReg.(storage.OwnedGlobalDeleter); ok {
-		_, err = d.DeleteGlobalIf(ctx, cpID, s.cfg.instanceID)
-	} else {
-		// Best effort: not atomic, so a registration landing between the lookup
-		// and the delete can still be lost. Registries used across instances
-		// should implement storage.OwnedGlobalDeleter.
-		var owner string
-		var found bool
-		owner, found, err = s.cfg.connReg.LookupGlobal(ctx, cpID)
-		if err == nil && found && owner == s.cfg.instanceID {
-			err = s.cfg.connReg.DeleteGlobal(ctx, cpID)
+	reg, loops := cfg.sessionReg, true
+	if reg == nil {
+		if sr, ok := cfg.connReg.(storage.SessionRegistry); ok {
+			reg = sr
+		} else {
+			reg, loops = legacyRegistry{reg: cfg.connReg, instanceID: cfg.instanceID}, false
 		}
 	}
-	if err != nil {
-		s.cfg.dispatcher.Logger.Error("csms: remove global route failed",
-			"cp_id", cpID, "instance", s.cfg.instanceID, "error", err)
+	s.sessions = newSessionManager(reg, scfg, cfg.dispatcher.Logger, loops, s.holders)
+}
+
+// holders snapshots the local connections for the session manager.
+func (s *Server) holders() []sessionHolder {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	hs := make([]sessionHolder, 0, len(s.conns))
+	for _, c := range s.conns {
+		hs = append(hs, c)
 	}
+	return hs
+}
+
+// claimSession records an upgrade that is about to be accepted. The zero Session
+// is returned when the server is not clustered.
+func (s *Server) claimSession(r *http.Request, cpID string) (storage.Session, bool) {
+	if s.sessions == nil {
+		return storage.Session{}, false
+	}
+	meta := map[string]string{"remote_addr": r.RemoteAddr}
+	return s.sessions.claim(r.Context(), storage.Session{
+		CPID: cpID, ConnectedAt: time.Now(), Meta: meta,
+	}), true
+}
+
+// releaseSession removes the session's record while it is still the current one.
+func (s *Server) releaseSession(sess storage.Session) {
+	if s.sessions == nil {
+		return
+	}
+	ctx, cancel := s.globalCtx()
+	defer cancel()
+	s.sessions.release(ctx, sess)
 }
 
 // serveRemote runs the router's ServeRemote for the lifetime of the server,
@@ -194,7 +206,7 @@ func (s *Server) callRemote(ctx context.Context, cpID, action string, payload []
 // Lookup returns a handle for charge point id that Call, CallRaw and CallAsync
 // accept. A charge point connected to this instance yields its live Conn, exactly
 // like Get. Otherwise, in a clustered server (WithInstanceID), the global
-// registry is consulted and, when another instance holds the charge point, a
+// session registry is consulted and, when another instance holds the charge point, a
 // handle that forwards calls through the message router is returned. The handle
 // is a pointer to the charge point's identity, not to a socket: whether the
 // owner still holds the connection is only known when a call is made, which then
@@ -210,7 +222,7 @@ func (s *Server) Lookup(ctx context.Context, id string) (*Conn, error) {
 	if !s.clustered() {
 		return nil, ocppj.ErrNotConnected
 	}
-	owner, ok, err := s.cfg.connReg.LookupGlobal(ctx, id)
+	sess, ok, err := s.sessions.reg.Lookup(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("csms: look up %q: %w", id, err)
 	}
@@ -219,8 +231,8 @@ func (s *Server) Lookup(ctx context.Context, id string) (*Conn, error) {
 	}
 	// Our own entry with no local connection is stale (the disconnect is in
 	// flight); there is nothing to forward to.
-	if owner == s.cfg.instanceID {
+	if sess.GatewayID == s.sessions.cfg.GatewayID {
 		return nil, ocppj.ErrNotConnected
 	}
-	return &Conn{remoteID: id, srv: s}, nil
+	return &Conn{remoteID: id, srv: s, session: &sess}, nil
 }

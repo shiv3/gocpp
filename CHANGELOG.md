@@ -20,11 +20,34 @@ All notable changes to this project are documented here. The format is based on
 - `transport.StatusServiceRestart` (WebSocket close code 1012).
 - `csms.On` / `csms.OnSend` also record the handler in a table typed on
   `*csms.Conn` (internal), used by the upcoming gateway mode.
+- `storage.SessionRegistry` (Claim / CAS Release / Reassert with registry-assigned
+  epochs, per-gateway lease, `LookupMany`), `memory.NewSessionRegistry`, and
+  `csms.WithSessionRegistry` with `csms.SessionConfig`. The server claims a
+  session before accepting the WebSocket upgrade, releases it by epoch when the
+  connection ends, keeps a gateway lease alive and runs a reconcile loop that
+  closes sockets superseded by a newer connection on another instance and
+  re-asserts lost records. `csms.Conn.Session()` returns the record.
+  `dispatcher.Conn.SetAttachment/Attachment`.
+- `addons/registry-redis`: `storage.SessionRegistry` on Redis with Lua scripts.
 - `observability.SchemaSoftViolationMetrics` (optional extension of `Metrics`).
   The Prometheus (`gocpp_schema_soft_violations_total{version,action,kind,keyword}`)
   and OpenTelemetry (`gocpp.schema_soft_violations`) adapters implement it, and the
   dispatcher's metrics bridge forwards it, so lenient-mode soft violations are now
   exported.
+
+### Changed
+
+- With `WithInstanceID`, the connection registry's global routes are now recorded
+  as epoch-ordered sessions when the registry implements `storage.SessionRegistry`
+  (the in-memory registries and `InProcessHub` do): a delayed write from an old
+  connection can no longer overwrite a newer one, and a superseded socket is
+  closed by the reconcile loop. Registries that only implement `ConnectionRegistry`
+  keep working through an adapter with their previous guarantees.
+- In a clustered server the route is claimed before the WebSocket upgrade is
+  accepted (it was published right after), so a slow registry now delays the
+  handshake; after `SessionConfig.ClaimTimeout` (2s) the connection is accepted
+  unclaimed and claimed in the background.
+- `Server.Lookup` reads `SessionRegistry.Lookup`, which honours gateway leases.
 
 ### Fixed
 
