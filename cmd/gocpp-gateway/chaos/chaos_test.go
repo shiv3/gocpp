@@ -9,6 +9,7 @@ package chaos
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -591,10 +592,26 @@ func TestChaos_GatewayKillSessionsReestablishedAndSentReported(t *testing.T) {
 
 	callErr := make(chan error, 1)
 	go func() {
-		_, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Soft"})
-		callErr <- err
+		// The registry names the session once it is claimed, which is before the
+		// gateway lists the connection: a call in that window is NotSent (nothing
+		// reached the charger) and is simply issued again.
+		for {
+			_, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Soft"})
+			if errors.Is(err, ocppj.ErrNotConnected) && ctx.Err() == nil {
+				time.Sleep(20 * time.Millisecond)
+				continue
+			}
+			callErr <- err
+			return
+		}
 	}()
-	<-entered1 // the frame is on the charger
+	select {
+	case <-entered1: // the frame is on the charger
+	case err := <-callErr:
+		t.Fatalf("the call ended before it reached the charger: %v", err)
+	case <-time.After(20 * time.Second):
+		t.Fatal("the call never reached the charger")
+	}
 	g1.kill9()
 	err := <-callErr
 	require.Error(t, err)
