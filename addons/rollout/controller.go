@@ -2,11 +2,15 @@ package rollout
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/gateway/routepolicy"
 )
 
@@ -35,6 +39,18 @@ type Controller struct {
 	DryRun bool
 	// Now replaces time.Now (tests).
 	Now func() time.Time
+	// Persist, when set, keeps the controller's state (stage, the revision to
+	// roll back to, the revision it waits for, timers) in a storage.StateStore
+	// after every change, and a new Controller with the same plan resumes from it
+	// instead of starting at stage 0. Without it the state is in memory only: a
+	// restart begins again and would roll back to the wrong revision. Not used in
+	// a dry run.
+	Persist storage.StateStore
+	// StateKey names the stored document (default "rollout/" + Plan.Rule).
+	StateKey string
+	// Fresh ignores (and overwrites) any stored state: start the plan from stage 0
+	// even though an earlier run of the same plan finished or is in progress.
+	Fresh bool
 
 	state      State
 	stage      int
@@ -43,6 +59,90 @@ type Controller struct {
 	stageStart time.Time
 	pendingRev uint64 // written, waiting for convergence
 	fails      int
+
+	convergeStart time.Time // when pendingRev was written
+	restored      bool      // the stored state was read (or there is nothing to read)
+	saved         persisted // what the store holds
+}
+
+// persisted is the stored form of the controller state.
+type persisted struct {
+	Version       int       `json:"v"`
+	PlanHash      string    `json:"plan"`
+	State         State     `json:"state"`
+	Stage         int       `json:"stage"`
+	StartRev      uint64    `json:"start_rev"`
+	ExpectRev     uint64    `json:"expect_rev"`
+	PendingRev    uint64    `json:"pending_rev,omitempty"`
+	Fails         int       `json:"fails,omitempty"`
+	StageStart    time.Time `json:"stage_start"`
+	ConvergeStart time.Time `json:"converge_start"`
+}
+
+func (c *Controller) snapshot() persisted {
+	return persisted{Version: 1, PlanHash: c.planHash(), State: c.state, Stage: c.stage, StartRev: c.startRev,
+		ExpectRev: c.expectRev, PendingRev: c.pendingRev, Fails: c.fails, StageStart: c.stageStart, ConvergeStart: c.convergeStart}
+}
+
+func (c *Controller) planHash() string {
+	b, _ := json.Marshal(c.Plan)
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:8])
+}
+
+func (c *Controller) stateKey() string {
+	if c.StateKey != "" {
+		return c.StateKey
+	}
+	return "rollout/" + c.Plan.Rule
+}
+
+func (c *Controller) persistent() bool { return c.Persist != nil && !c.DryRun }
+
+// restore loads the stored state once, before the first step. A stored state of
+// another plan (different hash) is ignored and overwritten. It returns a decision
+// when the store cannot be read: starting from stage 0 then would be exactly the
+// restart bug this prevents, so the step is retried instead.
+func (c *Controller) restore(ctx context.Context) *Decision {
+	if c.restored || !c.persistent() || c.state != StateInit {
+		return nil
+	}
+	data, err := c.Persist.State(ctx, c.stateKey())
+	if err != nil {
+		d := c.emit(Decision{Action: ActionError, Reason: "state store: " + err.Error()})
+		return &d
+	}
+	c.restored = true
+	if c.Fresh || len(data) == 0 {
+		return nil
+	}
+	var p persisted
+	if json.Unmarshal(data, &p) != nil || p.Version != 1 || p.PlanHash != c.planHash() || p.State == StateInit {
+		return nil
+	}
+	c.state, c.stage, c.startRev, c.expectRev, c.pendingRev = p.State, p.Stage, p.StartRev, p.ExpectRev, p.PendingRev
+	c.fails, c.stageStart, c.convergeStart = p.Fails, p.StageStart, p.ConvergeStart
+	c.saved = p
+	c.emit(Decision{Action: ActionHold, Revision: c.expectRev, Reason: fmt.Sprintf("resumed from the stored state: %s, stage %d", c.state, c.stage)})
+	return nil
+}
+
+// save writes the state when it changed. A failure is reported and retried by
+// the next step; the in-memory state stays authoritative meanwhile.
+func (c *Controller) save(ctx context.Context) {
+	if !c.persistent() {
+		return
+	}
+	snap := c.snapshot()
+	if snap == c.saved {
+		return
+	}
+	b, _ := json.Marshal(snap)
+	if err := c.Persist.PutState(ctx, c.stateKey(), b); err != nil {
+		c.emit(Decision{Action: ActionError, Reason: "state store (will retry): " + err.Error()})
+		return
+	}
+	c.saved = snap
 }
 
 // New returns a Controller.
@@ -103,6 +203,15 @@ func (c *Controller) Run(ctx context.Context) error {
 // read, gateways that lag) are reported as a hold or an error decision and
 // retried on the next step; only an invalid plan returns an error.
 func (c *Controller) Step(ctx context.Context) (Decision, error) {
+	if d := c.restore(ctx); d != nil {
+		return *d, nil
+	}
+	d, err := c.step(ctx)
+	c.save(ctx)
+	return d, err
+}
+
+func (c *Controller) step(ctx context.Context) (Decision, error) {
 	if c.Finished() {
 		return c.emit(Decision{Action: ActionHold, Reason: "rollout finished: " + string(c.state)}), nil
 	}
@@ -152,7 +261,7 @@ func (c *Controller) applyStage(ctx context.Context) (Decision, error) {
 		}
 		return c.emit(Decision{Action: ActionError, Reason: "apply: " + err.Error()}), nil
 	}
-	c.expectRev, c.pendingRev, c.state = rev, rev, StateConverging
+	c.expectRev, c.pendingRev, c.state, c.convergeStart = rev, rev, StateConverging, c.now()
 	return c.emit(Decision{Action: ActionApply, Revision: rev, Reason: "applied stage " + name + ", waiting for the gateways"}), nil
 }
 
@@ -169,6 +278,12 @@ func (c *Controller) converge(ctx context.Context) (Decision, error) {
 		c.state = StateYielded
 		return c.emit(Decision{Action: ActionYield, Revision: st.Revision, Reason: fmt.Sprintf("revision %d was written by someone else", st.Revision)}), nil
 	}
+	// While the gateways catch up, the ones that already run the stage serve
+	// canary traffic: the guard and the gates keep watching, so a bad stage is
+	// rolled back without waiting for the last gateway.
+	if r, ok := c.suspended(st); ok {
+		return c.rollback(ctx, r, nil)
+	}
 	var lag []string
 	for _, g := range st.Gateways {
 		if g.PolicyRev < c.pendingRev {
@@ -176,6 +291,16 @@ func (c *Controller) converge(ctx context.Context) (Decision, error) {
 		}
 	}
 	if len(lag) > 0 {
+		waited := c.now().Sub(c.convergeStart)
+		if results, v, _ := c.gateVerdict(ctx, waited); v == Fail {
+			c.fails++
+			if c.fails >= max(c.Plan.FailEvaluations, 1) {
+				return c.rollback(ctx, "gate failed while the gateways converged: "+firstFail(results), results)
+			}
+		}
+		if waited >= c.Plan.convergeTimeout() {
+			return c.rollback(ctx, fmt.Sprintf("gateways did not converge within %s: %s", c.Plan.convergeTimeout(), strings.Join(lag, ", ")), nil)
+		}
 		return c.emit(Decision{Action: ActionHold, Revision: c.pendingRev, Reason: "gateways not yet on the revision: " + strings.Join(lag, ", ")}), nil
 	}
 	c.state, c.stageStart, c.pendingRev = StateSoaking, c.now(), 0
@@ -195,30 +320,16 @@ func (c *Controller) soak(ctx context.Context) (Decision, error) {
 			c.state = StateYielded
 			return c.emit(Decision{Action: ActionYield, Revision: st.Revision, Reason: fmt.Sprintf("revision %d was written by someone else", st.Revision)}), nil
 		}
-		for _, g := range st.Gateways {
-			for _, r := range g.Suspended {
-				if r == c.Plan.Rule {
-					return c.rollback(ctx, "the gateway guard suspended rule "+r+" on "+g.ID, nil)
-				}
-			}
+		if r, ok := c.suspended(st); ok {
+			return c.rollback(ctx, r, nil)
 		}
 	}
 	elapsed := c.now().Sub(c.stageStart)
-	window := min(c.Plan.window(), elapsed)
-	if window < c.Plan.interval() {
-		return c.emit(Decision{Action: ActionHold, Revision: c.expectRev, Reason: "warming up: not a full evaluation interval of data yet"}), nil
+	results, v, early := c.gateVerdict(ctx, elapsed)
+	if early != nil {
+		return c.emit(*early), nil
 	}
-	canary, err := c.Source.Stats(ctx, c.Plan.canary(), window)
-	if err != nil {
-		return c.emit(Decision{Action: ActionError, Reason: "canary metrics: " + err.Error()}), nil
-	}
-	stable, err := c.Source.Stats(ctx, c.Plan.stable(), window)
-	if err != nil {
-		return c.emit(Decision{Action: ActionError, Reason: "stable metrics: " + err.Error()}), nil
-	}
-	results := evaluate(c.Plan.Gates, canary, stable)
-	results = append(results, c.checks(ctx, window)...)
-	switch worst(results) {
+	switch v {
 	case Fail:
 		c.fails++
 		if c.fails >= max(c.Plan.FailEvaluations, 1) {
@@ -247,6 +358,42 @@ func (c *Controller) soak(ctx context.Context) (Decision, error) {
 		return d, err
 	}
 	return d, err
+}
+
+// suspended reports a gateway whose guard suspended the managed rule.
+func (c *Controller) suspended(st routepolicy.Status) (string, bool) {
+	for _, g := range st.Gateways {
+		for _, r := range g.Suspended {
+			if r == c.Plan.Rule {
+				return "the gateway guard suspended rule " + r + " on " + g.ID, true
+			}
+		}
+	}
+	return "", false
+}
+
+// gateVerdict evaluates the gates over the stage's data so far. early is set
+// (and no decision about the gates can be made) while there is not a full
+// interval of data yet or a metric cannot be read; the caller emits it.
+func (c *Controller) gateVerdict(ctx context.Context, elapsed time.Duration) (results []GateResult, v Verdict, early *Decision) {
+	window := min(c.Plan.window(), elapsed)
+	if window < c.Plan.interval() {
+		d := Decision{Action: ActionHold, Revision: c.expectRev, Reason: "warming up: not a full evaluation interval of data yet"}
+		return nil, Pass, &d
+	}
+	canary, err := c.Source.Stats(ctx, c.Plan.canary(), window)
+	if err != nil {
+		d := Decision{Action: ActionError, Reason: "canary metrics: " + err.Error()}
+		return nil, Pass, &d
+	}
+	stable, err := c.Source.Stats(ctx, c.Plan.stable(), window)
+	if err != nil {
+		d := Decision{Action: ActionError, Reason: "stable metrics: " + err.Error()}
+		return nil, Pass, &d
+	}
+	results = evaluate(c.Plan.Gates, canary, stable)
+	results = append(results, c.checks(ctx, window)...)
+	return results, worst(results), nil
 }
 
 func firstFail(rs []GateResult) string {

@@ -420,3 +420,177 @@ func (f *flaky) Stats(ctx context.Context, pool string, w time.Duration) (rollou
 	}
 	return f.series.Stats(ctx, pool, w)
 }
+
+// restart replaces the controller with a new process' one: same plan, store,
+// registry and state store, nothing in memory.
+func (r *rig) restart(st storage.StateStore, src rollout.Source) {
+	r.ctl = rollout.New(r.ctl.Plan, routepolicy.Controller{Store: r.store, Registry: r.reg}, src, rollout.NotifyFunc(func(d rollout.Decision) { r.events = append(r.events, d) }))
+	r.ctl.Now = r.clk.now
+	r.ctl.Persist = st
+}
+
+func okSource() *series {
+	return &series{canary: func() rollout.PoolStats { return healthy(2000) }, stable: func() rollout.PoolStats { return healthy(50000) }}
+}
+
+func TestConvergeTimeoutRollsBack(t *testing.T) {
+	r := newRig(t, okSource(), nil)
+	prior := routepolicy.Policy{Default: "default", Salt: "old"}
+	_, err := routepolicy.Controller{Store: r.store}.Put(context.Background(), prior, routepolicy.PutOptions{})
+	require.NoError(t, err)
+	r.step() // applies stage one; no gateway ever follows
+	r.clk.advance(20 * time.Second)
+	d := r.step()
+	require.Equal(t, rollout.ActionHold, d.Action)
+	require.Contains(t, d.Reason, "not yet on the revision")
+	r.clk.advance(11 * time.Second) // past the 30 s default
+	d = r.step()
+	require.Equal(t, rollout.ActionRollback, d.Action, d.Reason)
+	require.Contains(t, d.Reason, "did not converge")
+	require.Equal(t, rollout.StateRolledBack, r.ctl.State())
+	require.Equal(t, "old", r.stored().Salt)
+}
+
+func TestGuardAndGatesAreEvaluatedWhileConverging(t *testing.T) {
+	// guard
+	r := newRig(t, okSource(), nil)
+	r.step()
+	r.gws[0].set("policy_rev", "1") // gw-1 still lags
+	r.gws[0].set("suspended", "step")
+	d := r.step()
+	require.Equal(t, rollout.ActionRollback, d.Action, d.Reason)
+	require.Contains(t, d.Reason, "guard suspended")
+
+	// gates: the canary is already failing on the gateway that runs the stage
+	bad := &series{canary: func() rollout.PoolStats { return rollout.PoolStats{Requests: 1000, Failed: 500} }, stable: func() rollout.PoolStats { return healthy(50000) }}
+	r = newRig(t, bad, func(p *rollout.Plan) { p.ConvergeTimeout = routepolicy.Duration(time.Hour) })
+	r.step()
+	r.gws[0].set("policy_rev", "1")
+	r.clk.advance(time.Minute)
+	d = r.step()
+	require.Equal(t, rollout.ActionRollback, d.Action, d.Reason)
+	require.Contains(t, d.Reason, "while the gateways converged")
+}
+
+func TestRestartMidStageResumes(t *testing.T) {
+	ctx := context.Background()
+	st := memory.NewStateStore()
+	src := okSource()
+	r := newRig(t, src, nil)
+	r.ctl.Persist = st
+	r.step()
+	r.follow()
+	r.step() // converged, soaking stage "one"
+	r.clk.advance(5 * time.Minute)
+	r.step()
+	require.EqualValues(t, 1, r.stored().Revision)
+
+	r.restart(st, src) // the controller process restarts mid-stage
+	d := r.step()
+	require.Equal(t, rollout.ActionHold, d.Action, d.Reason)
+	require.Equal(t, rollout.StateSoaking, r.ctl.State())
+	require.Equal(t, 0, r.ctl.Stage())
+	require.EqualValues(t, 1, r.stored().Revision, "stage one is not applied a second time")
+	require.Contains(t, r.events[len(r.events)-2].Reason, "resumed")
+
+	// the soak timer carries over: 5 more minutes finish the 10 m soak, not 10
+	r.clk.advance(6 * time.Minute)
+	d = r.step()
+	require.Equal(t, rollout.ActionApply, d.Action, d.Reason)
+	require.Equal(t, 10.0, percentOf(r.stored()))
+	require.EqualValues(t, 2, r.stored().Revision)
+
+	// restart while waiting for the gateways to converge on stage "ten"
+	r.restart(st, src)
+	d = r.step()
+	require.Equal(t, rollout.StateConverging, r.ctl.State())
+	require.Equal(t, 1, r.ctl.Stage())
+	require.Contains(t, d.Reason, "not yet on the revision")
+	r.follow()
+	d = r.step()
+	require.Contains(t, d.Reason, "soaking")
+
+	b, err := st.State(ctx, "rollout/step")
+	require.NoError(t, err)
+	require.NotEmpty(t, b)
+}
+
+func TestRollbackAfterRestartGoesToTheRevisionBeforeTheRollout(t *testing.T) {
+	st := memory.NewStateStore()
+	bad := false
+	src := &series{canary: func() rollout.PoolStats {
+		if bad {
+			return rollout.PoolStats{Requests: 1000, Failed: 300, ByOutcome: map[string]float64{"callerror_InternalError": 300}, P99: 0.05, HasLatency: true}
+		}
+		return healthy(1000)
+	}, stable: func() rollout.PoolStats { return healthy(50000) }}
+	r := newRig(t, src, nil)
+	r.ctl.Persist = st
+	prior := routepolicy.Policy{Default: "default", Salt: "old"}
+	_, err := routepolicy.Controller{Store: r.store}.Put(context.Background(), prior, routepolicy.PutOptions{})
+	require.NoError(t, err)
+
+	r.run(14, time.Minute) // into stage "ten"
+	require.Equal(t, 10.0, percentOf(r.stored()))
+	require.Greater(t, r.stored().Revision, uint64(1))
+
+	r.restart(st, src)
+	bad = true
+	r.clk.advance(time.Minute)
+	d := r.step()
+	require.Equal(t, rollout.ActionRollback, d.Action, d.Reason)
+	p := r.stored()
+	require.Equal(t, "old", p.Salt, "back to the revision stored before the rollout, not to stage 0's predecessor")
+	require.Empty(t, p.Rules)
+	require.True(t, p.IgnoreHold)
+
+	// and the rolled-back rollout stays finished across another restart
+	r.restart(st, src)
+	d = r.step()
+	require.Contains(t, d.Reason, "finished")
+	require.Equal(t, rollout.StateRolledBack, r.ctl.State())
+	before := r.stored().Revision
+
+	// unless the operator asks for a fresh run
+	r.restart(st, src)
+	r.ctl.Fresh = true
+	d = r.step()
+	require.Equal(t, rollout.ActionApply, d.Action, d.Reason)
+	require.Greater(t, r.stored().Revision, before)
+}
+
+func TestStoredStateOfAnotherPlanIsIgnored(t *testing.T) {
+	st := memory.NewStateStore()
+	src := okSource()
+	r := newRig(t, src, nil)
+	r.ctl.Persist = st
+	r.step()
+	r.follow()
+	r.step()
+
+	r.restart(st, src)
+	r.ctl.Plan.Stages = append([]rollout.Stage(nil), r.ctl.Plan.Stages...)
+	r.ctl.Plan.Stages[0].Percent = 2 // a different plan
+	d := r.step()
+	require.Equal(t, rollout.ActionApply, d.Action, "a new plan starts from stage 0: %s", d.Reason)
+	require.EqualValues(t, 2, r.stored().Revision)
+	require.NotContains(t, d.Reason, "resumed")
+}
+
+func TestStateStoreOutageDoesNotRestartTheRollout(t *testing.T) {
+	r := newRig(t, okSource(), nil)
+	r.ctl.Persist = brokenState{}
+	d := r.step()
+	require.Equal(t, rollout.ActionError, d.Action)
+	require.Contains(t, d.Reason, "state store")
+	rev, _, _ := r.store.Policy(context.Background())
+	require.Zero(t, rev, "nothing was applied")
+}
+
+type brokenState struct{}
+
+func (brokenState) PutState(context.Context, string, []byte) error { return context.DeadlineExceeded }
+func (brokenState) State(context.Context, string) ([]byte, error) {
+	return nil, context.DeadlineExceeded
+}
+func (brokenState) DeleteState(context.Context, string) error { return nil }

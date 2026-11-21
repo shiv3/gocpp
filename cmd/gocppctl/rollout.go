@@ -28,6 +28,7 @@ func rolloutCmd(ctx context.Context, args []string, out io.Writer) error {
 		c.flags(fs)
 	}
 	var (
+		fresh      = fs.Bool("fresh", false, "ignore stored controller state and start the plan from stage 0 (default: resume a run of the same plan after a restart)")
 		dry        = fs.Bool("dry-run", false, "evaluate and report, write nothing (stages advance virtually)")
 		promURL    = fs.String("prometheus", "", "Prometheus base URL for the gate queries (supports application checks)")
 		promToken  = fs.String("prometheus-token", os.Getenv("GOCPPCTL_PROMETHEUS_TOKEN"), "bearer token for Prometheus")
@@ -99,6 +100,8 @@ func rolloutCmd(ctx context.Context, args []string, out io.Writer) error {
 	}
 	ctl := rollout.New(plan, routepolicy.Controller{Store: reg, Registry: reg}, src, rollout.Multi(notifiers...))
 	ctl.DryRun = *dry
+	ctl.Persist = reg // the controller state survives a restart of gocppctl
+	ctl.Fresh = *fresh
 	if *dry {
 		fmt.Fprintln(out, "dry run: nothing will be written")
 	}
