@@ -102,12 +102,12 @@ Validation is the largest per-request cost after the transport. In `BenchmarkDis
 | schema mode | Heartbeat allocs/op, B/op | StatusNotification allocs/op, B/op |
 |---|---|---|
 | off | 14, 704 | 14, 696 |
-| lenient (default) | 27, 1,720 | 53, 2,682 |
+| lenient | 27, 1,720 | 53, 2,682 |
 | strict | 50, 3,162 | 82, 4,268 |
 
 Lenient is now cheaper than strict: an empty-object fast path (Heartbeat requests, most 1.6 confirmations) and a reflection-free decoder avoid most allocations, while strict still runs the full validator. Under load at 30k msg/s (Heartbeat-heavy mix) lenient allocates 3.5 KB per request and uses 1.16 cores; schema off allocates 1.4 KB and uses 0.81 cores (-30%), and its Heartbeat p99 is 0.8 ms against 1.7 ms. At 60k msg/s: 3.5 vs 1.4 KB, 2.11 vs 1.52 cores.
 
-- Run lenient (the default) in production unless profiling shows validation dominating; it protects handlers from malformed charger payloads and repairs common firmware mistakes.
+- Run lenient in production (it is opt-in: `WithLenientSchema()`; the library default is validation off) unless profiling shows validation dominating; it protects handlers from malformed charger payloads and repairs common firmware mistakes.
 - `WithOutboundValidation(false)` skips validation of payloads your own handlers and calls produce (inbound validation is unchanged). That removes the response-side pass, about half of the lenient cost per request, and is the right setting once your handler output is covered by tests.
 - `WithSchemaRegistry` omitted (schema off) is for trusted fleets or a validating proxy in front.
 
@@ -193,9 +193,9 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 
 - **Baseline goroutines** (`~N`) and **socket/file descriptors** scale with the
   number of connections, not with `WithGlobalConcurrencyLimit`. To bound those,
-  limit the number of accepted connections at your load balancer or in front of
-  `Server.Handler()` (e.g. reject/503 above a threshold). gocpp does not cap the
-  connection count itself.
+  limit the number of accepted connections with `csms.WithMaxConnections(n)`
+  (default 0 = unlimited; over the cap an upgrade gets HTTP 503 + `Retry-After`
+  before the handshake) and/or at your load balancer.
 - **Outbound** CSMS→CP calls are governed by `CallTimeout` (default 30s) and
   `WriteTimeout` (default 10s), not by the handler semaphores.
 
@@ -207,14 +207,15 @@ bounded by `min(N · MaxConcurrentHandlers, GlobalConcurrencyLimit)`.
 | `MaxConcurrentHandlers` (`dispatcher.Config`) | 16 | Per-connection cap on concurrent inbound handlers. |
 | `InboundQueueSize` (`dispatcher.Config`, `WithInboundQueueSize`) | 4 | Bounded queue of inbound CALLs waiting for a handler slot; only fills while all slots are busy, then back-pressure reaches the socket. |
 | `OutboundQueueSize` (`dispatcher.Config`, `WithOutboundQueueSize`) | ignored | Kept for compatibility; there is no writer queue any more (senders write under a per-connection FIFO lock). |
-| `WithCallTimeout` | 30s | Deadline for an outbound CSMS→CP call awaiting its result. |
+| `WithCallTimeout` | 30s | Deadline for an outbound CSMS→CP call awaiting its result. It starts once the call owns the connection's call slot, just before the CALL is written; time spent waiting for the slot is bounded by the caller's ctx, not by this timeout. |
 | `WithWriteTimeout` | 10s | Deadline for a single socket write. |
 | `WithConcurrentCalls()` | serialized | Outbound CALLs are limited to one outstanding per connection by default (OCPP-mandated); later calls wait in a bounded per-connection FIFO (`WithAsyncQueueSize`, 64). This option lifts the limit (non-compliant). Measured overhead: see `core/dispatcher/call_bench_test.go`; in-process, serialized and concurrent are within noise (about 7.1 µs and 55 allocs per call on one connection; about 0.65 M calls/s at 1,000 connections and 0.58 M calls/s at 10,000, 56 allocs per call, in both modes). |
 | `WithHandlerTimeout(d)` | 60s | Per-handler deadline (0 = none). |
 | `WithOutboundValidation(bool)` | true | With false, payloads gocpp itself produces (handler replies, outbound Calls and Sends) skip schema validation and lenient repair. Inbound validation is unchanged. At high request rates it removes the response-side validation pass (about half of the lenient schema cost per request); keep it on while developing handlers that build raw payloads. |
-| `WithMaxMessageSize(n)` | 1 MiB | Largest inbound WebSocket message. |
+| `WithMaxMessageSize(n)` | 1 MiB | Largest inbound WebSocket message; a larger one closes the connection with close code 1009 (Message Too Big). |
 | `csms.WithMaxConnections(n)` | unlimited | Connection cap; over it, upgrades get HTTP 503 + Retry-After. |
-| `WithWebSocketPingInterval(d)` | disabled | Transport keepalive (a timer, plus a goroutine only while a pong is awaited); detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |
+| `WithWebSocketPingInterval(d)` | 54s (0 disables) | Transport keepalive on by default (a timer, plus a goroutine only while a pong is awaited); detects dead peers via pong timeout (`WithWebSocketPongWait`, default 60s). |
+| `WithWebSocketReadTimeout(d)` | 60s (0 disables) | Read idle watchdog: the connection is closed if no frame, ping or pong arrives within `d`. |
 | `WithIOBufferSizes(read, write)` | 1024, 1024 | Per-connection socket buffers (net/http would use 4096 each). |
 | `WithHandlerPool(pool)` | off | Resident handler workers with warm stacks; see "Handler worker pool". |
 

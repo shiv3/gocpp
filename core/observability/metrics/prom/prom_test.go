@@ -29,3 +29,12 @@ func TestProm_ConnectionMetrics(t *testing.T) {
 	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_outbound_queue_depth"))
 	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_ping_latency_seconds"))
 }
+
+func TestProm_SchemaSoftViolation(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	sm := prom.New(reg).(observability.SchemaSoftViolationMetrics)
+	sm.SchemaSoftViolation("1.6", "StartTransaction", "request", "format")
+	sm.SchemaSoftViolation("1.6", "StartTransaction", "request", "format")
+	sm.SchemaSoftViolation("1.6", "StartTransaction", "request", "enum")
+	require.Equal(t, 2, testutil.CollectAndCount(reg, "gocpp_schema_soft_violations_total"))
+}

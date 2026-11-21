@@ -112,7 +112,7 @@ Two lower-level alternatives exist if you don't want the wrapper:
 CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithCallTimeout`,
 `WithWriteTimeout`, `WithSchemaRegistry` + `WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`
 (+ `WithLenientTimeLocation`), `WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
-`WithDuplicatePolicy`, `WithTransactionStore`, `WithConfigStore`, `WithMessageRouter`,
+`WithDuplicatePolicy`, `WithTransactionStore` and `WithConfigStore` (application-facing storage slots, see below), `WithMessageRouter`,
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
 `WithSerializedCalls` / `WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`,
 `WithMaxConnections`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
@@ -126,6 +126,21 @@ CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 `WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`,
 `WithOfflineQueue` + `WithRetryInFlightCalls`, `WithOnConnect`, `WithOnDisconnect`,
 `WithOnReconnect`.
+
+Defaults that are easy to get wrong (library defaults, both CSMS and CP unless noted):
+
+| Option | Default |
+|--------|---------|
+| Schema mode (`WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`) | **off** (no validation, even with a registry); lenient is opt-in |
+| `WithWebSocketPingInterval` / `WithWebSocketPongWait` / `WithWebSocketReadTimeout` | 54s / 60s / 60s (0 disables) |
+| `WithCallTimeout` | 30s |
+| `WithMaxMessageSize` | 1 MiB (larger closes with 1009) |
+| `csms.WithMaxConnections` | 0 = unlimited |
+
+`csms.WithTransactionStore` and `csms.WithConfigStore` are **application-facing extension
+points**: the server keeps the stores (in-memory by default) so your handlers can share
+them, but csms itself never reads or writes them. Persisting transactions or configuration
+is up to your handlers.
 
 > Note: `csms.WithHeartbeatInterval` was removed — in OCPP the Charge Point emits
 > Heartbeat, never the CSMS. Use `cp.WithHeartbeatInterval` on the client.
@@ -203,16 +218,19 @@ v16client.NewCSMS(conn).GetConfigurationAsync(ctx, req, func(resp v16msg.GetConf
 
 ### Keepalive, Heartbeat, serialization, offline queue
 
-- `WithWebSocketPingInterval(d)` (+ `WithWebSocketPongWait(d)`, default 60s) enables
-  transport-level ping/pong on either side; a missed pong tears the connection down so dead
-  peers are detected. Disabled when interval is 0.
+- Transport keepalive is **on by default** on both sides: ping every 54s
+  (`WithWebSocketPingInterval(d)`), pong wait 60s (`WithWebSocketPongWait(d)`), and a read
+  idle timeout of 60s (`WithWebSocketReadTimeout(d)`: close if no frame, ping or pong
+  arrives). A missed pong tears the connection down so dead peers are detected. A value of
+  0 disables the corresponding check.
 - `cp.WithHeartbeatInterval(d)` makes the charge point auto-send OCPP `Heartbeat` every `d`.
 - Outbound CALLs are serialized per connection by default: OCPP 1.6J §4.1.1 and 2.0.1
   Part 4 forbid sending a new CALL while one is outstanding. Calls wait in one bounded
   FIFO per connection (sync `Call` and `CallAsync` share it; replies to inbound requests
-  and 2.1 SEND bypass it; connections never block each other). `CallTimeout` starts when
-  the CALL is written, so an unresponsive charger frees the slot after one timeout; the
-  wait in the queue is bounded by the caller's ctx. `WithSerializedCalls()` is kept as an
+  and 2.1 SEND bypass it; connections never block each other). `CallTimeout` starts once the
+  call owns the slot, immediately before the CALL is written (not when `Call` is invoked),
+  so an unresponsive charger frees the slot after one timeout; the wait for the slot is
+  bounded by the caller's ctx. `WithSerializedCalls()` is kept as an
   explicit no-op; `WithConcurrentCalls()` opts out (non-compliant, many chargers drop
   or mis-handle concurrent requests).
 - `cp.WithOfflineQueue(capacity)` queues CP-originated calls while disconnected and flushes
@@ -236,7 +254,8 @@ Two layers (spec §4.4):
 1. **JSON Schema** (source of truth) — embedded official schemas, validated on the wire
    when a registry is set. Mode is three-state: `WithStrictSchema(true)` rejects invalid
    messages, `WithTolerantSchema()` logs a warning and passes (vendor quirks), and
-   `WithStrictSchema(false)` (default) turns validation off. `WithLenientSchema()` is
+   `WithStrictSchema(false)` turns validation off. **Off is the library default**: with no
+   schema option, nothing is validated even when a registry is set (lenient is opt-in). `WithLenientSchema()` is
    described below.
    **Lenient mode** (`csms.WithLenientSchema()` / `cp.WithLenientSchema()`) rejects
    structurally broken messages (missing required fields, wrong shapes) but repairs

@@ -6,6 +6,38 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `observability.SchemaSoftViolationMetrics` (optional extension of `Metrics`).
+  The Prometheus (`gocpp_schema_soft_violations_total{version,action,kind,keyword}`)
+  and OpenTelemetry (`gocpp.schema_soft_violations`) adapters implement it, and the
+  dispatcher's metrics bridge forwards it, so lenient-mode soft violations are now
+  exported.
+
+### Fixed
+
+- `gocpp_outbound_queue_depth` / `gocpp.outbound_queue.depth` help text and the
+  `dispatcher.Conn` doc comment described the removed writer-goroutine queue. The
+  metric samples senders waiting for or holding the per-connection write lock
+  (1 = uncontended write).
+
+### Docs
+
+- The library default schema mode is off; lenient is opt-in (docs/performance.md
+  called it the default; it is only the load-test harness default). README and
+  docs/usage.md now say so explicitly.
+- WebSocket keepalive is on by default (ping 54s, pong wait 60s, read idle 60s);
+  the usage and performance tables said it was disabled.
+- `csms.WithMaxConnections` exists (default unlimited); docs/performance.md claimed
+  connections cannot be limited.
+- `CallTimeout` starts once the call owns the connection's call slot, right before
+  the CALL is written, not when `Call` is invoked (the 0.2.0 wording "when the CALL
+  is written" was accurate in effect; usage.md is now precise).
+- `WithTransactionStore` / `WithConfigStore` are application-facing extension points
+  that csms itself does not use.
+- README: Go 1.26+ (matches go.mod); 194 messages across 1.6/2.0.1/2.1 (39 + 64 + 91).
+- `WithMaxMessageSize` overflow closes with 1009 (covered by `TestMaxMessageSize`).
+
 ## [0.2.0] - 2026-11-21
 
 This release collects everything since v0.1.3 (v0.1.4–v0.1.7 were tagged

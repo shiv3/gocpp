@@ -31,3 +31,21 @@ func TestMetricsBridge(t *testing.T) {
 	require.Equal(t, 1, rm.calls)
 	require.Equal(t, 1, rm.schemaFails)
 }
+
+type softMetrics struct {
+	recordingMetrics
+	got []string
+}
+
+func (s *softMetrics) SchemaSoftViolation(version, action, kind, keyword string) {
+	s.got = append(s.got, version+"/"+action+"/"+kind+"/"+keyword)
+}
+
+func TestMetricsBridgeSchemaSoftViolation(t *testing.T) {
+	sm := &softMetrics{}
+	MetricsHookFrom(sm, "1.6").(schemaSoftViolationMetricsHook).SchemaSoftViolation("1.6", "StartTransaction", "request", "enum")
+	require.Equal(t, []string{"1.6/StartTransaction/request/enum"}, sm.got)
+
+	// A Metrics without the extension is unaffected.
+	MetricsHookFrom(&recordingMetrics{}, "1.6").(schemaSoftViolationMetricsHook).SchemaSoftViolation("1.6", "X", "request", "enum")
+}
