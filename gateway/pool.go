@@ -181,14 +181,15 @@ func (m *Member) done() {
 // pick chooses a member not in tried by power of two choices, waiting up to
 // until for one to appear.
 //
-// With failFast, a pick that finds every eligible member already tried (all of
-// them refused) returns ErrNoBackend at once instead of waiting for another
-// member to attach: the caller has somewhere else to send the message.
+// With failFast, a pick that finds no eligible member left to try (all of them
+// refused, or vanished since the pool was chosen) returns ErrNoBackend at once
+// instead of waiting for another member to attach: the caller has somewhere else
+// to send the message.
 func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]bool, until time.Time, failFast bool) (*Member, error) {
 	for {
 		p.mu.Lock()
 		var cand [2]*Member
-		n, triedEligible := 0, 0
+		n := 0
 		// Reservoir-sample two eligible members.
 		seen := 0
 		for _, m := range p.members {
@@ -196,7 +197,6 @@ func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]
 				continue
 			}
 			if tried[m] {
-				triedEligible++
 				continue
 			}
 			seen++
@@ -233,7 +233,7 @@ func (p *Pool) pick(ctx context.Context, need, action string, tried map[*Member]
 		if chosen != nil {
 			return chosen, nil
 		}
-		if failFast && triedEligible > 0 {
+		if failFast {
 			return nil, ErrNoBackend
 		}
 		wait := time.Until(until)
@@ -324,11 +324,11 @@ func (p *Pool) handleFast(ctx context.Context, env Envelope, action string, fail
 
 // Notify implements Upstream.
 func (p *Pool) Notify(ctx context.Context, env Envelope) error {
-	return p.notify(ctx, env, "")
+	return p.notify(ctx, env, "", false)
 }
 
-func (p *Pool) notify(ctx context.Context, env Envelope, action string) error {
-	return p.dispatch(ctx, needCap(env), action, env.Deadline, false, func(m *Member) (bool, error) {
+func (p *Pool) notify(ctx context.Context, env Envelope, action string, failFast bool) error {
+	return p.dispatch(ctx, needCap(env), action, env.Deadline, failFast, func(m *Member) (bool, error) {
 		return false, m.up.Notify(ctx, env)
 	})
 }

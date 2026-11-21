@@ -7,9 +7,9 @@
 package chaos
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -136,27 +136,41 @@ func TestMain(m *testing.M) {
 
 // ---- processes -------------------------------------------------------------
 
-type syncBuf struct {
-	mu sync.Mutex
-	b  bytes.Buffer
+// procOut is a child's combined stdout and stderr. It is a real file handed to
+// the child, not a pipe drained by a goroutine of this process: a line the child
+// printed before answering a request is then already readable when the request
+// returns, so assertions on what a backend handled need no sleeping or polling.
+type procOut struct{ f *os.File }
+
+func newProcOut(t *testing.T) *procOut {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(t.TempDir(), "out.log"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+	return &procOut{f: f}
 }
 
-func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
-func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
+func (o *procOut) String() string {
+	b, err := os.ReadFile(o.f.Name())
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
 
 type proc struct {
 	t    *testing.T
 	name string
 	cmd  *exec.Cmd
-	out  *syncBuf
+	out  *procOut
 	done chan struct{}
 }
 
 func start(t *testing.T, name string, args ...string) *proc {
 	t.Helper()
-	p := &proc{t: t, name: name, out: &syncBuf{}, done: make(chan struct{})}
+	p := &proc{t: t, name: name, out: newProcOut(t), done: make(chan struct{})}
 	p.cmd = exec.Command(filepath.Join(binDir, strings.Split(name, ":")[0]), args...)
-	p.cmd.Stdout, p.cmd.Stderr = p.out, p.out
+	p.cmd.Stdout, p.cmd.Stderr = p.out.f, p.out.f
 	require.NoError(t, p.cmd.Start())
 	go func() { _ = p.cmd.Wait(); close(p.done) }()
 	t.Cleanup(func() {
@@ -228,6 +242,9 @@ func startGateway(t *testing.T, id, redisAddr string, extra ...string) *gw {
 	}
 	g.proc = start(t, "gocpp-gateway:"+id, append(args, extra...)...)
 	require.Eventually(t, func() bool { return httpOK("http://" + g.admin + "/healthz") }, 10*time.Second, 50*time.Millisecond)
+	attachMu.Lock()
+	gwsOnLink[g.link] = append(gwsOnLink[g.link], g)
+	attachMu.Unlock()
 	return g
 }
 
@@ -575,10 +592,26 @@ func TestChaos_GatewayKillSessionsReestablishedAndSentReported(t *testing.T) {
 
 	callErr := make(chan error, 1)
 	go func() {
-		_, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Soft"})
-		callErr <- err
+		// The registry names the session once it is claimed, which is before the
+		// gateway lists the connection: a call in that window is NotSent (nothing
+		// reached the charger) and is simply issued again.
+		for {
+			_, err := csms.Call(ctx, h, resetMsg, resetReq{Type: "Soft"})
+			if errors.Is(err, ocppj.ErrNotConnected) && ctx.Err() == nil {
+				time.Sleep(20 * time.Millisecond)
+				continue
+			}
+			callErr <- err
+			return
+		}
 	}()
-	<-entered1 // the frame is on the charger
+	select {
+	case <-entered1: // the frame is on the charger
+	case err := <-callErr:
+		t.Fatalf("the call ended before it reached the charger: %v", err)
+	case <-time.After(20 * time.Second):
+		t.Fatal("the call never reached the charger")
+	}
 	g1.kill9()
 	err := <-callErr
 	require.Error(t, err)

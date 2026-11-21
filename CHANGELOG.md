@@ -222,6 +222,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Metrics: the `action` label of `gocpp_calls_total`, `gocpp_call_duration_seconds`, the
+  schema-failure series was the action name the charge
+  point sent, so a client inventing names could create unbounded series. Inbound
+  actions that are neither a standard OCPP action nor have a registered handler (or an
+  edge responder) are now reported as `other`.
+- Gateway: the answer to a CSMS call whose caller disappeared is routed to the caller's
+  pool, and falls back to the default pool at once when the pool's members vanished
+  between the choice and the delivery (it used to be held until the pool wait ran out and
+  then dropped). An answer that arrives together with the loss of its caller is reported
+  as an orphan result instead of being sent to the dead stream. The
+  `orphan_results_total{outcome}` label reflects where the answer went.
+
 - Gateway pre-merge review fixes (session core): a CSMS call whose caller gave up while the frame was written is no longer reported `NotSent` when the charger got it (S1);
   a cancelled `Drain` gives quiesced sessions their calls back, and `Server.Undrain` takes a cancelled full drain back into service (S2); the backend orders sessions
   across gateways by registry epoch (a late `SessionOpened{A,5}` after `{B,6}` is ignored, S3); session events are serialized per charger instead of per 1/64 stripe, so a blocked

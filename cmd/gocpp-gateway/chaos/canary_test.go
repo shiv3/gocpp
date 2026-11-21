@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,7 +35,47 @@ func startPoolBackend(t *testing.T, id, pool, redisAddr string, link string, ext
 	args = append(args, extra...)
 	b := start(t, "testbackend:"+id, args...)
 	require.Eventually(t, func() bool { return b.count("READY") > 0 }, 10*time.Second, 20*time.Millisecond)
+	waitAttached(t, link, pool, b)
 	return b
+}
+
+var (
+	attachMu  sync.Mutex
+	gwsOnLink = map[string][]*gw{}   // link address -> gateways reachable on it
+	poolProcs = map[string][]*proc{} // link address + pool -> backends started there
+)
+
+// waitAttached waits until every gateway on link lists as many backends in pool
+// as were started there and are still alive. A backend prints READY when it
+// starts serving, which is before its link is up: a message that reaches the
+// gateway in between would be routed to the fallback pool, not the one the test
+// expects.
+func waitAttached(t *testing.T, link, pool string, b *proc) {
+	t.Helper()
+	if pool == "" {
+		pool = "default"
+	}
+	attachMu.Lock()
+	key := link + "|" + pool
+	poolProcs[key] = append(poolProcs[key], b)
+	alive := 0
+	for _, p := range poolProcs[key] {
+		select {
+		case <-p.done:
+		default:
+			alive++
+		}
+	}
+	gws := append([]*gw(nil), gwsOnLink[link]...)
+	attachMu.Unlock()
+	for _, g := range gws {
+		select {
+		case <-g.done:
+			continue // a gateway that was stopped
+		default:
+		}
+		waitPoolMembersAtLeast(t, g, pool, alive)
+	}
 }
 
 func controller(t *testing.T, addr string) routepolicy.Controller {
@@ -141,6 +184,7 @@ func TestChaos_CanaryFlappingIsSuspended(t *testing.T) {
 	require.Equal(t, 1, can.count("HANDLED Heartbeat"))
 
 	can.kill9()
+	waitPoolMembers(t, g, "canary", 0)
 	require.NoError(t, hb(t, c)) // falls back, suspends the rule
 	// Crash loop: the canary restarts three times inside the window; none of it
 	// attracts the charger.
@@ -257,6 +301,33 @@ func TestChaos_PolicyStoreDownAndInvalidPolicy(t *testing.T) {
 	require.Zero(t, can.count("CP_2"), "no policy: the canary pool gets nothing")
 	require.Contains(t, metrics(t, g2), "gocpp_gateway_route_policy_missing{")
 	require.Regexp(t, `gocpp_gateway_route_policy_missing\{[^}]*\} 1\n`, metrics(t, g2))
+}
+
+// waitPoolMembers waits until the gateway has n attached backends in pool. After
+// a backend is killed, a request sent before the gateway noticed goes to the dead
+// stream and fails with InternalError (it is never redispatched once dispatched),
+// so tests that expect a clean fallback wait for the gateway to see the death.
+func waitPoolMembers(t *testing.T, g *gw, pool string, n int) {
+	t.Helper()
+	waitPoolMembersCond(t, g, pool, n, func(got int) bool { return got == n })
+}
+
+func waitPoolMembersAtLeast(t *testing.T, g *gw, pool string, n int) {
+	t.Helper()
+	waitPoolMembersCond(t, g, pool, n, func(got int) bool { return got >= n })
+}
+
+func waitPoolMembersCond(t *testing.T, g *gw, pool string, n int, ok func(int) bool) {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^gocpp_gateway_pool_members\{[^}]*pool="` + regexp.QuoteMeta(pool) + `"[^}]*\} (\d+)`)
+	require.Eventually(t, func() bool {
+		total := 0
+		for _, m := range re.FindAllStringSubmatch(metrics(t, g), -1) {
+			v, _ := strconv.Atoi(m[1])
+			total += v
+		}
+		return ok(total)
+	}, 10*time.Second, 20*time.Millisecond, "pool %q never reached %d members", pool, n)
 }
 
 func metrics(t *testing.T, g *gw) string {

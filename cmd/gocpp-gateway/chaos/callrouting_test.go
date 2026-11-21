@@ -168,6 +168,13 @@ func TestChaos_OrphanResultWhenCallingCanaryDies(t *testing.T) {
 			}
 			c1.kill9() // the caller is gone
 			<-verdict
+			// The gateway has to have seen the caller go before the charger answers:
+			// an answer that races the gateway noticing the broken stream is written
+			// to the dead stream and is not an orphan (no one can tell it from a
+			// reply the caller will read). The outcome of the abandoned call shows it.
+			require.Eventually(t, func() bool {
+				return strings.Contains(grepLines(metrics(t, g), "downstream_calls_total"), `outcome="no_response"`)
+			}, 10*time.Second, 20*time.Millisecond, "the gateway did not notice the caller die")
 			close(gate) // the charger answers now
 
 			want, other := def, c2

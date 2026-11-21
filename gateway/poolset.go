@@ -306,12 +306,37 @@ func Outcome(rep Reply, err error) string {
 
 // Notify implements Upstream.
 func (s *PoolSet) Notify(ctx context.Context, env Envelope) error {
+	_, err := s.NotifyRouted(ctx, env)
+	return err
+}
+
+// NotifyRouted is Notify that also reports whether the message was given to the
+// route's fallback pool instead of the pool it names. That is decided by where
+// the message really went, not by which pool looked available when it was
+// chosen: a member can vanish between the choice and the delivery (its stream
+// broke), and the message then moves to the fallback pool like a CALL does.
+func (s *PoolSet) NotifyRouted(ctx context.Context, env Envelope) (fellBack bool, err error) {
 	if env.Route != nil && env.Route.Pool == PoolReject {
-		return ErrNoBackend
+		return false, ErrNoBackend
 	}
 	p, restrict, reason := s.chooseFor(env.Route, env.Kind, env.Action)
 	s.fellBack(env.Route, reason)
-	return p.notify(ctx, env, restrict)
+	fellBack = reason != ""
+	// With a usable fallback pool, a routed pool whose members all refuse or
+	// vanish gives the message up at once instead of holding it for a member to
+	// attach.
+	var fp *Pool
+	if env.Route != nil && env.Route.Fallback != "" {
+		if c := s.get(env.Route.Fallback, false); c != nil && c != p && c.Available() {
+			fp = c
+		}
+	}
+	err = p.notify(ctx, env, restrict, fp != nil)
+	if err != nil && fp != nil && isNoBackend(err) {
+		s.fellBack(env.Route, "nack")
+		return true, fp.notify(ctx, env, restrict, false)
+	}
+	return fellBack, err
 }
 
 func isNoBackend(err error) bool { return errors.Is(err, ErrNoBackend) }
