@@ -8,6 +8,8 @@ import (
 )
 
 // StateStore is an in-memory storage.StateStore.
+//
+// Experimental: this API may change before v1.0.
 type StateStore struct {
 	mu sync.Mutex
 	m  map[string][]byte
