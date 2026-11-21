@@ -18,6 +18,7 @@ All notable changes to this project are documented here. The format is based on
   sidecar and the admin port, and real-process tests of a gateway canary
   (soft cap, fill, rebalance, kill -9 of the canary, rollback during a shed,
   registry outage during a shed).
+- `BenchmarkGatewayIdleFootprint` and `TestGatewayIdleFootprintBounds` (16 KB heap+stack per idle gateway session); `TestIdleFootprintBounds` bounds tightened to 9 KB heap / 6 KB stack so a regression of a few hundred bytes per connection fails. docs/performance.md: "RSS versus live memory".
 - Gateway options (phase 6): `csms.WithEdgeHeartbeat` / `WithEdgeResponder` /
   `WithOnEdgeResponse` (a gateway answers Heartbeat, or any configured action,
   itself without a backend hop; opt-in) and `csms.WithTenantLimits` (per-tenant
