@@ -115,16 +115,16 @@ func main() {
 			defer cancel()
 			h, err := srv.Lookup(cctx, cpID)
 			if err != nil {
-				fmt.Fprintf(w, "ERR not_sent %v\n", err)
+				_, _ = fmt.Fprintf(w, "ERR not_sent %v\n", err)
 				return
 			}
 			fmt.Printf("CALLING Reset %s %s\n", *id, cpID)
 			resp, err := csms.Call(cctx, h, ocppj.Message[resetReq, resetResp]{Action: "Reset", Direction: ocppj.SentByCSMS}, resetReq{Type: "Soft"})
 			if err != nil {
-				fmt.Fprintf(w, "ERR %s %v\n", gateway.SentOf(err), err)
+				_, _ = fmt.Fprintf(w, "ERR %s %v\n", gateway.SentOf(err), err)
 				return
 			}
-			fmt.Fprintf(w, "OK %s\n", resp.Status)
+			_, _ = fmt.Fprintf(w, "OK %s\n", resp.Status)
 		})
 		go func() { _ = http.Serve(l, mux) }()
 	}

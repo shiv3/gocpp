@@ -437,25 +437,10 @@ func ctxT(d time.Duration) (context.Context, context.CancelFunc) {
 
 func callErrCode(err error) ocppj.ErrorCode {
 	var ce *ocppj.CallError
-	if ok := asCallError(err, &ce); ok {
+	if errors.As(err, &ce) {
 		return ce.Code
 	}
 	return ""
-}
-
-func asCallError(err error, target **ocppj.CallError) bool {
-	for err != nil {
-		if ce, ok := err.(*ocppj.CallError); ok {
-			*target = ce
-			return true
-		}
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
-	}
-	return false
 }
 
 // ---- tests -----------------------------------------------------------------
@@ -557,7 +542,7 @@ func TestChaos_GatewayKillSessionsReestablishedAndSentReported(t *testing.T) {
 	caller := newCaller(t, mr.Addr(), g1.link, g2.link)
 	require.Eventually(t, func() bool { return g1.ready() && g2.ready() }, 10*time.Second, 50*time.Millisecond)
 
-	connect := func(g *gw, release chan struct{}, entered chan struct{}) *cp.Client {
+	connect := func(g *gw, release chan struct{}, entered chan struct{}) {
 		c := cp.NewClient("CP_1", "ws://"+g.ws+"/ocpp/CP_1", cp.WithSubProtocols("ocpp1.6"), cp.WithCallTimeout(20*time.Second))
 		require.NoError(t, cp.On(c, resetMsg, func(ctx context.Context, _ resetReq) (resetResp, error) {
 			select {
@@ -574,7 +559,6 @@ func TestChaos_GatewayKillSessionsReestablishedAndSentReported(t *testing.T) {
 		defer cancel()
 		require.NoError(t, c.Connect(ctx))
 		t.Cleanup(c.Close)
-		return c
 	}
 	release1, entered1 := make(chan struct{}), make(chan struct{}, 1)
 	connect(g1, release1, entered1)
@@ -863,9 +847,9 @@ func TestChaos_TapJSONL(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // the close event is produced after the socket ends
 	b.term()                           // with the gRPC link a gateway waits for its backends' streams before it exits
 	<-b.done
-	g.proc.term()
+	g.term()
 	select {
-	case <-g.proc.done:
+	case <-g.done:
 	case <-time.After(15 * time.Second):
 		t.Fatal("gateway did not stop")
 	}

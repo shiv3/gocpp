@@ -201,17 +201,16 @@ func startFleet(t *testing.T, lbAddr string, n int) *fleet {
 }
 
 type canaryRig struct {
-	mr       *miniredis.Miniredis
-	reg      *registryredis.Registry
-	gws      []*gw
-	lb       *l4
-	fleet    *fleet
-	redisSrv string
+	mr    *miniredis.Miniredis
+	reg   *registryredis.Registry
+	gws   []*gw
+	lb    *l4
+	fleet *fleet
 }
 
 // newCanaryRig starts gw-0, gw-1 (serving) and gw-2 (the canary: soft cap, not
 // yet in the balancer), one backend on all three, and n chargers on gw-0/gw-1.
-func newCanaryRig(t *testing.T, n, cap int, redisForGateways func(real string) string) *canaryRig {
+func newCanaryRig(t *testing.T, n, softCap int, redisForGateways func(realAddr string) string) *canaryRig {
 	t.Helper()
 	if linkKind == "nats" {
 		t.Skip("gateway canary scenarios do not depend on the link")
@@ -253,7 +252,7 @@ func newCanaryRig(t *testing.T, n, cap int, redisForGateways func(real string) s
 		g := &gw{id: id, ws: freeAddr(t), link: freeAddr(t), admin: freeAddr(t), api: freeAddr(t)}
 		extra = append(extra, "--advertise-admin", g.api)
 		if i == 2 {
-			extra = append(extra, "--soft-max-sessions", fmt.Sprint(cap))
+			extra = append(extra, "--soft-max-sessions", fmt.Sprint(softCap))
 		}
 		args := []string{"serve", "--id", id, "--listen", g.ws, "--link-listen", g.link, "--link-insecure", "--metrics-listen", g.admin, "--admin", g.api,
 			"--subprotocols", "ocpp1.6", "--upstream-wait", "1s", "--drain-window", "2s",
@@ -522,8 +521,8 @@ func TestChaos_GatewayCanaryRollbackWhileAnotherSheds(t *testing.T) {
 func TestChaos_GatewayShedDuringRegistryOutage(t *testing.T) {
 	const n = 30
 	var px *faultProxy
-	r := newCanaryRig(t, n, 100, func(real string) string {
-		px = newProxy(t, real)
+	r := newCanaryRig(t, n, 100, func(realAddr string) string {
+		px = newProxy(t, realAddr)
 		return px.Addr()
 	})
 	r.settled(t, n, 10*time.Second)
