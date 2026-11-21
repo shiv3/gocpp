@@ -94,8 +94,8 @@ func BenchmarkGRPCHop(b *testing.B) {
 // gateway plus hop (design 2.7). The bound here is 5 ms because CI hosts are
 // shared; the measured value is logged.
 func TestGateGRPCHopLatency(t *testing.T) {
-	if testing.Short() {
-		t.Skip("timing gate")
+	if testing.Short() || raceEnabled {
+		t.Skip("timing gate: not under -short or -race")
 	}
 	g, stop := hopRig(t)
 	defer stop()
