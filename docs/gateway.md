@@ -20,6 +20,25 @@ conformance and e2e suites run in both (see "Testing").
 The full design, the failure semantics and the rationale are in
 [design/gateway.md](design/gateway.md); this page is the user guide.
 
+## Stability
+
+Gateway mode is new. Its public API is **experimental**: it may change in minor
+releases before v1.0, and every such symbol says so in its doc comment
+("Experimental: this API may change before v1.0."). Pin the module version and
+read the CHANGELOG when upgrading. Nothing here changes how an embedded
+`csms.Server` behaves.
+
+| Surface | Status |
+|---|---|
+| `csms.NewServer`, `On`, `Call`, `Send`, `Get`, the generated handlers and clients, schema and connection options, `core/ocppj`, `core/schema`, `core/auth` | stable (unchanged by gateway mode) |
+| `csms.NewGatewayServer`, `WithGatewayLink`, `WithSplitInProcess`, `WithSplitLink`, `SplitLink`, `WithRouter`, `WithAttrSource`, `WithTenantLimits`, `TenantLimits`, `DrainOptions`, `Server.Drain`/`DrainStatus`/`ReadyHandler`/`Draining`, `Server.SetGatewayLabel`/`SetSessionAttrs`, `Conn.SetAttrs` | experimental |
+| package `gateway` (the link contract, `Pool`, `PoolSet`, `Router`) and `gateway/inproc`, `gateway/routepolicy`, `gateway/admin`, `gateway/attrsource` | experimental |
+| `core/storage`: `SessionRegistry`, `PolicyStore`, `PolicyHistory`, `RouteWriter`, `StateStore` and their `memory` implementations | experimental (`ConnectionRegistry`, `MessageRouter`, `TransactionStore`, `ConfigStore` keep their status) |
+| `core/dispatcher`: `Pipeline`, `InboundGate`, `Conn.SetAttachment`/`Owner`/`SetInboundGate`/`SetInboundDone`/`Quiesce`/`TryDrain`/`ForceDrain`, `RawCallError`, `WithSentHook`, `ConnMetadata.Owner` | experimental |
+| addons `link-grpc`, `link-nats`, `registry-redis`, `rollout` | experimental |
+| the gRPC link protocol (`gocpp.link.v1`), the registry key layout, the policy document format | experimental: mixed-version fleets are only supported between adjacent releases while this holds |
+| commands `gocpp-gateway`, `gocppctl` (flags, admin API) | experimental |
+
 ## Wiring
 
 ```go

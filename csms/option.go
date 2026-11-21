@@ -600,6 +600,8 @@ func WithOCPPGoCompat() Option {
 // the tiers are separate processes, which is what the conformance suite checks
 // (GOCPP_TEST_SPLIT=1, see internal/splitmode). Get returns a handle for a
 // connected charger, Connections lists the gateway's sessions.
+//
+// Experimental: this API may change before v1.0.
 func WithSplitInProcess() Option {
 	return optionFunc(func(c *serverConfig) { c.splitInProcess = true })
 }
@@ -607,6 +609,8 @@ func WithSplitInProcess() Option {
 // SplitLink is a transport that has both ends of a split deployment in this
 // process, for WithSplitLink. *inproc.Hub is one; a harness can wrap any other
 // link (a NATS or gRPC pair on loopback) the same way.
+//
+// Experimental: this API may change before v1.0.
 type SplitLink interface {
 	// Gateway is the end the internal gateway uses.
 	Gateway() gateway.GatewayLink
@@ -621,6 +625,8 @@ type SplitLink interface {
 // internal gateway and this server, the processing tier, are joined by l. It is
 // how the conformance suite is run in split mode over a real transport (see
 // internal/splitmode and addons/link-nats/splitharness).
+//
+// Experimental: this API may change before v1.0.
 func WithSplitLink(l SplitLink) Option {
 	return optionFunc(func(c *serverConfig) { c.splitLink = l })
 }
@@ -637,6 +643,8 @@ func WithBackendInfo(info gateway.BackendInfo) Option {
 // WithRouter sets the routing hook of a gateway (NewGatewayServer): for every
 // message it names the backend pool that serves it, from the charger id, the
 // action and the session attributes. Default gateway.DefaultRouter.
+//
+// Experimental: this API may change before v1.0.
 func WithRouter(r gateway.Router) Option {
 	return optionFunc(func(c *serverConfig) { c.gwRouter = r })
 }
@@ -686,6 +694,8 @@ type AttrSourceOptions struct {
 // every session, prefixed "ext." (gateway.ExtAttrPrefix), after the processing
 // tier's own: rules can match them like any attribute, and they can never
 // override one the backend set. See gateway.AttrSource.
+//
+// Experimental: this API may change before v1.0.
 func WithAttrSource(src gateway.AttrSource, o AttrSourceOptions) Option {
 	return optionFunc(func(c *serverConfig) { c.attrSource, c.attrSourceOpts = src, o })
 }

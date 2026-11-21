@@ -30,4 +30,8 @@
 // cap (excess requests are Nacked), and a dead peer is detected by the missed
 // Hello rather than by a transport keepalive. "No responders" is the fast
 // failure for "nobody is subscribed".
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package linknats

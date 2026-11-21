@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Stability: the public API added for gateway mode is marked experimental ("Experimental:
+  this API may change before v1.0." in the doc comments): package `gateway` and its
+  subpackages, `csms.NewGatewayServer`, `WithGatewayLink`, `WithSplitInProcess`,
+  `WithSplitLink`, `WithRouter`, `WithTenantLimits`, `DrainOptions` and `Server.Drain`,
+  `storage.SessionRegistry`/`PolicyStore`/`RouteWriter`, the `core/dispatcher` hooks
+  (`Pipeline`, `InboundGate`, `SetAttachment`, `Owner`, `RawCallError`, `WithSentHook`,
+  `Quiesce`, `TryDrain`, `ForceDrain`) and the addons `link-grpc`, `link-nats`,
+  `registry-redis`, `rollout`. docs/gateway.md and the README list what is stable and
+  what is experimental.
 - Staged releases, phase 7 chaos leftovers: real-process tests of CSMS calls issued
   from the canary and the stable pool during a canary, the orphan result when the
   calling canary backend dies (gRPC link), a `hold: busy` session during promotion

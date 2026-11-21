@@ -30,6 +30,8 @@ const (
 var ErrDrainInProgress = errors.New("csms: drain already in progress")
 
 // DrainOptions tunes Server.Drain. Zero values select the defaults.
+//
+// Experimental: this API may change before v1.0.
 type DrainOptions struct {
 	// Window is the time in which every session is closed, and the hard limit:
 	// sessions still open when it ends are closed regardless of what they are
@@ -80,6 +82,8 @@ type DrainOptions struct {
 }
 
 // DrainProgress is a snapshot reported by DrainOptions.OnProgress.
+//
+// Experimental: this API may change before v1.0.
 type DrainProgress struct {
 	// Total is the number of sessions the drain started with.
 	Total int
@@ -97,6 +101,8 @@ func (o DrainOptions) partial() bool {
 
 // DrainStatus is the state of the current or last drain, for metrics and rollout
 // controllers (see Server.DrainStatus).
+//
+// Experimental: this API may change before v1.0.
 type DrainStatus struct {
 	Active  bool
 	Partial bool
@@ -127,6 +133,8 @@ func (d *drainState) set(f func(*DrainStatus)) {
 }
 
 // DrainStatus returns the state of the running drain, or of the last one.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) DrainStatus() DrainStatus {
 	s.drainSt.mu.Lock()
 	defer s.drainSt.mu.Unlock()
@@ -224,6 +232,8 @@ func (o DrainOptions) withDefaults(sessions int) DrainOptions {
 
 // Draining reports whether Drain has been called. A readiness probe should fail
 // while it is true so the load balancer stops sending upgrades.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) Draining() bool { return s.draining.Load() }
 
 // ReadyHandler returns a readiness handler: 200 while the server wants new
@@ -232,6 +242,8 @@ func (s *Server) Draining() bool { return s.draining.Load() }
 // WithSoftMaxConnections). Established sessions are never affected by readiness;
 // the soft cap does not refuse upgrades, it only asks the load balancer to stop
 // sending more.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) ReadyHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		switch {
@@ -283,6 +295,8 @@ func (s *Server) AdmissionStats() AdmissionStats {
 // ctx.Err() if ctx ends first (sessions not yet closed stay open). It does not
 // stop the HTTP server or the Server; call Shutdown afterwards. Only one Drain
 // can run at a time (ErrDrainInProgress).
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) Drain(ctx context.Context, opts DrainOptions) error {
 	partial := opts.partial()
 	if !s.drainActive.CompareAndSwap(false, true) {

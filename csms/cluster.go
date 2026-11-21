@@ -84,6 +84,8 @@ func (s *Server) claimSession(r *http.Request, cpID string, attrs map[string]str
 // SetGatewayLabel sets (or, with an empty value, removes) a label in this
 // server's lease and renews the lease, so rollout tooling sees it in
 // SessionRegistry.Gateways at once. A no-op without a session registry.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) SetGatewayLabel(ctx context.Context, key, value string) {
 	if s.sessions != nil {
 		s.sessions.setLabel(ctx, key, value)
@@ -96,6 +98,8 @@ func (s *Server) SetGatewayLabel(ctx context.Context, key, value string) {
 // connect (firmware version from BootNotification, say). It returns
 // ocppj.ErrNotConnected when the charge point is not connected here. See
 // Conn.SetAttrs for the merge rules.
+//
+// Experimental: this API may change before v1.0.
 func (s *Server) SetSessionAttrs(ctx context.Context, id string, attrs map[string]string) error {
 	c, ok := s.Get(id)
 	if !ok && s.backend != nil {

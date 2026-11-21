@@ -49,6 +49,8 @@ type TenantLimit struct {
 }
 
 // TenantLimits configures per-tenant limits (WithTenantLimits).
+//
+// Experimental: this API may change before v1.0.
 type TenantLimits struct {
 	// Resolver names the tenant of an upgrade request. When it is nil or finds
 	// none, the tenant is the session attribute AttrKey as set by the processing
@@ -95,6 +97,8 @@ type TenantLimits struct {
 // and one tenant never consumes another's budget. Without this option nothing
 // changes; a gateway and an embedded server use it the same way (on a gateway it
 // is applied at the edge, before the backend hop).
+//
+// Experimental: this API may change before v1.0.
 func WithTenantLimits(l TenantLimits) Option {
 	return optionFunc(func(c *serverConfig) { c.tenantLimits = &l })
 }

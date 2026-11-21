@@ -272,6 +272,8 @@ type Rejection struct {
 }
 
 // Upstream is what a gateway needs from the processing tier.
+//
+// Experimental: this API may change before v1.0.
 type Upstream interface {
 	// Connect decides an upgrade: authentication, admission, timeouts.
 	Connect(ctx context.Context, req ConnectRequest) (ConnectReply, error)
@@ -369,6 +371,8 @@ type ControlRequest struct {
 
 // Downstream is what the processing tier (or any other service) needs from
 // gateways. A link routes it to the gateway named by Target.GatewayID.
+//
+// Experimental: this API may change before v1.0.
 type Downstream interface {
 	Call(ctx context.Context, req CallRequest) (CallReply, error)
 	Send(ctx context.Context, req CallRequest) error
@@ -376,6 +380,8 @@ type Downstream interface {
 }
 
 // GatewayLink is the gateway's end of a link.
+//
+// Experimental: this API may change before v1.0.
 type GatewayLink interface {
 	// Upstream sends work to the attached backends.
 	Upstream
@@ -385,6 +391,8 @@ type GatewayLink interface {
 }
 
 // BackendLink is the processing tier's end of a link.
+//
+// Experimental: this API may change before v1.0.
 type BackendLink interface {
 	// Downstream reaches the gateway named by each request's Target.
 	Downstream
@@ -399,6 +407,8 @@ type BackendLink interface {
 // Locator is optionally implemented by a gateway's Downstream so a link can
 // find the session of a charge point without a registry (the in-process link
 // and the gRPC link, which asks every attached gateway, use it).
+//
+// Experimental: this API may change before v1.0.
 type Locator interface {
 	LocateSession(cpID string) (Located, bool)
 }
@@ -532,6 +542,8 @@ type RouteDecision = Route
 // Router decides per message which pool serves it. Route must be pure,
 // non-blocking and deterministic: the same input and policy give the same
 // decision, which makes routing sticky per charger by construction.
+//
+// Experimental: this API may change before v1.0.
 type Router interface {
 	Route(in RouteInput) RouteDecision
 }
@@ -557,6 +569,8 @@ const PoolReject = "$reject"
 // implements it (the routepolicy engine does) is wired to the link with its
 // route-observer option; it drives fallback accounting, rule suspension and the
 // error-rate guard. Methods are called on the dispatch path and must not block.
+//
+// Experimental: this API may change before v1.0.
 type RouteObserver interface {
 	// RouteFallback reports that a message routed by r was sent to r.Fallback
 	// because r.Pool had no available member ("unavailable") or every member
@@ -578,6 +592,8 @@ const ExtAttrPrefix = "ext."
 // Keys are prefixed "ext." by the gateway and can never override attributes the
 // backend set (ConnectReply.Attrs, SetAttrs). Implementations must be safe for
 // concurrent use; see package gateway/attrsource for a file and an HTTP source.
+//
+// Experimental: this API may change before v1.0.
 type AttrSource interface {
 	Attrs(ctx context.Context, cpID string) (map[string]string, error)
 }

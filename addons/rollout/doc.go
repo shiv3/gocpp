@@ -16,4 +16,8 @@
 // Metrics come from a Source: a Prometheus server (PromSource) or the gateways'
 // own /metrics endpoints (ScrapeSource), so the controller works with or without
 // a Prometheus installation.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package rollout

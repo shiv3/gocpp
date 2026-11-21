@@ -12,4 +12,8 @@
 // version) and the answer HelloAck carries the negotiated protocol. A peer that
 // receives a frame body it does not know answers Unsupported and keeps the
 // stream.
+//
+// Experimental: this API may change before v1.0. Every exported identifier of
+// this package is part of the split-gateway API; see "Stability" in
+// docs/gateway.md.
 package linkgrpc
