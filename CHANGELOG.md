@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Staged releases, phase 7 chaos leftovers: real-process tests of CSMS calls issued
+  from the canary and the stable pool during a canary, the orphan result when the
+  calling canary backend dies (gRPC link), a `hold: busy` session during promotion
+  and rollback, and a "no NotSent call lost" check in the gateway canary fill.
 - Staged releases, phase 7 leftovers: the gateway keeps the pool each session is
   routed to in the registry (`Session.Meta["route.pool"]`, new optional
   `storage.RouteWriter`, implemented by the memory registry and `registry-redis`),
