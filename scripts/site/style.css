@@ -4,7 +4,7 @@
   --ink: #0b0b0b; --ink-2: #52514e; --muted: #6f6d67; --hair: #e1e0d9; --axis: #c3c2b7;
   --border: rgba(11,11,11,0.12); --accent: #2a78d6; --accent-ink: #1c5cab; --on-accent: #ffffff;
   --code-bg: #f0efea; --code-ink: #1d1d1b; --code-dim: #6f6d67; --shadow: 0 1px 2px rgba(0,0,0,.05);
-  --series-gocpp: #2a78d6; --series-ocppgo: #eb6834;
+  --series-gocpp: #2a78d6; --series-ocppgo: #eb6834; --series-before: #1baf7a;
   --warn-bg: #fdf3d9; --warn-bd: #b87a00; --info-bg: #e6f0fc;
   --k-api: #2a78d6; --k-api-bg: #e6f0fc;
   --k-disp: #6250d6; --k-disp-bg: #ecebfb;
@@ -21,7 +21,7 @@
     --ink: #f0efec; --ink-2: #c3c2b7; --muted: #a09e97; --hair: #2c2c2a; --axis: #45453f;
     --border: rgba(255,255,255,0.12); --accent: #3987e5; --accent-ink: #86b6ef; --on-accent: #ffffff;
     --code-bg: #232321; --code-ink: #f0efec; --code-dim: #a09e97; --shadow: none;
-    --series-gocpp: #3987e5; --series-ocppgo: #d95926;
+    --series-gocpp: #3987e5; --series-ocppgo: #d95926; --series-before: #199e70;
     --warn-bg: #33280c; --warn-bd: #c98500; --info-bg: #14263d;
     --k-api: #5598e7; --k-api-bg: #14263d;
     --k-disp: #9085e9; --k-disp-bg: #25213f;
@@ -38,7 +38,7 @@
   --ink: #f0efec; --ink-2: #c3c2b7; --muted: #a09e97; --hair: #2c2c2a; --axis: #45453f;
   --border: rgba(255,255,255,0.12); --accent: #3987e5; --accent-ink: #86b6ef; --on-accent: #ffffff;
   --code-bg: #232321; --code-ink: #f0efec; --code-dim: #a09e97; --shadow: none;
-  --series-gocpp: #3987e5; --series-ocppgo: #d95926;
+  --series-gocpp: #3987e5; --series-ocppgo: #d95926; --series-before: #199e70;
   --warn-bg: #33280c; --warn-bd: #c98500; --info-bg: #14263d;
   --k-api: #5598e7; --k-api-bg: #14263d;
   --k-disp: #9085e9; --k-disp-bg: #25213f;
@@ -203,7 +203,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .viz .vlegend { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--ink-2); margin: 0 0 12px; padding: 0; list-style: none; max-width: none; }
 .viz .vlegend li { display: inline-flex; align-items: center; gap: 7px; margin: 0; }
 .key { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
-.key.gocpp { background: var(--series-gocpp); } .key.ocppgo { background: var(--series-ocppgo); }
+.key.gocpp { background: var(--series-gocpp); } .key.before { background: var(--series-before); } .key.ocppgo { background: var(--series-ocppgo); }
 .panels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 28px; }
 .panel h4 { font-size: 13.5px; margin: 0; font-weight: 600; line-height: 1.35; }
 .panel .unit { color: var(--muted); font-weight: 400; font-size: 12.5px; display: block; margin-bottom: 4px; }
@@ -212,7 +212,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .viz svg.ch text { fill: var(--ink-2); font-size: 12px; font-family: inherit; }
 .viz svg.ch text.val { fill: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
 .viz svg.ch .base { stroke: var(--axis); stroke-width: 1; }
-.viz svg.ch .s-gocpp { fill: var(--series-gocpp); } .viz svg.ch .s-ocppgo { fill: var(--series-ocppgo); }
+.viz svg.ch .s-gocpp { fill: var(--series-gocpp); } .viz svg.ch .s-before { fill: var(--series-before); } .viz svg.ch .s-ocppgo { fill: var(--series-ocppgo); }
 .viz svg.ch .hit { fill: transparent; outline: none; }
 .viz svg.ch .hit:focus-visible { stroke: var(--accent); stroke-width: 1.5; }
 .viz svg.ch .mark.hov { filter: brightness(1.15); }
@@ -264,3 +264,14 @@ footer p { max-width: none; margin: 4px 0; }
   .viz .vhead { flex-direction: column; gap: 6px; }
 }
 @media print { .top { position: static; } .copy, #themebtn { display: none; } }
+
+.panels.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.panels.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .panels.c3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .panels.c2, .panels.c3 { grid-template-columns: 1fr; } }
+.hero.small { padding: 40px 0 6px; }
+.hero.small h1 { font-size: clamp(28px, 4vw, 40px); }
+.toclist { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; max-width: none; }
+.toclist a { display: block; padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); text-decoration: none; color: var(--ink); font-size: 14px; }
+.toclist a:hover { border-color: var(--accent); }
+.panels.c2 .panel svg.ch { max-width: 460px; }
