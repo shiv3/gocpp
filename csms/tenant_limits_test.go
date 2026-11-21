@@ -38,21 +38,18 @@ func (m *tenantMetrics) TenantRejected(t, kind string) {
 	m.rejected[t+"/"+kind]++
 	m.mu.Unlock()
 }
-func (m *tenantMetrics) snapshot() (map[string]int, map[string]int) {
+func (m *tenantMetrics) rejections() map[string]int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s, r := map[string]int{}, map[string]int{}
-	for k, v := range m.sessions {
-		s[k] = v
-	}
+	r := map[string]int{}
 	for k, v := range m.rejected {
 		r[k] = v
 	}
-	return s, r
+	return r
 }
 
 // tenantServer is an embedded server whose tenant is the X-Tenant header.
-func tenantServer(t *testing.T, l csms.TenantLimits, m *tenantMetrics) (*csms.Server, string) {
+func tenantServer(t *testing.T, l csms.TenantLimits, m *tenantMetrics) string {
 	t.Helper()
 	l.Resolver = csms.TenantFromRequest(func(r *http.Request) (string, bool) {
 		v := r.Header.Get("X-Tenant")
@@ -68,7 +65,7 @@ func tenantServer(t *testing.T, l csms.TenantLimits, m *tenantMetrics) (*csms.Se
 	}))
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(func() { ts.Close(); srv.Close() })
-	return srv, "ws" + ts.URL[len("http"):] + "/ocpp/"
+	return "ws" + ts.URL[len("http"):] + "/ocpp/"
 }
 
 func dialTenant(url, id, tenant string) (*websocket.Conn, *http.Response, error) {
@@ -84,7 +81,7 @@ func dialTenant(url, id, tenant string) (*websocket.Conn, *http.Response, error)
 func TestTenantLimits_SessionCapRefusesBeforeUpgrade(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
 	m := newTenantMetrics()
-	_, url := tenantServer(t, csms.TenantLimits{
+	url := tenantServer(t, csms.TenantLimits{
 		Tenants: map[string]csms.TenantLimit{"a": {MaxSessions: 2}}, RetryAfter: 10 * time.Second,
 	}, m)
 
@@ -132,7 +129,7 @@ func TestTenantLimits_SessionCapRefusesBeforeUpgrade(t *testing.T) {
 		return err == nil
 	}, 3*time.Second, 20*time.Millisecond)
 
-	_, rej := m.snapshot()
+	rej := m.rejections()
 	require.GreaterOrEqual(t, rej["a/sessions"], 1)
 }
 
@@ -175,7 +172,7 @@ func hb(t *testing.T, c *websocket.Conn, n int) string {
 func TestTenantLimits_MessageRateIsFairWithinAndAcrossTenants(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
 	m := newTenantMetrics()
-	_, url := tenantServer(t, csms.TenantLimits{
+	url := tenantServer(t, csms.TenantLimits{
 		Tenants: map[string]csms.TenantLimit{"a": {MessageRate: 20, MessageBurst: 20}},
 	}, m)
 	dial := func(id, tn string) *websocket.Conn {
@@ -212,7 +209,7 @@ func TestTenantLimits_MessageRateIsFairWithinAndAcrossTenants(t *testing.T) {
 	// messages from it, of which the noisy one got all but a few.
 	require.LessOrEqual(t, accepted, 20+int(1.6*20)+5)
 
-	_, rej := m.snapshot()
+	rej := m.rejections()
 	require.Equal(t, rejected, rej["a/messages"], "metrics count every refusal")
 	require.Zero(t, rej["b/messages"])
 }
@@ -220,7 +217,7 @@ func TestTenantLimits_MessageRateIsFairWithinAndAcrossTenants(t *testing.T) {
 // A refused CALL is answered GenericError by default, and RejectCode changes it.
 func TestTenantLimits_RejectCode(t *testing.T) {
 	t.Cleanup(func() { goleak.VerifyNone(t) })
-	_, url := tenantServer(t, csms.TenantLimits{
+	url := tenantServer(t, csms.TenantLimits{
 		Default:    csms.TenantLimit{MessageRate: 1, MessageBurst: 1},
 		RejectCode: ocppj.ErrorCodeInternalError,
 	}, nil)
