@@ -132,6 +132,19 @@ func serve(args []string) error {
 		csms.WithAcceptRateLimit(cfg.AcceptRate, cfg.AcceptBurst),
 		csms.WithMetrics(prom.New(wrapped)), csms.WithLogger(log),
 	}
+	if cfg.EdgeHeartbeat {
+		opts = append(opts, csms.WithEdgeHeartbeat())
+	}
+	if cfg.TenantMaxSessions > 0 || cfg.TenantMessageRate > 0 {
+		tl := csms.TenantLimits{
+			AttrKey: cfg.TenantAttr,
+			Default: csms.TenantLimit{MaxSessions: cfg.TenantMaxSessions, MessageRate: cfg.TenantMessageRate, MessageBurst: cfg.TenantMessageBurst},
+		}
+		if h := cfg.TenantHeader; h != "" {
+			tl.Resolver = csms.TenantFromRequest(func(r *http.Request) (string, bool) { v := r.Header.Get(h); return v, v != "" })
+		}
+		opts = append(opts, csms.WithTenantLimits(tl))
+	}
 	var rdb *redis.Client
 	if cfg.RedisAddr != "" {
 		rdb = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr, Password: cfg.RedisPassword})

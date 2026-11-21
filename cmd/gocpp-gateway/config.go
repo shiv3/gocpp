@@ -46,6 +46,12 @@ type config struct {
 	DrainWindow  time.Duration
 	LogLevel     string
 
+	EdgeHeartbeat            bool
+	TenantHeader, TenantAttr string
+	TenantMaxSessions        int
+	TenantMessageRate        float64
+	TenantMessageBurst       int
+
 	LeaseTTL, HeartbeatEvery, ReconcileEvery, ClaimTimeout time.Duration
 	LinkKeepalive                                          time.Duration
 }
@@ -113,6 +119,12 @@ func parseConfig(args []string) (config, error) {
 	fs.DurationVar(&c.HandlerTime, "handler-timeout", envDur("HANDLER_TIMEOUT", 25*time.Second), "deadline for the backend to answer a CALL")
 	fs.DurationVar(&c.CallTimeout, "call-timeout", envDur("CALL_TIMEOUT", 30*time.Second), "timeout of CSMS calls to chargers")
 	fs.DurationVar(&c.DrainWindow, "drain-window", envDur("DRAIN_WINDOW", 5*time.Minute), "window in which sessions are closed on SIGTERM")
+	fs.BoolVar(&c.EdgeHeartbeat, "edge-heartbeat", env("EDGE_HEARTBEAT", "") == "true", "answer Heartbeat at the gateway without a backend hop (the backend no longer sees Heartbeats)")
+	fs.StringVar(&c.TenantHeader, "tenant-header", env("TENANT_HEADER", ""), "request header naming the tenant of a charger (per-tenant limits)")
+	fs.StringVar(&c.TenantAttr, "tenant-attr", env("TENANT_ATTR", "tenant"), "session attribute (set by the backend at connect) naming the tenant when the header is absent")
+	fs.IntVar(&c.TenantMaxSessions, "tenant-max-sessions", envInt("TENANT_MAX_SESSIONS", 0), "sessions allowed per tenant (503 above it); 0 = unlimited")
+	fs.Float64Var(&c.TenantMessageRate, "tenant-message-rate", envFloat("TENANT_MESSAGE_RATE", 0), "inbound messages per second allowed per tenant (CALLERROR above it); 0 = unlimited")
+	fs.IntVar(&c.TenantMessageBurst, "tenant-message-burst", envInt("TENANT_MESSAGE_BURST", 0), "token bucket depth of the tenant message limit (default: one second of the rate)")
 	fs.DurationVar(&c.LeaseTTL, "lease-ttl", envDur("LEASE_TTL", 15*time.Second), "gateway lease lifetime in the session registry")
 	fs.DurationVar(&c.HeartbeatEvery, "lease-heartbeat", envDur("LEASE_HEARTBEAT", 5*time.Second), "lease renewal interval")
 	fs.DurationVar(&c.ReconcileEvery, "reconcile-interval", envDur("RECONCILE_INTERVAL", 30*time.Second), "full registry reconcile pass interval")
