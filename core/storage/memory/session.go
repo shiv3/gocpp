@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"maps"
 	"sync"
 	"time"
 
@@ -109,7 +108,7 @@ func (d *globalDirectory) setAttrs(_ context.Context, cpID string, epoch uint64,
 	if !ok || cur.Epoch != epoch {
 		return false, nil
 	}
-	cur.Attrs = maps.Clone(attrs)
+	cur.Meta, _ = storage.MergeAttrs(cur.Meta, attrs)
 	d.rec[cpID] = cur
 	return true, nil
 }

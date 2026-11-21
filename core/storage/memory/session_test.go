@@ -117,16 +117,22 @@ func TestConnectionRegistry_GlobalRoutesAreSessions(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestSessionRegistry_AttrsAndGatewayRelease(t *testing.T) {
+func TestSessionRegistry_AttrsMergeAndLeaseLabels(t *testing.T) {
 	ctx := context.Background()
 	r := memory.NewSessionRegistry()
-	e, _, _ := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", GatewayVersion: "v2", GatewayLabel: "canary", Attrs: map[string]string{"site": "x"}})
-	ok, err := r.SetAttrs(ctx, "CP", e, map[string]string{"site": "y"})
+	e, _, _ := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", GatewayVersion: "v2",
+		Meta: map[string]string{"attr.site": "x", "attr.vendor": "acme", "route.pool": "default", "remote_addr": "1.2.3.4"}})
+	ok, err := r.SetAttrs(ctx, "CP", e, map[string]string{"site": "y", "vendor": "", "fw": "1"})
 	require.NoError(t, err)
 	require.True(t, ok)
 	s, _, _ := r.Lookup(ctx, "CP")
-	require.Equal(t, "y", s.Attrs["site"])
+	require.Equal(t, map[string]string{"site": "y", "fw": "1"}, s.Attrs())
+	require.Equal(t, "default", s.Meta["route.pool"], "other Meta keys stay")
 	require.Equal(t, "v2", s.GatewayVersion)
 	ok, _ = r.SetAttrs(ctx, "CP", e+1, map[string]string{"site": "z"})
 	require.False(t, ok, "stale epoch")
+
+	require.NoError(t, r.Heartbeat(ctx, storage.GatewayInfo{ID: "A", Boot: "b", Labels: map[string]string{"version": "v2", "policy_rev": "7"}}, time.Minute))
+	gws, _ := r.Gateways(ctx)
+	require.Equal(t, "7", gws[0].Labels["policy_rev"])
 }

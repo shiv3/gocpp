@@ -17,9 +17,14 @@ type SessionConfig struct {
 	// GatewayID names this process in the registry. Default: WithInstanceID, else
 	// a random id (fine for a registry that is not shared).
 	GatewayID string
-	// Version and Label identify this process's release and canary group in the
-	// registry (informational; copied into every session and the lease).
-	Version, Label string
+	// Version is this process's release version: lease label "version", copied
+	// into every session as Session.GatewayVersion.
+	Version string
+	// Labels are extra lease labels (see storage.GatewayInfo.Labels), for example
+	// the canary group. Change them at runtime with Server.SetGatewayLabel; the
+	// label "policy_rev" is reserved for the routing policy revision a gateway has
+	// applied.
+	Labels map[string]string
 	// Address is informational: where other processes can reach this one.
 	Address string
 	// LeaseTTL is how long the gateway lease lives without a heartbeat; sessions
@@ -79,6 +84,9 @@ type sessionManager struct {
 
 	holders func() []sessionHolder
 
+	lmu    sync.RWMutex
+	labels map[string]string
+
 	draining   atomic.Bool
 	leaseReady chan struct{}
 	readyOnce  sync.Once
@@ -90,9 +98,42 @@ func newSessionManager(reg storage.SessionRegistry, cfg SessionConfig, log *slog
 	if cfg.GatewayID == "" {
 		cfg.GatewayID = ulid.Make().String()
 	}
+	labels := make(map[string]string, len(cfg.Labels))
+	for k, v := range cfg.Labels {
+		labels[k] = v
+	}
 	return &sessionManager{
-		reg: reg, log: log, cfg: cfg, boot: ulid.Make().String(), loops: loops, holders: holders,
+		labels: labels,
+		reg:    reg, log: log, cfg: cfg, boot: ulid.Make().String(), loops: loops, holders: holders,
 		leaseReady: make(chan struct{}), kick: make(chan struct{}, 1),
+	}
+}
+
+func (m *sessionManager) labelsCopy() map[string]string {
+	m.lmu.RLock()
+	defer m.lmu.RUnlock()
+	out := make(map[string]string, len(m.labels)+1)
+	for k, v := range m.labels {
+		out[k] = v
+	}
+	if m.cfg.Version != "" {
+		out["version"] = m.cfg.Version
+	}
+	return out
+}
+
+// setLabel changes one lease label (an empty value removes it) and renews the
+// lease so readers see it at once.
+func (m *sessionManager) setLabel(ctx context.Context, k, v string) {
+	m.lmu.Lock()
+	if v == "" {
+		delete(m.labels, k)
+	} else {
+		m.labels[k] = v
+	}
+	m.lmu.Unlock()
+	if m.loops {
+		m.heartbeat(ctx)
 	}
 }
 
@@ -103,7 +144,7 @@ func (m *sessionManager) info() storage.GatewayInfo {
 	}
 	return storage.GatewayInfo{
 		ID: m.cfg.GatewayID, Boot: m.boot, Address: m.cfg.Address, State: state,
-		Version: m.cfg.Version, Label: m.cfg.Label,
+		Labels:   m.labelsCopy(),
 		Sessions: len(m.holders()),
 	}
 }
@@ -172,7 +213,7 @@ func (m *sessionManager) run(ctx context.Context) {
 // (unclaimed): the connection is served and the reconcile loop claims it later.
 func (m *sessionManager) claim(ctx context.Context, s storage.Session) storage.Session {
 	s.GatewayID, s.Boot, s.Epoch = m.cfg.GatewayID, m.boot, 0
-	s.GatewayVersion, s.GatewayLabel = m.cfg.Version, m.cfg.Label
+	s.GatewayVersion = m.cfg.Version
 	m.waitLease(ctx)
 	cctx, cancel := context.WithTimeout(ctx, m.cfg.ClaimTimeout)
 	defer cancel()

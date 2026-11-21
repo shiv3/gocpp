@@ -203,27 +203,34 @@ func TestStaleWriterCannotOverwriteNewerConnection(t *testing.T) {
 	})
 }
 
-func TestAttrsAndGatewayRelease(t *testing.T) {
+func TestAttrsMergeAndLeaseLabels(t *testing.T) {
 	eachBackend(t, func(t *testing.T, b backend) {
 		ctx := context.Background()
 		r, _ := newReg(t, b)
-		e, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a", GatewayVersion: "v2", GatewayLabel: "canary",
-			Attrs: map[string]string{"site": "x"}})
+		e, _, err := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "A", Boot: "a", GatewayVersion: "v2",
+			Meta: map[string]string{"attr.site": "x", "attr.vendor": "acme", "route.pool": "default"}})
 		require.NoError(t, err)
-		require.NoError(t, r.Heartbeat(ctx, storage.GatewayInfo{ID: "A", Boot: "a", Version: "v2", Label: "canary"}, time.Minute))
+		labels := map[string]string{"version": "v2", "policy_rev": "7"}
+		require.NoError(t, r.Heartbeat(ctx, storage.GatewayInfo{ID: "A", Boot: "a", Labels: labels}, time.Minute))
 		s, found, _ := r.Lookup(ctx, "CP")
 		require.True(t, found)
-		require.Equal(t, map[string]string{"site": "x"}, s.Attrs)
+		require.Equal(t, map[string]string{"site": "x", "vendor": "acme"}, s.Attrs())
+		require.Equal(t, "default", s.Meta["route.pool"])
 		require.Equal(t, "v2", s.GatewayVersion)
-		require.Equal(t, "canary", s.GatewayLabel)
-		ok, err := r.SetAttrs(ctx, "CP", e, map[string]string{"site": "y", "fw": "1"})
+		ok, err := r.SetAttrs(ctx, "CP", e, map[string]string{"site": "y", "vendor": "", "fw": "1"})
 		require.NoError(t, err)
 		require.True(t, ok)
 		ok, _ = r.SetAttrs(ctx, "CP", e+1, nil)
 		require.False(t, ok)
 		s, _, _ = r.Lookup(ctx, "CP")
-		require.Equal(t, map[string]string{"site": "y", "fw": "1"}, s.Attrs)
+		require.Equal(t, map[string]string{"site": "y", "fw": "1"}, s.Attrs())
+		require.Equal(t, "default", s.Meta["route.pool"])
 		gws, _ := r.Gateways(ctx)
-		require.Equal(t, "canary", gws[0].Label)
+		require.Equal(t, labels, gws[0].Labels)
+		// A reclaim replaces the whole Meta.
+		_, prev, _ := r.Claim(ctx, storage.Session{CPID: "CP", GatewayID: "B", Boot: "b", Meta: map[string]string{"attr.site": "z"}})
+		require.Equal(t, "y", prev.Attrs()["site"])
+		s, _, _ = r.Lookup(ctx, "CP")
+		_ = s
 	})
 }

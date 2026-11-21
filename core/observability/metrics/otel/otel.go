@@ -24,6 +24,9 @@ type metrics struct {
 	queueDepth  metric.Int64Histogram
 	pingLatency metric.Float64Histogram
 	softViol    metric.Int64Counter
+	sessDur     metric.Float64Histogram
+	closes      metric.Int64Counter
+	accepts     metric.Int64Counter
 }
 
 // New builds an observability.Metrics backed by OTel instruments from mp.
@@ -78,7 +81,26 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 		return nil, err
 	}
 
+	sessDur, err := m.Float64Histogram("gocpp.session.duration",
+		metric.WithDescription("connection lifetime, observed at close"), metric.WithUnit("s"))
+	if err != nil {
+		return nil, err
+	}
+	closes, err := m.Int64Counter("gocpp.closes",
+		metric.WithDescription("connections closed, by WebSocket close code and cause"))
+	if err != nil {
+		return nil, err
+	}
+	accepts, err := m.Int64Counter("gocpp.accepts",
+		metric.WithDescription("upgrade attempts by result"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &metrics{
+		sessDur:     sessDur,
+		closes:      closes,
+		accepts:     accepts,
 		connections: conns,
 		pending:     pending,
 		calls:       calls,
@@ -138,4 +160,14 @@ func (m *metrics) SchemaSoftViolation(version, action, kind, keyword string) {
 		attribute.String("kind", kind),
 		attribute.String("keyword", keyword),
 	))
+}
+
+func (m *metrics) SessionClosed(version string, d time.Duration, code, cause string) {
+	m.sessDur.Record(context.Background(), d.Seconds(), metric.WithAttributes(attribute.String("version", version)))
+	m.closes.Add(context.Background(), 1, metric.WithAttributes(
+		attribute.String("version", version), attribute.String("code", code), attribute.String("cause", cause)))
+}
+
+func (m *metrics) UpgradeResult(result string) {
+	m.accepts.Add(context.Background(), 1, metric.WithAttributes(attribute.String("result", result)))
 }

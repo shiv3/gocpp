@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -57,26 +58,29 @@ func (r *Registry) epochKey(cp string) string { return r.prefix + ":{" + cp + "}
 func (r *Registry) recKey(cp string) string   { return r.prefix + ":{" + cp + "}:r" }
 func (r *Registry) leaseKey(gw string) string { return r.prefix + ":gw:" + gw }
 
-// sessionData is the part of a Session that Redis stores opaquely.
+// sessionData is the part of a Session that Redis stores as one opaque blob.
+// Meta is not in it: each Meta entry is a hash field "m:<key>" so that
+// attribute updates (SetAttrs) are merged by a script without parsing JSON.
 type sessionData struct {
-	Version     string            `json:"v,omitempty"`
-	ConnectedAt time.Time         `json:"t,omitempty"`
-	Meta        map[string]string `json:"m,omitempty"`
-	GwVersion   string            `json:"gv,omitempty"`
-	GwLabel     string            `json:"gl,omitempty"`
+	Version     string    `json:"v,omitempty"`
+	ConnectedAt time.Time `json:"t,omitempty"`
+	GwVersion   string    `json:"gv,omitempty"`
 }
 
-func encodeAttrs(a map[string]string) (string, error) {
-	if len(a) == 0 {
-		return "", nil
-	}
-	b, err := json.Marshal(a)
-	return string(b), err
-}
+const metaField = "m:"
 
 func encodeData(s storage.Session) (string, error) {
-	b, err := json.Marshal(sessionData{Version: s.Version, ConnectedAt: s.ConnectedAt, Meta: s.Meta, GwVersion: s.GatewayVersion, GwLabel: s.GatewayLabel})
+	b, err := json.Marshal(sessionData{Version: s.Version, ConnectedAt: s.ConnectedAt, GwVersion: s.GatewayVersion})
 	return string(b), err
+}
+
+// metaArgs flattens Meta into ARGV pairs.
+func metaArgs(m map[string]string) []any {
+	out := make([]any, 0, 2*len(m))
+	for k, v := range m {
+		out = append(out, k, v)
+	}
+	return out
 }
 
 func decodeRecord(cp string, f map[string]string) (storage.Session, error) {
@@ -91,31 +95,42 @@ func decodeRecord(cp string, f map[string]string) (storage.Session, error) {
 		if err := json.Unmarshal([]byte(d), &sd); err != nil {
 			return s, fmt.Errorf("registryredis: bad session data for %q: %w", cp, err)
 		}
-		s.Version, s.ConnectedAt, s.Meta = sd.Version, sd.ConnectedAt, sd.Meta
-		s.GatewayVersion, s.GatewayLabel = sd.GwVersion, sd.GwLabel
+		s.Version, s.ConnectedAt, s.GatewayVersion = sd.Version, sd.ConnectedAt, sd.GwVersion
 	}
-	if a := f["attrs"]; a != "" {
-		if err := json.Unmarshal([]byte(a), &s.Attrs); err != nil {
-			return s, fmt.Errorf("registryredis: bad attrs for %q: %w", cp, err)
+	for k, v := range f {
+		if strings.HasPrefix(k, metaField) {
+			if s.Meta == nil {
+				s.Meta = make(map[string]string)
+			}
+			s.Meta[k[len(metaField):]] = v
 		}
 	}
 	return s, nil
 }
 
-// KEYS: epoch, record. ARGV: gw, boot, data, recordTTL(s), epochTTL(s), attrs.
+// KEYS: epoch, record. ARGV: gw, boot, data, recordTTL(s), epochTTL(s), then Meta key/value pairs.
 var claimScript = redis.NewScript(`
 local e = redis.call('INCR', KEYS[1])
 redis.call('EXPIRE', KEYS[1], ARGV[5])
 local prev = redis.call('HGETALL', KEYS[2])
-redis.call('HSET', KEYS[2], 'gw', ARGV[1], 'boot', ARGV[2], 'epoch', tostring(e), 'data', ARGV[3], 'attrs', ARGV[6])
+redis.call('DEL', KEYS[2])
+redis.call('HSET', KEYS[2], 'gw', ARGV[1], 'boot', ARGV[2], 'epoch', tostring(e), 'data', ARGV[3])
+for i = 6, #ARGV, 2 do redis.call('HSET', KEYS[2], 'm:' .. ARGV[i], ARGV[i + 1]) end
 redis.call('EXPIRE', KEYS[2], ARGV[4])
 return {e, prev}
 `)
 
-// KEYS: record. ARGV: epoch, attrs.
+// KEYS: record. ARGV: epoch, then attribute key/value pairs (an empty value
+// deletes the attribute).
 var setAttrsScript = redis.NewScript(`
 if redis.call('HGET', KEYS[1], 'epoch') == ARGV[1] then
-  redis.call('HSET', KEYS[1], 'attrs', ARGV[2])
+  for i = 2, #ARGV, 2 do
+    if ARGV[i + 1] == '' then
+      redis.call('HDEL', KEYS[1], 'm:attr.' .. ARGV[i])
+    else
+      redis.call('HSET', KEYS[1], 'm:attr.' .. ARGV[i], ARGV[i + 1])
+    end
+  end
   return 1
 end
 return 0
@@ -130,7 +145,7 @@ end
 return 0
 `)
 
-// KEYS: epoch, record. ARGV: epoch, gw, boot, data, recordTTL(s), epochTTL(s), attrs.
+// KEYS: epoch, record. ARGV: epoch, gw, boot, data, recordTTL(s), epochTTL(s), then Meta key/value pairs.
 var reassertScript = redis.NewScript(`
 local want = tonumber(ARGV[1])
 local cur = redis.call('HGET', KEYS[2], 'epoch')
@@ -148,7 +163,9 @@ end
 local ec = tonumber(redis.call('GET', KEYS[1]) or '0')
 if ec < want then redis.call('SET', KEYS[1], ARGV[1]) end
 redis.call('EXPIRE', KEYS[1], ARGV[6])
-redis.call('HSET', KEYS[2], 'gw', ARGV[2], 'boot', ARGV[3], 'epoch', ARGV[1], 'data', ARGV[4], 'attrs', ARGV[7])
+redis.call('DEL', KEYS[2])
+redis.call('HSET', KEYS[2], 'gw', ARGV[2], 'boot', ARGV[3], 'epoch', ARGV[1], 'data', ARGV[4])
+for i = 7, #ARGV, 2 do redis.call('HSET', KEYS[2], 'm:' .. ARGV[i], ARGV[i + 1]) end
 redis.call('EXPIRE', KEYS[2], ARGV[5])
 return 1
 `)
@@ -161,12 +178,8 @@ func (r *Registry) Claim(ctx context.Context, s storage.Session) (uint64, *stora
 	if err != nil {
 		return 0, nil, err
 	}
-	attrs, err := encodeAttrs(s.Attrs)
-	if err != nil {
-		return 0, nil, err
-	}
-	res, err := claimScript.Run(ctx, r.rdb, []string{r.epochKey(s.CPID), r.recKey(s.CPID)},
-		s.GatewayID, s.Boot, data, secs(r.recordTTL), secs(r.epochTTL), attrs).Slice()
+	args := append([]any{s.GatewayID, s.Boot, data, secs(r.recordTTL), secs(r.epochTTL)}, metaArgs(s.Meta)...)
+	res, err := claimScript.Run(ctx, r.rdb, []string{r.epochKey(s.CPID), r.recKey(s.CPID)}, args...).Slice()
 	if err != nil {
 		return 0, nil, fmt.Errorf("registryredis: claim %q: %w", s.CPID, err)
 	}
@@ -209,12 +222,8 @@ func (r *Registry) Reassert(ctx context.Context, s storage.Session) (bool, error
 	if err != nil {
 		return false, err
 	}
-	attrs, err := encodeAttrs(s.Attrs)
-	if err != nil {
-		return false, err
-	}
-	n, err := reassertScript.Run(ctx, r.rdb, []string{r.epochKey(s.CPID), r.recKey(s.CPID)},
-		strconv.FormatUint(s.Epoch, 10), s.GatewayID, s.Boot, data, secs(r.recordTTL), secs(r.epochTTL), attrs).Int()
+	args := append([]any{strconv.FormatUint(s.Epoch, 10), s.GatewayID, s.Boot, data, secs(r.recordTTL), secs(r.epochTTL)}, metaArgs(s.Meta)...)
+	n, err := reassertScript.Run(ctx, r.rdb, []string{r.epochKey(s.CPID), r.recKey(s.CPID)}, args...).Int()
 	if err != nil {
 		return false, fmt.Errorf("registryredis: reassert %q: %w", s.CPID, err)
 	}
@@ -223,11 +232,8 @@ func (r *Registry) Reassert(ctx context.Context, s storage.Session) (bool, error
 
 // SetAttrs implements storage.SessionRegistry.
 func (r *Registry) SetAttrs(ctx context.Context, cpID string, epoch uint64, attrs map[string]string) (bool, error) {
-	a, err := encodeAttrs(attrs)
-	if err != nil {
-		return false, err
-	}
-	n, err := setAttrsScript.Run(ctx, r.rdb, []string{r.recKey(cpID)}, strconv.FormatUint(epoch, 10), a).Int()
+	args := append([]any{strconv.FormatUint(epoch, 10)}, metaArgs(attrs)...)
+	n, err := setAttrsScript.Run(ctx, r.rdb, []string{r.recKey(cpID)}, args...).Int()
 	if err != nil {
 		return false, fmt.Errorf("registryredis: set attrs %q: %w", cpID, err)
 	}
@@ -313,18 +319,17 @@ func (r *Registry) leaseBoots(ctx context.Context, gws map[string]struct{}) (map
 }
 
 type leaseInfo struct {
-	ID       string `json:"id"`
-	Boot     string `json:"boot"`
-	Address  string `json:"addr,omitempty"`
-	State    string `json:"state,omitempty"`
-	Sessions int    `json:"sessions"`
-	Version  string `json:"ver,omitempty"`
-	Label    string `json:"label,omitempty"`
+	ID       string            `json:"id"`
+	Boot     string            `json:"boot"`
+	Address  string            `json:"addr,omitempty"`
+	State    string            `json:"state,omitempty"`
+	Sessions int               `json:"sessions"`
+	Labels   map[string]string `json:"labels,omitempty"`
 }
 
 // Heartbeat implements storage.SessionRegistry.
 func (r *Registry) Heartbeat(ctx context.Context, g storage.GatewayInfo, ttl time.Duration) error {
-	b, err := json.Marshal(leaseInfo{ID: g.ID, Boot: g.Boot, Address: g.Address, State: g.State, Sessions: g.Sessions, Version: g.Version, Label: g.Label})
+	b, err := json.Marshal(leaseInfo{ID: g.ID, Boot: g.Boot, Address: g.Address, State: g.State, Sessions: g.Sessions, Labels: g.Labels})
 	if err != nil {
 		return err
 	}
@@ -345,7 +350,7 @@ func (r *Registry) Gateways(ctx context.Context) ([]storage.GatewayInfo, error) 
 		}
 		var li leaseInfo
 		if json.Unmarshal([]byte(v), &li) == nil {
-			out = append(out, storage.GatewayInfo{ID: li.ID, Boot: li.Boot, Address: li.Address, State: li.State, Sessions: li.Sessions, Version: li.Version, Label: li.Label})
+			out = append(out, storage.GatewayInfo{ID: li.ID, Boot: li.Boot, Address: li.Address, State: li.State, Sessions: li.Sessions, Labels: li.Labels})
 		}
 	}
 	if err := iter.Err(); err != nil {

@@ -3,7 +3,7 @@ package csms
 import (
 	"context"
 	"crypto/tls"
-	"maps"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -73,17 +73,26 @@ func (c *Conn) Session() (s storage.Session, ok bool) {
 	return p.s, true
 }
 
+// ErrAttrsTooLarge is returned by SetAttrs when the attributes would exceed
+// storage.MaxAttrBytes.
+var ErrAttrsTooLarge = errors.New("csms: session attributes exceed the size cap")
+
 // Attrs returns a copy of the session attributes (see WithSessionAttributes and
-// SetAttrs); nil when there are none.
+// SetAttrs); nil when there are none. They are stored in the session record as
+// Meta keys with the reserved prefix "attr.".
 func (c *Conn) Attrs() map[string]string {
 	s, _ := c.Session()
-	return maps.Clone(s.Attrs)
+	return s.Attrs()
 }
 
-// SetAttrs replaces the session attributes. With a session registry the record
-// is updated there too (compare-and-set on the epoch); the local value is
-// updated first, so a registry error leaves the next reconcile pass to repair
-// the record. Not supported on a remote handle (ErrRemoteConn).
+// SetAttrs merges attrs into the session attributes: a key replaces its value, a
+// key with an empty value is deleted, other attributes stay. The total size of
+// keys and values is capped (storage.MaxAttrBytes; ErrAttrsTooLarge). With a
+// session registry the record is updated there too (compare-and-set on the
+// epoch); the local value is updated first, so a registry error leaves the next
+// reconcile pass to repair the record. Attribute keys starting with "gocpp." are
+// reserved for a gateway to interpret (gocpp.busy) and are stored like any other.
+// Not supported on a remote handle (ErrRemoteConn).
 func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
 	if c.inner == nil {
 		return ErrRemoteConn
@@ -93,12 +102,16 @@ func (c *Conn) SetAttrs(ctx context.Context, attrs map[string]string) error {
 		ref = &sessionRef{s: storage.Session{CPID: c.inner.ID()}, srv: c.srv}
 	}
 	s := ref.s
-	s.Attrs = maps.Clone(attrs)
+	meta, ok := storage.MergeAttrs(s.Meta, attrs)
+	if !ok {
+		return ErrAttrsTooLarge
+	}
+	s.Meta = meta
 	c.inner.SetAttachment(&sessionRef{s: s, srv: ref.srv})
 	if ref.srv == nil || ref.srv.sessions == nil || s.Epoch == 0 {
 		return nil
 	}
-	_, err := ref.srv.sessions.reg.SetAttrs(ctx, s.CPID, s.Epoch, s.Attrs)
+	_, err := ref.srv.sessions.reg.SetAttrs(ctx, s.CPID, s.Epoch, attrs)
 	return err
 }
 

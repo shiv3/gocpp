@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/storage/memory"
@@ -339,7 +341,7 @@ func TestDrain_PartialSelectsByAttrsCPIDsAndFraction(t *testing.T) {
 	defer cancel()
 	reg := memory.NewSessionRegistry()
 	srv, ts := newDrainServer(t,
-		csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: "A", Version: "v2", Label: "canary"}),
+		csms.WithSessionRegistry(reg, csms.SessionConfig{GatewayID: "A", Version: "v2", Labels: map[string]string{"group": "canary"}}),
 		csms.WithSessionAttributes(func(r *http.Request, cpID string) map[string]string {
 			site := "s1"
 			if cpID >= "CP_0020" {
@@ -361,17 +363,23 @@ func TestDrain_PartialSelectsByAttrsCPIDsAndFraction(t *testing.T) {
 	rec, found, err := reg.Lookup(ctx, "CP_0000")
 	require.NoError(t, err)
 	require.True(t, found)
-	require.Equal(t, map[string]string{"site": "s1", "vendor": "acme"}, rec.Attrs)
+	require.Equal(t, map[string]string{"site": "s1", "vendor": "acme"}, rec.Attrs())
+	require.Equal(t, "s1", rec.Meta["attr.site"], "reserved attr. prefix in Meta")
 	require.Equal(t, "v2", rec.GatewayVersion)
-	require.Equal(t, "canary", rec.GatewayLabel)
+	gws, _ := reg.Gateways(ctx)
+	require.Equal(t, map[string]string{"version": "v2", "group": "canary"}, gws[0].Labels)
 
-	// Attributes can be updated later, locally and in the registry.
-	require.NoError(t, srv.SetSessionAttrs(ctx, "CP_0000", map[string]string{"site": "s1", "firmware": "1.2"}))
+	// Attributes merge: a key replaces, an empty value deletes, the rest stay.
+	require.NoError(t, srv.SetSessionAttrs(ctx, "CP_0000", map[string]string{"firmware": "1.2", "vendor": ""}))
 	rec, _, _ = reg.Lookup(ctx, "CP_0000")
-	require.Equal(t, "1.2", rec.Attrs["firmware"])
+	require.Equal(t, map[string]string{"site": "s1", "firmware": "1.2"}, rec.Attrs())
 	conn, _ := srv.Get("CP_0000")
-	require.Equal(t, "1.2", conn.Attrs()["firmware"])
-	require.NoError(t, srv.SetSessionAttrs(ctx, "CP_0000", map[string]string{"site": "s1", "vendor": "acme"}))
+	require.Equal(t, map[string]string{"site": "s1", "firmware": "1.2"}, conn.Attrs())
+	require.ErrorIs(t, srv.SetSessionAttrs(ctx, "CP_0000", map[string]string{"big": strings.Repeat("x", 2000)}), csms.ErrAttrsTooLarge)
+	require.NoError(t, srv.SetSessionAttrs(ctx, "CP_0000", map[string]string{"firmware": "", "vendor": "acme"}))
+	srv.SetGatewayLabel(ctx, "policy_rev", "42")
+	gws, _ = reg.Gateways(ctx)
+	require.Equal(t, "42", gws[0].Labels["policy_rev"])
 
 	// Fraction of one site: half of the 20 sessions at s2.
 	require.NoError(t, srv.Drain(ctx, csms.DrainOptions{Attrs: map[string]string{"site": "s2"}, Fraction: 0.5, Window: 2 * time.Second}))
@@ -398,6 +406,100 @@ func TestDrain_PartialSelectsByAttrsCPIDsAndFraction(t *testing.T) {
 	require.Equal(t, 2, srv.DrainStatus().Total)
 	before := closed()
 	require.NoError(t, srv.Drain(ctx, csms.DrainOptions{
-		Select: func(s storage.Session) bool { return s.Attrs["site"] == "s1" }, Count: 3, Window: time.Second}))
+		Select: func(s storage.Session) bool { return s.Attrs()["site"] == "s1" }, Max: 3, Window: time.Second}))
 	require.Eventually(t, func() bool { return closed() == before+3 }, 3*time.Second, 10*time.Millisecond)
+}
+
+func TestSoftMaxConnectionsReflectedInReadiness(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	srv, ts := newDrainServer(t, csms.WithSoftMaxConnections(3))
+	ready := func() int {
+		rec := httptest.NewRecorder()
+		srv.ReadyHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+		return rec.Code
+	}
+	require.Equal(t, http.StatusOK, ready())
+	cps := connectAll(ctx, t, srv, ts.URL, 3)
+	require.Equal(t, http.StatusServiceUnavailable, ready(), "at the soft cap")
+	// Upgrades are still accepted and existing sessions kept.
+	extra := dialDrainCP(ctx, t, ts.URL, "EXTRA")
+	require.Eventually(t, func() bool { return len(srv.Connections()) == 4 }, 2*time.Second, 10*time.Millisecond)
+	for _, cp := range append(cps, extra) {
+		require.Zero(t, cp.closedAt.Load())
+	}
+	srv.SetSoftMaxConnections(0)
+	require.Equal(t, http.StatusOK, ready())
+	srv.SetSoftMaxConnections(10)
+	require.Equal(t, http.StatusOK, ready())
+}
+
+func TestPartialDrainReadinessAndRefuseDuring(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	srv, ts := newDrainServer(t)
+	cps := connectAll(ctx, t, srv, ts.URL, 20)
+	cps[0].delay.Store(int64(800 * time.Millisecond))
+	conn, _ := srv.Get(cps[0].id)
+	go func() {
+		_, _ = csms.Call(ctx, conn, profiles.Reset, messages.ResetRequest{Type: messages.ResetRequestTypeSoft})
+	}()
+	require.Eventually(t, func() bool { return cps[0].received.Load() == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Drain(ctx, csms.DrainOptions{Max: 5, Window: 3 * time.Second, RefuseDuring: true,
+			Filter: func(c *csms.Conn) bool { return c.ID() < "CP_0010" }})
+	}()
+	require.Eventually(t, func() bool { return srv.DrainStatus().Active }, time.Second, time.Millisecond)
+	rec := httptest.NewRecorder()
+	srv.ReadyHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	_, resp, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/NEW", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+	require.Error(t, err)
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	require.NoError(t, <-done)
+	require.False(t, srv.Draining())
+	require.Equal(t, 5, srv.DrainStatus().Closed)
+	rec = httptest.NewRecorder()
+	srv.ReadyHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+type recMetrics struct {
+	observability.NoOp
+	mu      sync.Mutex
+	closes  []string
+	results map[string]int
+}
+
+func (r *recMetrics) SessionClosed(_ string, d time.Duration, code, cause string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if d >= 0 {
+		r.closes = append(r.closes, code+"/"+cause)
+	}
+}
+
+func (r *recMetrics) UpgradeResult(res string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.results[res]++
+}
+
+func TestSessionMetrics_ClosesAndAccepts(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	m := &recMetrics{results: map[string]int{}}
+	srv, ts := newDrainServer(t, csms.WithMetrics(m), csms.WithAcceptRateLimit(1000, 1000))
+	connectAll(ctx, t, srv, ts.URL, 3)
+	require.NoError(t, srv.Drain(ctx, csms.DrainOptions{Window: time.Second}))
+	_, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/X", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+	require.Error(t, err)
+	require.Eventually(t, func() bool { m.mu.Lock(); defer m.mu.Unlock(); return len(m.closes) == 3 }, 3*time.Second, 10*time.Millisecond)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	require.Equal(t, []string{"1012/drain", "1012/drain", "1012/drain"}, m.closes)
+	require.Equal(t, 3, m.results["ok"])
+	require.Equal(t, 1, m.results["draining"])
 }
