@@ -393,7 +393,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		local.Meta, _ = storage.MergeAttrs(nil, attrs)
 		dconn.SetAttachment(&sessionRef{s: local, srv: s})
 	}
-	conn := &Conn{inner: dconn, gone: make(chan struct{}), gw: gws, tenantRelease: tenantRelease}
+	conn := &Conn{inner: dconn, gone: make(chan struct{}), gw: gws, tenantRelease: tenantRelease, openedAt: time.Now()}
 	// gone is closed by connCleanup once the connection is registered; every
 	// earlier return closes it here.
 	registered := false
@@ -424,6 +424,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	registeredSession = true
 	s.upgradeResult("ok")
 	s.handleConnected(conn)
+	s.observeSession(conn, observability.SessionOpened, nil)
 	if s.edge != nil {
 		s.edge.opened(conn, r, edgeReply)
 	}
@@ -453,6 +454,7 @@ func (s *Server) connCleanup(cpID string, conn *Conn) {
 	dconn := conn.inner
 	cause := context.Cause(dconn.Context())
 	s.handleDisconnected(conn, cause)
+	s.observeSession(conn, observability.SessionClosed, cause)
 	if s.edge != nil {
 		// Like the disconnect callback, before the close handshake, which can
 		// take as long as an unresponsive peer likes.
@@ -599,6 +601,7 @@ func (s *Server) addConn(id string, c *Conn, res ...*slotReservation) bool {
 		// runs in the background. The caller fires connect(new) after we return.
 		old.inner.Abort(ocppj.ErrConnReplaced)
 		s.handleDisconnected(old, ocppj.ErrConnReplaced)
+		s.observeSession(old, observability.SessionClosed, ocppj.ErrConnReplaced)
 		go func() { _ = old.inner.Close(nil) }()
 	}
 	return true
@@ -612,6 +615,43 @@ func (s *Server) removeConn(id string, c *Conn) bool {
 	}
 	delete(s.conns, id)
 	return true
+}
+
+// observeSession reports a session event of a connection this server terminates
+// to WithSessionObserver. The closed event fires once even though a replaced
+// connection is torn down by both the replacement and its own cleanup.
+func (s *Server) observeSession(c *Conn, kind observability.SessionEventKind, cause error) {
+	fn := s.cfg.sessionObs
+	if fn == nil || c.inner == nil {
+		return
+	}
+	emit := func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.cfg.dispatcher.Logger.Error("csms session observer panic recovered",
+					"cp_id", c.ID(), "panic", r)
+			}
+		}()
+		sess, _ := c.Session()
+		ev := observability.SessionEvent{
+			Kind: kind, CPID: c.ID(), Version: c.Version(), RemoteAddr: c.RemoteAddr(),
+			Epoch: sess.Epoch, Attrs: sess.Attrs(), Time: time.Now(),
+		}
+		if kind == observability.SessionClosed {
+			if cause != nil && !errors.Is(cause, ocppj.ErrConnClosed) {
+				ev.Cause = cause.Error()
+			}
+			if !c.openedAt.IsZero() {
+				ev.Duration = ev.Time.Sub(c.openedAt)
+			}
+		}
+		fn(s.ctx, ev)
+	}
+	if kind == observability.SessionOpened {
+		emit()
+		return
+	}
+	c.tapOnce.Do(emit)
 }
 
 func (s *Server) handleConnected(c *Conn) {

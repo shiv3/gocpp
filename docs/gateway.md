@@ -178,6 +178,51 @@ allocs / 2.4 KB to 19 allocs / 1.8 KB and about 20% off its latency (the
 in-process hop; over a network link the saving is the network round trip).
 `TestGateEdgeAndTenantOverhead` keeps both honest in CI.
 
+## Frame and session taps
+
+For audit, analytics and replay a gateway (or an embedded server) can export what
+crosses its sockets to an external sink without being slowed by it
+(`core/observability/tap`):
+
+```go
+sink, _ := tap.JSONLFile("/var/log/gocpp/tap.jsonl") // or linknats.NewTapSink(nc), or tap.Multi(a, b)
+ex := tap.New(sink, tap.WithSource("gw-1"), tap.WithBuffer(8192), tap.WithFrameSampling(10),
+	tap.WithFrameFilter(func(ev observability.FrameEvent) bool { return ev.Action != "Heartbeat" }))
+srv := csms.NewGatewayServer(link,
+	csms.WithFrameObserver(ex.FrameObserver()),     // every raw frame, in and out, in wire order
+	csms.WithSessionObserver(ex.SessionObserver())) // opened / closed (cause, duration, epoch, attrs)
+defer ex.Close(ctx)                                 // flushes the buffer
+```
+
+- **Hot path.** A frame observer runs under the connection's write lock or on its
+  reader goroutine, so the exporter only filters, samples (1 in N, a counter),
+  copies a bounded prefix of the frame (`WithMaxFrame`, default 2 KiB; negative:
+  metadata only) and does a non-blocking send into a bounded buffer
+  (`WithBuffer`, default 4096). A full buffer drops the event and counts it;
+  nothing ever waits for the sink (about 200 ns and one allocation per frame,
+  `BenchmarkFrameObserver`).
+- **Sink.** A background goroutine hands batches (`WithBatch`, default 256 events
+  or 1 s) to a `tap.Sink`, which may block or fail: failed batches are counted,
+  not retried. Provided: `tap.JSONL` / `tap.JSONLFile` (one JSON object per line),
+  `linknats.NewTapSink` (core NATS subjects `<prefix>.tap.frame.<cp>` and
+  `<prefix>.tap.session.<cp>`; bind a JetStream stream to `<prefix>.tap.>` to keep
+  them), `tap.Multi`. Kafka, Pub/Sub or an object store are a `Sink` of a few
+  lines each.
+- **Delivery.** At most once per exporter, with `(source, seq)` on every event;
+  `seq` counts dropped events too, so a consumer sees losses as gaps and
+  deduplicates when its transport redelivers. Session events carry the registry
+  epoch, which orders the connections of one charge point.
+- **Session events** (`csms.WithSessionObserver`) fire where the socket lives:
+  once on open and exactly once on close (including replacement by a newer
+  connection), on a gateway as on an embedded server; the backend's
+  `WithOnConnect` / `WithOnDisconnect` are unchanged.
+- Metrics and flags of the reference binary: `gocpp_tap_events_total{result}`
+  (`exported`, `dropped`, `sampled`, `failed`), `gocpp_tap_queue_depth`;
+  `--tap-jsonl`, `--tap-nats` (uses `--nats-url`/`--nats-prefix`), `--tap-sample`,
+  `--tap-buffer`, `--tap-max-frame`, `--tap-skip-heartbeat`, `--tap-no-frames`,
+  `--tap-no-sessions`. Frames contain whatever the chargers send (idTags,
+  possibly personal data): protect the sink like the traffic itself.
+
 ## The gRPC link and the reference binary
 
 `addons/link-grpc` (its own module, so the main module gains no gRPC dependency)

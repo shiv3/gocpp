@@ -50,6 +50,7 @@ type serverConfig struct {
 	tracerProvider trace.TracerProvider
 	onConnect      func(*Conn)
 	onDisconnect   func(*Conn, error)
+	sessionObs     observability.SessionObserver
 	connConfig     func(r *http.Request, cpID string, t *ConnTimeouts)
 
 	originPatterns           []string
@@ -311,6 +312,16 @@ func WithOnConnect(fn func(*Conn)) Option {
 // WithOnDisconnect registers a callback fired after a charge point connection drops.
 func WithOnDisconnect(fn func(*Conn, error)) Option {
 	return optionFunc(func(c *serverConfig) { c.onDisconnect = fn })
+}
+
+// WithSessionObserver installs a callback that sees the lifecycle of every
+// WebSocket session this server terminates: opened once the connection is
+// registered, closed once when it ends (with the cause and the duration). It
+// works on an embedded server and on a gateway alike (unlike WithOnConnect, which
+// belongs to the processing tier), and runs inline, so it must not block; see
+// observability/tap for an exporter that does not. Panics are recovered.
+func WithSessionObserver(fn observability.SessionObserver) Option {
+	return optionFunc(func(c *serverConfig) { c.sessionObs = fn })
 }
 
 // WithInstanceID sets this CSMS instance's identifier and turns on multi-instance

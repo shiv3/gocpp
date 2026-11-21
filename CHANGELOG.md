@@ -33,6 +33,12 @@ All notable changes to this project are documented here. The format is based on
   `Downstream` to `WithMessageRouter`; docs/clustering.md ("Moving to the gateway
   link") maps each old construct to its replacement. Linters (staticcheck SA1019)
   will flag the deprecated identifiers.
+- Frame and session tap exporters (`core/observability/tap`): bounded, lossy,
+  never blocking the hot path, with sampling and filters; `tap.JSONL` /
+  `JSONLFile` / `Multi` sinks and `linknats.NewTapSink` (NATS subjects per charge
+  point); `csms.WithSessionObserver` and `observability.SessionEvent` (opened /
+  closed once, on embedded servers and gateways); `gocpp-gateway --tap-*` flags and
+  `gocpp_tap_events_total`.
 - Gateway correctness follow-ups: `Backend.Locate` for the gRPC link (`locate`
   capability, `LocateRequest`/`LocateReply` frames), `BackendInfo.Actions` filled
   from the registered handlers and honoured by `PoolSet` (unhandled actions fall
