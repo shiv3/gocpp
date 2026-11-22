@@ -11,6 +11,7 @@ import (
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/storage"
+	"github.com/shiv3/gocpp/core/transport"
 )
 
 // Conn is a CSMS-side connection to a charge point.
@@ -268,6 +269,24 @@ func (c *Conn) Close(ctx context.Context) error {
 		return ErrRemoteConn
 	}
 	c.inner.Abort(ocppj.ErrConnClosedByServer)
+	return c.awaitClosed(ctx)
+}
+
+// CloseWithStatus is Close that sends the given WebSocket close code and reason
+// (at most 123 bytes of reason) instead of 1000 "closed by the server". The
+// disconnect callback still sees ocppj.ErrConnClosedByServer (the cause wraps
+// it, see dispatcher.CloseStatus). If the connection is already ending for
+// another reason, that reason's code stands. A remote handle returns
+// ErrRemoteConn.
+func (c *Conn) CloseWithStatus(ctx context.Context, code transport.StatusCode, reason string) error {
+	if c.inner == nil {
+		return ErrRemoteConn
+	}
+	c.inner.AbortWithStatus(code, reason)
+	return c.awaitClosed(ctx)
+}
+
+func (c *Conn) awaitClosed(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
 		_ = c.inner.Close(nil)

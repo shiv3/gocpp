@@ -35,6 +35,25 @@ func On[Req, Resp any](s *Server, m ocppj.Message[Req, Resp], h func(ctx context
 	return nil
 }
 
+// OnAny registers a catch-all handler for inbound CALLs: it serves every action
+// that has no handler registered with On, and receives the action name and the
+// raw JSON payload. Pass nil to remove it. It is for embedders that route
+// untyped messages themselves (a compatibility layer, a proxy); typed handlers
+// registered with On take precedence (a gateway server forwards every action
+// itself and must not use OnAny), and a handler error is mapped like any
+// other (return a *dispatcher.RawCallError to choose the CALLERROR sent).
+//
+// Experimental: this API may change before v1.0.
+func OnAny(s *Server, h func(ctx context.Context, c *Conn, action string, payload []byte) ([]byte, error)) {
+	if h == nil {
+		s.reg.SetFallback(nil)
+		return
+	}
+	s.reg.SetFallback(func(ctx context.Context, dc *dispatcher.Conn, action string, payload []byte) ([]byte, error) {
+		return h(ctx, &Conn{inner: dc}, action, payload)
+	})
+}
+
 // CallRaw sends an action with a raw JSON payload to a connected charge point and
 // returns the raw response. Used by tools/tests that operate on untyped messages
 // (the typed Call is preferred for application code).

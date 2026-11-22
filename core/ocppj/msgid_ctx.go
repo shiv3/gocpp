@@ -38,3 +38,23 @@ func NotifyMessageID(ctx context.Context, id string) {
 	defer func() { _ = recover() }()
 	fn(id)
 }
+
+type outboundMsgIDKey struct{}
+
+// ContextWithOutboundMessageID returns a context that makes the next outbound
+// Call (or Send) sent with it use id as its OCPP message id instead of a
+// generated one. The caller is responsible for the id being unique on the
+// connection. It exists for embedders that own the id policy, such as a
+// compatibility layer that must honour an application supplied id generator.
+func ContextWithOutboundMessageID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, outboundMsgIDKey{}, id)
+}
+
+// OutboundMessageID returns the id set by ContextWithOutboundMessageID, or a
+// freshly generated one. Used by the dispatcher.
+func OutboundMessageID(ctx context.Context) string {
+	if id, ok := ctx.Value(outboundMsgIDKey{}).(string); ok && id != "" {
+		return id
+	}
+	return NewMsgID()
+}

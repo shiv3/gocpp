@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `ocppj.ContextWithOutboundMessageID`: send a CALL or SEND with a caller chosen
+  message id (for embedders that own the id policy).
+- `csms.OnAny`: a public catch-all handler for inbound CALLs without a typed handler.
+- `ocppj.CallError.RawDetails`: the errorDetails element as raw JSON, filled for
+  a CALLERROR / CALLRESULTERROR received from the peer and honoured when sent
+  through `dispatcher.RawCallError`.
+- `dispatcher.CloseStatus`, `dispatcher.Conn.AbortWithStatus`,
+  `csms.Conn.CloseWithStatus` and `csms.Server.DisconnectWithStatus`: close a
+  connection from the server side with a chosen WebSocket close code and reason.
+
 ## [0.3.0] - 2026-11-22
 
 ### Highlights

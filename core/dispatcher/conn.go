@@ -3,6 +3,7 @@ package dispatcher
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -303,7 +304,10 @@ func (c *Conn) closeWS(code transport.StatusCode, reason string) {
 // what tells the peer why.
 func (c *Conn) closeForCause() {
 	cause := context.Cause(c.ctx)
+	var status *CloseStatus
 	switch {
+	case errors.As(cause, &status):
+		c.closeWS(status.Code, truncateCloseReason(status.Reason))
 	case errors.Is(cause, ocppj.ErrGatewayDraining), errors.Is(cause, ocppj.ErrDrainTimeout):
 		c.closeWS(transport.StatusServiceRestart, drainingCloseReason)
 
@@ -314,6 +318,44 @@ func (c *Conn) closeForCause() {
 	default:
 		c.closeWS(transport.StatusNormalClosure, "closed")
 	}
+}
+
+// CloseStatus is a close cause that chooses the WebSocket close code and reason
+// the peer is sent. Pass it to Conn.Abort (see also Conn.AbortWithStatus). It
+// is an ocppj.ErrConnClosedByServer for errors.Is, so the connection counts as
+// closed by the server, only with a code of the caller's choosing.
+type CloseStatus struct {
+	Code   transport.StatusCode
+	Reason string
+}
+
+func (e *CloseStatus) Error() string {
+	return fmt.Sprintf("ocpp: connection closed by the server (status %d %q)", int(e.Code), e.Reason)
+}
+
+// Unwrap makes errors.Is(e, ocppj.ErrConnClosedByServer) true.
+func (e *CloseStatus) Unwrap() error { return ocppj.ErrConnClosedByServer }
+
+// AbortWithStatus is Abort with a CloseStatus cause: the socket is closed with
+// a close frame carrying code and reason. If the connection was already
+// cancelled for another cause that one stands, as with Abort.
+func (c *Conn) AbortWithStatus(code transport.StatusCode, reason string) {
+	c.Abort(&CloseStatus{Code: code, Reason: reason})
+}
+
+// maxCloseReason is the longest close frame reason RFC 6455 allows (125 bytes
+// of control frame payload minus the 2 byte code).
+const maxCloseReason = 123
+
+func truncateCloseReason(r string) string {
+	if len(r) <= maxCloseReason {
+		return r
+	}
+	r = r[:maxCloseReason]
+	for len(r) > 0 && !utf8.ValidString(r) {
+		r = r[:len(r)-1]
+	}
+	return r
 }
 
 // teardown runs exactly once, on its own goroutine, when the connection context
@@ -657,10 +699,10 @@ func (c *Conn) routeInbound(frame ocppj.Frame) bool {
 	case ocppj.CallResult:
 		c.pending.resolve(frame.MsgID, rawResult{payload: frame.Payload})
 	case ocppj.MessageTypeCallError:
-		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc}
+		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, RawDetails: cloneRaw(frame.ErrData)}
 		c.pending.resolve(frame.MsgID, rawResult{err: ce})
 	case ocppj.MessageTypeCallResultError:
-		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, IsResultError: true}
+		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, RawDetails: cloneRaw(frame.ErrData), IsResultError: true}
 		c.pending.resolve(frame.MsgID, rawResult{err: ce})
 	case ocppj.Call, ocppj.Send:
 		if g := c.inboundGate; g != nil {
@@ -729,4 +771,13 @@ func (c *Conn) checkMessageID(frame ocppj.Frame) bool {
 	c.cfg.Logger.WarnContext(c.ctx, "dropping message with invalid message id",
 		"cp_id", c.id, "action", frame.Action, "empty", empty, "length", utf8.RuneCountInString(frame.MsgID))
 	return false
+}
+
+// cloneRaw copies b, which aliases the inbound frame buffer. It returns nil for
+// an absent element.
+func cloneRaw(b []byte) json.RawMessage {
+	if len(b) == 0 {
+		return nil
+	}
+	return append(json.RawMessage(nil), b...)
 }
