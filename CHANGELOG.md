@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+- New nested module `compat/ocppgo`: the public API of ocpp-go `v0.17.2-fix.x` on the gocpp runtime (Phase 1: server side). See compat/ocppgo/README.md.
+
 ### Added
 
 - `ocppj.ContextWithOutboundMessageID`: send a CALL or SEND with a caller chosen

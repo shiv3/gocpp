@@ -7,6 +7,7 @@
 package e2e
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -85,6 +86,7 @@ type central struct {
 	h        *csHandler
 	port     int
 	connects atomic.Int64
+	tlsSeen  atomic.Int64
 	drops    atomic.Int64
 }
 
@@ -99,7 +101,14 @@ func freePort(t testing.TB) int {
 	return port
 }
 
-func startCentral(t testing.TB) *central {
+func startCentral(t testing.TB) *central { return startCentralWith(t, ws.NewServer(), nil) }
+
+// newCentral is startCentral with a hook that configures the ws server first.
+func newCentral(t testing.TB, configure func(*ws.Server)) *central {
+	return startCentralWith(t, ws.NewServer(), configure)
+}
+
+func startCentralWith(t testing.TB, srv *ws.Server, configure func(*ws.Server)) *central {
 	// ocpp-go's loggers are package globals: set them once.
 	setLoggers.Do(func() {
 		logger := logrus.New()
@@ -109,16 +118,24 @@ func startCentral(t testing.TB) *central {
 	})
 
 	c := &central{h: &csHandler{}, port: freePort(t)}
-	c.srv = ws.NewServer()
+	c.srv = srv
 	c.cs = ocpp16.NewCentralSystem(nil, c.srv) // nil endpoint: the default runtime, i.e. gocpp
 	c.cs.SetCoreHandler(c.h)
 	c.cs.SetFirmwareManagementHandler(c.h)
-	c.cs.SetNewChargePointHandler(func(cp ocpp16.ChargePointConnection) { c.connects.Add(1) })
+	c.cs.SetNewChargePointHandler(func(cp ocpp16.ChargePointConnection) {
+		if cp.TLSConnectionState() != nil {
+			c.tlsSeen.Add(1)
+		}
+		c.connects.Add(1)
+	})
 	c.cs.SetChargePointDisconnectedHandler(func(cp ocpp16.ChargePointConnection) { c.drops.Add(1) })
 	c.srv.AddHttpHandler("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	tc := ws.NewServerTimeoutConfig()
 	tc.PingWait = 30 * time.Second
 	c.srv.SetTimeoutConfig(tc)
+	if configure != nil {
+		configure(c.srv)
+	}
 	c.srv.SetCheckOriginHandler(func(r *http.Request) bool { return true })
 	go func() {
 		for err := range c.srv.Errors() {
@@ -129,7 +146,7 @@ func startCentral(t testing.TB) *central {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
-		if resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", c.port)); err == nil {
+		if resp, err := healthGet(c.port); err == nil {
 			resp.Body.Close()
 			break
 		}
@@ -464,4 +481,13 @@ func TestServerStopClosesNormally(t *testing.T) {
 	if !errors.As(err, &ce) || ce.Code != websocket.CloseNormalClosure {
 		t.Fatalf("want a normal closure, got %v", err)
 	}
+}
+
+// healthGet polls the plain or TLS (self-signed) health endpoint.
+func healthGet(port int) (*http.Response, error) {
+	cl := &http.Client{Timeout: time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec // test
+	if resp, err := cl.Get(fmt.Sprintf("https://127.0.0.1:%d/healthz", port)); err == nil {
+		return resp, nil
+	}
+	return cl.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", port))
 }

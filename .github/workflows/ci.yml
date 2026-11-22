@@ -58,7 +58,15 @@ jobs:
       - run: go test -race -count=1 -skip 'TestClientErrors|TestNetworkErrors' ./ws/
       - run: go test -count=1 ./ws/
       # Real WebSockets: ocpp-go's client against the compat central system.
-      - run: go test -race -count=1 ./e2e/ ./compat/
+      # One process per test: starting a central system writes the package level
+      # ocppj.FormationViolation, which a previous test's client may still read (a
+      # data race inside ocpp-go that the race detector reports against whichever
+      # test runs next).
+      - run: |
+          for t in $(go test -list '^Test' ./e2e/ | grep '^Test'); do
+            go test -race -count=1 -run "^$t\$" ./e2e/ || exit 1
+          done
+      - run: go test -race -count=1 ./compat/
       - run: go build ./example/...
 
   codegen-drift:

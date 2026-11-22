@@ -8,7 +8,7 @@ require (
 	github.com/go-playground/universal-translator v0.16.0
 	github.com/gorilla/mux v1.7.3
 	github.com/gorilla/websocket v1.4.1
-	github.com/shiv3/gocpp v0.3.0
+	github.com/shiv3/gocpp v0.3.1-0.20261122004302-d5174e970d16
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.12.1
 	gopkg.in/go-playground/validator.v9 v9.30.0
