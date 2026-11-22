@@ -505,7 +505,7 @@ out:
 		return true
 	}
 	opts.OnPongReceived = func(context.Context, []byte) { sc.noteActivity() }
-	conn, err := websocket.Accept(w, r, opts)
+	conn, err := websocket.Accept(newSmallBufWriter(w, defaultIOReadBuffer, defaultIOWriteBuffer), r, opts)
 	if err != nil {
 		server.upgradeResult("bad_request")
 		server.error(fmt.Errorf("upgrade failed: %w", err))
