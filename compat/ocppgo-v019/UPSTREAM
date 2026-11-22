@@ -1,0 +1,5 @@
+# Pinned upstream source of the vendored packages. Read by scripts/*.sh.
+UPSTREAM_MODULE=github.com/lorenzodonini/ocpp-go
+UPSTREAM_REPO=https://github.com/lorenzodonini/ocpp-go.git
+UPSTREAM_TAG=v0.19.0
+UPSTREAM_COMMIT=a1eec917af884db0585752f909a61893aa667480

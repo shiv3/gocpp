@@ -1,0 +1,45 @@
+--- a/ocpp1.6/central_system.go	2026-11-22 09:42:13.788533228 +0900
++++ b/ocpp1.6/central_system.go	2026-11-22 09:42:13.788533228 +0900
+@@ -502,7 +502,7 @@
+ 	var confirmation ocpp.Response
+ 	var err error
+ 	// Execute in separate goroutine, so the caller goroutine is available
+-	go func() {
++	cs.runHandler(func() {
+ 		switch action {
+ 		case core.BootNotificationFeatureName:
+ 			confirmation, err = cs.coreHandler.OnBootNotification(chargePoint.ID(), request.(*core.BootNotificationRequest))
+@@ -529,13 +529,13 @@
+ 			return
+ 		}
+ 		cs.sendResponse(chargePoint.ID(), confirmation, err, requestId)
+-	}()
++	})
+ }
+ 
+ func (cs *centralSystem) handleIncomingConfirmation(chargePoint ChargePointConnection, confirmation ocpp.Response, requestId string) {
+ 	if callback, ok := cs.callbackQueue.Dequeue(chargePoint.ID()); ok {
+ 		// Execute in separate goroutine, so the caller goroutine is available
+-		go callback(confirmation, nil)
++		cs.runCallback(func() { callback(confirmation, nil) })
+ 	} else {
+ 		err := fmt.Errorf("no handler available for call of type %v from client %s for request %s", confirmation.GetFeatureName(), chargePoint.ID(), requestId)
+ 		cs.error(err)
+@@ -545,7 +545,7 @@
+ func (cs *centralSystem) handleIncomingError(chargePoint ChargePointConnection, err *ocpp.Error, details interface{}) {
+ 	if callback, ok := cs.callbackQueue.Dequeue(chargePoint.ID()); ok {
+ 		// Execute in separate goroutine, so the caller goroutine is available
+-		go callback(nil, err)
++		cs.runCallback(func() { callback(nil, err) })
+ 	} else {
+ 		err := fmt.Errorf("no handler available for call error %w from client %s", err, chargePoint.ID())
+ 		cs.error(err)
+@@ -555,7 +555,7 @@
+ func (cs *centralSystem) handleCanceledRequest(chargePointID string, request ocpp.Request, err *ocpp.Error) {
+ 	if callback, ok := cs.callbackQueue.Dequeue(chargePointID); ok {
+ 		// Execute in separate goroutine, so the caller goroutine is available
+-		go callback(nil, err)
++		cs.runCallback(func() { callback(nil, err) })
+ 	} else {
+ 		err := fmt.Errorf("no handler available for canceled request %s for client %s: %w",
+ 			request.GetFeatureName(), chargePointID, err)
