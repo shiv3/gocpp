@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-22
+
 - New nested module `compat/ocppgo`: the public API of ocpp-go `v0.17.2-fix.x` on the gocpp runtime (Phase 1: server side). See compat/ocppgo/README.md.
 
 ### Added
@@ -910,7 +912,8 @@ All additions are opt-in and preserve prior default behavior.
 ### OCPP spec compatibility
 - OCPP 1.6 (edition 2 + Security Whitepaper), 2.0.1, 2.1.
 
-[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/shiv3/gocpp/releases/tag/v0.3.1
 [0.3.0]: https://github.com/shiv3/gocpp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/shiv3/gocpp/releases/tag/v0.2.0
 [0.1.3]: https://github.com/shiv3/gocpp/releases/tag/v0.1.3
