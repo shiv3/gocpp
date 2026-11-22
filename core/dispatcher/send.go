@@ -157,6 +157,10 @@ func (c *Conn) trySendCallErrorWire(msgID, wire, desc string) {
 		c.cfg.Logger.ErrorContext(c.ctx, "encode call error", "err", err)
 		return
 	}
+	c.queueErrorReply(msgID, raw)
+}
+
+func (c *Conn) queueErrorReply(msgID string, raw []byte) {
 	if c.errReplies.Add(1) <= maxErrReplies && c.goBG(func() {
 		defer c.errReplies.Add(-1)
 		_ = c.send(c.ctx, raw)
@@ -166,6 +170,21 @@ func (c *Conn) trySendCallErrorWire(msgID, wire, desc string) {
 	c.errReplies.Add(-1)
 	c.cfg.Logger.WarnContext(c.ctx, "too many pending error replies; dropping call error",
 		"cp_id", c.id, "msg_id", msgID)
+}
+
+// SendCallError queues a CALLERROR frame [4, msgID, code, description, details]
+// for the peer with exactly the given wire code, description and details (raw
+// JSON, "{}" when empty). It does not wait for the write and never blocks the
+// caller; the number of queued error replies per connection is bounded, beyond
+// which the error is dropped with a warning. It is for embedders that answer a
+// frame themselves (see Config.ParseErrorHook).
+func (c *Conn) SendCallError(msgID, code, description string, details []byte) {
+	raw, err := ocppj.EncodeCallError(msgID, code, description, details)
+	if err != nil {
+		c.cfg.Logger.ErrorContext(c.ctx, "encode call error", "err", err)
+		return
+	}
+	c.queueErrorReply(msgID, raw)
 }
 
 func (c *Conn) sendCallErrorWire(msgID, wire string, ce *ocppj.CallError) {

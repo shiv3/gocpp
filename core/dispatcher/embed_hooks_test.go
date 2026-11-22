@@ -106,3 +106,30 @@ func TestConn_AbortWithStatusTruncatesLongReason(t *testing.T) {
 	require.LessOrEqual(t, len(reason), 123)
 	require.NotEmpty(t, reason)
 }
+
+func TestConn_ParseErrorHookConsumesAndAnswers(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	var seen []string
+	cfg := DefaultConfig()
+	cfg.ParseErrorHook = func(c *Conn, msg []byte, err error) bool {
+		seen = append(seen, string(msg))
+		if string(msg) == `[2,"bad",{}]` {
+			c.SendCallError("bad", "FormationViolation", "my text", []byte(`{"k":1}`))
+			return true
+		}
+		return false
+	}
+	reg := NewHandlerRegistry()
+	reg.Register("Reset", func(ctx context.Context, c *Conn, p []byte) ([]byte, error) { return []byte(`{}`), nil })
+	f := transport.NewFakeWS("ocpp1.6")
+	c := NewConn("CP_1", f, cfg, reg)
+	c.Start(context.Background())
+	defer func() { _ = c.Close(nil) }()
+
+	f.Inject([]byte(`[2,"bad",{}]`))
+	require.Equal(t, `[4,"bad","FormationViolation","my text",{"k":1}]`, string(<-f.Sent()))
+	// A frame that parses never reaches the hook.
+	f.Inject([]byte(`[2,"m1","Reset",{}]`))
+	require.Equal(t, `[3,"m1",{}]`, string(<-f.Sent()))
+	require.Len(t, seen, 1)
+}

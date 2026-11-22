@@ -27,11 +27,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	gdisp "github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/observability"
 	gocppj "github.com/shiv3/gocpp/core/ocppj"
 	gtransport "github.com/shiv3/gocpp/core/transport"
 
@@ -54,6 +59,13 @@ type gocppRuntime struct {
 	// which case a bridge feeds the frames of its message handler to the dispatcher.
 	native      compatrt.Native
 	callTimeout time.Duration // set through the compat package; 0 = default
+
+	// Set through the compat package (before Start); nil = off.
+	metrics      observability.Metrics
+	sessMetrics  observability.SessionMetrics
+	tracerProv   trace.TracerProvider
+	frameObs     observability.FrameObserver
+	cfgByVersion map[string]*gdisp.Config
 }
 
 type srvConn struct {
@@ -115,7 +127,83 @@ func (rt *gocppRuntime) buildConfig() {
 	// Frame-level behaviour of ocpp-go (the same settings as csms.WithOCPPGoCompat).
 	cfg.ErrorCodeMapper = gdisp.OCPPGoErrorCodeMapper()
 	cfg.MessageIDPolicy = gdisp.MessageIDDrop
+	cfg.ParseErrorHook = rt.onParseError
+	if rt.frameObs != nil {
+		cfg.FrameObserver = rt.frameObs
+	}
 	rt.cfg = cfg
+	// Metrics are labelled by OCPP version, so each version gets its own copy.
+	rt.cfgByVersion = map[string]*gdisp.Config{}
+	for _, v := range []string{"ocpp1.6", "ocpp2.0.1"} {
+		c := cfg
+		if rt.metrics != nil {
+			c.Metrics = gdisp.MetricsHookBounded(rt.metrics, v, func(action string) bool {
+				_, ok := s.GetProfileForFeature(action)
+				return ok
+			})
+		}
+		if rt.tracerProv != nil {
+			c.Tracer = observability.NewTracer(rt.tracerProv)
+		}
+		rt.cfgByVersion[v] = &c
+	}
+}
+
+// cfgFor returns the dispatcher configuration of a connection speaking sub.
+func (rt *gocppRuntime) cfgFor(sub string) *gdisp.Config {
+	if c, ok := rt.cfgByVersion[sub]; ok {
+		return c
+	}
+	return &rt.cfg
+}
+
+// SetObservability implements compatrt.Control.
+func (rt *gocppRuntime) SetObservability(m observability.Metrics, tp trace.TracerProvider, fo observability.FrameObserver) {
+	rt.metrics, rt.tracerProv, rt.frameObs = m, tp, fo
+	rt.sessMetrics, _ = m.(observability.SessionMetrics)
+	if rt.native != nil {
+		if rt.sessMetrics != nil {
+			rt.native.SetUpgradeObserver(rt.sessMetrics.UpgradeResult)
+		} else {
+			rt.native.SetUpgradeObserver(nil)
+		}
+	}
+	rt.buildConfig()
+}
+
+// observeClose reports the end of a connection to SessionMetrics.
+func (rt *gocppRuntime) observeClose(dc *gdisp.Conn) {
+	sm := rt.sessMetrics
+	if sm == nil {
+		return
+	}
+	start := time.Now()
+	version := string(dc.Version())
+	context.AfterFunc(dc.Context(), func() {
+		code, label := "1006", "other"
+		cause := context.Cause(dc.Context())
+		var cs *gdisp.CloseStatus
+		switch {
+		case errors.Is(cause, gocppj.ErrGatewayDraining):
+			code, label = "1012", "drain"
+		case errors.Is(cause, gocppj.ErrDrainTimeout):
+			code, label = "1012", "drain_timeout"
+		case errors.Is(cause, gocppj.ErrConnReplaced):
+			code, label = "1008", "replaced"
+		case errors.As(cause, &cs):
+			code, label = strconv.Itoa(int(cs.Code)), "server_close"
+			if cs.Code == gtransport.StatusPolicyViolation && strings.HasPrefix(cs.Reason, "replaced") {
+				label = "replaced"
+			}
+		case errors.Is(cause, gocppj.ErrConnClosedByServer):
+			code, label = "1000", "server_close"
+		case errors.Is(cause, gocppj.ErrConnDropped):
+			label = "dropped"
+		case cause == nil || errors.Is(cause, gocppj.ErrConnClosed):
+			code, label = "1000", "other"
+		}
+		sm.SessionClosed(version, time.Since(start), code, label)
+	})
 }
 
 func (rt *gocppRuntime) running() bool { return rt.started.Load() }
@@ -155,7 +243,7 @@ func (rt *gocppRuntime) Open(c compatrt.Conn) *gdisp.Conn {
 	ch, _ := c.Channel.(ws.Channel)
 	sc := &srvConn{ch: ch, inflight: map[string]chan inboundReply{}, sent: map[string]struct{}{}}
 	meta := gdisp.ConnMetadata{RemoteAddr: c.RemoteAddr, TLS: c.TLS}
-	sc.dc = gdisp.NewConnShared(ch.ID(), c.WS, &rt.cfg, rt.reg, meta)
+	sc.dc = gdisp.NewConnShared(ch.ID(), c.WS, rt.cfgFor(c.Subprotocol), rt.reg, meta)
 	sc.dc.SetAttachment(sc)
 	sc.dc.HoldInbound()
 	ctx := rt.ctx
@@ -164,6 +252,7 @@ func (rt *gocppRuntime) Open(c compatrt.Conn) *gdisp.Conn {
 	}
 	// Start before the connection becomes visible to SendRequest.
 	sc.dc.Start(ctx)
+	rt.observeClose(sc.dc)
 	rt.register(sc)
 	return sc.dc
 }
@@ -172,7 +261,7 @@ func (rt *gocppRuntime) Open(c compatrt.Conn) *gdisp.Conn {
 func (rt *gocppRuntime) attach(ch ws.Channel) {
 	sc := &srvConn{ch: ch, inflight: map[string]chan inboundReply{}, sent: map[string]struct{}{}}
 	sc.br = newBridgeWS(ch.ID(), rt.s.server, rt.subprotocol())
-	sc.dc = gdisp.NewConnShared(ch.ID(), sc.br, &rt.cfg, rt.reg)
+	sc.dc = gdisp.NewConnShared(ch.ID(), sc.br, rt.cfgFor(rt.subprotocol()), rt.reg)
 	sc.dc.SetAttachment(sc)
 	ctx := rt.ctx
 	if ctx == nil {
@@ -180,6 +269,7 @@ func (rt *gocppRuntime) attach(ch ws.Channel) {
 	}
 	// Start before the connection becomes visible to SendRequest.
 	sc.dc.Start(ctx)
+	rt.observeClose(sc.dc)
 	rt.register(sc)
 }
 
@@ -188,6 +278,11 @@ func (rt *gocppRuntime) register(sc *srvConn) {
 		o := old.(*srvConn)
 		if o.br != nil {
 			o.br.shutdown()
+		} else {
+			// Same close code and text as ws.Server's own takeover path, which
+			// races with this one: the first to cancel decides what the replaced
+			// charger is sent.
+			o.dc.AbortWithStatus(gtransport.StatusPolicyViolation, "replaced by a new connection with the same ID")
 		}
 		go func() { _ = o.dc.Close(nil) }()
 	}
@@ -243,6 +338,45 @@ func (rt *gocppRuntime) onMessage(ch ws.Channel, data []byte) error {
 		}
 	}
 	return sc.br.push(data)
+}
+
+// onParseError takes over a frame gocpp could not parse (wrong array length,
+// unsupported message type, ...) and treats it exactly as ocpp-go's message
+// handler does: Endpoint.ParseMessage decides the error, InvalidMessageHook may
+// replace it, and the error (code and description of ocpp-go) is answered when
+// the message id is known. That keeps the texts of the envelope errors and the
+// hook semantics identical to the unmodified library.
+func (rt *gocppRuntime) onParseError(dc *gdisp.Conn, data []byte, _ error) bool {
+	s := rt.s
+	sc, _ := dc.Attachment().(*srvConn)
+	if sc == nil {
+		return false
+	}
+	fields, err := ParseRawJsonMessage(data)
+	if err != nil {
+		// Not JSON: ocpp-go logs it and answers nothing.
+		log.Error(err)
+		return true
+	}
+	log.Debugf("received JSON message from %s: %s", sc.ch.ID(), string(data))
+	msg, err := s.ParseMessage(fields, s.RequestState.GetClientState(sc.ch.ID()))
+	if err == nil {
+		// ocpp-go accepts it (or discards it, for an answer nobody waits for).
+		return msg == nil
+	}
+	ocppErr := err.(*ocpp.Error)
+	messageID := ocppErr.MessageId
+	if s.invalidMessageHook != nil {
+		if err2 := s.invalidMessageHook(sc.ch, ocppErr, string(data), fields); err2 != nil {
+			ocppErr = err2
+			ocppErr.MessageId = messageID
+		}
+	}
+	if ocppErr.MessageId != "" {
+		dc.SendCallError(ocppErr.MessageId, string(ocppErr.Code), ocppErr.Description, nil)
+	}
+	log.Error(ocppErr)
+	return true
 }
 
 func ocppErrToRaw(e *ocpp.Error) *gdisp.RawCallError {
