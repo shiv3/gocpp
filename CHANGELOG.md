@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-23
+
+### Added
+
+- `dispatcher.Config.ParseErrorHook`: lets an embedder see, and optionally
+  consume, an inbound frame gocpp could not parse (used by the ocpp-go
+  compatibility module to reproduce ocpp-go's envelope errors and
+  InvalidMessageHook).
+- `dispatcher.Conn.SendCallError`: send a CALLERROR for a message id chosen by the
+  embedder (for hooks that answer frames themselves).
+- `compat/ocppgo` (Phase 2 and 3): ocpp-go envelope-error and InvalidMessageHook
+  parity; admission, drain, metrics and tracing through the `compat` package;
+  staged rollout guide (compat/ocppgo/ROLLOUT.md); required-ready CI jobs
+  (`ocppgo-compat`, `ocppgo-apidiff`, `ocppgo-license`) and a weekly upstream sync
+  workflow (compat/ocppgo/MAINTAINING.md); 1 KB socket buffers per connection.
+- `compat/ocppgo-v019`: the same drop-in for upstream ocpp-go v0.19.0.
+
+The compatibility modules are tagged separately:
+`compat/ocppgo/v0.17.2-gocpp.1` and `compat/ocppgo-v019/v0.19.0-gocpp.1`.
+
+
 ## [0.3.1] - 2026-11-22
 
 - New nested module `compat/ocppgo`: the public API of ocpp-go `v0.17.2-fix.x` on the gocpp runtime (Phase 1: server side). See compat/ocppgo/README.md.
@@ -912,7 +933,8 @@ All additions are opt-in and preserve prior default behavior.
 ### OCPP spec compatibility
 - OCPP 1.6 (edition 2 + Security Whitepaper), 2.0.1, 2.1.
 
-[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/shiv3/gocpp/releases/tag/v0.3.2
 [0.3.1]: https://github.com/shiv3/gocpp/releases/tag/v0.3.1
 [0.3.0]: https://github.com/shiv3/gocpp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/shiv3/gocpp/releases/tag/v0.2.0
