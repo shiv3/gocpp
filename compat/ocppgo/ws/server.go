@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/mux"
 	gorilla "github.com/gorilla/websocket"
 	"github.com/shiv3/gocpp/core/dispatcher"
+	gocppj "github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
 
 	"github.com/lorenzodonini/ocpp-go/internal/compatrt"
@@ -88,6 +89,7 @@ type Server struct {
 	stopped  chan struct{}
 	stopping atomic.Bool
 	rt       atomic.Pointer[runtimeBox]
+	adm      admissionState // see admission.go
 }
 
 type runtimeBox struct{ rt compatrt.Runtime }
@@ -418,12 +420,12 @@ func sameOrigin(r *http.Request) bool {
 }
 
 func (server *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
-	if server.stopping.Load() {
-		w.Header().Set("Retry-After", "5")
-		http.Error(w, "server shutting down", http.StatusServiceUnavailable)
+	id := path.Base(r.URL.Path)
+	res, ok := server.admit(w, id)
+	if !ok {
 		return
 	}
-	id := path.Base(r.URL.Path)
+	defer server.releaseSlot(res)
 	log.Debugf("handling new connection for %s from %s", id, r.RemoteAddr)
 	// Negotiate sub-protocol: the first one the client offers that is supported
 	// (any, if none were configured).
@@ -449,6 +451,7 @@ out:
 			ok = server.basicAuthHandler(username, password)
 		}
 		if !ok {
+			server.upgradeResult("auth_rejected")
 			server.error(fmt.Errorf("basic auth failed: credentials invalid"))
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -459,6 +462,7 @@ out:
 	if server.checkClientHandler != nil {
 		ok := server.checkClientHandler(id, r)
 		if !ok {
+			server.upgradeResult("auth_rejected")
 			server.error(fmt.Errorf("client validation: invalid client"))
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -472,6 +476,7 @@ out:
 	if !check(r) {
 		const msg = "websocket: request origin not allowed by Upgrader.CheckOrigin"
 		http.Error(w, msg, http.StatusForbidden)
+		server.upgradeResult("auth_rejected")
 		server.error(fmt.Errorf("upgrade failed: %s", msg))
 		return
 	}
@@ -495,6 +500,7 @@ out:
 	opts.OnPongReceived = func(context.Context, []byte) { sc.noteActivity() }
 	conn, err := websocket.Accept(w, r, opts)
 	if err != nil {
+		server.upgradeResult("bad_request")
 		server.error(fmt.Errorf("upgrade failed: %w", err))
 		return
 	}
@@ -513,6 +519,7 @@ out:
 	log.Debugf("upgraded websocket connection for %s from %s", id, r.RemoteAddr)
 	// If unsupported subprotocol, terminate the connection immediately
 	if negotiated == "" {
+		server.upgradeResult("subprotocol")
 		server.error(fmt.Errorf("unsupported subprotocols %v for new client %v (%v)", clientSubprotocols, id, r.RemoteAddr))
 		_ = conn.Close(websocket.StatusProtocolError, "invalid or unsupported subprotocol")
 		return
@@ -530,6 +537,7 @@ out:
 		sc.closeC = make(chan websocket.CloseError, 1)
 		sc.done = make(chan struct{})
 	}
+	server.upgradeResult("ok")
 	// Check whether client exists. Last-wins policy: the NEW connection takes
 	// over the slot and the old one is closed. A charger that lost its previous
 	// connection re-dials, and a stale (often already dead) entry must never
@@ -540,6 +548,7 @@ out:
 	}
 	oldWs, exists := server.connections[id]
 	server.connections[id] = ws
+	server.consumeSlotLocked(res)
 	server.connMutex.Unlock()
 	if exists {
 		server.error(fmt.Errorf("client %s already exists, closing stale connection and keeping the new one", id))
@@ -673,6 +682,13 @@ func (sc *serverConn) finish(ws *WebSocket) {
 	sc.cleanup.Do(func() {
 		s := sc.srv
 		if sc.dc != nil {
+			// ocpp-go logs why a connection's read loop ended; keep the line (the
+			// text is the dispatcher's read error) unless the server closed it.
+			var cs *dispatcher.CloseStatus
+			if cause := context.Cause(sc.dc.Context()); cause != nil && !errors.As(cause, &cs) &&
+				!errors.Is(cause, gocppj.ErrConnClosedByServer) {
+				log.Debugf("handling read error for %s: %v", ws.ID(), cause)
+			}
 			_ = sc.dc.Close(nil)
 		} else {
 			_ = sc.c.CloseNow()
