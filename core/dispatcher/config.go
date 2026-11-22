@@ -190,6 +190,14 @@ type Config struct {
 	ErrorCodeMapper ErrorCodeMapper
 	// MessageIDPolicy governs inbound CALLs with an empty or over-long id.
 	MessageIDPolicy MessageIDPolicy
+	// ParseErrorHook, when non-nil, sees an inbound data frame that gocpp could
+	// not parse (bad shape, unsupported message type), after the frame observer
+	// and before gocpp answers it. Returning true consumes the frame: no built-in
+	// CALLERROR and no ErrorCodeMapper call; the hook may answer through
+	// Conn.SendCallError. It runs on the connection's reader goroutine and must
+	// not block. An embedder uses it to keep its own rules for malformed frames
+	// (compat/ocppgo does, for ocpp-go's InvalidMessageHook and error texts).
+	ParseErrorHook func(c *Conn, msg []byte, err error) (consumed bool)
 
 	// Signer, when non-nil, signs outbound CALL/SEND messages as OCPP 2.1 Signed
 	// Messages (Part 4 Ch 7).
