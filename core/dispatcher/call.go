@@ -36,7 +36,7 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 		c.cfg.Metrics.CallCompleted(action, "outbound", time.Since(start), status)
 	}()
 
-	msgID := ocppj.NewMsgID()
+	msgID := ocppj.OutboundMessageID(ctx)
 	ocppj.NotifyMessageID(ctx, msgID)
 	sendPayload, verr := c.pipe.ValidateOutbound(ctx, action, "request", reqPayload)
 	if verr != nil {

@@ -169,10 +169,7 @@ func (c *Conn) trySendCallErrorWire(msgID, wire, desc string) {
 }
 
 func (c *Conn) sendCallErrorWire(msgID, wire string, ce *ocppj.CallError) {
-	var details []byte
-	if ce.Details != nil {
-		details = mustJSON(ce.Details)
-	}
+	details := callErrorDetails(ce)
 	raw, err := ocppj.EncodeCallError(msgID, wire, ce.Description, details)
 	if err != nil {
 		c.cfg.Logger.ErrorContext(c.ctx, "encode call error", "err", err)
@@ -207,7 +204,7 @@ func DoSend(ctx context.Context, c *Conn, action string, reqPayload []byte) (err
 	if err != nil {
 		return err
 	}
-	msgID := ocppj.NewMsgID()
+	msgID := ocppj.OutboundMessageID(ctx)
 	ocppj.NotifyMessageID(ctx, msgID)
 	var (
 		raw    []byte
@@ -232,14 +229,23 @@ func DoSend(ctx context.Context, c *Conn, action string, reqPayload []byte) (err
 }
 
 func (c *Conn) sendCallResultError(msgID string, ce *ocppj.CallError) {
-	var details []byte
-	if ce.Details != nil {
-		details = mustJSON(ce.Details)
-	}
+	details := callErrorDetails(ce)
 	raw, err := ocppj.EncodeCallResultError(msgID, ce.WireCode(c.version), ce.Description, details)
 	if err != nil {
 		c.cfg.Logger.ErrorContext(c.ctx, "encode call result error", "err", err)
 		return
 	}
 	_ = c.send(c.ctx, raw)
+}
+
+// callErrorDetails returns the errorDetails to put on the wire for ce: the raw
+// JSON if set, else the encoded Details map, else nil (an empty object).
+func callErrorDetails(ce *ocppj.CallError) []byte {
+	switch {
+	case len(ce.RawDetails) > 0:
+		return ce.RawDetails
+	case ce.Details != nil:
+		return mustJSON(ce.Details)
+	}
+	return nil
 }

@@ -1,6 +1,9 @@
 package ocppj
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // ErrorCode is an OCPP-J CallError code.
 type ErrorCode string
@@ -27,6 +30,12 @@ type CallError struct {
 	Code        ErrorCode
 	Description string
 	Details     map[string]any
+	// RawDetails is the errorDetails element of the frame as raw JSON, for the
+	// cases where it is not (or not only) a JSON object that fits Details. A
+	// CallError received from the peer carries it; one that is sent uses it in
+	// preference to Details. Nil means no details were received or are to be
+	// sent (an empty object goes on the wire).
+	RawDetails json.RawMessage
 	// IsResultError marks a CallError that arrived as a CALLRESULTERROR (type 5)
 	// rather than a CALLERROR (type 4). Wire content is identical; this is for
 	// observability only.

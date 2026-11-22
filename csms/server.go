@@ -796,6 +796,16 @@ func (s *Server) Disconnect(ctx context.Context, id string) error {
 	return c.Close(ctx)
 }
 
+// DisconnectWithStatus is Disconnect with a WebSocket close code and reason of
+// the caller's choosing; see Conn.CloseWithStatus.
+func (s *Server) DisconnectWithStatus(ctx context.Context, id string, code transport.StatusCode, reason string) error {
+	c, ok := s.Get(id)
+	if !ok {
+		return ocppj.ErrNotConnected
+	}
+	return c.CloseWithStatus(ctx, code, reason)
+}
+
 // Close shuts down the server and all connections immediately.
 func (s *Server) Close() {
 	if s.split != nil {

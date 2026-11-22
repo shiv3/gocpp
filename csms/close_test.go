@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/transport"
 	"github.com/shiv3/gocpp/csms"
 	"github.com/stretchr/testify/require"
 )
@@ -115,4 +116,53 @@ func TestServer_Disconnect(t *testing.T) {
 	got := r.snapshot()
 	require.Len(t, got, 1)
 	require.ErrorIs(t, got[0], ocppj.ErrConnClosedByServer)
+}
+
+func TestConn_CloseWithStatus(t *testing.T) {
+	r := newCloseRig(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	c1 := r.dial(ctx, t)
+	require.Eventually(t, func() bool { _, ok := r.srv.Get("cp1"); return ok }, 2*time.Second, 10*time.Millisecond)
+
+	require.NoError(t, r.srv.DisconnectWithStatus(ctx, "cp1", transport.StatusGoingAway, "maintenance"))
+
+	_, _, err := c1.Read(ctx)
+	require.Equal(t, websocket.StatusGoingAway, websocket.CloseStatus(err))
+	var ce websocket.CloseError
+	require.ErrorAs(t, err, &ce)
+	require.Equal(t, "maintenance", ce.Reason)
+	got := r.snapshot()
+	require.Len(t, got, 1)
+	require.ErrorIs(t, got[0], ocppj.ErrConnClosedByServer)
+
+	require.ErrorIs(t, r.srv.DisconnectWithStatus(ctx, "cp1", transport.StatusGoingAway, ""), ocppj.ErrNotConnected)
+}
+
+func TestOnAny_CatchAllServesUnregisteredActions(t *testing.T) {
+	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"))
+	var seenAction string
+	csms.OnAny(srv, func(ctx context.Context, c *csms.Conn, action string, payload []byte) ([]byte, error) {
+		seenAction = action
+		return []byte(`{"currentTime":"2020-01-01T00:00:00Z"}`), nil
+	})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/ocpp/cp9", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+	require.NoError(t, err)
+	defer func() { _ = c.CloseNow() }()
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"a1","Whatever",{}]`)))
+	_, data, err := c.Read(ctx)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `[3,"a1",`)
+	require.Equal(t, "Whatever", seenAction)
+
+	csms.OnAny(srv, nil)
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte(`[2,"a2","Whatever",{}]`)))
+	_, data, err = c.Read(ctx)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `[4,"a2","NotImplemented"`)
 }
