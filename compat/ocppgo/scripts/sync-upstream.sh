@@ -37,6 +37,10 @@ for d in example internal logging ocpp ocpp1.6 ocpp1.6_test ocpp2.0.1 ocpp2.0.1_
 done
 cp "$src/LICENSE" "$stage/LICENSE"
 shopt -s nullglob
+# Upstream files this module removes (patches/DELETE, one path per line).
+if [ -f "$here/patches/DELETE" ]; then
+  while IFS= read -r f; do [ -n "$f" ] && rm -f "$stage/$f"; done < "$here/patches/DELETE"
+fi
 for p in "$here"/patches/*.patch; do
   patch -s -p1 -d "$stage" < "$p"
 done
@@ -49,14 +53,12 @@ if [ "$check" = 1 ]; then
       echo "differs from pinned upstream + patches: $f"; status=1
     fi
   done < <(cd "$stage" && find . -type f | sed 's#^\./##' | sort)
-  # a file upstream removed by a patch must be gone here
-  for p in "$here"/patches/*.patch; do
-    for f in $(grep -E '^\+\+\+ /dev/null|^--- a/' "$p" | awk '/^--- a\//{print substr($2,3)}' ); do
-      if [ ! -e "$stage/$f" ] && [ -e "$here/$f" ]; then
-        echo "should have been deleted by patches: $f"; status=1
-      fi
-    done
-  done
+  # a file this module removes must be gone here
+  if [ -f "$here/patches/DELETE" ]; then
+    while IFS= read -r f; do
+      if [ -n "$f" ] && [ -e "$here/$f" ]; then echo "should have been deleted (patches/DELETE): $f"; status=1; fi
+    done < "$here/patches/DELETE"
+  fi
   [ "$status" = 0 ] && echo "sync-upstream: module matches $UPSTREAM_TAG + patches"
   exit "$status"
 fi

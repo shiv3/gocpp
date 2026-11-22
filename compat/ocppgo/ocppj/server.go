@@ -23,6 +23,8 @@ type Server struct {
 	invalidMessageHook        InvalidMessageHook
 	dispatcher                ServerDispatcher
 	RequestState              ServerState
+	// rt is the gocpp-backed runtime (see server_gocpp.go). The exported API above is unchanged.
+	rt *gocppRuntime
 }
 
 type ClientHandler func(client ws.Channel)
@@ -41,6 +43,7 @@ type InvalidMessageHook func(client ws.Channel, err *ocpp.Error, rawJson string,
 //
 // The dispatcher's associated ClientState will be set during initialization.
 func NewServer(wsServer ws.WsServer, dispatcher ServerDispatcher, stateHandler ServerState, profiles ...*ocpp.Profile) *Server {
+	injected := dispatcher
 	if dispatcher == nil {
 		dispatcher = NewDefaultServerDispatcher(NewFIFOQueueMap(0))
 	}
@@ -62,6 +65,9 @@ func NewServer(wsServer ws.WsServer, dispatcher ServerDispatcher, stateHandler S
 	s := Server{Endpoint: Endpoint{}, server: wsServer, RequestState: stateHandler, dispatcher: dispatcher}
 	for _, profile := range profiles {
 		s.AddProfile(profile)
+	}
+	if useGocppRuntime(injected) {
+		s.rt = newGocppRuntime(&s)
 	}
 	return &s
 }
@@ -101,6 +107,9 @@ func (s *Server) SetInvalidMessageHook(hook InvalidMessageHook) {
 
 // Registers a handler for canceled request messages.
 func (s *Server) SetCanceledRequestHandler(handler CanceledRequestHandler) {
+	if s.rt != nil {
+		s.rt.onCanceled = handler
+	}
 	s.dispatcher.SetOnRequestCanceled(handler)
 }
 
@@ -130,8 +139,15 @@ func (s *Server) Start(listenPort int, listenPath string) {
 	s.server.SetCheckClientHandler(s.checkClientHandler)
 	s.server.SetNewClientHandler(s.onClientConnected)
 	s.server.SetDisconnectedClientHandler(s.onClientDisconnected)
-	s.server.SetMessageHandler(s.ocppMessageHandler)
-	s.dispatcher.Start()
+	if s.rt != nil {
+		if s.rt.native == nil {
+			s.server.SetMessageHandler(s.rt.onMessage)
+		}
+		s.rt.start()
+	} else {
+		s.server.SetMessageHandler(s.ocppMessageHandler)
+		s.dispatcher.Start()
+	}
 	// Serve & run
 	s.server.Start(listenPort, listenPath)
 	// TODO: return error?
@@ -140,7 +156,11 @@ func (s *Server) Start(listenPort int, listenPath string) {
 // Stops the server.
 // This clears all pending requests and causes the Start function to return.
 func (s *Server) Stop() {
-	s.dispatcher.Stop()
+	if s.rt != nil {
+		s.rt.stop()
+	} else {
+		s.dispatcher.Stop()
+	}
 	s.server.Stop()
 }
 
@@ -156,19 +176,18 @@ func (s *Server) Stop() {
 //
 // - the output queue is full
 func (s *Server) SendRequest(clientID string, request ocpp.Request) error {
-	if !s.dispatcher.IsRunning() {
+	if s.rt == nil {
+		return s.sendRequestLegacy(clientID, request)
+	}
+	if !s.rt.running() {
 		return fmt.Errorf("ocppj server is not started, couldn't send request")
 	}
 	call, err := s.CreateCall(request)
 	if err != nil {
 		return err
 	}
-	jsonMessage, err := call.MarshalJSON()
-	if err != nil {
-		return err
-	}
-	// Will not send right away. Queuing message and let it be processed by dedicated requestPump routine
-	if err = s.dispatcher.SendRequest(clientID, RequestBundle{call, jsonMessage}); err != nil {
+	// Queued on the connection's own FIFO call slot (gocpp dispatcher); no process-wide pump.
+	if err = s.rt.sendRequest(clientID, call); err != nil {
 		log.Errorf("error dispatching request [%s, %s] to %s: %v", call.UniqueId, call.Action, clientID, err)
 		return err
 	}
@@ -190,6 +209,12 @@ func (s *Server) SendResponse(clientID string, requestId string, response ocpp.R
 	callResult, err := s.CreateCallResult(response, requestId)
 	if err != nil {
 		return err
+	}
+	if handled, err := s.rt.reply(clientID, requestId, callResult, nil); handled {
+		if err != nil {
+			return ocpp.NewError(GenericError, err.Error(), requestId)
+		}
+		return nil
 	}
 	jsonMessage, err := callResult.MarshalJSON()
 	if err != nil {
@@ -216,6 +241,12 @@ func (s *Server) SendError(clientID string, requestId string, errorCode ocpp.Err
 	callError, err := s.CreateCallError(requestId, errorCode, description, details)
 	if err != nil {
 		return err
+	}
+	if handled, err := s.rt.reply(clientID, requestId, nil, callError); handled {
+		if err != nil {
+			return ocpp.NewError(GenericError, err.Error(), requestId)
+		}
+		return nil
 	}
 	jsonMessage, err := callError.MarshalJSON()
 	if err != nil {
@@ -318,7 +349,13 @@ func (s *Server) HandleFailedResponseError(clientID string, requestID string, er
 
 func (s *Server) onClientConnected(ws ws.Channel) {
 	// Create state for connected client
-	s.dispatcher.CreateClient(ws.ID())
+	if s.rt != nil {
+		if s.rt.native == nil { // otherwise the ws server has opened the connection already
+			s.rt.attach(ws)
+		}
+	} else {
+		s.dispatcher.CreateClient(ws.ID())
+	}
 	// Invoke callback
 	if s.newClientHandler != nil {
 		s.newClientHandler(ws)
@@ -327,10 +364,36 @@ func (s *Server) onClientConnected(ws ws.Channel) {
 
 func (s *Server) onClientDisconnected(ws ws.Channel) {
 	// Clear state for disconnected client
-	s.dispatcher.DeleteClient(ws.ID())
+	if s.rt != nil {
+		s.rt.detach(ws)
+	} else {
+		s.dispatcher.DeleteClient(ws.ID())
+	}
 	s.RequestState.ClearClientPendingRequest(ws.ID())
 	// Invoke callback
 	if s.disconnectedClientHandler != nil {
 		s.disconnectedClientHandler(ws)
 	}
+}
+
+// sendRequestLegacy is ocpp-go's original SendRequest, used with an application-provided dispatcher.
+func (s *Server) sendRequestLegacy(clientID string, request ocpp.Request) error {
+	if !s.dispatcher.IsRunning() {
+		return fmt.Errorf("ocppj server is not started, couldn't send request")
+	}
+	call, err := s.CreateCall(request)
+	if err != nil {
+		return err
+	}
+	jsonMessage, err := call.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	// Will not send right away. Queuing message and let it be processed by dedicated requestPump routine
+	if err = s.dispatcher.SendRequest(clientID, RequestBundle{call, jsonMessage}); err != nil {
+		log.Errorf("error dispatching request [%s, %s] to %s: %v", call.UniqueId, call.Action, clientID, err)
+		return err
+	}
+	log.Debugf("enqueued CALL [%s, %s] for %s", call.UniqueId, call.Action, clientID)
+	return nil
 }

@@ -947,7 +947,7 @@ func (cs *csms) handleIncomingRequest(chargingStation ChargingStationConnection,
 	var response ocpp.Response
 	var err error
 	// Execute in separate goroutine, so the caller goroutine is available
-	go func() {
+	cs.runHandler(func() {
 		switch action {
 		case provisioning.BootNotificationFeatureName:
 			response, err = cs.provisioningHandler.OnBootNotification(chargingStation.ID(), request.(*provisioning.BootNotificationRequest))
@@ -1004,13 +1004,13 @@ func (cs *csms) handleIncomingRequest(chargingStation ChargingStationConnection,
 			return
 		}
 		cs.sendResponse(chargingStation.ID(), response, err, requestId)
-	}()
+	})
 }
 
 func (cs *csms) handleIncomingResponse(chargingStation ChargingStationConnection, response ocpp.Response, requestId string) {
 	if callback, ok := cs.callbackQueue.Dequeue(chargingStation.ID()); ok {
 		// Execute in separate goroutine, so the caller goroutine is available
-		go callback(response, nil)
+		cs.runCallback(func() { callback(response, nil) })
 	} else {
 		err := fmt.Errorf("no handler available for call of type %v from client %s for request %s", response.GetFeatureName(), chargingStation.ID(), requestId)
 		cs.error(err)
@@ -1020,7 +1020,7 @@ func (cs *csms) handleIncomingResponse(chargingStation ChargingStationConnection
 func (cs *csms) handleIncomingError(chargingStation ChargingStationConnection, err *ocpp.Error, details interface{}) {
 	if callback, ok := cs.callbackQueue.Dequeue(chargingStation.ID()); ok {
 		// Execute in separate goroutine, so the caller goroutine is available
-		go callback(nil, err)
+		cs.runCallback(func() { callback(nil, err) })
 	} else {
 		cs.error(fmt.Errorf("no handler available for call error %w from client %s", err, chargingStation.ID()))
 	}
@@ -1029,7 +1029,7 @@ func (cs *csms) handleIncomingError(chargingStation ChargingStationConnection, e
 func (cs *csms) handleCanceledRequest(chargePointID string, request ocpp.Request, err *ocpp.Error) {
 	if callback, ok := cs.callbackQueue.Dequeue(chargePointID); ok {
 		// Execute in separate goroutine, so the caller goroutine is available
-		go callback(nil, err)
+		cs.runCallback(func() { callback(nil, err) })
 	} else {
 		err := fmt.Errorf("no handler available for canceled request %s for client %s: %w",
 			request.GetFeatureName(), chargePointID, err)
