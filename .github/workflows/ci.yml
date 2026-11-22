@@ -95,6 +95,77 @@ jobs:
           go-version: "1.26"
       - run: scripts/license-check.sh
 
+  ocppgo-v019-compat:
+    # compat/ocppgo-v019 is a separate module: the ocpp-go v0.19.0 drop-in on the gocpp runtime.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: compat/ocppgo-v019
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: go build ./...
+      # The vendored files are exactly the pinned upstream tag plus patches/.
+      - run: scripts/sync-upstream.sh --check
+      # ocpp-go's own suites on the gocpp runtime (the suites inject a default
+      # dispatcher, which OCPPGO_COMPAT_RUNTIME=gocpp also routes to gocpp).
+      - run: go test -vet=off -race -count=1 ./ocpp1.6_test/ ./ocpp2.0.1_test/
+        env:
+          OCPPGO_COMPAT_RUNTIME: gocpp
+      # ... and on the original code path.
+      - run: go test -vet=off -count=1 ./ocpp1.6_test/ ./ocpp2.0.1_test/
+        env:
+          OCPPGO_COMPAT_RUNTIME: legacy
+      # ocppj's own suite in default mode; two tests compare Go's JSON error text
+      # and fail on the unmodified upstream tag as well.
+      - run: go test -vet=off -count=1 -skip 'TestMockOcppJ/(TestCentralSystemInvalidMessageHook|TestChargePointInvalidMessageHook)' ./ocppj/
+      # ws black-box suite (the toxiproxy network suite skips without a server).
+      # (ocpp-go's unmodified client has a data race in TestClientErrors, hence the
+      # skip under -race; the server side is race clean.)
+      - run: go test -race -count=1 -skip 'TestClientErrors|TestNetworkErrors|TestClientWriteDuringDisconnectDoesNotPanic' ./ws/
+      - run: go test -count=1 -skip 'TestClientWriteDuringDisconnectDoesNotPanic' ./ws/
+      # Real WebSockets: ocpp-go's client against the compat central system.
+      # One process per test: starting a central system writes the package level
+      # ocppj.FormationViolation, which a previous test's client may still read (a
+      # data race inside ocpp-go that the race detector reports against whichever
+      # test runs next).
+      - run: |
+          for t in $(go test -list '^Test' ./e2e/ | grep '^Test'); do
+            go test -race -count=1 -run "^$t\$" ./e2e/ || exit 1
+          done
+      - run: go test -race -count=1 ./compat/
+      - run: go build ./example/...
+
+  ocppgo-v019-apidiff:
+    # Any difference in the exported API of any package against the pinned
+    # upstream tag fails. Its own job, so that it can be a required check by itself.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: compat/ocppgo-v019
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: scripts/apidiff.sh
+
+  ocppgo-v019-license:
+    # LICENSE equals the pinned upstream's, NOTICE and file headers are in order,
+    # no unreviewed dependency.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: compat/ocppgo-v019
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: scripts/license-check.sh
+
   codegen-drift:
     runs-on: ubuntu-latest
     steps:

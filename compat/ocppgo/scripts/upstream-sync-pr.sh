@@ -36,7 +36,7 @@ if ! "$here/scripts/sync-upstream.sh" "$tmp/up" >"$tmp/log" 2>&1; then report_is
 # The synced tree must still build and keep the same exported API as the new pin.
 if ! (cd "$here" && go build ./... && scripts/apidiff.sh "$tmp/up") >>"$tmp/log" 2>&1; then report_issue "build or apidiff failed"; fi
 {
-  echo "Moves the pin of compat/ocppgo from \`$UPSTREAM_TAG\` to \`$latest\` (\`$commit\`)."
+  echo "Moves the pin of compat/$(basename "$here") from \`$UPSTREAM_TAG\` to \`$latest\` (\`$commit\`)."
   echo
   echo "Upstream changes between the tags:"
   echo '```'
@@ -49,7 +49,7 @@ if [ "$dry" = 1 ]; then cat "$body"; git -C "$here" checkout -q -- . ; exit 0; f
 cd "$here/../.."
 git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git checkout -q -b "$branch"
-git add -A compat/ocppgo
-git commit -q -m "compat/ocppgo: sync to upstream $latest"
+git add -A "compat/$(basename "$here")"
+git commit -q -m "compat/$(basename "$here"): sync to upstream $latest"
 git push -q origin "$branch"
-gh pr create --title "compat/ocppgo: sync to upstream $latest" --body-file "$body"
+gh pr create --title "compat/$(basename "$here"): sync to upstream $latest" --body-file "$body"

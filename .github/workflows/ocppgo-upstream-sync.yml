@@ -22,4 +22,6 @@ jobs:
       - name: Check for new tags and open a PR or an issue
         env:
           GH_TOKEN: ${{ github.token }}
-        run: compat/ocppgo/scripts/upstream-sync-pr.sh
+        run: |
+          compat/ocppgo/scripts/upstream-sync-pr.sh
+          compat/ocppgo-v019/scripts/upstream-sync-pr.sh

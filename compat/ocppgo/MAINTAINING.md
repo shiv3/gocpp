@@ -48,3 +48,19 @@ The module is released with nested-module tags
 tag the root first, then update the `require` in `go.mod` (the module is
 developed against the checkout through a `replace` directive that consumers do
 not see), then tag the module. Pre-release tags (`-rc.N`) are for proxy checks.
+
+## Two source trees
+
+`compat/ocppgo` implements the `v0.17.2-fix.x` API line (the fork) and
+`compat/ocppgo-v019` the upstream `v0.19` line. A Go module path maps to one tree
+per tag, and the two APIs are not compatible, so each line is a directory with its
+own `go.mod` (module path `github.com/lorenzodonini/ocpp-go` in both), its own
+`UPSTREAM` pin, patches and tags (`compat/ocppgo/v0.17.2-gocpp.N`,
+`compat/ocppgo-v019/v0.19.0-gocpp.N`). A branch per line was rejected: CI, the
+required checks and the shared gocpp core changes would then live on different
+branches. The runtime files (`ocppj/server_gocpp.go`, `ws/server.go`,
+`ws/admission.go`, `compat/`, `internal/compatrt/`, the `e2e` tests) exist in both
+trees and differ only where the upstream API differs; a change to one is made in
+the other in the same PR (`diff -r` of the two directories shows the drift). The
+required checks of the second tree are the same set with the prefix
+`ocppgo-v019-`.
