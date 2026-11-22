@@ -1,3 +1,5 @@
+// Copyright (c) the gocpp authors. Licensed under the MIT License (LICENSE.gocpp).
+
 package ws_test
 
 import (

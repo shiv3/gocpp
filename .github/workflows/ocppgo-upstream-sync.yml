@@ -1,0 +1,27 @@
+name: ocpp-go upstream sync
+# Weekly: look for a newer tag of the pinned ocpp-go line and open a sync PR
+# (or, when the patches no longer apply, an issue).
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: Check for new tags and open a PR or an issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          compat/ocppgo/scripts/upstream-sync-pr.sh
+          compat/ocppgo-v019/scripts/upstream-sync-pr.sh
