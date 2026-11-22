@@ -505,6 +505,7 @@ func (rt *gocppRuntime) sendRequest(clientID string, call *Call) error {
 		return err
 	}
 	id, action, request := call.UniqueId, call.Action, call.Payload
+	started := time.Now()
 	s.RequestState.AddPendingRequest(clientID, id, request)
 	sc.mu.Lock()
 	sc.sent[id] = struct{}{}
@@ -515,7 +516,7 @@ func (rt *gocppRuntime) sendRequest(clientID string, call *Call) error {
 		sc.mu.Lock()
 		delete(sc.sent, id)
 		sc.mu.Unlock()
-		rt.complete(sc, id, action, request, resp, cerr)
+		rt.complete(sc, id, action, request, started, resp, cerr)
 	})
 	if err != nil {
 		s.RequestState.DeletePendingRequest(clientID, id)
@@ -526,7 +527,7 @@ func (rt *gocppRuntime) sendRequest(clientID string, call *Call) error {
 	return err
 }
 
-func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Request, resp []byte, cerr error) {
+func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Request, started time.Time, resp []byte, cerr error) {
 	s := rt.s
 	clientID := sc.ch.ID()
 	cancel := func(e *ocpp.Error) {
@@ -534,23 +535,48 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 			rt.onCanceled(clientID, id, request, e)
 		}
 	}
+	// An answer that fails ocpp-go's parsing or validation is handled as ocpp-go
+	// does: InvalidMessageHook sees it, the peer is sent the error (as a
+	// CALLERROR carrying the request's id) and the request stays pending until its
+	// timeout, when the application hears "Request timed out".
+	bad := func(e *ocpp.Error, fields []interface{}) {
+		raw := mustFrame(fields)
+		if s.invalidMessageHook != nil {
+			if e2 := s.invalidMessageHook(sc.ch, e, string(raw), fields); e2 != nil {
+				e = e2
+				e.MessageId = id
+			}
+		}
+		if e.MessageId != "" {
+			sc.dc.SendCallError(e.MessageId, string(e.Code), e.Description, nil)
+		}
+		log.Error(e)
+		remaining := rt.cfg.CallTimeout - time.Since(started)
+		time.AfterFunc(max(remaining, 0), func() {
+			if sc.dc.Context().Err() == nil {
+				log.Infof("request %v for %v timed out", id, clientID)
+				cancel(ocpp.NewError(GenericError, "Request timed out", id))
+			}
+		})
+	}
 	var ce *gocppj.CallError
 	switch {
 	case cerr == nil:
 		var raw interface{}
 		if err := json.Unmarshal(resp, &raw); err != nil {
-			cancel(ocpp.NewError(FormationViolation, err.Error(), id))
+			bad(ocpp.NewError(FormationViolation, err.Error(), id), []interface{}{float64(CALL_RESULT), id})
 			return
 		}
+		fields := []interface{}{float64(CALL_RESULT), id, raw}
 		profile, _ := s.GetProfileForFeature(action)
 		confirmation, err := profile.ParseResponse(action, raw, parseRawJsonConfirmation)
 		if err != nil {
-			cancel(ocpp.NewError(FormationViolation, err.Error(), id))
+			bad(ocpp.NewError(FormationViolation, err.Error(), id), fields)
 			return
 		}
 		callResult := CallResult{MessageTypeId: CALL_RESULT, UniqueId: id, Payload: confirmation}
 		if err = Validate.Struct(callResult); err != nil {
-			cancel(errorFromValidation(err.(validator.ValidationErrors), id, action))
+			bad(errorFromValidation(err.(validator.ValidationErrors), id, action), fields)
 			return
 		}
 		log.Debugf("handling incoming CALL RESULT [%s] from %s", id, clientID)
@@ -576,7 +602,11 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 			ErrorDetails:     details,
 		}
 		if err := Validate.Struct(callError); err != nil {
-			cancel(errorFromValidation(err.(validator.ValidationErrors), id, ""))
+			f := []interface{}{float64(CALL_ERROR), id, string(callError.ErrorCode), callError.ErrorDescription}
+			if details != nil {
+				f = append(f, details)
+			}
+			bad(errorFromValidation(err.(validator.ValidationErrors), id, ""), f)
 			return
 		}
 		if s.errorHandler != nil {

@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/mux"
 	gorilla "github.com/gorilla/websocket"
 	"github.com/shiv3/gocpp/core/dispatcher"
+	gocppj "github.com/shiv3/gocpp/core/ocppj"
 	"github.com/shiv3/gocpp/core/transport"
 
 	"github.com/lorenzodonini/ocpp-go/internal/compatrt"
@@ -681,6 +682,13 @@ func (sc *serverConn) finish(ws *WebSocket) {
 	sc.cleanup.Do(func() {
 		s := sc.srv
 		if sc.dc != nil {
+			// ocpp-go logs why a connection's read loop ended; keep the line (the
+			// text is the dispatcher's read error) unless the server closed it.
+			var cs *dispatcher.CloseStatus
+			if cause := context.Cause(sc.dc.Context()); cause != nil && !errors.As(cause, &cs) &&
+				!errors.Is(cause, gocppj.ErrConnClosedByServer) {
+				log.Debugf("handling read error for %s: %v", ws.ID(), cause)
+			}
 			_ = sc.dc.Close(nil)
 		} else {
 			_ = sc.c.CloseNow()
