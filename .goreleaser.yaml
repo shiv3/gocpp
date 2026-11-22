@@ -32,11 +32,17 @@ builds:
     goarch: [amd64, arm64]
 
 archives:
+  # One archive per platform with the tools built for every platform; the
+  # gateway is not built for Windows, so it ships in its own archive.
   - id: default
-    ids: [gocpp-validate, gocpp-sim, gocpp-gateway, gocppctl]
+    ids: [gocpp-validate, gocpp-sim, gocppctl]
     format_overrides:
       - goos: windows
         formats: [zip]
+
+  - id: gateway
+    ids: [gocpp-gateway]
+    name_template: "gocpp-gateway_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
