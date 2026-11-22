@@ -14,14 +14,19 @@
 package compatrt
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
+	"net/http"
 	"runtime"
 	"sync"
 	"time"
 	"unsafe"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/shiv3/gocpp/core/dispatcher"
+	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/transport"
 )
 
@@ -64,6 +69,40 @@ type Native interface {
 	SetRuntime(rt Runtime)
 	// Settings returns the server's current timeouts and limits.
 	Settings() ServerSettings
+
+	// The rest backs the compat package (admission, drain, readiness).
+
+	// SetAdmission replaces the admission limits; call before Start. The soft cap
+	// can also be changed later with SetSoftMax.
+	SetAdmission(a Admission)
+	SetSoftMax(n int)
+	AdmissionStats() AdmissionStats
+	// Ready is the readiness handler: 503 while draining, stopping or at the soft cap.
+	Ready() http.Handler
+	// Connections is the number of connected charge points.
+	Connections() int
+	// Drain closes every connection at a paced rate (see DrainOptions) and keeps
+	// refusing upgrades until Undrain.
+	Drain(ctx context.Context, opts DrainOptions) error
+	Undrain()
+	Draining() bool
+	// SetUpgradeObserver receives the result of every upgrade attempt: "ok",
+	// "rate_limited", "draining", "shutting_down", "full", "auth_rejected",
+	// "bad_request" or "subprotocol".
+	SetUpgradeObserver(fn func(result string))
+}
+
+// Admission limits upgrades (zero values: no limit).
+type Admission struct {
+	MaxConnections int
+	AcceptRate     float64
+	AcceptBurst    int
+	SoftMax        int
+}
+
+// AdmissionStats counts upgrades refused before they were accepted.
+type AdmissionStats struct {
+	RejectedRateLimit, RejectedDraining, RejectedFull uint64
 }
 
 type slot struct {
@@ -137,4 +176,7 @@ func Safely(f func(), onPanic func(r any)) {
 // Control is implemented by the gocpp runtime of an ocppj.Server (stored under KindRuntime).
 type Control interface {
 	SetCallTimeout(d time.Duration)
+	// SetObservability sets what the connections of the runtime report to; any
+	// nil argument leaves that facility off. Call before Start.
+	SetObservability(m observability.Metrics, tp trace.TracerProvider, fo observability.FrameObserver)
 }

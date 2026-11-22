@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `dispatcher.Config.ParseErrorHook` and `dispatcher.Conn.SendCallError`: let an
+  embedder take over the answer to a frame gocpp could not parse (used by
+  compat/ocppgo for ocpp-go's envelope error texts and InvalidMessageHook).
+
 - `ocppj.ContextWithOutboundMessageID`: send a CALL or SEND with a caller chosen
   message id (for embedders that own the id policy).
 - `csms.OnAny`: a public catch-all handler for inbound CALLs without a typed handler.

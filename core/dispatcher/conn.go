@@ -645,6 +645,9 @@ func (c *Conn) handleMessage(msg []byte) bool {
 	}
 	c.observeInbound(msg, frame, err)
 	if err != nil {
+		if h := c.cfg.ParseErrorHook; h != nil && h(c, msg, err) {
+			return true
+		}
 		if errors.Is(err, ocppj.ErrIgnoredMessageType) {
 			c.cfg.Logger.DebugContext(c.ctx, "ignored unknown message type",
 				"cp_id", c.id, "err", err)

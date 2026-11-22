@@ -38,6 +38,23 @@ new, and `UPSTREAM` for the pinned source.
 The package `compat` reports the runtime of a server and sets the call timeout
 without injecting a dispatcher.
 
+## Operating a server: the `compat` package
+
+ocpp-go's API has no place for these, so they live in the extra package
+`github.com/lorenzodonini/ocpp-go/compat` (the only package that is not in
+ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
+
+| Need | API |
+|---|---|
+| Max connections, accept rate (token bucket, 503 + jittered Retry-After), soft cap | `compat.SetAdmission(srv, compat.Admission{...})` before `Start`; `compat.SetSoftMaxConnections` at runtime; `compat.Stats` counts refusals |
+| Readiness for a load balancer (503 while draining, stopping or at the soft cap) | `srv.AddHttpHandler("/ready", compat.ReadyHandler(srv).ServeHTTP)` |
+| Paced drain for deploys (close code 1012, idle connections first, upgrades refused meanwhile) | `compat.Drain(ctx, srv, compat.DrainOptions{Window, Rate, IdleGrace, RetryAfter, OnProgress})`, then `srv.Stop()`; `compat.Undrain`, `compat.Draining`, `compat.Connections` |
+| Metrics (connections, calls per action and direction, pending calls; with `observability.SessionMetrics` also upgrade results and close code/cause), OpenTelemetry tracing, raw frame observer | `compat.SetObservability(endpoint, metrics, tracerProvider, frameObserver)` before `Start`; the Prometheus and OpenTelemetry metrics of gocpp (`core/observability/metrics/...`) fit |
+| Call timeout without injecting a dispatcher | `compat.SetCallTimeout` |
+
+`SetObservability` needs the `*ocppj.Server`: build it yourself
+(`ocppj.NewServer(srv, nil, nil, profiles...)`, then `ocpp16.NewCentralSystem(endpoint, srv)`).
+
 ## Known differences
 
 - Outbound requests are ordered per charge point, not globally.
@@ -46,6 +63,9 @@ without injecting a dispatcher.
   disconnect handler), as in ocpp-go.
 - `SendResponse` / `SendError` return a hand-over error; write errors surface in
   the logs.
+- `InvalidMessageHook` is called for every frame ocpp-go calls it for, including
+  envelope errors (wrong array length, unknown message type), and the envelope
+  error texts are ocpp-go's own.
 - Idle connections are closed with a close frame (1000) on the gocpp runtime.
 - New upgrades are refused with HTTP 503 once `Stop` has begun.
 - ocpp-go's package level state (`ocppj.FormationViolation`, loggers, ...) is
