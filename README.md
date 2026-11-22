@@ -30,6 +30,12 @@ go get github.com/shiv3/gocpp
 
 Requires Go 1.26+ (see `go.mod`).
 
+Addons are separate modules (`go get github.com/shiv3/gocpp/addons/link-grpc@v0.3.0`).
+The gateway tools `gocpp-gateway` and `gocppctl` are attached as binaries to each
+[release](https://github.com/shiv3/gocpp/releases); to build from source, clone the
+repository and run `go build` in `cmd/gocpp-gateway` or `cmd/gocppctl` (their
+`go.mod` files build against the checkout, so `go install ...@version` is not supported).
+
 ## Quick start
 
 ### CSMS (central system)

@@ -14,10 +14,26 @@ builds:
     env: [CGO_ENABLED=0]
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+  # The gateway tools are separate modules (cmd/*/go.mod) that build against
+  # this checkout through their replace directives.
+  - id: gocpp-gateway
+    dir: cmd/gocpp-gateway
+    main: .
+    binary: gocpp-gateway
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+  - id: gocppctl
+    dir: cmd/gocppctl
+    main: .
+    binary: gocppctl
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
 
 archives:
   - id: default
-    ids: [gocpp-validate, gocpp-sim]
+    ids: [gocpp-validate, gocpp-sim, gocpp-gateway, gocppctl]
     format_overrides:
       - goos: windows
         formats: [zip]

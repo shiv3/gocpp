@@ -9,11 +9,11 @@ require (
 	github.com/nats-io/nats.go v1.56.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.20.1
-	github.com/shiv3/gocpp v0.2.0
-	github.com/shiv3/gocpp/addons/link-grpc v0.0.0
-	github.com/shiv3/gocpp/addons/link-nats v0.0.0
-	github.com/shiv3/gocpp/addons/registry-redis v0.0.0
-	github.com/shiv3/gocpp/addons/rollout v0.0.0
+	github.com/shiv3/gocpp v0.3.0
+	github.com/shiv3/gocpp/addons/link-grpc v0.3.0
+	github.com/shiv3/gocpp/addons/link-nats v0.3.0
+	github.com/shiv3/gocpp/addons/registry-redis v0.3.0
+	github.com/shiv3/gocpp/addons/rollout v0.3.0
 	github.com/stretchr/testify v1.12.1
 	google.golang.org/grpc v1.85.0
 )
