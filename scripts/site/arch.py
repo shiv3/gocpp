@@ -4,7 +4,7 @@ import diagrams as d
 NAV = [
     ("index.html", "Introduction"), ("layers", "Layers"), ("lifecycle", "Lifecycle"), ("goroutines", "Goroutines"),
     ("paths", "Message paths"), ("split", "Gateway split"), ("perf-footprint", "Footprint"), ("perf-latency", "Latency"),
-    ("perf-soak", "Soak"), ("perf-drain", "Drain"), ("perf-gateway", "Gateway cost"), ("tuning", "Tuning"),
+    ("perf-soak", "Soak"), ("perf-drain", "Drain"), ("perf-capacity", "Capacity"), ("perf-gateway", "Gateway cost"), ("tuning", "Tuning"),
 ]
 
 G = ("gocpp", "gocpp")
@@ -211,6 +211,109 @@ def body(h):
 <p>The harness records a table of peaks, not a time series, so there is no curve to draw; the "Show as table" view has the CPU and recovery columns. The reconnect peak follows the configured pace (within 25% of the target; the excess is the chargers' own retry jitter), and the fleet stays about 96% connected through a 60-second drain instead of 0% for the restart. The bare server handles 4,000 reconnects in 3 seconds without trouble, so the saving in absolute CPU is small here; the pace matters where each connect costs more: TLS handshakes, authentication against a database, per-connect application work.</p>
 """
     parts.append(section("perf-drain", "Performance", "Drain against a plain restart", "Turning a reconnect storm into a ramp with Server.Drain and the accept rate limit.", body_))
+
+    # ---- capacity --------------------------------------------------------
+    CAP = LT + "loadtest/results/capacity-2026-11-22/report.md"
+    fc, fk, fm, fs = "{:,.0f}", "{:.1f} KB", "{:,.0f}/s", "{:.1f} s"
+    cap = [
+        ("Chargers held with Heartbeat p99 at or under 200 ms", "1 core / 2 GB, last stable ramp step", [
+            ("lenient", "gocpp", "gocpp, lenient schema, GOMEMLIMIT 80%", 93700, fc),
+            ("schema off", "gocpp", "gocpp, schema off, GOMEMLIMIT 80%", 100000, fc),
+            ("no GOMEMLIMIT", "gocpp", "gocpp, lenient schema, no GOMEMLIMIT", 78000, fc),
+            ("ocpp-go", "ocppgo", "ocpp-go fork, GOMEMLIMIT 80%", 55000, fc)]),
+        ("Server memory per connection", "KB of anonymous memory at that step", [
+            ("lenient", "gocpp", "gocpp, lenient schema, GOMEMLIMIT 80%", 16.8, fk),
+            ("schema off", "gocpp", "gocpp, schema off, GOMEMLIMIT 80%", 15.3, fk),
+            ("no GOMEMLIMIT", "gocpp", "gocpp, lenient schema, no GOMEMLIMIT", 23.6, fk),
+            ("ocpp-go", "ocppgo", "ocpp-go fork, GOMEMLIMIT 80%", 28.1, fk)]),
+        ("Throughput at CPU saturation", "messages per second, 5,000 chargers, timers sped up", [
+            ("1 core", "gocpp", "gocpp, lenient schema, 1 core / 2 GB", 47700, fm),
+            ("1 core", "ocppgo", "ocpp-go fork, 1 core / 2 GB", 54400, fm),
+            ("2 cores", "gocpp", "gocpp, lenient schema, 2 cores / 4 GB", 97600, fm),
+            ("2 cores", "ocppgo", "ocpp-go fork, 2 cores / 4 GB", 104800, fm)]),
+    ]
+    panels = "".join(h.bars_panel(t, u, r, label_w=116, w=350) for t, u, r in cap)
+    cap_rows = [
+        ["1 core / 2 GB", "gocpp, lenient", "80%", "93,700 (p99 57 ms)", "96,000: Heartbeat p99 1.9 s, heap at the memory limit", "16.8 KB", "47.7k msg/s (p99 100 ms)"],
+        ["1 core / 2 GB", "gocpp, schema off", "80%", "about 100,000", "117,400: memory above 95%, CPU at 1.00 core", "15.3 KB", "not run"],
+        ["1 core / 2 GB", "gocpp, lenient", "none", "78,000 (p99 46 ms)", "78,000: memory above 95%, CPU 0.24 core", "23.6 KB", "not run"],
+        ["1 core / 2 GB", "gocpp, lenient, Heartbeat 60 s", "80%", "about 100,000", "115,100: memory above 95%, CPU at 1.00 core", "15.8 KB", "not run"],
+        ["1 core / 2 GB", "ocpp-go fork", "80%", "about 55,000", "67,100: memory above 95%, CPU at 1.00 core", "28.1 KB", "54.4k msg/s (p99 80 ms)"],
+        ["2 cores / 4 GB", "gocpp, lenient", "80%", "at least 112,000 (p99 2.4 ms)", "112,400: the test machine ran out of memory; server at 2.8 of 4 GB, 0.33 core", "24.0 KB", "97.6k msg/s (p99 41 ms)"],
+        ["2 cores / 4 GB", "gocpp, schema off", "80%", "at least 111,700 (p99 10 ms)", "111,700: test machine memory", "24.8 KB", "not run"],
+        ["2 cores / 4 GB", "ocpp-go fork", "80%", "at least 80,000 (p99 1 ms)", "80,600: test machine memory", "39.0 KB", "104.8k msg/s (p99 32 ms)"],
+    ]
+    tbl = table(["Server size", "Server", "GOMEMLIMIT", "Chargers held, Heartbeat p99 at or under 200 ms", "Where the ramp stopped", "Memory per connection", "Saturation throughput, 5,000 chargers"], cap_rows)
+    storm = [
+        ("1 core / 2 GB, 90,000 chargers", "seconds from the new process being ready to 99% of the fleet connected", [
+            ("plain restart", "gocpp", "SIGTERM, new process", 12.3, fs),
+            ("drain 15 s", "gocpp", "-drain-window 15s", 62.4, fs),
+            ("accept 3,000/s", "gocpp", "-accept-rate 3000", 68.9, fs),
+            ("drain + accept", "gocpp", "-drain-window 15s -accept-rate 3000", 68.7, fs)]),
+        ("2 cores / 4 GB, 100,000 chargers", "seconds from the new process being ready to 99% of the fleet connected", [
+            ("plain restart", "gocpp", "SIGTERM, new process", 6.8, fs),
+            ("drain + accept", "gocpp", "-drain-window 15s -accept-rate 6000", 71.5, fs)]),
+    ]
+    spanels = "".join(h.bars_panel(t, u, r, label_w=112, w=380) for t, u, r in storm)
+    storm_rows = [
+        ["1 core / 2 GB", "90,000", "none", "0.6 s", "12.3 s", "16.4 s", "2.7 s"],
+        ["1 core / 2 GB", "90,000", "<code>-drain-window 15s</code>", "15.6 s", "62.4 s", "80.5 s", "13.7 s"],
+        ["1 core / 2 GB", "90,000", "<code>-accept-rate 3000</code>", "0.6 s", "68.9 s", "73.3 s", "14.0 s"],
+        ["1 core / 2 GB", "90,000", "<code>-drain-window 15s -accept-rate 3000</code>", "15.5 s", "68.7 s", "86.7 s", "9.4 s"],
+        ["2 cores / 4 GB", "100,000", "none", "0.6 s", "6.8 s", "10.8 s", "1.4 s"],
+        ["2 cores / 4 GB", "100,000", "<code>-drain-window 15s -accept-rate 6000</code>", "15.7 s", "71.5 s", "89.9 s", "9.4 s"],
+    ]
+    stbl = table(["Server size", "Fleet", "Server options", "Exit after SIGTERM", "99% back, from ready", "99% back, from SIGTERM", "Heartbeat p99 in the worst 10 s"], storm_rows, num=(1, 3, 4, 5, 6))
+    body_ = """
+<p>The measurements above use 4,000 chargers and a server with four cores. This one asks the sizing question directly: how many chargers does one embedded gocpp server hold when its cgroup gives it one core and 2 GB, or two cores and 4 GB? The fleet behaves like a quiet production fleet: Heartbeat every 300 seconds, 20% of the chargers charging and sending MeterValues every 60 seconds, 40% mute, and CSMS calls at one per second per 1,000 chargers. The ramp adds 2,000 chargers every 30 seconds until memory, latency or connect errors cross a limit.</p>
+<ul class="tiles" aria-label="Recommended sizing">
+<li class="tile"><div class="lab">Chargers on 1 core / 2 GB, with headroom</div><div class="val">60,000</div><div class="cmp">about 1.0 GB and 0.2 to 0.3 core; tested ceiling 93,700 to 117,400</div></li>
+<li class="tile"><div class="lab">Chargers on 2 cores / 4 GB, with headroom</div><div class="val">100,000</div><div class="cmp">112,000 reached at 2.8 GB and 0.33 core; the test machine gave out first</div></li>
+<li class="tile"><div class="lab">Saturation throughput, 1 core</div><div class="val">45,000<small>msg/s</small></div><div class="cmp">rounded down from 47,700 measured; about 95,000 on 2 cores</div></li>
+<li class="tile"><div class="lab">Server memory per connection</div><div class="val">16<small>KB</small></div><div class="cmp">when GOMEMLIMIT squeezes the heap; about 24 KB with memory to spare</div></li>
+</ul>
+<p class="fine">The two sizing figures are recommendations derived from the runs below, not measured limits. Plain <code>ws://</code> over loopback, single runs, trivial handlers.</p>
+""" + h.viz("chart-cap", "One server on 1 core and 2 GB: connections, memory, throughput",
+            "Server limited by cgroups (CPU quota, memory limit, no swap) and pinned; the load generator runs on other cores. Each panel has its own scale; bars start at zero.",
+            [("gocpp", "gocpp"), O], panels, tbl,
+            "Single runs on one shared WSL2 machine over loopback, without TLS. Chargers held: the last 30-second ramp step with the whole fleet connected and Heartbeat p99 at or under 200 ms (histogram buckets, 12%% resolution); "
+            "\"about\" values are where p99 first crossed 200 ms. More chargers is better in the first panel, less memory in the second, more messages in the third. "
+            "The ocpp-go chargers reconnected about every 70 seconds in this harness (cause not investigated), which makes its connection figures pessimistic. "
+            "Throughput is a closed loop with 5,000 chargers and the generator close to its own limit; gocpp ran with lenient schema validation on. "
+            'Source: <a href="%s">capacity report, 2026-11-22</a>.' % CAP, cols="c3") + """
+<h3>What limits a small server</h3>
+<ul>
+<li><b>Memory, then the collector, then CPU.</b> On 1 core / 2 GB with lenient validation the Heartbeat p99 went from 57 ms at 93,700 chargers to 1.9 s at 96,000 while CPU stayed under 0.8 core: the heap had reached <code>GOMEMLIMIT</code> and the collector ran continuously. With schema validation off a connection costs less (15.3 against 16.8 KB) and the server got to about 100,000 before p99 crossed 200 ms, now with CPU at the one-core quota.</li>
+<li><b>Set <code>GOMEMLIMIT</code>.</b> Without it the same server stopped at 78,000 chargers at 0.24 core, because the heap was allowed to grow to 23.6 KB per connection and hit the cgroup limit. At 80% of the limit the collector works harder and holds 16.8 KB.</li>
+<li><b>Two cores and 4 GB were not exhausted.</b> At 112,000 chargers the server used 2.8 GB and 0.33 core with a Heartbeat p99 of 2.4 ms; the ramp ended because the test machine ran out of memory for the load generator. The figure is a lower bound. Memory arithmetic puts the real ceiling at roughly 170,000 to 250,000; that was not measured.</li>
+<li><b>A fleet this quiet barely uses the CPU.</b> 90,000 chargers held for five minutes cost 0.27 core on average (Heartbeat p99 at most 51 ms). A five times higher heartbeat rate (every 60 seconds) brought the p99 over 200 ms at 100,000 chargers and the server to a full core at 115,000.</li>
+<li><b>Throughput scales with cores.</b> With 5,000 chargers and compressed timers, one core saturated at 47,700 messages per second (p99 100 ms; under 37,000 per second the p99 stayed below 64 ms) and two cores at 97,600 (p99 41 ms). The ocpp-go fork was slightly ahead here, 54,400 and 104,800; gocpp ran with lenient schema validation on and was not measured with it off in this experiment.</li>
+</ul>
+<h3>TLS changes the arithmetic</h3>
+<p>The harness speaks plain <code>ws://</code>. A separate micro-benchmark of Go's <code>crypto/tls</code> (TLS 1.3, ECDSA P-256, no client certificates, 20,000 idle connections, one core) measured about 136 us of server CPU per full handshake, or about 7,400 handshakes per second per core, and about 15 KB more memory per idle TLS connection. As an estimate, not a measurement: terminating TLS in the server roughly doubles the memory per connection, so 1 core / 2 GB holds about 50,000 to 60,000 chargers, and reconnecting 90,000 chargers costs about 12 seconds of one core in handshakes alone. Terminating TLS on a proxy or load balancer keeps the numbers above.</p>
+<h3>A reconnect storm after a restart</h3>
+<p>The fleet is held for five minutes, then the server gets one SIGTERM and a new process starts two seconds later. Chargers reconnect with jittered exponential backoff (base 1 s, cap 30 s).</p>
+""" + h.viz("chart-storm", "Time until 99% of the fleet is connected again",
+            "One server restarted in place, gocpp with lenient validation. Seconds from the new process being ready; shorter is better. One panel per server size, each with its own scale.",
+            [G], spanels, stbl,
+            "Single runs, loopback, no TLS and no authentication. Heartbeat p99 is the worst 10-second window and is only an order of magnitude. "
+            'Source: <a href="%s">capacity report, 2026-11-22</a>, "Reconnect storm".' % CAP, cols="c2") + """
+<ul>
+<li><b>A plain restart of a single server is fast.</b> 99%% of 90,000 chargers were back 12 seconds after the new process was ready on one core, and 99%% of 100,000 after 7 seconds on two. Server CPU peaked at 0.65 and 0.55 core without throttling; memory peaked at 91%% of the 2 GB limit.</li>
+<li><b>Drain and the accept-rate limit made the single-server restart slower</b>: 62 to 72 seconds to 99%%. The likely reason, not verified with a trace: a server that refuses upgrades during its drain window, or paces them at 3,000 per second, sends the chargers into longer backoffs, and with only one server there is nowhere else for them to go.</li>
+<li><b>They pay off when another instance absorbs the drained sessions.</b> That is the rolling-restart case measured <a href="#perf-drain">above</a>, where the fleet stays connected while one process drains. They also protect a server whose connects are expensive (TLS, authentication against a database).</li>
+</ul>
+<h3>Caveats</h3>
+<ul>
+<li>Loopback, no TLS, no network latency or loss; the generator and the server share one machine (separate cores, shared memory bandwidth and cache).</li>
+<li>Every number is a single run. Throughput varies by 5 to 10%% between runs, and the point where a latency criterion trips varies more, because p99 sits near a cliff when the heap is close to <code>GOMEMLIMIT</code>.</li>
+<li>The two-core figures are lower bounds set by the test machine's memory.</li>
+<li>The ocpp-go fork (v0.17.2 with fixes) reconnected about every 70 seconds in this harness; its connection and CPU figures may be pessimistic.</li>
+<li>The servers keep no event history and the handlers are trivial. A server that stores events or talks to a database needs more memory and CPU per message.</li>
+</ul>
+<p class="src">Source: <a href="%s">interop/loadtest/results/capacity-2026-11-22/report.md</a> on branch <code>test/loadtest-4k</code>, with the per-run summaries, commands and cgroup samples next to it.</p>
+""" % CAP
+    parts.append(section("perf-capacity", "Performance", "Sizing and capacity", "How many chargers one server holds on 1 core / 2 GB and on 2 cores / 4 GB, and what a restart of that fleet looks like.", body_))
 
     # ---- gateway cost ----------------------------------------------------
     hop_rows = [
