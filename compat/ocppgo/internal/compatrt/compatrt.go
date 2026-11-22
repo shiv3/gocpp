@@ -1,3 +1,5 @@
+// Copyright (c) the gocpp authors. Licensed under the MIT License (LICENSE.gocpp).
+
 // Package compatrt connects the packages of the compatibility module without
 // widening their exported API.
 //

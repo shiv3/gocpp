@@ -38,8 +38,6 @@ jobs:
       - run: go build ./...
       # The vendored files are exactly the pinned upstream tag plus patches/.
       - run: scripts/sync-upstream.sh --check
-      # Any difference in the exported API of any package against the pinned tag fails.
-      - run: scripts/apidiff.sh
       # ocpp-go's own suites on the gocpp runtime (the suites inject a default
       # dispatcher, which OCPPGO_COMPAT_RUNTIME=gocpp also routes to gocpp).
       - run: go test -vet=off -race -count=1 ./ocpp1.6_test/ ./ocpp2.0.1_test/
@@ -68,6 +66,34 @@ jobs:
           done
       - run: go test -race -count=1 ./compat/
       - run: go build ./example/...
+
+  ocppgo-apidiff:
+    # Any difference in the exported API of any package against the pinned
+    # upstream tag fails. Its own job, so that it can be a required check by itself.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: compat/ocppgo
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: scripts/apidiff.sh
+
+  ocppgo-license:
+    # LICENSE equals the pinned upstream's, NOTICE and file headers are in order,
+    # no unreviewed dependency.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: compat/ocppgo
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: scripts/license-check.sh
 
   codegen-drift:
     runs-on: ubuntu-latest
