@@ -74,6 +74,8 @@ func TestEnvelopeErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		n++
+		// The error reply is queued on its own goroutine: let it go out before the marker.
+		time.Sleep(100 * time.Millisecond)
 		marker := fmt.Sprintf("mk%d", n)
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(`[2,"`+marker+`","Heartbeat",{}]`)); err != nil {
 			t.Fatal(err)
