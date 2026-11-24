@@ -34,8 +34,10 @@ type ChargingStationConnection interface {
 	TLSConnectionState() *tls.ConnectionState
 }
 
-type ChargingStationValidationHandler ws.CheckClientHandler
-type ChargingStationConnectionHandler func(chargePoint ChargingStationConnection)
+type (
+	ChargingStationValidationHandler ws.CheckClientHandler
+	ChargingStationConnectionHandler func(chargePoint ChargingStationConnection)
+)
 
 // -------------------- v2.0 Charging Station --------------------
 
@@ -163,6 +165,13 @@ type ChargingStation interface {
 	//
 	// No auto-reconnect logic is implemented as of now, but is planned for the future.
 	Start(csmsUrl string) error
+
+	// Connects to the CSMS and starts the charging station routine, it retries if first attempt fails.
+	// The function doesn't block and returns right away, after having attempted to open a connection to the CSMS.
+	// If the connection couldn't be opened, it retries.
+	//
+	// Optional client options must be set before calling this function. Refer to NewChargingStation.
+	StartWithRetries(csmsUrl string)
 	// Stops the charging station routine, disconnecting it from the CSMS.
 	// Any pending requests are discarded.
 	Stop()
@@ -204,16 +213,22 @@ func NewChargingStation(id string, endpoint *ocppj.Client, client ws.WsClient) C
 		client = ws.NewClient()
 	}
 	client.SetRequestedSubProtocol(types.V201Subprotocol)
-	cs := chargingStation{responseHandler: make(chan ocpp.Response, 1), errorHandler: make(chan error, 1), callbacks: callbackqueue.New()}
 
 	if endpoint == nil {
 		dispatcher := ocppj.NewDefaultClientDispatcher(ocppj.NewFIFOClientQueue(0))
 		endpoint = ocppj.NewClient(id, client, dispatcher, nil, authorization.Profile, availability.Profile, data.Profile, diagnostics.Profile, display.Profile, firmware.Profile, iso15118.Profile, localauth.Profile, meter.Profile, provisioning.Profile, remotecontrol.Profile, reservation.Profile, security.Profile, smartcharging.Profile, tariffcost.Profile, transactions.Profile)
 	}
+	endpoint.SetDialect(ocpp.V2)
+
+	cs := chargingStation{
+		client:          endpoint,
+		responseHandler: make(chan ocpp.Response, 1),
+		errorHandler:    make(chan error, 1),
+		callbacks:       callbackqueue.New(),
+	}
 
 	// Callback invoked by dispatcher, whenever a queued request is canceled, due to timeout.
 	endpoint.SetOnRequestCanceled(cs.onRequestTimeout)
-	cs.client = endpoint
 
 	cs.client.SetResponseHandler(func(confirmation ocpp.Response, requestId string) {
 		cs.responseHandler <- confirmation
@@ -382,6 +397,8 @@ type CSMS interface {
 
 	// The function blocks forever, so it is suggested to wrap it in a goroutine, in case other functionality needs to be executed on the main program thread.
 	Start(listenPort int, listenPath string)
+	// Stops the CSMS, clearing all pending requests.
+	Stop()
 	// Errors returns a channel for error messages. If it doesn't exist it es created.
 	Errors() <-chan error
 }
@@ -404,8 +421,24 @@ func NewCSMS(endpoint *ocppj.Server, server ws.WsServer) CSMS {
 	}
 	server.AddSupportedSubprotocol(types.V201Subprotocol)
 	if endpoint == nil {
-		dispatcher := ocppj.NewDefaultServerDispatcher(ocppj.NewFIFOQueueMap(0))
-		endpoint = ocppj.NewServer(server, dispatcher, nil, authorization.Profile, availability.Profile, data.Profile, diagnostics.Profile, display.Profile, firmware.Profile, iso15118.Profile, localauth.Profile, meter.Profile, provisioning.Profile, remotecontrol.Profile, reservation.Profile, security.Profile, smartcharging.Profile, tariffcost.Profile, transactions.Profile)
+		endpoint = ocppj.NewServer(server, nil, nil,
+			authorization.Profile,
+			availability.Profile,
+			data.Profile,
+			diagnostics.Profile,
+			display.Profile,
+			firmware.Profile,
+			iso15118.Profile,
+			localauth.Profile,
+			meter.Profile,
+			provisioning.Profile,
+			remotecontrol.Profile,
+			reservation.Profile,
+			security.Profile,
+			smartcharging.Profile,
+			tariffcost.Profile,
+			transactions.Profile,
+		)
 	}
 	cs := newCSMS(endpoint)
 	cs.server.SetRequestHandler(func(client ws.Channel, request ocpp.Request, requestId string, action string) {

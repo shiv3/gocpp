@@ -15,7 +15,7 @@ func (suite *OcppV16TestSuite) TestSetChargingProfileRequestValidation() {
 	t := suite.T()
 	chargingSchedule := types.NewChargingSchedule(types.ChargingRateUnitWatts, types.NewChargingSchedulePeriod(0, 10.0))
 	chargingProfile := types.NewChargingProfile(1, 1, types.ChargingProfilePurposeChargePointMaxProfile, types.ChargingProfileKindAbsolute, chargingSchedule)
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{smartcharging.SetChargingProfileRequest{ConnectorId: 1, ChargingProfile: chargingProfile}, true},
 		{smartcharging.SetChargingProfileRequest{ChargingProfile: chargingProfile}, true},
 		{smartcharging.SetChargingProfileRequest{}, false},
@@ -27,7 +27,7 @@ func (suite *OcppV16TestSuite) TestSetChargingProfileRequestValidation() {
 
 func (suite *OcppV16TestSuite) TestSetChargingProfileConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{smartcharging.SetChargingProfileConfirmation{Status: smartcharging.ChargingProfileStatusAccepted}, true},
 		{smartcharging.SetChargingProfileConfirmation{Status: "invalidChargingProfileStatus"}, false},
 		{smartcharging.SetChargingProfileConfirmation{}, false},
@@ -66,7 +66,7 @@ func (suite *OcppV16TestSuite) TestSetChargingProfileE2EMocked() {
 	SetChargingProfileConfirmation := smartcharging.NewSetChargingProfileConfirmation(status)
 	channel := NewMockWebSocket(wsId)
 
-	smartChargingListener := MockChargePointSmartChargingListener{}
+	smartChargingListener := &MockChargePointSmartChargingListener{}
 	smartChargingListener.On("OnSetChargingProfile", mock.Anything).Return(SetChargingProfileConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(0).(*smartcharging.SetChargingProfileRequest)
 		require.True(t, ok)

@@ -1,7 +1,7 @@
 // Copyright (c) the gocpp authors. Licensed under the MIT License (LICENSE.gocpp).
 //
 // This file is not part of upstream ocpp-go. It implements ws.Server, whose
-// exported API is that of ocpp-go v0.17.2-fix.3, on gocpp's transport
+// exported API is that of ocpp-go v0.19.0, on gocpp's transport
 // (coder/websocket). See NOTICE.
 
 package ws
@@ -107,7 +107,7 @@ func (n native) SetRuntime(rt compatrt.Runtime) {
 
 func (n native) Settings() compatrt.ServerSettings {
 	c := n.s.timeoutConfig
-	return compatrt.ServerSettings{WriteWait: c.WriteWait, PingWait: c.PingWait, MaxMessageSize: c.MaxMessageSize}
+	return compatrt.ServerSettings{WriteWait: c.WriteWait, PingWait: c.PingWait, MaxMessageSize: serverMaxMessageSize(c)}
 }
 
 func newServer() *Server {
@@ -311,6 +311,13 @@ func (server *Server) Stop() {
 	server.errMu.Unlock()
 }
 
+// Connections retrieves a WebSocket connection by its unique identifier, or nil.
+func (server *Server) Connections(websocketId string) *WebSocket {
+	server.connMutex.RLock()
+	defer server.connMutex.RUnlock()
+	return server.connections[websocketId]
+}
+
 func (server *Server) lookup(id string) (*WebSocket, bool) {
 	server.connMutex.RLock()
 	defer server.connMutex.RUnlock()
@@ -504,7 +511,7 @@ out:
 		server.error(fmt.Errorf("upgrade failed: %w", err))
 		return
 	}
-	limit := server.timeoutConfig.MaxMessageSize
+	limit := serverMaxMessageSize(server.timeoutConfig)
 	if limit <= 0 {
 		limit = math.MaxInt64 >> 1
 	}
@@ -716,3 +723,7 @@ func (sc *serverConn) finish(ws *WebSocket) {
 		}
 	})
 }
+
+// serverMaxMessageSize is the inbound message size limit of a ServerTimeoutConfig.
+// ocpp-go v0.19 has no such setting (as gorilla/websocket, it reads without a limit).
+func serverMaxMessageSize(ServerTimeoutConfig) int64 { return 0 }

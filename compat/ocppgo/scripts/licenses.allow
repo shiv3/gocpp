@@ -29,6 +29,7 @@ github.com/prometheus/client_golang
 github.com/prometheus/client_model
 github.com/prometheus/common
 github.com/prometheus/procfs
+github.com/relvacode/iso8601
 github.com/santhosh-tekuri/jsonschema/v6
 github.com/shiv3/gocpp
 github.com/shopspring/decimal

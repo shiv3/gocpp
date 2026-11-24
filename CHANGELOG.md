@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- The ocpp-go drop-in targets upstream ocpp-go v0.19.0 only. The module moved
+  from `compat/ocppgo-v019` to `compat/ocppgo` (the `v0.17.2-fix.x` tree is
+  removed), so the replace line is now
+  `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1`
+  (tag `compat/ocppgo/v0.19.0-gocpp.1`, to be created after this change). The CI jobs are `ocppgo-compat`,
+  `ocppgo-apidiff` and `ocppgo-license`; the weekly sync follows upstream
+  `lorenzodonini/ocpp-go` tags only. The previously published tags
+  `compat/ocppgo/v0.17.2-gocpp.1` and `compat/ocppgo-v019/v0.19.0-gocpp.1` stay on
+  the Go proxy but are superseded.
+
 ## [0.3.2] - 2026-11-23
 
 ### Added

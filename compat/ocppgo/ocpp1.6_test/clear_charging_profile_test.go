@@ -2,6 +2,7 @@ package ocpp16_test
 
 import (
 	"fmt"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/stretchr/testify/assert"
@@ -12,7 +13,7 @@ import (
 // Test
 func (suite *OcppV16TestSuite) TestClearChargingProfileRequestValidation() {
 	t := suite.T()
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{smartcharging.ClearChargingProfileRequest{Id: newInt(1), ConnectorId: newInt(1), ChargingProfilePurpose: types.ChargingProfilePurposeChargePointMaxProfile, StackLevel: newInt(1)}, true},
 		{smartcharging.ClearChargingProfileRequest{Id: newInt(1), ConnectorId: newInt(1), ChargingProfilePurpose: types.ChargingProfilePurposeChargePointMaxProfile}, true},
 		{smartcharging.ClearChargingProfileRequest{Id: newInt(1), ConnectorId: newInt(1)}, true},
@@ -28,7 +29,7 @@ func (suite *OcppV16TestSuite) TestClearChargingProfileRequestValidation() {
 
 func (suite *OcppV16TestSuite) TestClearChargingProfileConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{smartcharging.ClearChargingProfileConfirmation{Status: smartcharging.ClearChargingProfileStatusAccepted}, true},
 		{smartcharging.ClearChargingProfileConfirmation{Status: "invalidClearChargingProfileStatus"}, false},
 		{smartcharging.ClearChargingProfileConfirmation{}, false},
@@ -52,7 +53,7 @@ func (suite *OcppV16TestSuite) TestClearChargingProfileE2EMocked() {
 	ClearChargingProfileConfirmation := smartcharging.NewClearChargingProfileConfirmation(status)
 	channel := NewMockWebSocket(wsId)
 
-	smartChargingListener := MockChargePointSmartChargingListener{}
+	smartChargingListener := &MockChargePointSmartChargingListener{}
 	smartChargingListener.On("OnClearChargingProfile", mock.Anything).Return(ClearChargingProfileConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(0).(*smartcharging.ClearChargingProfileRequest)
 		require.True(t, ok)

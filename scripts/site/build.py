@@ -27,7 +27,7 @@ DOCS = REPO + "/blob/main/docs/"
 LT = REPO + "/blob/test/loadtest-4k/interop/"
 PKG = "https://pkg.go.dev/github.com/shiv3/gocpp"
 COMPAT = REPO + "/blob/main/compat/"
-REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1"
+REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1"
 
 
 def esc(s):
@@ -531,7 +531,7 @@ def build():
 <h3>One line in <code>go.mod</code></h3>
 <p>If your code compiles against ocpp-go v0.19.0, add this line to <code>go.mod</code>, then run <code>go mod tidy</code> and build as before. The import paths in your code stay <code>github.com/lorenzodonini/ocpp-go/...</code>.</p>
 """ + codeline("go.mod, for ocpp-go v0.19.0", REPLACE_019) + """
-<p class="src">Module <a href="%(c)socppgo-v019/README.md">compat/ocppgo-v019</a>, tag <code>v0.19.0-gocpp.1</code>, built on gocpp v0.3.2. <code>go mod tidy</code> adds gocpp and may raise some <code>golang.org/x</code> versions; the minimum Go version is the module's.</p>
+<p class="src">Module <a href="%(c)socppgo/README.md">compat/ocppgo</a>, tag <code>v0.19.0-gocpp.1</code>, built on gocpp v0.3.2. <code>go mod tidy</code> adds gocpp and may raise some <code>golang.org/x</code> versions; the minimum Go version is the module's.</p>
 <div class="grid2">
 <div class="card"><h4>What changes (server side)</h4><ul>
 <li>Each connection is served by gocpp's per-connection dispatcher. There is no dispatcher goroutine or lock shared by all charge points, so a stalled or silent charger does not hold up the others.</li>
@@ -557,7 +557,7 @@ def build():
 </ul>
 <div class="note"><p><b>Read these numbers with care.</b> Single runs over loopback on one shared machine, with a synthetic fleet and no TLS, measured on 2026-11-22 with the same server runtime code that this module ships (the load test was not repeated on the v0.19.0 API surface). Treat them as an indication and measure with your own traffic before a rollout.</p></div>
 <p>For production, switch in stages: build and run your tests with the replace line, try both runtimes (<code>OCPPGO_COMPAT_RUNTIME=gocpp</code> and <code>=legacy</code>), run a canary, and keep the <code>legacy</code> switch as the fallback. The drop-in keeps ocpp-go's API; to move to gocpp's typed API later, see <a href="%(d)smigration-from-ocpp-go.md">Migrating from ocpp-go</a>.</p>
-<p class="src">Sources: <a href="%(c)socppgo-v019/README.md">compat/ocppgo-v019/README.md</a> (runtime choice, the <code>compat</code> package, known differences); CI jobs <code>ocppgo-v019-compat</code> and <code>ocppgo-v019-apidiff</code>; load-test results on the <code>test/loadtest-4k</code> branch.</p>
+<p class="src">Sources: <a href="%(c)socppgo/README.md">compat/ocppgo/README.md</a> (runtime choice, the <code>compat</code> package, known differences); CI jobs <code>ocppgo-compat</code> and <code>ocppgo-apidiff</code>; load-test results on the <code>test/loadtest-4k</code> branch.</p>
 """ % {"c": COMPAT, "d": DOCS}
     parts.append(section("dropin", "Already on ocpp-go", "Drop-in replacement for ocpp-go", "Keep your code and ocpp-go's API; change the server runtime with one line in go.mod.", body))
 
@@ -593,7 +593,7 @@ def build():
         (DOCS + "usage.md", "Usage guide", "Handlers, calls, options, validation"),
         (DOCS + "architecture.md", "Architecture", "Layers, connection lifecycle, code generation"),
         (DOCS + "performance.md", "Performance and scaling", "Cost model, runtime settings, tuning knobs"),
-        (COMPAT + "ocppgo-v019/README.md", "Drop-in replacement for ocpp-go", "One replace line: runtime choice, compat package, known differences"),
+        (COMPAT + "ocppgo/README.md", "Drop-in replacement for ocpp-go", "One replace line: runtime choice, compat package, known differences"),
         (DOCS + "migration-from-ocpp-go.md", "Migrating from ocpp-go", "The compatibility preset, row by row"),
         (DOCS + "migration-from-lorenzodonini.md", "API mapping from ocpp-go", "Before and after, call by call"),
         (DOCS + "draining.md", "Draining", "Deploys and reconnect-storm control"),

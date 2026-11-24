@@ -1,5 +1,5 @@
 name: ocpp-go upstream sync
-# Weekly: look for a newer tag of the pinned ocpp-go line and open a sync PR
+# Weekly: look for a newer upstream lorenzodonini/ocpp-go tag of the pinned line (v0.19.x) and open a sync PR
 # (or, when the patches no longer apply, an issue).
 on:
   schedule:
@@ -24,4 +24,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           compat/ocppgo/scripts/upstream-sync-pr.sh
-          compat/ocppgo-v019/scripts/upstream-sync-pr.sh

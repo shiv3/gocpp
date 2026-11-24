@@ -88,7 +88,6 @@ type pendingRequest struct {
 type DefaultClientDispatcher struct {
 	requestQueue        RequestQueue
 	requestChannel      chan bool
-	stopped             bool
 	readyForDispatch    chan bool
 	pendingRequestState ClientState
 	network             ws.WsClient
@@ -99,8 +98,10 @@ type DefaultClientDispatcher struct {
 	timeout             time.Duration
 }
 
-const defaultTimeoutTick = 24 * time.Hour
-const defaultMessageTimeout = 30 * time.Second
+const (
+	defaultTimeoutTick    = 24 * time.Hour
+	defaultMessageTimeout = 30 * time.Second
+)
 
 // NewDefaultClientDispatcher creates a new DefaultClientDispatcher struct.
 func NewDefaultClientDispatcher(queue RequestQueue) *DefaultClientDispatcher {
@@ -123,35 +124,28 @@ func (d *DefaultClientDispatcher) SetTimeout(timeout time.Duration) {
 
 func (d *DefaultClientDispatcher) Start() {
 	d.mutex.Lock()
+	defer d.mutex.Unlock()
 	d.requestChannel = make(chan bool, 1)
-	d.stopped = false
-	d.mutex.Unlock()
 	d.timer = time.NewTimer(defaultTimeoutTick) // Default to 24 hours tick
 	go d.messagePump()
 }
 
 func (d *DefaultClientDispatcher) IsRunning() bool {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
 	return d.requestChannel != nil
 }
 
 func (d *DefaultClientDispatcher) IsPaused() bool {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
 	return d.paused
 }
 
 func (d *DefaultClientDispatcher) Stop() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	if d.requestChannel == nil {
-		return
-	}
 	close(d.requestChannel)
-	// The channel stays non-nil until the pump notices the close, so IsRunning
-	// keeps answering true for that window; sends are guarded by stopped instead.
-	d.stopped = true
 	// TODO: clear pending requests?
 }
 
@@ -163,44 +157,37 @@ func (d *DefaultClientDispatcher) SetPendingRequestState(state ClientState) {
 	d.pendingRequestState = state
 }
 
-// SendRequest queues a request for delivery.
-//
-// A disconnect can stop the dispatcher while a caller — a heartbeat loop, a
-// meter-value sender — is right here, and sending on the closed channel would
-// take the process down. The stopped flag is checked under the same lock Stop
-// holds, so such a caller gets an error back instead.
 func (d *DefaultClientDispatcher) SendRequest(req RequestBundle) error {
 	if d.network == nil {
 		return fmt.Errorf("cannot SendRequest, no network client was set")
 	}
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-	if d.stopped || d.requestChannel == nil {
-		return fmt.Errorf("cannot SendRequest, dispatcher is stopped")
-	}
 	if err := d.requestQueue.Push(req); err != nil {
 		return err
 	}
-	// Non-blocking wake: the pump checks the queue on every wake, so when the
-	// buffer already holds a signal this push is covered by it. Blocking here
-	// while holding the lock would deadlock against the pump, which takes the
-	// same lock in IsPaused.
-	select {
-	case d.requestChannel <- true:
-	default:
-	}
+	d.mutex.RLock()
+	d.requestChannel <- true
+	d.mutex.RUnlock()
 	return nil
 }
 
 func (d *DefaultClientDispatcher) messagePump() {
 	rdy := true // Ready to transmit at the beginning
+
+	reqChan := func() chan bool {
+		d.mutex.RLock()
+		defer d.mutex.RUnlock()
+		return d.requestChannel
+	}
+
 	for {
 		select {
-		case _, ok := <-d.requestChannel:
+		case _, ok := <-reqChan():
 			// New request was posted
 			if !ok {
 				d.requestQueue.Init()
+				d.mutex.Lock()
 				d.requestChannel = nil
+				d.mutex.Unlock()
 				return
 			}
 		case _, ok := <-d.timer.C:
@@ -223,14 +210,13 @@ func (d *DefaultClientDispatcher) messagePump() {
 		case rdy = <-d.readyForDispatch:
 			// Ready flag set, keep going
 		}
+
 		// Check if dispatcher is paused
-		d.mutex.Lock()
-		paused := d.paused
-		d.mutex.Unlock()
-		if paused {
+		if d.IsPaused() {
 			// Ignore dispatch events as long as dispatcher is paused
 			continue
 		}
+
 		// Only dispatch request if able to send and request queue isn't empty
 		if rdy && !d.requestQueue.IsEmpty() {
 			d.dispatchNextRequest()
@@ -253,7 +239,7 @@ func (d *DefaultClientDispatcher) dispatchNextRequest() {
 	// Attempt to send over network
 	err := d.network.Write(jsonMessage)
 	if err != nil {
-		//TODO: handle retransmission instead of skipping request altogether
+		// TODO: handle retransmission instead of skipping request altogether
 		d.CompleteRequest(bundle.Call.GetUniqueId())
 		if d.onRequestCancel != nil {
 			d.onRequestCancel(bundle.Call.UniqueId, bundle.Call.Payload,
@@ -283,7 +269,7 @@ func (d *DefaultClientDispatcher) Resume() {
 		d.timer.Reset(d.timeout)
 	} else {
 		// Can dispatch a new request. Notifying message pump.
-		d.signalReadyForDispatch()
+		d.readyForDispatch <- true
 	}
 }
 
@@ -302,20 +288,7 @@ func (d *DefaultClientDispatcher) CompleteRequest(requestId string) {
 	d.pendingRequestState.DeletePendingRequest(requestId)
 	log.Debugf("removed request %v from front of queue", bundle.Call.UniqueId)
 	// Signal that next message in queue may be sent
-	d.signalReadyForDispatch()
-}
-
-// signalReadyForDispatch tells messagePump that the next request may be sent.
-//
-// The flag carries no information beyond "true", so when the buffer already holds one
-// this signal is covered by it and nothing needs to wait. A blocking send would wedge
-// the pump against its own signal when it completes a timed-out or failed request, and
-// would leave a caller blocked for good once the pump has stopped.
-func (d *DefaultClientDispatcher) signalReadyForDispatch() {
-	select {
-	case d.readyForDispatch <- true:
-	default:
-	}
+	d.readyForDispatch <- true
 }
 
 // ServerDispatcher contains the state and logic for handling outgoing messages on a server endpoint.
@@ -391,7 +364,6 @@ type ServerDispatcher interface {
 type DefaultServerDispatcher struct {
 	queueMap            ServerQueueMap
 	requestChannel      chan string
-	deletedChannel      chan string
 	readyForDispatch    chan string
 	pendingRequestState ServerState
 	timeout             time.Duration
@@ -429,20 +401,13 @@ func NewDefaultServerDispatcher(queueMap ServerQueueMap) *DefaultServerDispatche
 }
 
 func (d *DefaultServerDispatcher) Start() {
-	// The channels are re-created on every start, so the pump and the timeout goroutines
-	// of this run get their own copies and never look at the next run's fields.
 	d.mutex.Lock()
-	requestC := make(chan string, 20)
-	deletedC := make(chan string, 20)
-	timerC := make(chan string, 10)
-	stoppedC := make(chan struct{}, 1)
-	d.requestChannel = requestC
-	d.deletedChannel = deletedC
-	d.timerC = timerC
-	d.stoppedC = stoppedC
+	defer d.mutex.Unlock()
+	d.requestChannel = make(chan string, 20)
+	d.timerC = make(chan string, 10)
+	d.stoppedC = make(chan struct{}, 1)
 	d.running = true
-	d.mutex.Unlock()
-	go d.messagePump(requestC, deletedC, timerC, stoppedC)
+	go d.messagePump()
 }
 
 func (d *DefaultServerDispatcher) IsRunning() bool {
@@ -454,9 +419,6 @@ func (d *DefaultServerDispatcher) IsRunning() bool {
 func (d *DefaultServerDispatcher) Stop() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	if !d.running {
-		return
-	}
 	d.running = false
 	close(d.stoppedC)
 }
@@ -473,14 +435,10 @@ func (d *DefaultServerDispatcher) CreateClient(clientID string) {
 
 func (d *DefaultServerDispatcher) DeleteClient(clientID string) {
 	d.queueMap.Remove(clientID)
-	d.mutex.RLock()
-	running, deletedC, stoppedC := d.running, d.deletedChannel, d.stoppedC
-	d.mutex.RUnlock()
-	if running {
-		// Announced on its own channel: by the time the pump gets here the same client
-		// ID may have been created again by a reconnecting charge point, and a deletion
-		// is then indistinguishable from a new request on the shared request channel.
-		signalClient(deletedC, stoppedC, clientID)
+	if d.IsRunning() {
+		d.mutex.RLock()
+		d.requestChannel <- clientID
+		d.mutex.RUnlock()
 	}
 }
 
@@ -500,12 +458,6 @@ func (d *DefaultServerDispatcher) SendRequest(clientID string, req RequestBundle
 	if d.network == nil {
 		return fmt.Errorf("cannot send request %v, no network server was set", req.Call.UniqueId)
 	}
-	d.mutex.RLock()
-	running, requestC, stoppedC := d.running, d.requestChannel, d.stoppedC
-	d.mutex.RUnlock()
-	if !running {
-		return fmt.Errorf("cannot send request %s, dispatcher is not running", req.Call.UniqueId)
-	}
 	q, ok := d.queueMap.Get(clientID)
 	if !ok {
 		return fmt.Errorf("cannot send request %s, no client %s exists", req.Call.UniqueId, clientID)
@@ -513,49 +465,37 @@ func (d *DefaultServerDispatcher) SendRequest(clientID string, req RequestBundle
 	if err := q.Push(req); err != nil {
 		return err
 	}
-	// The pump may run a request-canceled callback that sends a request itself, so this
-	// must not wait for the pump.
-	signalClient(requestC, stoppedC, clientID)
+	d.mutex.RLock()
+	d.requestChannel <- clientID
+	d.mutex.RUnlock()
 	return nil
-}
-
-// signalClient tells messagePump about clientID on ch without ever blocking the caller.
-//
-// messagePump is the only reader of these channels, and it runs user callbacks
-// (request canceled) and takes the dispatcher's lock, so a caller waiting for room in
-// the buffer can wedge it against its own signal. When the buffer is busy, a sender
-// goroutine waits on the pump's behalf instead and gives up once the dispatcher stops.
-func signalClient(ch chan string, stoppedC chan struct{}, clientID string) {
-	select {
-	case ch <- clientID:
-	default:
-		go func() {
-			select {
-			case ch <- clientID:
-			case <-stoppedC:
-			}
-		}()
-	}
 }
 
 // requestPump processes new outgoing requests for each client and makes sure they are processed sequentially.
 // This method is executed by a dedicated coroutine as soon as the server is started and runs indefinitely.
-func (d *DefaultServerDispatcher) messagePump(requestC, deletedC, timerC chan string, stoppedC chan struct{}) {
+func (d *DefaultServerDispatcher) messagePump() {
 	var clientID string
 	var ok bool
 	var rdy bool
 	var clientCtx clientTimeoutContext
 	var clientQueue RequestQueue
 	clientContextMap := map[string]clientTimeoutContext{} // Empty at the beginning
+
+	reqChan := func() chan string {
+		d.mutex.RLock()
+		defer d.mutex.RUnlock()
+		return d.requestChannel
+	}
+
 	// Dispatcher Loop
 	for {
 		select {
-		case <-stoppedC:
+		case <-d.stoppedC:
 			// Server was stopped
 			d.queueMap.Init()
 			log.Info("stopped processing requests")
 			return
-		case clientID = <-requestC:
+		case clientID = <-reqChan():
 			// Check whether there is a request queue for the specified client
 			clientQueue, ok = d.queueMap.Get(clientID)
 			if !ok {
@@ -577,18 +517,7 @@ func (d *DefaultServerDispatcher) messagePump(requestC, deletedC, timerC chan st
 				// If there is no active context, the client is ready to transmit
 				rdy = !clientCtx.isActive()
 			}
-		case clientID = <-deletedC:
-			// The connection this client ID belonged to is gone. Drop its timeout so a
-			// charge point that has already re-dialed under the same ID can transmit
-			// straight away instead of waiting out the departed connection's timer.
-			clientCtx = clientContextMap[clientID]
-			delete(clientContextMap, clientID)
-			if clientCtx.isActive() {
-				clientCtx.cancel()
-			}
-			clientQueue, ok = d.queueMap.Get(clientID)
-			rdy = ok
-		case clientID, ok = <-timerC:
+		case clientID, ok = <-d.timerC:
 			// Timeout elapsed
 			if !ok {
 				continue
@@ -601,23 +530,14 @@ func (d *DefaultServerDispatcher) messagePump(requestC, deletedC, timerC chan st
 				clientContextMap[clientID] = clientTimeoutContext{}
 			}
 			if d.pendingRequestState.HasPendingRequest(clientID) {
-				// Current request for client timed out. Removing request and triggering cancel callback.
-				// The queue may hold nothing to cancel: an answer for the very same request
-				// can be completing it right now, having already taken it off the queue.
-				q, ok := d.queueMap.Get(clientID)
-				var bundle RequestBundle
-				if ok {
-					bundle, ok = q.Peek().(RequestBundle)
-				}
-				if ok {
-					d.CompleteRequest(clientID, bundle.Call.UniqueId)
-					log.Infof("request %v for %v timed out", bundle.Call.UniqueId, clientID)
-					if d.onRequestCancel != nil {
-						d.onRequestCancel(clientID, bundle.Call.UniqueId, bundle.Call.Payload,
-							ocpp.NewError(GenericError, "Request timed out", bundle.Call.UniqueId))
-					}
-				} else {
-					log.Infof("timeout for %v, but no request left to cancel", clientID)
+				// Current request for client timed out. Removing request and triggering cancel callback
+				q, _ := d.queueMap.Get(clientID)
+				bundle, _ := q.Peek().(RequestBundle)
+				d.CompleteRequest(clientID, bundle.Call.UniqueId)
+				log.Infof("request %v for %v timed out", bundle.Call.UniqueId, clientID)
+				if d.onRequestCancel != nil {
+					d.onRequestCancel(clientID, bundle.Call.UniqueId, bundle.Call.Payload,
+						ocpp.NewError(GenericError, "Request timed out", bundle.Call.UniqueId))
 				}
 			}
 		case clientID = <-d.readyForDispatch:
@@ -635,13 +555,14 @@ func (d *DefaultServerDispatcher) messagePump(requestC, deletedC, timerC chan st
 			}
 			log.Debugf("%v ready to transmit again", clientID)
 		}
+
 		// Only dispatch request if able to send and request queue isn't empty
 		if rdy && clientQueue != nil && !clientQueue.IsEmpty() {
 			// Send request & set new context
 			clientCtx = d.dispatchNextRequest(clientID)
 			clientContextMap[clientID] = clientCtx
 			if clientCtx.isActive() {
-				go d.waitForTimeout(clientID, clientCtx, timerC, stoppedC)
+				go d.waitForTimeout(clientID, clientCtx)
 			}
 			// Update ready state
 			rdy = false
@@ -664,7 +585,7 @@ func (d *DefaultServerDispatcher) dispatchNextRequest(clientID string) (clientCt
 	err := d.network.Write(clientID, jsonMessage)
 	if err != nil {
 		log.Errorf("error while sending message: %v", err)
-		//TODO: handle retransmission instead of removing pending request
+		// TODO: handle retransmission instead of removing pending request
 		d.CompleteRequest(clientID, callID)
 		if d.onRequestCancel != nil {
 			d.onRequestCancel(clientID, bundle.Call.UniqueId, bundle.Call.Payload,
@@ -682,30 +603,23 @@ func (d *DefaultServerDispatcher) dispatchNextRequest(clientID string) (clientCt
 	return
 }
 
-// waitForTimeout reports the timeout of clientCtx to the pump of the run that owns
-// timerC and stoppedC. The channels are passed in rather than read from the dispatcher,
-// because a Stop followed by a Start replaces them.
-//
-// No lock may be held while sending: the pump takes the dispatcher's lock for every
-// event it handles, so a sender that blocks on a full timerC while holding it keeps the
-// pump from ever draining the channel.
-func (d *DefaultServerDispatcher) waitForTimeout(clientID string, clientCtx clientTimeoutContext, timerC chan<- string, stoppedC <-chan struct{}) {
+func (d *DefaultServerDispatcher) waitForTimeout(clientID string, clientCtx clientTimeoutContext) {
 	defer clientCtx.cancel()
 	log.Debugf("started timeout timer for %s", clientID)
 	select {
 	case <-clientCtx.ctx.Done():
 		err := clientCtx.ctx.Err()
 		if err == context.DeadlineExceeded {
-			// Timeout triggered, notifying messagePump. The wait is bounded by the
-			// dispatcher stopping, so no goroutine outlives its run.
-			select {
-			case timerC <- clientID:
-			case <-stoppedC:
+			// Timeout triggered, notifying messagePump
+			d.mutex.RLock()
+			defer d.mutex.RUnlock()
+			if d.running {
+				d.timerC <- clientID
 			}
 		} else {
 			log.Debugf("timeout canceled for %s", clientID)
 		}
-	case <-stoppedC:
+	case <-d.stoppedC:
 		// Server was stopped, every pending timeout gets canceled
 	}
 }
@@ -731,19 +645,5 @@ func (d *DefaultServerDispatcher) CompleteRequest(clientID string, requestID str
 	d.pendingRequestState.DeletePendingRequest(clientID, requestID)
 	log.Debugf("completed request %s for %s", callID, clientID)
 	// Signal that next message in queue may be sent
-	d.signalReadyForDispatch(clientID)
-}
-
-// signalReadyForDispatch tells messagePump that clientID may transmit again.
-//
-// messagePump calls CompleteRequest itself while handling a request timeout or a write
-// error, and it is the only reader of readyForDispatch, so a blocking send here wedges
-// the pump against its own signal and stops every client on the server. The send must
-// therefore never block the caller; when the buffer is busy, a sender goroutine waits
-// on the pump's behalf instead.
-func (d *DefaultServerDispatcher) signalReadyForDispatch(clientID string) {
-	d.mutex.RLock()
-	stoppedC := d.stoppedC
-	d.mutex.RUnlock()
-	signalClient(d.readyForDispatch, stoppedC, clientID)
+	d.readyForDispatch <- clientID
 }

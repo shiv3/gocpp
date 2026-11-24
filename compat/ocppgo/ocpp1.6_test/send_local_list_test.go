@@ -2,12 +2,13 @@ package ocpp16_test
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/localauth"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"time"
 )
 
 // Test
@@ -23,7 +24,7 @@ func (suite *OcppV16TestSuite) TestSendLocalListRequestValidation() {
 		ParentIdTag: "000000",
 		Status:      "invalidStatus",
 	}}
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{localauth.SendLocalListRequest{UpdateType: localauth.UpdateTypeDifferential, ListVersion: 1, LocalAuthorizationList: []localauth.AuthorizationData{localAuthEntry}}, true},
 		{localauth.SendLocalListRequest{UpdateType: localauth.UpdateTypeDifferential, ListVersion: 1, LocalAuthorizationList: []localauth.AuthorizationData{}}, true},
 		{localauth.SendLocalListRequest{UpdateType: localauth.UpdateTypeDifferential, ListVersion: 1}, true},
@@ -40,7 +41,7 @@ func (suite *OcppV16TestSuite) TestSendLocalListRequestValidation() {
 
 func (suite *OcppV16TestSuite) TestSendLocalListConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{localauth.SendLocalListConfirmation{Status: localauth.UpdateStatusAccepted}, true},
 		{localauth.SendLocalListConfirmation{Status: "invalidStatus"}, false},
 		{localauth.SendLocalListConfirmation{}, false},
@@ -67,7 +68,7 @@ func (suite *OcppV16TestSuite) TestSendLocalListE2EMocked() {
 	sendLocalListConfirmation := localauth.NewSendLocalListConfirmation(status)
 	channel := NewMockWebSocket(wsId)
 
-	localAuthListListener := MockChargePointLocalAuthListListener{}
+	localAuthListListener := &MockChargePointLocalAuthListListener{}
 	localAuthListListener.On("OnSendLocalList", mock.Anything).Return(sendLocalListConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(0).(*localauth.SendLocalListRequest)
 		require.NotNil(t, request)

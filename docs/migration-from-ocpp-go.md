@@ -2,9 +2,9 @@
 
 > **No code changes needed?** If you want gocpp's runtime but keep your ocpp-go code,
 > use the drop-in module instead: one `replace` line in `go.mod`
-> (`github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1` for ocpp-go v0.19.0).
+> (`github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1` for ocpp-go v0.19.0).
 > See [the README](../README.md#drop-in-replacement-for-ocpp-go) and
-> [compat/ocppgo-v019/README.md](../compat/ocppgo-v019/README.md). This page is for
+> [compat/ocppgo/README.md](../compat/ocppgo/README.md). This page is for
 > moving to the native gocpp API.
 
 [migration-from-lorenzodonini.md](migration-from-lorenzodonini.md) maps the API.
@@ -48,7 +48,7 @@ Each one works on its own.
 
 ## Differences
 
-"Default" is gocpp without the preset; "ocpp-go" is `v0.17.x`. The spec column says
+"Default" is gocpp without the preset; "ocpp-go" is upstream `v0.19.0`. The spec column says
 which clause gocpp's default follows. Strict schema mode is unchanged by the preset
 row by row except where stated.
 

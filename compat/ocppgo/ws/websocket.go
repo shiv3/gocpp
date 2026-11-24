@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,10 +24,6 @@ import (
 const (
 	// Time allowed to write a message to the peer.
 	defaultWriteWait = 10 * time.Second
-	// Default upper bound for a single incoming message on the server side.
-	// OCPP frames are small JSON documents; without a limit gorilla/websocket
-	// buffers a frame of any size, so one client can exhaust process memory.
-	defaultServerMaxMessageSize = 1 << 20
 	// Time allowed to read the next pong message from the peer.
 	defaultPongWait = 60 * time.Second
 	// Time allowed to wait for a ping on the server, before closing a connection due to inactivity.
@@ -35,10 +32,19 @@ const (
 	defaultPingPeriod = (defaultPongWait * 9) / 10
 	// Time allowed for the initial handshake to complete.
 	defaultHandshakeTimeout = 30 * time.Second
-	// The base delay to be used for automatic reconnection. Will double for every attempt up to maxReconnectionDelay.
-	defaultReconnectBackoff = 5 * time.Second
-	// Default maximum reconnection delay for websockets
-	defaultReconnectMaxBackoff = 2 * time.Minute
+	// When the Charging Station is reconnecting, after a connection loss, it will use this variable for the amount of time
+	// it will double the previous back-off time. When the maximum number of increments is reached, the Charging
+	// Station keeps connecting with the same back-off time.
+	defaultRetryBackOffRepeatTimes = 5
+	// When the Charging Station is reconnecting, after a connection loss, it will use this variable as the maximum value
+	// for the random part of the back-off time. It will add a new random value to every increasing back-off time,
+	// including the first connection attempt (with this maximum), for the amount of times it will double the previous
+	// back-off time. When the maximum number of increments is reached, the Charging Station will keep connecting
+	// with the same back-off time.
+	defaultRetryBackOffRandomRange = 15 // seconds
+	// When the Charging Station is reconnecting, after a connection loss, it will use this variable as the minimum backoff
+	// time, the first time it tries to reconnect.
+	defaultRetryBackOffWaitMinimum = 10 * time.Second
 )
 
 // The internal verbose logger
@@ -63,16 +69,13 @@ func SetLogger(logger logging.Logger) {
 type ServerTimeoutConfig struct {
 	WriteWait time.Duration
 	PingWait  time.Duration
-	// MaxMessageSize is the maximum size in bytes of a message read from a client.
-	// A larger message closes the connection. Zero or a negative value disables the limit.
-	MaxMessageSize int64
 }
 
 // NewServerTimeoutConfig creates a default timeout configuration for a websocket endpoint.
 //
 // You may change fields arbitrarily and pass the struct to a SetTimeoutConfig method.
 func NewServerTimeoutConfig() ServerTimeoutConfig {
-	return ServerTimeoutConfig{WriteWait: defaultWriteWait, PingWait: defaultPingWait, MaxMessageSize: defaultServerMaxMessageSize}
+	return ServerTimeoutConfig{WriteWait: defaultWriteWait, PingWait: defaultPingWait}
 }
 
 // Config contains optional configuration parameters for a websocket client.
@@ -81,12 +84,13 @@ func NewServerTimeoutConfig() ServerTimeoutConfig {
 // To set a custom configuration, refer to the client's SetTimeoutConfig method.
 // If no configuration is passed, a default configuration is generated via the NewClientTimeoutConfig function.
 type ClientTimeoutConfig struct {
-	WriteWait           time.Duration
-	HandshakeTimeout    time.Duration
-	PongWait            time.Duration
-	PingPeriod          time.Duration
-	ReconnectBackoff    time.Duration
-	ReconnectMaxBackoff time.Duration
+	WriteWait               time.Duration
+	HandshakeTimeout        time.Duration
+	PongWait                time.Duration
+	PingPeriod              time.Duration
+	RetryBackOffRepeatTimes int
+	RetryBackOffRandomRange int
+	RetryBackOffWaitMinimum time.Duration
 }
 
 // NewClientTimeoutConfig creates a default timeout configuration for a websocket endpoint.
@@ -94,12 +98,13 @@ type ClientTimeoutConfig struct {
 // You may change fields arbitrarily and pass the struct to a SetTimeoutConfig method.
 func NewClientTimeoutConfig() ClientTimeoutConfig {
 	return ClientTimeoutConfig{
-		WriteWait:           defaultWriteWait,
-		HandshakeTimeout:    defaultHandshakeTimeout,
-		PongWait:            defaultPongWait,
-		PingPeriod:          defaultPingPeriod,
-		ReconnectBackoff:    defaultReconnectBackoff,
-		ReconnectMaxBackoff: defaultReconnectMaxBackoff,
+		WriteWait:               defaultWriteWait,
+		HandshakeTimeout:        defaultHandshakeTimeout,
+		PongWait:                defaultPongWait,
+		PingPeriod:              defaultPingPeriod,
+		RetryBackOffRepeatTimes: defaultRetryBackOffRepeatTimes,
+		RetryBackOffRandomRange: defaultRetryBackOffRandomRange,
+		RetryBackOffWaitMinimum: defaultRetryBackOffWaitMinimum,
 	}
 }
 
@@ -122,13 +127,6 @@ type WebSocket struct {
 	forceCloseC        chan error                // used by the readPump to notify a forcefully closed connection to the writePump.
 	pingMessage        chan []byte
 	tlsConnectionState *tls.ConnectionState
-	// sendMutex guards sends on outQueue/closeC against a concurrent channel
-	// close in cleanupConnection, so a late Write/StopConnection can never
-	// panic on a closed channel.
-	sendMutex sync.Mutex
-	// closed is set (under sendMutex) once the connection's channels have
-	// been closed.
-	closed bool
 	// remote is the peer address of a connection accepted by a Server, whose
 	// connection is not a gorilla one (see server.go).
 	remote net.Addr
@@ -261,6 +259,10 @@ type WsServer interface {
 	// Addr gives the address on which the server is listening, useful if, for
 	// example, the port is system-defined (set to 0).
 	Addr() *net.TCPAddr
+	// Connections retrieves a WebSocket connection by its unique identifier.
+	// If a connection with the given ID exists, it returns the corresponding WebSocket instance.
+	// If no connection is found with the specified ID, it returns nil.
+	Connections(websocketId string) *WebSocket
 }
 
 // ---------------------- CLIENT ----------------------
@@ -311,6 +313,17 @@ type WsClient interface {
 	//
 	// To stop a running client, call the Stop function.
 	Start(url string) error
+	// Starts the client and attempts to connect to the server on a specified URL.
+	// If the connection fails, it keeps retrying with Backoff strategy from TimeoutConfig.
+	//
+	// For example:
+	//	client.StartWithRetries("ws://localhost:8887/ws/1234")
+	//
+	// The function returns only when the connection has been established.
+	// Incoming messages are passed automatically to the callback function, so no explicit read operation is required.
+	//
+	// To stop a running client, call the Stop function.
+	StartWithRetries(url string)
 	// Closes the output of the websocket Channel, effectively closing the connection to the server with a normal closure.
 	Stop()
 	// Errors returns a channel for error messages. If it doesn't exist it es created.
@@ -566,23 +579,18 @@ func (client *Client) readPump() {
 // From this moment onwards, no new messages may be sent.
 func (client *Client) cleanup() {
 	client.setConnected(false)
-	ws := &client.webSocket
+	ws := client.webSocket
 	_ = ws.connection.Close()
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
-	ws.sendMutex.Lock()
-	defer ws.sendMutex.Unlock()
-	if ws.closed {
-		return
-	}
-	ws.closed = true
 	close(ws.outQueue)
 	close(ws.closeC)
 }
 
 func (client *Client) handleReconnection() {
 	log.Info("started automatic reconnection handler")
-	delay := client.timeoutConfig.ReconnectBackoff
+	delay := client.timeoutConfig.RetryBackOffWaitMinimum + time.Duration(rand.Intn(client.timeoutConfig.RetryBackOffRandomRange+1))*time.Second
+	reconnectionAttempts := 1
 	for {
 		// Wait before reconnecting
 		select {
@@ -591,6 +599,7 @@ func (client *Client) handleReconnection() {
 			return
 		}
 
+		log.Info("reconnecting... attempt", reconnectionAttempts)
 		err := client.Start(client.url.String())
 		if err == nil {
 			// Re-connection was successful
@@ -601,11 +610,13 @@ func (client *Client) handleReconnection() {
 			return
 		}
 		client.error(fmt.Errorf("reconnection failed: %w", err))
-		// Re-connection failed, double the delay
-		delay *= 2
-		if delay >= client.timeoutConfig.ReconnectMaxBackoff {
-			delay = client.timeoutConfig.ReconnectMaxBackoff
+
+		if reconnectionAttempts < client.timeoutConfig.RetryBackOffRepeatTimes {
+			// Re-connection failed, double the delay
+			delay *= 2
+			delay += time.Duration(rand.Intn(client.timeoutConfig.RetryBackOffRandomRange+1)) * time.Second
 		}
+		reconnectionAttempts += 1
 	}
 }
 
@@ -621,40 +632,26 @@ func (client *Client) IsConnected() bool {
 	return client.connected
 }
 
-// Write queues data for the server.
-//
-// The connection can go away between the connected check and the send — a
-// server-side disconnect while a heartbeat is on its way out is an ordinary
-// event on a mobile link — so the send is guarded the same way the server side
-// is: a caller that loses the race gets an error instead of taking the process
-// down on a closed channel.
 func (client *Client) Write(data []byte) error {
 	if !client.IsConnected() {
 		return fmt.Errorf("client is currently not connected, cannot send data")
 	}
-	// Pointer: WebSocket is a value field, and the guard has to act on the
-	// client's own socket rather than on a copy of it.
-	ws := &client.webSocket
-	ws.sendMutex.Lock()
-	defer ws.sendMutex.Unlock()
-	if ws.closed {
-		return fmt.Errorf("client is currently not connected, cannot send data")
-	}
 	log.Debugf("queuing data for server")
-	// Non-blocking, like the server side: blocking here would hold the guard while
-	// the writePump is gone, and cleanup would then wait on it forever. A full
-	// queue means this connection is stalled, which the caller handles as a write
-	// failure.
-	select {
-	case ws.outQueue <- data:
-		return nil
-	default:
-		return fmt.Errorf("couldn't write to websocket. Send queue is full")
+	client.webSocket.outQueue <- data
+	return nil
+}
+
+func (client *Client) StartWithRetries(urlStr string) {
+	err := client.Start(urlStr)
+	if err != nil {
+		log.Info("Connection error:", err)
+		client.handleReconnection()
 	}
 }
 
 func (client *Client) Start(urlStr string) error {
 	url, err := url.Parse(urlStr)
+	client.url = *url
 	if err != nil {
 		return err
 	}
@@ -687,13 +684,11 @@ func (client *Client) Start(urlStr string) error {
 
 	// The id of the charge point is the final path element
 	id := path.Base(url.Path)
-	client.url = *url
+
 	client.webSocket = WebSocket{
-		connection: ws,
-		id:         id,
-		// Room to absorb a burst while the writePump drains; the send itself is
-		// non-blocking, so this is the buffer the caller writes into.
-		outQueue:           make(chan []byte, 32),
+		connection:         ws,
+		id:                 id,
+		outQueue:           make(chan []byte, 1),
 		closeC:             make(chan websocket.CloseError, 1),
 		forceCloseC:        make(chan error, 1),
 		tlsConnectionState: resp.TLS,
@@ -701,7 +696,7 @@ func (client *Client) Start(urlStr string) error {
 	log.Infof("connected to server as %s", id)
 	client.reconnectC = make(chan struct{})
 	client.setConnected(true)
-	//Start reader and write routine
+	// Start reader and write routine
 	go client.writePump()
 	go client.readPump()
 	return nil
