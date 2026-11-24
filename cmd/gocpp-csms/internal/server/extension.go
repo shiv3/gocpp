@@ -59,6 +59,8 @@ type Hooks struct {
 	authenticator  auth.Authenticator
 	cpidExtractor  csms.CPIDExtractor
 	onStart        []func(ctx context.Context, rt *Runtime) error
+	wrapOCPP       []func(http.Handler) http.Handler
+	wrapControl    []func(http.Handler) http.Handler
 }
 
 type route struct {
@@ -89,7 +91,9 @@ func (h *Hooks) OnDisconnect(fn func(*csms.Conn, error)) {
 
 // Handle adds a control API route (http.ServeMux pattern syntax, e.g.
 // "GET /chargepoints/{id}"). Patterns must not collide with the built-in
-// ones (/healthz, /readyz, /metrics, /command, /connections, /transactions).
+// ones (/healthz, /readyz, /metrics, /command, /connections, /transactions) nor
+// overlap those of other extensions (http.ServeMux panics on overlapping
+// patterns; TestServeAllExtensions enables every extension to catch it).
 func (h *Hooks) Handle(pattern string, handler http.Handler) {
 	h.routes = append(h.routes, route{pattern, handler})
 }
@@ -112,6 +116,25 @@ func (h *Hooks) SetCPIDExtractor(fn csms.CPIDExtractor) { h.cpidExtractor = fn }
 // server shuts down; start long-running work as goroutines watching it.
 func (h *Hooks) OnStart(fn func(ctx context.Context, rt *Runtime) error) {
 	h.onStart = append(h.onStart, fn)
+}
+
+// WrapOCPP wraps the OCPP WebSocket upgrade handler (admission control in
+// front of the upgrade, for example). The first registered wrapper is the
+// outermost.
+func (h *Hooks) WrapOCPP(fn func(http.Handler) http.Handler) { h.wrapOCPP = append(h.wrapOCPP, fn) }
+
+// WrapControl wraps the whole control API handler, built-in routes included
+// (authentication, for example). The first registered wrapper is the
+// outermost.
+func (h *Hooks) WrapControl(fn func(http.Handler) http.Handler) {
+	h.wrapControl = append(h.wrapControl, fn)
+}
+
+func wrapHandler(next http.Handler, wrappers []func(http.Handler) http.Handler) http.Handler {
+	for i := len(wrappers) - 1; i >= 0; i-- {
+		next = wrappers[i](next)
+	}
+	return next
 }
 
 // Runtime is the running server, handed to OnStart functions.

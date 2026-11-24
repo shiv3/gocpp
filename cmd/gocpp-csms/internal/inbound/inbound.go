@@ -49,6 +49,10 @@ type Call struct {
 // sent as that CALLERROR.
 type Responder func(ctx context.Context, call Call) (json.RawMessage, error)
 
+// SetRecorder replaces the recorder that gets one line per handled CALL
+// (nil disables it). Call it before the server starts (Extension.Setup).
+func (h *Handler) SetRecorder(r *recorder.Recorder) { h.opts.Recorder = r }
+
 // Observer is told about a handled CALL after its answer was produced (resp
 // is nil for a SEND or when err is set).
 type Observer func(ctx context.Context, call Call, resp json.RawMessage, err error)
