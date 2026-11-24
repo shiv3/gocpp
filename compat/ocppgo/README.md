@@ -53,10 +53,46 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 | Paced drain for deploys (close code 1012, idle connections first, upgrades refused meanwhile) | `compat.Drain(ctx, srv, compat.DrainOptions{Window, Rate, IdleGrace, RetryAfter, OnProgress})`, then `srv.Stop()`; `compat.Undrain`, `compat.Draining`, `compat.Connections` |
 | Metrics (connections, calls per action and direction, pending calls; with `observability.SessionMetrics` also upgrade results and close code/cause), OpenTelemetry tracing, raw frame observer | `compat.SetObservability(endpoint, metrics, tracerProvider, frameObserver)` before `Start`; the Prometheus and OpenTelemetry metrics of gocpp (`core/observability/metrics/...`) fit |
 | Call timeout without injecting a dispatcher | `compat.SetCallTimeout` |
+| Accept the validation quirks of real chargers (empty vendor, long configuration values, empty sampledValue, 1.6 error spelling) | `compat.SetValidationLeniency`, `compat.SetValidationErrorFilter`, see below |
 | Duplicate charge point id: last wins (default) or first wins as upstream | `compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins)` |
 
 `SetObservability` needs the `*ocppj.Server`: build it yourself
 (`ocppj.NewServer(srv, nil, nil, profiles...)`, then `ocpp16.NewCentralSystem(endpoint, srv)`).
+
+## Lenient validation for real chargers
+
+Upstream ocpp-go v0.19.0 rejects some messages that real chargers send, and
+forks of ocpp-go commonly relax exactly these. The default of this module is
+upstream's behaviour; leniency is opt-in, per `*ocppj.Server`, through the
+`compat` package (no package global, ocpp-go's `ocppj.Validate` is untouched):
+
+```go
+endpoint := ocppj.NewServer(srv, nil, nil, core.Profile)
+compat.SetValidationLeniency(endpoint, compat.Leniency{
+	AllowEmptyChargePointVendor:  true, // BootNotification with chargePointVendor "" (upstream: OccurrenceConstraintViolation)
+	AllowLongConfigurationValues: true, // GetConfiguration answer with a value over 500 characters (PropertyConstraintViolation)
+	AllowEmptySampledValue:       true, // MeterValues with "sampledValue": [] (PropertyConstraintViolation)
+	SpecSpellingOccurenceV16:     true, // send "OccurenceConstraintViolation" (the 1.6 spec spelling) on 1.6 connections
+})
+cs := ocpp16.NewCentralSystem(endpoint, srv)
+```
+
+The accepted message reaches your handler (or callback) unchanged; any other
+violation in the same message still rejects it, with upstream's error. For other
+quirks install a filter, which is called with the action, the field path below the
+payload (Go names, e.g. `ConfigurationKey[0].Value`) and the failed validator tag;
+a message is accepted only if the filter tolerates every failure it has:
+
+```go
+compat.SetValidationErrorFilter(endpoint, func(action, field, tag string) bool {
+	return action == "StatusNotification" && field == "VendorErrorCode" && tag == "max"
+})
+```
+
+Both return false, and change nothing, when the server runs on the legacy runtime
+(`OCPPGO_COMPAT_RUNTIME=legacy` or an injected dispatcher): leniency is a feature of
+the gocpp runtime only. The preset also applies to OCPP 2.0.1 MeterValues (same
+constraint). Leniency covers requests received and answers received by the server.
 
 ## Known differences
 

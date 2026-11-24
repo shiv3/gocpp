@@ -183,4 +183,13 @@ type Control interface {
 	// SetObservability sets what the connections of the runtime report to; any
 	// nil argument leaves that facility off. Call before Start.
 	SetObservability(m observability.Metrics, tp trace.TracerProvider, fo observability.FrameObserver)
+	// SetValidation installs the validation error filter and the 1.6 CALLERROR
+	// spelling switch (nil / false = upstream behaviour). Safe at any time.
+	SetValidation(filter ValidationFilter, specSpellingV16 bool)
 }
+
+// ValidationFilter decides whether one field validation failure of a message is
+// tolerated: action is the OCPP action, field the path of the field below the
+// payload (for example "ConfigurationKey[0].Value", Go field names) and tag the
+// failed validator tag ("required", "min", "max", ...).
+type ValidationFilter func(action, field, tag string) bool

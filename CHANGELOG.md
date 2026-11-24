@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format is based on
 - `compat/ocppgo`: `compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins)` reproduces
   upstream ocpp-go v0.19.0's first-wins duplicate id handling; the default stays last wins.
 
+- `compat/ocppgo`: opt-in validation leniency for real chargers, per server, in the
+  extra `compat` package: `compat.SetValidationLeniency(endpoint, compat.Leniency{...})`
+  (empty `chargePointVendor`, GetConfiguration values over 500 characters, empty
+  `sampledValue`, 1.6 spelling `OccurenceConstraintViolation` in CALLERRORs) and the
+  generic `compat.SetValidationErrorFilter`. Default behaviour is unchanged
+  (upstream ocpp-go v0.19.0); gocpp runtime only.
+
 ### Changed
 
 - `WithOCPPGoCompat` (and `dispatcher.OCPPGoErrorCodeMapper`) now target upstream
