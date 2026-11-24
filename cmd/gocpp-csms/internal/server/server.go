@@ -164,8 +164,8 @@ func New(cfg *config.Config, logger *slog.Logger, stdout io.Writer, exts ...Exte
 		mux.Handle(r.pattern, r.handler)
 	}
 
-	s.ocppHTTP = &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn)}
-	s.ctlHTTP = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn)}
+	s.ocppHTTP = &http.Server{Handler: wrapHandler(srv.Handler(), h.wrapOCPP), ReadHeaderTimeout: 10 * time.Second, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn)}
+	s.ctlHTTP = &http.Server{Handler: wrapHandler(mux, h.wrapControl), ReadHeaderTimeout: 10 * time.Second, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn)}
 	return s, nil
 }
 

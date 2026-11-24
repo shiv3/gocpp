@@ -56,6 +56,20 @@ func (r *Recorder) Record(cpID, action string, payload any) error {
 	return r.out.Flush()
 }
 
+// RecordLine writes one line built by line from the next seq number (a
+// superset of the frame line, for example). It shares the seq counter and
+// the lock with Record.
+func (r *Recorder) RecordLine(line func(seq int64) any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.seq++
+	if err := r.enc.Encode(line(r.seq)); err != nil {
+		return err
+	}
+	return r.out.Flush()
+}
+
 // Flush flushes the underlying writer.
 func (r *Recorder) Flush() error {
 	r.mu.Lock()

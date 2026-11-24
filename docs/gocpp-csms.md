@@ -218,6 +218,7 @@ Without `--record` and `--announce` stdout stays empty; logs always go to stderr
 `--record` writes the line before the CALL is answered; with
 `--inbound-concurrency 1` its `seq` is the receive order over all connections, as in
 the legacy mode (otherwise only per-connection order is likely, not guaranteed).
+`--record-frames` records every frame in wire order instead (see "Message log").
 
 ### Authentication
 
@@ -270,8 +271,9 @@ Transactions are tracked per charge point and connector:
 
 ### Control API
 
-The control API has no authentication of its own: keep `--control-addr` on loopback
-(the default) or behind something that authenticates. Same envelope as the legacy
+The control API has no authentication of its own unless `--control-token` is set (see
+"Hosted test CSMS"): keep `--control-addr` on loopback (the default) or behind something
+that authenticates. Same envelope as the legacy
 mode, plus `errorCode` (the OCPP error code when the
 charge point answered with a CALLERROR).
 
@@ -437,6 +439,147 @@ the connection ends, at most ten minutes; the state model does not see it). Dupl
 responses are not supported: the library has no way to write a frame twice, and a
 `duplicate` rule is refused with 400.
 
+## Hosted test CSMS
+
+Serve mode can run as a shared test CSMS that real or simulated chargers dial into:
+a message log of every frame, open or private instance modes, a charge point
+registry with per-charge-point passwords and a bearer token for the control API.
+Every part is off by default; without these flags the wire bytes and stdout are
+those of plain serve mode.
+
+```sh
+GOCPP_CSMS_CONTROL_TOKEN=$(openssl rand -hex 24) gocpp-csms serve \
+  --ocpp-addr :8080 --control-addr :8081 \
+  --hosted --hosted-mode private --hosted-state-file /var/lib/gocpp-csms/state.json \
+  --hosted-public-url wss://csms.example.com/ocpp/ --hosted-connection-limit 50 \
+  --message-log --message-log-file /var/log/gocpp-csms/frames.jsonl
+```
+
+### Flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--message-log` | `false` | keep every frame (both directions) in a ring buffer; serves `/messages` |
+| `--message-log-size` | `10000` | entries kept by the ring buffer |
+| `--message-log-file` | | also append every frame as one JSON line to this file (mode 0600) |
+| `--record-frames` | `false` | with `--record`: stdout lines for every frame in wire order (see below) |
+| `--hosted` | `false` | instance modes, connection limit and the registry API |
+| `--hosted-mode` | | mode at start, `open` or `private`; empty = the persisted mode, else `open` |
+| `--hosted-state-file` | | JSON file with the mode, instance id and registrations; empty = in memory |
+| `--hosted-connection-limit` | `-1` | connected charge points before upgrades get 429 (`-1` none, `0` refuse all) |
+| `--hosted-instance-path` | `false` | charge points dial `<path-prefix><instanceId>/<cpId>` |
+| `--hosted-instance-id` | | the instance id; empty = the persisted one, else a generated random token |
+| `--hosted-public-url` | | announced WebSocket base, path prefix included (`wss://host/ocpp/`) |
+| `--control-token` | | require `Authorization: Bearer <token>` on the control API |
+
+The `--hosted-*` flags need `--hosted`. Prefer `GOCPP_CSMS_CONTROL_TOKEN` over the
+flag (command lines are visible to other users of the host). Without
+`--hosted-public-url` the URLs are derived from `--ocpp-addr` and `--path-prefix`
+(`ws://localhost:8080/ocpp/` for `:8080`); set it behind a proxy or TLS terminator.
+
+### Message log
+
+The log is fed by the server's frame observer, so it sees what crossed the WebSocket
+in each connection's wire order, without serialising the handlers
+(`--inbound-concurrency` is not needed): charge point CALLs including actions nobody
+handles and invalid frames, the CSMS answers (CALLRESULT, CALLERROR), CSMS-initiated
+calls and their answers, and the 2.1 CALLRESULTERROR and SEND frames. `seq` counts the
+frames from 1 over all connections; per connection it follows the wire order.
+
+```json
+{"seq":7,"time":"2026-11-25T10:00:00.123Z","cpId":"CP1","version":"1.6","direction":"in",
+ "type":"CALLERROR","msgId":"42","action":"Reset","errorCode":"NotSupported","errorDescription":"..."}
+```
+
+`direction` is `in` (charge point to CSMS) or `out`; `type` is `CALL`, `CALLRESULT`,
+`CALLERROR`, `CALLRESULTERROR` or `SEND`; `action` of an answer is the action of the
+CALL it answers; `payload` (CALL, CALLRESULT, SEND), `errorCode`, `errorDescription`
+and `errorDetails` (errors) follow the frame; a frame that is not an OCPP-J array is
+kept as text in `raw`; `writeError` marks an outbound frame that failed to be written.
+Credentials a CSMS sends are masked as `***`: the 1.6 `AuthorizationKey` of
+ChangeConfiguration and the 2.x `BasicAuthPassword` of SetVariables. HTTP headers
+(Authorization included) are never logged.
+
+- `GET /messages?cp=&action=&direction=&since=&limit=` - matching entries, oldest
+  first. `since` is a `seq` (entries after it) or an RFC 3339 time (entries at or after
+  it). With `since` the first `limit` entries after it are returned (page forward with
+  the last `seq`), without it the most recent `limit`. `limit` defaults to 100 and is
+  capped at `--message-log-size`.
+- `GET /messages/stream?cp=&action=&direction=&since=` - server-sent events: one
+  `message` event per matching entry, the `seq` as event id, a comment line every 15 s.
+  With `since` (or a `Last-Event-ID` header, as on an automatic reconnect) the stored
+  entries after it are sent first, then live ones, without gaps or repeats. A client
+  that falls more than 1024 entries behind is disconnected and should reconnect with
+  `Last-Event-ID`.
+- `DELETE /messages` - empties the buffer, `{"deleted":N}` (`seq` keeps counting).
+
+`--message-log-file` writes the same JSON lines (unbuffered, appended).
+`--record-frames` (needs `--record`) switches the stdout recorder from "one line per
+handled CALL" to one line per frame, from the same observer: the `--record` fields
+first (`seq`, `cpId`, `action`, `payload`), then `direction`, `type`, `msgId` and the
+error fields; `seq` then counts frames in wire order. Without `--record-frames`,
+`--record` lines are unchanged.
+
+### Instance modes
+
+- **open** (default): any charge point id connects. Authentication is that of plain
+  serve mode: `--basic-auth-file` and `--mtls-match-cpid` apply when set, otherwise
+  nothing is checked. Registering is refused (409).
+- **private**: only registered charge points connect, each with HTTP Basic Auth and
+  the password the CSMS generated for it (32 characters, within the 16 to 40 OCPP
+  allows; only its bcrypt hash is stored). An unregistered id is refused with 401,
+  unless `--basic-auth-file` lists it: such static entries keep working through the
+  file, and a registration wins over a static entry of the same id.
+  `--mtls-match-cpid` still applies to registered charge points.
+
+Registrations are kept in open mode and apply again after switching back to private.
+Switching modes and deleting a registration are configuration only: a live session
+is not dropped, the rule applies from the charge point's next connection.
+
+`--hosted-connection-limit N` refuses an upgrade once N charge points are connected
+(or being connected) with **429** and `Retry-After: 30`, before authentication; an id
+that is already connected replaces its session without needing a slot.
+(`--max-connections` stays the hard process cap, answered with 503.)
+
+`--hosted-instance-path` puts an instance id in the URL:
+`ws://host/ocpp/<instanceId>/<cpId>`. Any other path is refused (400). The id is a
+random 32-character token unless `--hosted-instance-id` gives one; it is persisted in
+the state file. In open mode it is the only thing between the internet and the
+instance: treat it like a password.
+
+### Registry API
+
+On the control listener, same envelope as the other endpoints:
+
+- `GET /instance` - `{"mode","instanceId","connectionLimit","activeConnections",
+  "registrations","wsBaseUrl"}`; `connectionLimit` is `null` without a limit,
+  `instanceId` only with `--hosted-instance-path`.
+- `PUT /instance/mode` `{"mode":"open"|"private"}` - switch (persisted); answers
+  `GET /instance`. 400 for another mode.
+- `POST /instance/clear` - delete every registration, keep mode and instance id;
+  `{"deleted":N}`.
+- `POST /registrations` `{"cpId","displayName"}` - 201
+  `{"cpId","displayName","wsUrl","password"}`. The password is shown this once. 409 in
+  open mode or for a registered id; 400 without `displayName` or for an id that is
+  empty, longer than 48 characters or contains `/`, `:` or spaces.
+- `GET /registrations` - `[{"cpId","displayName","wsUrl","createdAt",
+  "passwordChangedAt","connected"}]`, sorted by id (never a password or hash).
+- `DELETE /registrations/{cpId}` - `{"cpId"}`; 404 if not registered.
+- `POST /registrations/{cpId}/password` - a new password, same answer as
+  the registration; the old one stops working at once. 404 if not registered.
+
+With `--hosted-state-file` every change is written to the file (mode 0600) through a
+temporary file and a rename before it is answered, so a crash leaves the old or the
+new state; the state survives restarts. Without it the registry lives in memory.
+
+### Control API token
+
+`--control-token` (or `GOCPP_CSMS_CONTROL_TOKEN`) requires
+`Authorization: Bearer <token>` on every control endpoint, `/metrics` and the
+registry included, except `/healthz` and `/readyz` (probes); a missing or wrong token
+gets 401. The comparison is constant-time. Without it the control API is
+unauthenticated, as before: keep `--control-addr` on loopback then.
+
 ## Architecture
 
 ```
@@ -456,6 +599,10 @@ cmd/gocpp-csms/
     txn/       transaction store (1.6 ids, 2.x transactionInfo)
     authn/     Basic Auth file, client certificate check, authenticator composition
     httpapi/   control API envelope
+    msglog/    message log: frame observer, ring buffer, /messages, SSE, JSONL file
+    hosted/    hosted test CSMS: instance modes, connection limit, registry API, state file
+    controlauth/ bearer token for the control API
+    servertest/  test helper: a serve-mode server with extensions from flags
 ```
 
 The legacy package is closed: nothing in serve mode imports it, and changes to it are
@@ -481,17 +628,21 @@ without editing them, through these extension points:
     authenticator, `SetCPIDExtractor(fn)` - change how the id is read from the URL.
   - `CSMSOptions(...)` - any other `csms.Option`; `Metrics` - register Prometheus
     collectors; `Txns`, `Recorder` - shared state.
+  - `WrapOCPP(fn)` - wrap the WebSocket upgrade handler (admission before the
+    upgrade); `WrapControl(fn)` - wrap the whole control API (authentication).
+  - `Inbound.SetRecorder(r)` - replace or disable (nil) the per-CALL recorder;
+    `Recorder.RecordLine(fn)` writes a custom line with the shared `seq`.
   - `OnStart(fn(ctx, *Runtime))` - runs once listening; `Runtime` has the
     `csms.Server`, the `dispatch.Dispatcher` (send validated commands with
     `Dispatcher.Send`) and the stores; `ctx` ends at shutdown.
 
 Planned extensions and where they attach:
 
-- *Hosted test CSMS* (message log, registry): `FrameObserver` for a log of every frame
-  including CALLRESULT/CALLERROR and outbound calls (the stdout recorder format stays as
-  it is), `Handle` for `/messages` and the registry API, `SetAuthenticator` for
-  per-charge-point passwords and open/private modes, `SetCPIDExtractor` for an
-  instance segment in the URL, `OnConnect` and `CSMSOptions` for connection limits.
+- *Hosted test CSMS* (`msglog`, `hosted`, `controlauth`, registered from
+  `ext_hosted.go`): `FrameObserver` for the message log, `Handle` for `/messages` and
+  the registry API, `SetAuthenticator` for per-charge-point passwords and the modes,
+  `SetCPIDExtractor` for the instance segment, `WrapOCPP` + `OnConnect`/`OnDisconnect`
+  for the 429 connection limit, `WrapControl` for the control token.
 - *Smart-charging controller profile* (per-connector state model): `Inbound.Observe`
   for StatusNotification, MeterValues, BootNotification and transactions,
   `Inbound.Override` for boot policies, `OnStart` + `Runtime.Dispatcher` for setup

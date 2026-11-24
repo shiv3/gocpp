@@ -44,6 +44,20 @@ All notable changes to this project are documented here. The format is based on
   `GET /chargepoints/{id}/schedule` for single-period charging profiles; a remote-start
   policy, a boot policy, lenient-parsing toggles and runtime fault injection
   (`PUT /faults`: latency, CALLERROR, ignore). See `docs/gocpp-csms.md`.
+- `gocpp-csms serve` hosted test CSMS features, all opt-in: a message log of every
+  frame in both directions in wire order (CALL, CALLRESULT, CALLERROR, CSMS-initiated
+  calls, unhandled actions) in a ring buffer (`--message-log`, `--message-log-size`)
+  served by `GET /messages` (filters `cp`, `action`, `direction`, `since`, `limit`) and
+  the SSE stream `GET /messages/stream`, an optional JSONL file
+  (`--message-log-file`) and `--record-frames` for wire-order stdout lines; credentials
+  sent to charge points are masked. `--hosted` adds open and private instance modes,
+  a connection limit answered with HTTP 429 and `Retry-After`, an optional instance
+  segment in the URL, and a registry API (`/instance`, `/instance/mode`,
+  `/instance/clear`, `/registrations`) issuing a one-time password per
+  charge point (stored as a bcrypt hash), persisted atomically to a JSON file
+  (`--hosted-state-file`). `--control-token` / `GOCPP_CSMS_CONTROL_TOKEN` protects the
+  control API with a bearer token. New extension hooks `WrapOCPP` and `WrapControl`.
+  See "Hosted test CSMS" in `docs/gocpp-csms.md`.
 
 ### Changed
 
