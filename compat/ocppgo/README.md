@@ -101,6 +101,27 @@ Both return false, and change nothing, when the server runs on the legacy runtim
 the gocpp runtime only. The preset also applies to OCPP 2.0.1 MeterValues (same
 constraint). Leniency covers requests received and answers received by the server.
 
+## Breaking changes vs upstream v0.19.0 (schema conformance)
+
+The module keeps upstream's exported API except where a struct of upstream v0.19.0
+contradicts the OCA JSON schemas (`schemas/` in this repository) so that a
+schema-valid message cannot be received or sent. Those types follow the schema and
+are therefore **breaking for callers of these types** (code that compiles against
+upstream's shape needs the change listed). `scripts/apidiff-allow.txt` lists every
+such difference, with the schema or upstream issue as the reason; any other API
+difference fails CI. Every change is a patch record in `patches/`. Round-trip tests
+against the schemas are in `ocpp2.0.1_test/schema_conformance_test.go` and
+`ocpp1.6_test/schema_conformance_test.go`.
+
+### Smart charging (OCPP 2.0.1)
+
+| Type | Change | Migrating |
+|---|---|---|
+| `smartcharging.CompositeSchedule` (upstream issues #355, #385, PR #386) | now the flat schema shape: `ChargingSchedulePeriod []types.ChargingSchedulePeriod`, `EvseID int`, `Duration int`, `ScheduleStart *types.DateTime`, `ChargingRateUnit types.ChargingRateUnitType`; `StartDateTime` and `ChargingSchedule` are removed | read the periods from `Schedule.ChargingSchedulePeriod`; the unit, the start and the EVSE are fields of the schedule |
+| `smartcharging.GetCompositeScheduleResponse` | `EvseID` removed (the schema has no top-level `evseId`, it is `Schedule.EvseID`); `StatusInfo *types.StatusInfo` added | use `Schedule.EvseID` |
+| `smartcharging.NewGetCompositeScheduleResponse` | `(status)` instead of `(status, evseId)` | drop the second argument, set `Schedule.EvseID` |
+| `types.ChargingSchedulePeriod` (upstream PR #418) | `PhaseToUse *int` added (`phaseToUse`) | additive; unkeyed struct literals need the new field |
+
 ## Known differences
 
 - Outbound requests are ordered per charge point, not globally.
@@ -143,6 +164,7 @@ constraint). Leniency covers requests received and answers received by the serve
 - `scripts/sync-upstream.sh [--check]` re-creates the upstream files from the
   pinned tag and `patches/`; `scripts/refresh-patches.sh` regenerates the patches.
 - `scripts/apidiff.sh` fails on any difference in the exported API of any
-  package against the pinned tag.
+  package against the pinned tag, except the reviewed schema-conformance
+  differences in `scripts/apidiff-allow.txt` (a stale entry fails too).
 - The nested module is developed against the repository root through
   `replace github.com/shiv3/gocpp => ../..`; consumers get the version in `require`.

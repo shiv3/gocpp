@@ -10,7 +10,7 @@ for `main`, "Require status checks to pass before merging"):
 | Check name | What it guarantees |
 |---|---|
 | `ocppgo-compat` | builds; vendored files are exactly the pinned upstream tag plus `patches/`; ocpp-go's own 1.6 and 2.0.1 suites on both runtimes; ocppj suite; ws black-box suite; end-to-end tests with real WebSockets under `-race` |
-| `ocppgo-apidiff` | the exported API of every upstream package is identical to the pinned tag (any line of `apidiff` output fails) |
+| `ocppgo-apidiff` | the exported API of every upstream package is identical to the pinned tag (any line of `apidiff` output fails), except the lines in `scripts/apidiff-allow.txt` |
 | `ocppgo-license` | `LICENSE` equals upstream's, `NOTICE` and per-file headers in order, dependency allow list (`scripts/licenses.allow`) |
 | `apidiff` (the repository wide one in `apidiff.yml`) | gocpp's own API gate (a no-op before v1.0, but it reports, so it can be required) |
 
@@ -26,6 +26,16 @@ closes and reopens the PR (or pushes an empty commit) to run the required checks
 "Allow GitHub Actions to create and approve pull requests" must be enabled in
 Settings, Actions, General for the sync PRs to be created at all; without it the
 workflow log shows the error and the pin can still be moved by hand.
+
+## Intentional API deviations (schema conformance)
+
+A struct of upstream that contradicts the OCA JSON schemas may be changed here, but
+only with all of: the change as a patch record (`scripts/refresh-patches.sh`), one
+line per `apidiff` output line in `scripts/apidiff-allow.txt` with a comment naming
+the schema property or upstream issue, a round-trip test against the schema
+(`internal/schematest`), and an entry in README, "Breaking changes vs upstream
+v0.19.0 (schema conformance)", saying how calling code migrates. When moving the
+pin, drop the entries and patches that the new upstream tag fixes itself.
 
 ## Moving the upstream pin
 

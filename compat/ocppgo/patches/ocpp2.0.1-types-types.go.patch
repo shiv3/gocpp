@@ -1,0 +1,10 @@
+--- a/ocpp2.0.1/types/types.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/types/types.go	2026-11-24 00:00:00 +0900
+@@ -500,6 +500,7 @@
+ 	StartPeriod  int     `json:"startPeriod" validate:"gte=0"`
+ 	Limit        float64 `json:"limit" validate:"gte=0"`
+ 	NumberPhases *int    `json:"numberPhases,omitempty" validate:"omitempty,gte=0"`
++	PhaseToUse   *int    `json:"phaseToUse,omitempty" validate:"omitempty,gte=0"`
+ }
+ 
+ func NewChargingSchedulePeriod(startPeriod int, limit float64) ChargingSchedulePeriod {

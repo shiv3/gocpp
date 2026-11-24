@@ -20,6 +20,18 @@ All notable changes to this project are documented here. The format is based on
   answer that fails parsing or validation completes the request's callback at
   once instead of at the call timeout (ocpp-go issues #175, #234).
 
+### Fixed (compat/ocppgo, breaking for callers of these types)
+
+- compat/ocppgo OCPP 2.0.1 smart charging types follow the OCA schema where upstream
+  v0.19.0 does not: `smartcharging.CompositeSchedule` is the flat schema shape
+  (`ChargingSchedulePeriod`, `EvseID`, `Duration`, `ScheduleStart`, `ChargingRateUnit`;
+  `StartDateTime`/`ChargingSchedule` removed), `GetCompositeScheduleResponse.EvseID` is
+  removed (it is `Schedule.EvseID`) and `StatusInfo` added, `NewGetCompositeScheduleResponse`
+  takes only the status, `types.ChargingSchedulePeriod.PhaseToUse` added (upstream
+  #355, #385, #386, #418). The reviewed deviations are listed in
+  `compat/ocppgo/scripts/apidiff-allow.txt`; migration notes in the compat README,
+  "Breaking changes vs upstream v0.19.0 (schema conformance)".
+
 ## [0.3.3] - 2026-11-24
 
 ### Changed (behaviour change in compat mode)

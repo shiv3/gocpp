@@ -1,0 +1,27 @@
+# Reviewed, intentional deviations from the exported API of upstream ocpp-go v0.19.0.
+#
+# Every entry is "<import path>|<apidiff output line>". An entry is allowed only for
+# a type whose upstream shape contradicts the OCA JSON schemas (schemas/ in the gocpp
+# repository), with the upstream issue or PR in the comment above it. Anything not
+# listed here, and any listed line that no longer shows up, fails scripts/apidiff.sh.
+# The calling-code migration for each entry is in README.md, "Breaking changes vs
+# upstream v0.19.0 (schema conformance)".
+
+# GetCompositeScheduleResponse: schema CompositeScheduleType is flat (chargingSchedulePeriod,
+# evseId, duration, scheduleStart, chargingRateUnit) and the response has no top-level evseId.
+# Upstream issues #355, #385, PR #386.
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule.ChargingSchedule: removed
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule.StartDateTime: removed
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule: old is comparable, new is not
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- GetCompositeScheduleResponse.EvseID: removed
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- NewGetCompositeScheduleResponse: changed from func(GetCompositeScheduleStatus, int) *GetCompositeScheduleResponse to func(GetCompositeScheduleStatus) *GetCompositeScheduleResponse
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule.ChargingRateUnit: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule.ChargingSchedulePeriod: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule.Duration: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule.EvseID: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- CompositeSchedule.ScheduleStart: added
+# schema GetCompositeScheduleResponse.statusInfo (OCA OCPP 2.0.1), omitted upstream.
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- GetCompositeScheduleResponse.StatusInfo: added
+
+# schema ChargingSchedulePeriodType.phaseToUse, omitted upstream (upstream PR #418).
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types|- ChargingSchedulePeriod.PhaseToUse: added
