@@ -500,12 +500,21 @@ func (cs *centralSystem) SetNewChargePointHandler(handler ChargePointConnectionH
 
 func (cs *centralSystem) SetChargePointDisconnectedHandler(handler ChargePointConnectionHandler) {
 	cs.server.SetDisconnectedClientHandler(func(chargePoint ws.Channel) {
-		for cb, ok := cs.callbackQueue.Dequeue(chargePoint.ID()); ok; cb, ok = cs.callbackQueue.Dequeue(chargePoint.ID()) {
-			err := ocpp.NewError(ocppj.GenericError, "client disconnected, no response received from client", "")
-			cb(nil, err)
-		}
+		cs.failPendingCallbacks(chargePoint.ID())
 		handler(chargePoint)
 	})
+}
+
+// failPendingCallbacks completes every callback still queued for a charge point
+// with a disconnect error. Without it a response on a later connection of the
+// same charge point would be handed to the callback of a call from the earlier
+// one. ocpp-go does this only when the application registers a disconnect
+// handler; this module does it always.
+func (cs *centralSystem) failPendingCallbacks(id string) {
+	for cb, ok := cs.callbackQueue.Dequeue(id); ok; cb, ok = cs.callbackQueue.Dequeue(id) {
+		err := ocpp.NewError(ocppj.GenericError, "client disconnected, no response received from client", "")
+		cb(nil, err)
+	}
 }
 
 func (cs *centralSystem) SendRequestAsync(clientId string, request ocpp.Request, callback func(confirmation ocpp.Response, err error)) error {

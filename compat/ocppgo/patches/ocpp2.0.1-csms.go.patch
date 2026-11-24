@@ -1,6 +1,34 @@
---- a/ocpp2.0.1/csms.go	2026-11-22 09:42:13.900533259 +0900
-+++ b/ocpp2.0.1/csms.go	2026-11-22 09:42:13.900533259 +0900
-@@ -947,7 +947,7 @@
+--- a/ocpp2.0.1/csms.go	2026-11-24 23:43:43.242292324 +0900
++++ b/ocpp2.0.1/csms.go	2026-11-24 23:43:43.242292324 +0900
+@@ -749,14 +749,23 @@
+ 
+ func (cs *csms) SetChargingStationDisconnectedHandler(handler ChargingStationConnectionHandler) {
+ 	cs.server.SetDisconnectedClientHandler(func(chargingStation ws.Channel) {
+-		for cb, ok := cs.callbackQueue.Dequeue(chargingStation.ID()); ok; cb, ok = cs.callbackQueue.Dequeue(chargingStation.ID()) {
+-			err := ocpp.NewError(ocppj.GenericError, "client disconnected, no response received from client", "")
+-			cb(nil, err)
+-		}
++		cs.failPendingCallbacks(chargingStation.ID())
+ 		handler(chargingStation)
+ 	})
+ }
+ 
++// failPendingCallbacks completes every callback still queued for a charging
++// station with a disconnect error. Without it a response on a later connection
++// of the same station would be handed to the callback of a call from the earlier
++// one. ocpp-go does this only when the application registers a disconnect
++// handler; this module does it always.
++func (cs *csms) failPendingCallbacks(id string) {
++	for cb, ok := cs.callbackQueue.Dequeue(id); ok; cb, ok = cs.callbackQueue.Dequeue(id) {
++		err := ocpp.NewError(ocppj.GenericError, "client disconnected, no response received from client", "")
++		cb(nil, err)
++	}
++}
++
+ func (cs *csms) SendRequestAsync(clientId string, request ocpp.Request, callback func(response ocpp.Response, err error)) error {
+ 	featureName := request.GetFeatureName()
+ 	if _, found := cs.server.GetProfileForFeature(featureName); !found {
+@@ -958,7 +967,7 @@
  	var response ocpp.Response
  	var err error
  	// Execute in separate goroutine, so the caller goroutine is available
@@ -9,7 +37,7 @@
  		switch action {
  		case provisioning.BootNotificationFeatureName:
  			response, err = cs.provisioningHandler.OnBootNotification(chargingStation.ID(), request.(*provisioning.BootNotificationRequest))
-@@ -1004,13 +1004,13 @@
+@@ -1015,13 +1024,13 @@
  			return
  		}
  		cs.sendResponse(chargingStation.ID(), response, err, requestId)
@@ -25,7 +53,7 @@
  	} else {
  		err := fmt.Errorf("no handler available for call of type %v from client %s for request %s", response.GetFeatureName(), chargingStation.ID(), requestId)
  		cs.error(err)
-@@ -1020,7 +1020,7 @@
+@@ -1031,7 +1040,7 @@
  func (cs *csms) handleIncomingError(chargingStation ChargingStationConnection, err *ocpp.Error, details interface{}) {
  	if callback, ok := cs.callbackQueue.Dequeue(chargingStation.ID()); ok {
  		// Execute in separate goroutine, so the caller goroutine is available
@@ -34,7 +62,7 @@
  	} else {
  		cs.error(fmt.Errorf("no handler available for call error %w from client %s", err, chargingStation.ID()))
  	}
-@@ -1029,7 +1029,7 @@
+@@ -1040,7 +1049,7 @@
  func (cs *csms) handleCanceledRequest(chargePointID string, request ocpp.Request, err *ocpp.Error) {
  	if callback, ok := cs.callbackQueue.Dequeue(chargePointID); ok {
  		// Execute in separate goroutine, so the caller goroutine is available

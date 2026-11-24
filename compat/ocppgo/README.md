@@ -58,6 +58,7 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 | Paced drain for deploys (close code 1012, idle connections first, upgrades refused meanwhile) | `compat.Drain(ctx, srv, compat.DrainOptions{Window, Rate, IdleGrace, RetryAfter, OnProgress})`, then `srv.Stop()`; `compat.Undrain`, `compat.Draining`, `compat.Connections` |
 | Metrics (connections, calls per action and direction, pending calls; with `observability.SessionMetrics` also upgrade results and close code/cause), OpenTelemetry tracing, raw frame observer | `compat.SetObservability(endpoint, metrics, tracerProvider, frameObserver)` before `Start`; the Prometheus and OpenTelemetry metrics of gocpp (`core/observability/metrics/...`) fit |
 | Call timeout without injecting a dispatcher | `compat.SetCallTimeout` |
+| Answer that fails validation: callback gets the validation error at once (default as upstream: CALLERROR to the charger, callback hears "Request timed out" at the call timeout) | `compat.SetValidationErrorToCallback(endpoint, true)` before `Start` |
 | Accept the validation quirks of real chargers (empty vendor, long configuration values, empty sampledValue, 1.6 error spelling) | `compat.SetValidationLeniency`, `compat.SetValidationErrorFilter`, see below |
 | Duplicate charge point id: first wins as upstream (default) or last wins | `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)` |
 | Idle connection: dropped without a close frame as upstream (default) or closed with a frame (1000) | `compat.SetIdleClose(srv, compat.IdleCloseFrame)` before `Start` |

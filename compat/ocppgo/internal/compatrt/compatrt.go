@@ -190,6 +190,10 @@ func Safely(f func(), onPanic func(r any)) {
 // Control is implemented by the gocpp runtime of an ocppj.Server (stored under KindRuntime).
 type Control interface {
 	SetCallTimeout(d time.Duration)
+	// SetValidationErrorToCallback makes an answer that fails parsing or
+	// validation complete the request's callback at once instead of at the call
+	// timeout. Call before Start.
+	SetValidationErrorToCallback(on bool)
 	// SetObservability sets what the connections of the runtime report to; any
 	// nil argument leaves that facility off. Call before Start.
 	SetObservability(m observability.Metrics, tp trace.TracerProvider, fo observability.FrameObserver)
