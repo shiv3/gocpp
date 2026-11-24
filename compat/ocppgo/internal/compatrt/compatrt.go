@@ -200,7 +200,25 @@ type Control interface {
 	// SetValidation installs the validation error filter and the 1.6 CALLERROR
 	// spelling switch (nil / false = upstream behaviour). Safe at any time.
 	SetValidation(filter ValidationFilter, specSpellingV16 bool)
+	// SetDecoding installs the opt-in payload decoding options (zero value =
+	// upstream behaviour). Safe at any time.
+	SetDecoding(d Decoding)
 }
+
+// Decoding are the opt-in payload decoding quirks of the gocpp runtime.
+type Decoding struct {
+	// UseNumber decodes payload numbers without going through float64, so
+	// integers beyond 2^53 reach the struct unrounded.
+	UseNumber bool
+	// NumericSampledValue accepts a JSON number as OCPP 1.6 SampledValue.Value.
+	NumericSampledValue bool
+	// LenientDateTime repairs near-RFC3339 timestamps (space separator, missing
+	// zone, "+0100", comma fraction, date only) before they are parsed.
+	LenientDateTime bool
+}
+
+// Any reports whether any option is set.
+func (d Decoding) Any() bool { return d != Decoding{} }
 
 // ValidationFilter decides whether one field validation failure of a message is
 // tolerated: action is the OCPP action, field the path of the field below the

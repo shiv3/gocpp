@@ -71,6 +71,7 @@ type gocppRuntime struct {
 	cfgByVersion map[string]*gdisp.Config
 
 	lenient atomic.Pointer[lenience] // set through the compat package; nil = upstream behaviour
+	decode  atomic.Pointer[decoder]  // set through the compat package; nil = upstream behaviour
 }
 
 type srvConn struct {
@@ -395,8 +396,8 @@ func (rt *gocppRuntime) handleCall(ctx context.Context, dc *gdisp.Conn, action s
 		return nil, &gdisp.RawCallError{NoReply: true}
 	}
 	id, _ := gocppj.MessageIDFromContext(ctx)
-	var raw interface{}
-	if err := json.Unmarshal(payload, &raw); err != nil {
+	raw, err := rt.decodeRaw(payload)
+	if err != nil {
 		return nil, rt.errToRaw(dc, ocpp.NewError(FormatErrorType(rt.s), err.Error(), id))
 	}
 	// ocpp-go's own parser decides whether the request is valid and which error answers it.
@@ -590,14 +591,14 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 	var ce *gocppj.CallError
 	switch {
 	case cerr == nil:
-		var raw interface{}
-		if err := json.Unmarshal(resp, &raw); err != nil {
+		raw, err := rt.decodeRaw(resp)
+		if err != nil {
 			bad(ocpp.NewError(FormatErrorType(rt.s), err.Error(), id), []interface{}{float64(CALL_RESULT), id})
 			return
 		}
 		fields := []interface{}{float64(CALL_RESULT), id, raw}
 		profile, _ := s.GetProfileForFeature(action)
-		confirmation, err := profile.ParseResponse(action, raw, parseRawJsonConfirmation)
+		confirmation, err := profile.ParseResponse(action, raw, rt.confirmationParser())
 		if err != nil {
 			bad(ocpp.NewError(FormatErrorType(rt.s), err.Error(), id), fields)
 			return

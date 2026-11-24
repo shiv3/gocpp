@@ -59,7 +59,7 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 | Metrics (connections, calls per action and direction, pending calls; with `observability.SessionMetrics` also upgrade results and close code/cause), OpenTelemetry tracing, raw frame observer | `compat.SetObservability(endpoint, metrics, tracerProvider, frameObserver)` before `Start`; the Prometheus and OpenTelemetry metrics of gocpp (`core/observability/metrics/...`) fit |
 | Call timeout without injecting a dispatcher | `compat.SetCallTimeout` |
 | Answer that fails validation: callback gets the validation error at once (default as upstream: CALLERROR to the charger, callback hears "Request timed out" at the call timeout) | `compat.SetValidationErrorToCallback(endpoint, true)` before `Start` |
-| Accept the validation quirks of real chargers (empty vendor, long configuration values, empty sampledValue, 1.6 error spelling) | `compat.SetValidationLeniency`, `compat.SetValidationErrorFilter`, see below |
+| Accept the validation quirks of real chargers (empty vendor, long configuration values, empty sampledValue list or value, empty idTag, empty ChangeConfiguration value, vendor measurands and units, numeric sampledValue value, int64-range ids, lenient timestamps, 1.6 error spelling) | `compat.SetValidationLeniency`, `compat.SetValidationErrorFilter`, see below |
 | Duplicate charge point id: first wins as upstream (default) or last wins | `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)` |
 | Idle connection: dropped without a close frame as upstream (default) or closed with a frame (1000) | `compat.SetIdleClose(srv, compat.IdleCloseFrame)` before `Start` |
 | Inbound message size: no limit as upstream (default) or a limit (close code 1009) | `compat.SetMaxMessageSize(srv, n)` |
@@ -79,6 +79,13 @@ compat.SetValidationLeniency(endpoint, compat.Leniency{
 	AllowEmptyChargePointVendor:  true, // BootNotification with chargePointVendor "" (upstream: OccurrenceConstraintViolation)
 	AllowLongConfigurationValues: true, // GetConfiguration answer with a value over 500 characters (PropertyConstraintViolation)
 	AllowEmptySampledValue:       true, // MeterValues with "sampledValue": [] (PropertyConstraintViolation)
+	AllowEmptySampledValueValue:  true, // sampledValue {"value": ""} in MeterValues / StopTransaction
+	AllowEmptyIdTag:              true, // "idTag": "" in Authorize, StartTransaction (and the RemoteStartTransaction you send)
+	AllowEmptyConfigurationValue: true, // ChangeConfiguration with value "" (the request you send; upstream refuses to send it)
+	AllowVendorMeasurands:        true, // measurand / unit outside the 1.6 enumerations, e.g. "Energy.Active.lmport.Register"
+	AllowNumericSampledValue:     true, // "value": 12.5 instead of "12.5" (reaches the handler as "12.5")
+	PreserveLargeIntegers:        true, // numbers decoded as json.Number: transactionId 9223372036854775807 is not rounded
+	LenientDateTime:              true, // "2024-01-02 03:04:05", "+0100", comma fraction, missing zone (UTC), date only
 	SpecSpellingOccurenceV16:     true, // send "OccurenceConstraintViolation" (the 1.6 spec spelling) on 1.6 connections
 })
 cs := ocpp16.NewCentralSystem(endpoint, srv)
