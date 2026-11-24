@@ -275,3 +275,10 @@ footer p { max-width: none; margin: 4px 0; }
 .toclist a { display: block; padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); text-decoration: none; color: var(--ink); font-size: 14px; }
 .toclist a:hover { border-color: var(--accent); }
 .panels.c2 .panel svg.ch { max-width: 460px; }
+
+/* drop-in teaser and one-line code boxes */
+.teaser { border: 1px solid var(--border); border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 10px 10px 0; padding: 10px 14px; margin: 0 0 16px; max-width: 900px; font-size: 15px; color: var(--ink-2); line-height: 1.55; }
+.teaser b { color: var(--ink); }
+.teaser a { font-weight: 600; white-space: nowrap; }
+.codebox.oneline .bar { padding: 6px 8px 0 8px; flex-wrap: nowrap; }
+.codebox.oneline pre { padding-top: 6px; }

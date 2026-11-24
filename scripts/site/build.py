@@ -26,6 +26,8 @@ REPO = "https://github.com/shiv3/gocpp"
 DOCS = REPO + "/blob/main/docs/"
 LT = REPO + "/blob/test/loadtest-4k/interop/"
 PKG = "https://pkg.go.dev/github.com/shiv3/gocpp"
+COMPAT = REPO + "/blob/main/compat/"
+REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1"
 
 
 def esc(s):
@@ -186,7 +188,7 @@ def section(sid, eyebrow, title, sub, body):
 NAV = [
     ("why", "Why"), ("start", "Quick start"), ("typed", "Typed"), ("spec", "Spec"), ("safety", "Safety"),
     ("footprint", "Footprint"), ("testing", "Testing"), ("scale", "Scale-out"), ("observe", "Observability"),
-    ("matrix", "Features"), ("compare", "vs ocpp-go"), ("docs", "Docs"), ("architecture.html", "Architecture"),
+    ("matrix", "Features"), ("dropin", "Drop-in"), ("compare", "vs ocpp-go"), ("docs", "Docs"), ("architecture.html", "Architecture"),
 ]
 
 LOGO = (
@@ -258,10 +260,12 @@ def build():
 <div class="cta">
 <span class="install"><code>go get github.com/shiv3/gocpp</code><button class="copy" type="button" data-copy="go get github.com/shiv3/gocpp">Copy</button></span>
 <a class="btn primary" href="#start">Quick start</a>
+<a class="btn" href="#dropin">ocpp-go drop-in</a>
 <a class="btn" href="%(repo)s">GitHub</a>
 <a class="btn" href="architecture.html">Architecture and performance</a>
 <a class="btn" href="%(pkg)s">API reference</a>
 </div>
+<p class="teaser"><span class="pill ok">New</span> <b>Already on ocpp-go?</b> Move a server to the gocpp runtime with one <code>replace</code> line in <code>go.mod</code>; the public API is identical, so application code does not change. <a href="#dropin">Drop-in replacement for ocpp-go</a></p>
 <ul class="badges" aria-label="Project facts"><li>OCPP 1.6 · 2.0.1 · 2.1</li><li>CSMS and charge point</li><li>Go 1.26+</li><li>MIT license</li><li>pre-v1: the API may still change before v1.0</li></ul>
 <ul class="tiles" aria-label="Key figures">
 <li class="tile"><div class="lab">Messages generated from the official schemas</div><div class="val">194</div><div class="cmp">39 in 1.6, 64 in 2.0.1, 91 in 2.1; none written by hand</div></li>
@@ -350,6 +354,7 @@ def build():
 """ + table(["Quirk", "The charger sends", "Your handler sees"], lenient_rows) + """
 <p>The other modes never rewrite a payload: strict rejects, tolerant logs and passes, and off (the library default) skips validation.</p>
 <h3>Migrating from ocpp-go: a preset, then one switch at a time</h3>
+<p>This is the path to gocpp's own API. To keep ocpp-go's API and change only the runtime under it, see the <a href="#dropin">drop-in replacement</a>.</p>
 <p>Chargers in the field may depend on ocpp-go's exact replies. <code>csms.WithOCPPGoCompat()</code> reproduces the charger-visible behaviour of ocpp-go (its error codes, silent drop of bad message ids, UTC whole-second timestamps, no server pings) so a migration can be two steps: swap the library with the preset on, then turn the individual behaviours back to the specification one at a time. The preset is shorthand for six ordinary options; later options win.</p>
 """ + fig(d.migration(), "<b>Staged migration.</b> A differential harness replays 67 raw-frame, fault and connection cases against both libraries. gocpp by default differs from ocpp-go in 24 of them; with the preset 13 remain, all deliberate (for example: lenient mode accepts what ocpp-go rejects, and gocpp recovers a handler panic).") + """
 <p class="src">Mechanism: <code>core/dispatcher/callslot.go</code>, <code>core/dispatcher/compat.go</code>, <code>core/schema/lenient.go</code>, <code>core/schema/coerce.go</code>. The full table of differences, row by row with the clause each default follows: <a href="%smigration-from-ocpp-go.md">docs/migration-from-ocpp-go.md</a>. API mapping: <a href="%smigration-from-lorenzodonini.md">docs/migration-from-lorenzodonini.md</a>.</p>
@@ -499,6 +504,7 @@ def build():
         ["Signed messages (<code>WithSigner</code>, <code>WithVerifier</code>)", N, N, Y],
         ["Error-code spelling per version", "<code>OccurenceConstraintViolation</code>, <code>FormationViolation</code>", "<code>Occurrence…</code>, <code>FormatViolation</code>", "<code>Occurrence…</code>, <code>FormatViolation</code>"],
         ["ocpp-go compatibility preset", Y + " (verified by differential tests)", "options apply; not differential-tested", "options apply; ocpp-go has no 2.1"],
+        ["ocpp-go <a href=\"#dropin\">drop-in module</a> (ocpp-go's API on the gocpp runtime)", Y + " (ocpp-go's 1.6 suite passes)", Y + " (ocpp-go's 2.0.1 suite passes)", "ocpp-go has no 2.1"],
         ["Conformance suite", Y, Y, Y],
         ["Gateway mode <span class=\"pill\">Experimental</span>", Y, Y, Y],
     ]
@@ -514,6 +520,47 @@ def build():
     body = table(["", "OCPP 1.6", "OCPP 2.0.1", "OCPP 2.1"], mrows) + common
     parts.append(section("matrix", "Feature matrix", "What is supported, by OCPP version", "One module and one connection engine for all three versions; the engine is version-agnostic and the per-version code is generated.", body))
 
+
+    # ---- drop-in ---------------------------------------------------------
+    def codeline(label, text):
+        return ('<div class="codebox oneline"><div class="bar"><span class="label">%s</span><button class="copy" type="button" aria-label="Copy the replace line for %s">Copy</button></div>'
+                '<pre><code>%s</code></pre></div>' % (label, esc(label), esc(text)))
+
+    body = """
+<p class="why"><b>Why.</b> Rewriting a working backend against a new API is a large step. The compatibility module takes a smaller one: it has exactly the public API of <a href="https://github.com/lorenzodonini/ocpp-go">ocpp-go</a> and serves connections on the gocpp runtime, so an existing application switches with one line in <code>go.mod</code> and no change to its code.</p>
+<h3>One line in <code>go.mod</code></h3>
+<p>If your code compiles against ocpp-go v0.19.0, add this line to <code>go.mod</code>, then run <code>go mod tidy</code> and build as before. The import paths in your code stay <code>github.com/lorenzodonini/ocpp-go/...</code>.</p>
+""" + codeline("go.mod, for ocpp-go v0.19.0", REPLACE_019) + """
+<p class="src">Module <a href="%(c)socppgo-v019/README.md">compat/ocppgo-v019</a>, tag <code>v0.19.0-gocpp.1</code>, built on gocpp v0.3.2. <code>go mod tidy</code> adds gocpp and may raise some <code>golang.org/x</code> versions; the minimum Go version is the module's.</p>
+<div class="grid2">
+<div class="card"><h4>What changes (server side)</h4><ul>
+<li>Each connection is served by gocpp's per-connection dispatcher. There is no dispatcher goroutine or lock shared by all charge points, so a stalled or silent charger does not hold up the others.</li>
+<li>A panic in an application handler is answered with <code>InternalError</code>; the process keeps running.</li>
+<li>Close codes are sent as WebSocket close frames; an idle connection is closed with 1000.</li>
+<li>Outbound requests are ordered per charge point, not globally.</li>
+<li>New upgrades get HTTP 503 once <code>Stop</code> has begun.</li>
+<li>One extra package, <code>compat</code>, adds what ocpp-go's API has no place for: admission control, readiness, paced drain, metrics and tracing. Using it is optional.</li>
+</ul></div>
+<div class="card"><h4>What stays</h4><ul>
+<li>The public API: import paths, types and signatures are identical. CI runs <code>apidiff</code> against the pinned v0.19.0 tag for all 42 packages and fails on any difference.</li>
+<li>Payload validation, error codes and error descriptions are ocpp-go's own code.</li>
+<li>The client side (<code>ws.Client</code>, <code>ocppj.Client</code>, the charge-point types) is ocpp-go's unchanged code.</li>
+<li>A server that injects its own <code>ServerDispatcher</code> keeps ocpp-go's original code path.</li>
+<li>A way back without a rebuild: <code>OCPPGO_COMPAT_RUNTIME=legacy</code> selects ocpp-go's original code path everywhere.</li>
+</ul></div>
+</div>
+<h3>How it was checked</h3>
+<ul>
+<li><b>API.</b> <code>apidiff</code> in CI: 42 of 42 packages identical to ocpp-go v0.19.0.</li>
+<li><b>ocpp-go's own tests.</b> ocpp-go's OCPP 1.6 and 2.0.1 test suites run against the module on the gocpp runtime in CI, and pass.</li>
+<li><b>Soak.</b> The runtime code under the module held 4,000 simulated chargers for 25 minutes (40%% of them not answering server calls, 50 server calls per second, five server restarts) with no stall and no crash: 152 MB maximum RSS, 5,978 goroutines (about 1.5 per connection), Heartbeat p50 / p95 / p99 of 0.2 / 0.5 / 0.8 ms. In a capacity ramp on 1 core and 2 GB it used about 22 KB per connection.</li>
+</ul>
+<div class="note"><p><b>Read these numbers with care.</b> Single runs over loopback on one shared machine, with a synthetic fleet and no TLS, measured on 2026-11-22 with the same server runtime code that this module ships (the load test was not repeated on the v0.19.0 API surface). Treat them as an indication and measure with your own traffic before a rollout.</p></div>
+<p>For production, switch in stages: build and run your tests with the replace line, try both runtimes (<code>OCPPGO_COMPAT_RUNTIME=gocpp</code> and <code>=legacy</code>), run a canary, and keep the <code>legacy</code> switch as the fallback. The drop-in keeps ocpp-go's API; to move to gocpp's typed API later, see <a href="%(d)smigration-from-ocpp-go.md">Migrating from ocpp-go</a>.</p>
+<p class="src">Sources: <a href="%(c)socppgo-v019/README.md">compat/ocppgo-v019/README.md</a> (runtime choice, the <code>compat</code> package, known differences); CI jobs <code>ocppgo-v019-compat</code> and <code>ocppgo-v019-apidiff</code>; load-test results on the <code>test/loadtest-4k</code> branch.</p>
+""" % {"c": COMPAT, "d": DOCS}
+    parts.append(section("dropin", "Already on ocpp-go", "Drop-in replacement for ocpp-go", "Keep your code and ocpp-go's API; change the server runtime with one line in go.mod.", body))
+
     # ---- compare ---------------------------------------------------------
     crows = [
         ["OCPP versions", "1.6, 2.0.1, 2.1", "1.6, 2.0.1"],
@@ -527,14 +574,15 @@ def build():
         ["Logging", "<code>log/slog</code>", "logrus"],
         ["Idle footprint (measured)", "1 goroutine, 13.6 KB RSS per connection", "2 goroutines, 22.7 KB RSS per connection"],
         ["CPU with validation on (measured, 30k msg/s)", "1.16 cores", "1.04 cores"],
+        ["Migration path", "native API: compatibility preset and an API mapping; or keep ocpp-go's API with the <a href=\"#dropin\">drop-in module</a>", "n/a"],
         ["Maturity", "pre-v1; API may change", "established, widely used"],
     ]
     body = """
-<p><a href="https://github.com/lorenzodonini/ocpp-go">ocpp-go</a> is the established OCPP library for Go, and gocpp owes it a great deal: the conformance suite is ported from its per-message tests, and its behaviour is the reference for the compatibility preset. gocpp is a deliberate rewrite with different trade-offs, not a drop-in replacement. Where ocpp-go follows the specification, gocpp does too.</p>
+<p><a href="https://github.com/lorenzodonini/ocpp-go">ocpp-go</a> is the established OCPP library for Go, and gocpp owes it a great deal: the conformance suite is ported from its per-message tests, and its behaviour is the reference for the compatibility preset. gocpp's own API is a deliberate rewrite with different trade-offs; the table below compares that API with ocpp-go. Where ocpp-go follows the specification, gocpp does too. If you want to keep ocpp-go's API, the <a href="#dropin">drop-in module</a> above runs it on the gocpp runtime.</p>
 """ + table(["", "gocpp", "ocpp-go (v0.17.x)"], crows) + """
 <div class="grid2">
 <div class="card"><h4>Choose gocpp when</h4><ul><li>you need OCPP 2.1, or all three versions in one module</li><li>you want generated, typed messages and handlers</li><li>you run large fleets and care about per-connection cost and isolation</li><li>you want deploys that do not disconnect chargers (experimental gateway mode)</li></ul></div>
-<div class="card"><h4>Stay with ocpp-go when</h4><ul><li>you need a stable v1-style API today; gocpp is pre-v1</li><li>your fleet works and you have no reason to change the wire behaviour</li><li>you depend on its feature-profile structure or its ecosystem</li></ul></div>
+<div class="card"><h4>Stay with ocpp-go when</h4><ul><li>you need a stable v1-style API today; gocpp is pre-v1 (the <a href="#dropin">drop-in module</a> keeps ocpp-go's API and changes the server runtime only)</li><li>your fleet works and you have no reason to change the wire behaviour</li><li>you depend on its feature-profile structure or its ecosystem</li></ul></div>
 </div>
 <p class="src">Sources: the differential reports (<code>interop/parity/results</code>), <a href="%smigration-from-ocpp-go.md">docs/migration-from-ocpp-go.md</a>, the load-test report cited above (ocpp-go measured as the <code>v0.17.2-fix.3</code> fork), and ocpp-go's source (<code>ocppj/dispatcher.go</code>, <code>go.mod</code>). Measured rows are single runs on one machine.</p>
 """ % DOCS
@@ -545,6 +593,7 @@ def build():
         (DOCS + "usage.md", "Usage guide", "Handlers, calls, options, validation"),
         (DOCS + "architecture.md", "Architecture", "Layers, connection lifecycle, code generation"),
         (DOCS + "performance.md", "Performance and scaling", "Cost model, runtime settings, tuning knobs"),
+        (COMPAT + "ocppgo-v019/README.md", "Drop-in replacement for ocpp-go", "One replace line: runtime choice, compat package, known differences"),
         (DOCS + "migration-from-ocpp-go.md", "Migrating from ocpp-go", "The compatibility preset, row by row"),
         (DOCS + "migration-from-lorenzodonini.md", "API mapping from ocpp-go", "Before and after, call by call"),
         (DOCS + "draining.md", "Draining", "Deploys and reconnect-storm control"),
