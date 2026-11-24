@@ -48,3 +48,9 @@ type connectionMetricsHook interface {
 type badFrameMetricsHook interface {
 	BadFrame(version, reason string)
 }
+
+// rateLimitMetricsHook is an optional MetricsHook extension that receives one
+// event per inbound message refused by Config.InboundRate.
+type rateLimitMetricsHook interface {
+	InboundRateLimited(version, outcome string)
+}

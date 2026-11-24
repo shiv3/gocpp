@@ -52,6 +52,9 @@ const (
 	// ErrorSourceMessageID: an inbound CALL whose message id breaks the 36
 	// character limit, under a policy that answers it.
 	ErrorSourceMessageID
+	// ErrorSourceRateLimit: an inbound CALL refused by Config.InboundRate. Err is
+	// ErrInboundRateLimited.
+	ErrorSourceRateLimit
 )
 
 // ErrorContext describes one built-in CALLERROR decision for an ErrorCodeMapper.
@@ -88,6 +91,20 @@ const (
 	MessageIDReject
 	// MessageIDDrop drops both silently.
 	MessageIDDrop
+)
+
+// RateLimitAction says what happens to an inbound CALL or SEND over
+// Config.InboundRate.
+type RateLimitAction int
+
+const (
+	// RateLimitReject answers the CALL with a CALLERROR (GenericError, "rate limit
+	// exceeded") and does not run its handler; a SEND is dropped. The connection
+	// stays up, so a well-behaved peer can back off and retry.
+	RateLimitReject RateLimitAction = iota
+	// RateLimitClose closes the connection with 1008 (policy violation) at the
+	// first message over the limit.
+	RateLimitClose
 )
 
 // DefaultMaxMessageSize is the default inbound message size limit (1 MiB).
@@ -224,6 +241,17 @@ type Config struct {
 	// after the first of the current run. 0 counts over the whole life of the
 	// connection.
 	BadFrameWindow time.Duration
+	// InboundRate limits the CALLs and SENDs a peer may send on one connection to
+	// this many per second (a token bucket of InboundBurst tokens refilled at this
+	// rate). Responses (CALLRESULT / CALLERROR) are never limited. Over the limit,
+	// InboundRateAction decides. 0, the default, is unlimited.
+	InboundRate float64
+	// InboundBurst is the bucket size of InboundRate; values below 1 mean
+	// max(1, ceil(InboundRate)).
+	InboundBurst int
+	// InboundRateAction chooses between answering and closing; the default is
+	// RateLimitReject.
+	InboundRateAction RateLimitAction
 
 	// Signer, when non-nil, signs outbound CALL/SEND messages as OCPP 2.1 Signed
 	// Messages (Part 4 Ch 7).

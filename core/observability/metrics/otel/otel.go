@@ -25,6 +25,7 @@ type metrics struct {
 	pingLatency metric.Float64Histogram
 	softViol    metric.Int64Counter
 	badFrames   metric.Int64Counter
+	rateLimited metric.Int64Counter
 	sessDur     metric.Float64Histogram
 	closes      metric.Int64Counter
 	accepts     metric.Int64Counter
@@ -92,6 +93,12 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 		return nil, err
 	}
 
+	rateLimited, err := m.Int64Counter("gocpp.inbound_rate_limited",
+		metric.WithDescription("inbound CALLs and SENDs refused by the per-connection rate limit, by outcome"))
+	if err != nil {
+		return nil, err
+	}
+
 	sessDur, err := m.Float64Histogram("gocpp.session.duration",
 		metric.WithDescription("connection lifetime, observed at close"), metric.WithUnit("s"))
 	if err != nil {
@@ -146,6 +153,7 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 		pingLatency: pingLatency,
 		softViol:    softViol,
 		badFrames:   badFrames,
+		rateLimited: rateLimited,
 	}, nil
 }
 
@@ -228,4 +236,9 @@ func (m *metrics) TenantInflight(tenant string, delta int) {
 func (m *metrics) BadFrame(version, reason string) {
 	m.badFrames.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("version", version), attribute.String("reason", reason)))
+}
+
+func (m *metrics) InboundRateLimited(version, outcome string) {
+	m.rateLimited.Add(context.Background(), 1, metric.WithAttributes(
+		attribute.String("version", version), attribute.String("outcome", outcome)))
 }

@@ -67,6 +67,16 @@ All notable changes to this project are documented here. The format is based on
   Every bad frame is counted by the new optional `observability.BadFrameMetrics`
   (Prometheus `gocpp_bad_frames_total{version,reason}`, OTel `gocpp.bad_frames`), also
   when the limit is off. `dispatcher.InboundOutcome` gains `PeerFault`.
+- `csms.WithInboundRateLimit(perSecond, burst)` / `cp.WithInboundRateLimit` and
+  `WithInboundRateLimitAction` (`dispatcher.Config.InboundRate`, `InboundBurst`,
+  `InboundRateAction`): opt-in per-connection token bucket on inbound CALLs and SENDs.
+  Over the limit a CALL is answered with a `GenericError` CALLERROR ("rate limit
+  exceeded", `dispatcher.RateLimitReject`, default; `ErrorCodeMapper` sees the new
+  `ErrorSourceRateLimit`) and its handler does not run, or the connection is closed
+  with 1008 (`dispatcher.RateLimitClose`). Responses are never limited. Counted by the
+  new optional `observability.RateLimitMetrics` (Prometheus
+  `gocpp_inbound_rate_limited_total{version,outcome}`, OTel `gocpp.inbound_rate_limited`).
+  Off by default.
 
 ### Changed
 

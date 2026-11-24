@@ -77,3 +77,10 @@ func TestProm_BadFrameMetrics(t *testing.T) {
 	n := testutil.CollectAndCount(reg, "gocpp_bad_frames_total")
 	require.Equal(t, 1, n)
 }
+
+func TestProm_RateLimitMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	rm := prom.New(reg).(observability.RateLimitMetrics)
+	rm.InboundRateLimited("1.6", "rejected")
+	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_inbound_rate_limited_total"))
+}
