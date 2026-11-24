@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/shiv3/gocpp/core/ocppj"
+	"github.com/shiv3/gocpp/core/transport"
 )
 
 // send writes a pre-framed payload on the calling goroutine and returns the
@@ -268,4 +269,33 @@ func callErrorDetails(ce *ocppj.CallError) []byte {
 		return mustJSON(ce.Details)
 	}
 	return nil
+}
+
+// badFrameCloseReason is the close reason sent when MaxBadFrames is exceeded.
+const badFrameCloseReason = "too many invalid frames"
+
+// noteBadFrame counts one bad inbound frame (see Config.MaxBadFrames) and, once
+// the limit is reached within the window, closes the connection with 1008.
+func (c *Conn) noteBadFrame(reason string) {
+	if m, ok := c.cfg.Metrics.(badFrameMetricsHook); ok {
+		m.BadFrame(string(c.version), reason)
+	}
+	limit := c.cfg.MaxBadFrames
+	if limit <= 0 {
+		return
+	}
+	now := time.Now()
+	c.badMu.Lock()
+	if c.badCount == 0 || (c.cfg.BadFrameWindow > 0 && now.Sub(c.badStart) > c.cfg.BadFrameWindow) {
+		c.badCount, c.badStart = 0, now
+	}
+	c.badCount++
+	trip := c.badCount == limit
+	c.badMu.Unlock()
+	if !trip {
+		return
+	}
+	c.cfg.Logger.WarnContext(c.ctx, "closing connection: too many invalid frames",
+		"cp_id", c.id, "limit", limit, "last_reason", reason)
+	c.AbortWithStatus(transport.StatusPolicyViolation, badFrameCloseReason)
 }

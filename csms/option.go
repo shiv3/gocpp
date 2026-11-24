@@ -283,6 +283,21 @@ func WithMaxMessageSize(n int64) Option {
 	})
 }
 
+// WithMaxBadFrames closes the connection once a charge point has sent n bad frames
+// within window: frames that are not valid OCPP-J, have an unsupported
+// MessageTypeId, or are CALLs with a bad message id, a payload that fails schema
+// validation or one that cannot be decoded. The close frame carries 1008 (policy
+// violation). window <= 0 counts over the life of the connection. n <= 0, the
+// default, never closes. Bad frames are counted in the metric
+// gocpp_bad_frames_total (observability.BadFrameMetrics) either way. Schema
+// failures only occur when schema validation is on (see WithStrictSchema, WithTolerantSchema).
+func WithMaxBadFrames(n int, window time.Duration) Option {
+	return optionFunc(func(c *serverConfig) {
+		c.dispatcher.MaxBadFrames = n
+		c.dispatcher.BadFrameWindow = window
+	})
+}
+
 // WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
 // as upstream ocpp-go v0.19.0 has none. Part of WithOCPPGoCompat; not
 // recommended on an internet-facing endpoint: a peer can then make this process

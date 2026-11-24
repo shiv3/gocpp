@@ -210,6 +210,21 @@ type Config struct {
 	// (compat/ocppgo does, for ocpp-go's InvalidMessageHook and error texts).
 	ParseErrorHook func(c *Conn, msg []byte, err error) (consumed bool)
 
+	// MaxBadFrames closes the connection once the peer has sent this many bad
+	// frames within BadFrameWindow: a frame that is not valid OCPP-J, one with an
+	// unsupported MessageTypeId, an inbound CALL whose message id breaks the
+	// policy, or an inbound CALL rejected by schema validation or whose payload
+	// cannot be decoded. The close frame carries code 1008 (policy violation) and
+	// the reason "too many invalid frames"; the cause is a *CloseStatus. An unknown
+	// action is not a bad frame. 0, the default, never closes (each bad frame is
+	// still counted when the metrics hook implements observability.BadFrameMetrics).
+	MaxBadFrames int
+	// BadFrameWindow is the period in which MaxBadFrames bad frames close the
+	// connection. The count restarts when a bad frame arrives more than this long
+	// after the first of the current run. 0 counts over the whole life of the
+	// connection.
+	BadFrameWindow time.Duration
+
 	// Signer, when non-nil, signs outbound CALL/SEND messages as OCPP 2.1 Signed
 	// Messages (Part 4 Ch 7).
 	Signer *signing.Signer

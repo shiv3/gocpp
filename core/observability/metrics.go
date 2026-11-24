@@ -83,3 +83,13 @@ type ConnectionMetrics interface {
 	// PingLatency reports one WebSocket ping round trip (ping sent until pong).
 	PingLatency(version string, d time.Duration)
 }
+
+// BadFrameMetrics is an optional extension of Metrics. A Metrics value that
+// also implements it is told about each bad frame a peer sent: reason is parse
+// (not valid OCPP-J), unknown_type (unsupported MessageTypeId), message_id (a
+// CALL whose message id breaks the policy), schema (a CALL rejected by schema
+// validation) or decode (a CALL whose payload cannot be decoded). It counts
+// whether or not dispatcher.Config.MaxBadFrames is set.
+type BadFrameMetrics interface {
+	BadFrame(version, reason string)
+}

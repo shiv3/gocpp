@@ -68,3 +68,12 @@ func TestProm_TenantAndEdgeMetrics(t *testing.T) {
 	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_tenant_inflight"))
 	require.Equal(t, 1, testutil.CollectAndCount(reg, "gocpp_edge_responses_total"))
 }
+
+func TestProm_BadFrameMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	bm := prom.New(reg).(observability.BadFrameMetrics)
+	bm.BadFrame("1.6", "parse")
+	bm.BadFrame("1.6", "parse")
+	n := testutil.CollectAndCount(reg, "gocpp_bad_frames_total")
+	require.Equal(t, 1, n)
+}

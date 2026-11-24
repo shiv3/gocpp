@@ -27,6 +27,7 @@ func TestOTel_RecordsInstruments(t *testing.T) {
 	cm.OutboundQueueDepth("1.6", 3)
 	cm.PingLatency("1.6", time.Millisecond)
 	m.(observability.SchemaSoftViolationMetrics).SchemaSoftViolation("1.6", "StartTransaction", "request", "format")
+	m.(observability.BadFrameMetrics).BadFrame("1.6", "parse")
 
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(context.Background(), &rm))
@@ -41,7 +42,7 @@ func TestOTel_RecordsInstruments(t *testing.T) {
 		"gocpp.connections", "gocpp.pending_calls",
 		"gocpp.calls", "gocpp.call.duration", "gocpp.schema_failures",
 		"gocpp.outbound_queue.depth", "gocpp.ping.latency",
-		"gocpp.schema_soft_violations",
+		"gocpp.schema_soft_violations", "gocpp.bad_frames",
 	} {
 		require.Truef(t, got[want], "expected metric %q to be recorded", want)
 	}

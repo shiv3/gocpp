@@ -42,3 +42,9 @@ type connectionMetricsHook interface {
 	OutboundQueueDepth(version string, depth int)
 	PingLatency(version string, d time.Duration)
 }
+
+// badFrameMetricsHook is an optional MetricsHook extension that receives one
+// event per bad inbound frame (see Config.MaxBadFrames).
+type badFrameMetricsHook interface {
+	BadFrame(version, reason string)
+}
