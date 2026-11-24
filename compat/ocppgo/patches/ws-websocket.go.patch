@@ -1,5 +1,5 @@
---- a/ws/websocket.go	2026-11-25 00:08:59.380332094 +0900
-+++ b/ws/websocket.go	2026-11-25 00:08:59.380332094 +0900
+--- a/ws/websocket.go	2026-11-25 00:27:12.275700273 +0900
++++ b/ws/websocket.go	2026-11-25 00:27:12.279700269 +0900
 @@ -5,9 +5,9 @@
  package ws
  
@@ -11,15 +11,40 @@
  	"fmt"
  	"io"
  	"math/rand"
-@@ -18,7 +18,6 @@
+@@ -18,8 +18,8 @@
  	"sync"
  	"time"
  
 -	"github.com/gorilla/mux"
  	"github.com/gorilla/websocket"
++	"github.com/lorenzodonini/ocpp-go/internal/synclog"
  	"github.com/lorenzodonini/ocpp-go/logging"
  )
-@@ -127,8 +126,14 @@
+ 
+@@ -49,8 +49,11 @@
+ 	defaultRetryBackOffWaitMinimum = 10 * time.Second
+ )
+ 
+-// The internal verbose logger
+-var log logging.Logger
++// The internal verbose logger. SetLogger may be called at any time.
++var (
++	logTarget                = synclog.New()
++	log       logging.Logger = logTarget
++)
+ 
+ // Sets a custom Logger implementation, allowing the package to log events.
+ // By default, a VoidLogger is used, so no logs will be sent to any output.
+@@ -60,7 +63,7 @@
+ 	if logger == nil {
+ 		panic("cannot set a nil logger")
+ 	}
+-	log = logger
++	logTarget.Set(logger)
+ }
+ 
+ // Config contains optional configuration parameters for a websocket server.
+@@ -127,8 +130,14 @@
  	outQueue           chan []byte
  	closeC             chan websocket.CloseError // used to gracefully close a websocket connection.
  	forceCloseC        chan error                // used by the readPump to notify a forcefully closed connection to the writePump.
@@ -34,7 +59,7 @@
  }
  
  // Retrieves the unique Identifier of the websocket (typically, the URL suffix).
-@@ -138,6 +143,12 @@
+@@ -138,6 +147,12 @@
  
  // Returns the address of the remote peer.
  func (websocket *WebSocket) RemoteAddr() net.Addr {
@@ -47,7 +72,7 @@
  	return websocket.connection.RemoteAddr()
  }
  
-@@ -259,431 +270,6 @@
+@@ -259,431 +274,6 @@
  	Connections(websocketId string) *WebSocket
  }
  
@@ -479,7 +504,7 @@
  // ---------------------- CLIENT ----------------------
  
  // WsClient defines a websocket client, needed to connect to a websocket server.
-@@ -803,6 +389,11 @@
+@@ -803,6 +393,11 @@
  	mutex          sync.Mutex
  	errC           chan error
  	reconnectC     chan struct{} // used for signaling, that a reconnection attempt should be interrupted
@@ -491,7 +516,7 @@
  }
  
  // Creates a new simple websocket client (the channel is not secured).
-@@ -857,11 +448,27 @@
+@@ -857,11 +452,27 @@
  }
  
  func (client *Client) SetDisconnectedHandler(handler func(err error)) {
@@ -519,7 +544,7 @@
  }
  
  func (client *Client) AddOption(option interface{}) {
-@@ -902,22 +509,22 @@
+@@ -902,22 +513,22 @@
  	return time.Now().Add(client.timeoutConfig.PongWait)
  }
  
@@ -548,7 +573,7 @@
  			// Send data
  			log.Debugf("sending data")
  			_ = conn.SetWriteDeadline(time.Now().Add(client.timeoutConfig.WriteWait))
-@@ -939,7 +546,7 @@
+@@ -939,7 +550,7 @@
  				return
  			}
  			log.Debugf("ping sent")
@@ -557,7 +582,7 @@
  			log.Debugf("closing connection")
  			// Closing connection gracefully
  			if err := conn.WriteControl(
-@@ -953,7 +560,7 @@
+@@ -953,7 +564,7 @@
  			// Passing nil will also not call onDisconnected.
  			closure(nil)
  			return
@@ -566,7 +591,7 @@
  			log.Debugf("handling forced close signal")
  			// Read pump sent a forceClose signal (reading failed -> aborting the connection)
  			if !ok || closed != nil {
-@@ -965,8 +572,8 @@
+@@ -965,8 +576,8 @@
  	}
  }
  
@@ -577,7 +602,7 @@
  	_ = conn.SetReadDeadline(client.getReadTimeout())
  	conn.SetPongHandler(func(string) error {
  		log.Debugf("pong received")
-@@ -979,7 +586,7 @@
+@@ -979,7 +590,7 @@
  				client.error(fmt.Errorf("read failed: %w", err))
  			}
  			// Notify writePump of error. Forced close will be handled there
@@ -586,7 +611,7 @@
  			return
  		}
  
-@@ -996,13 +603,14 @@
+@@ -996,13 +607,14 @@
  
  // Frees internal resources after a websocket connection was signaled to be closed.
  // From this moment onwards, no new messages may be sent.
@@ -604,7 +629,7 @@
  	close(ws.closeC)
  }
  
-@@ -1012,22 +620,28 @@
+@@ -1012,22 +624,28 @@
  	reconnectionAttempts := 1
  	for {
  		// Wait before reconnecting
@@ -637,7 +662,7 @@
  		client.error(fmt.Errorf("reconnection failed: %w", err))
  
  		if reconnectionAttempts < client.timeoutConfig.RetryBackOffRepeatTimes {
-@@ -1052,12 +666,19 @@
+@@ -1052,12 +670,19 @@
  }
  
  func (client *Client) Write(data []byte) error {
@@ -660,7 +685,7 @@
  }
  
  func (client *Client) StartWithRetries(urlStr string) {
-@@ -1068,12 +689,25 @@
+@@ -1068,12 +693,25 @@
  	}
  }
  
@@ -687,7 +712,7 @@
  
  	dialer := websocket.Dialer{
  		ReadBufferSize:   1024,
-@@ -1104,26 +738,45 @@
+@@ -1104,26 +742,45 @@
  	// The id of the charge point is the final path element
  	id := path.Base(url.Path)
  
@@ -738,7 +763,7 @@
  	if client.connected {
  		client.connected = false
  		// Send signal for gracefully shutting down the connection
-@@ -1132,26 +785,49 @@
+@@ -1132,32 +789,51 @@
  		default:
  		}
  	}
@@ -792,3 +817,9 @@
  	if client.errC == nil {
  		client.errC = make(chan error, 1)
  	}
+ 	return client.errC
+ }
+-
+-func init() {
+-	log = &logging.VoidLogger{}
+-}

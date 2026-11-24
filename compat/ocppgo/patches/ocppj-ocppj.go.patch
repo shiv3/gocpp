@@ -1,0 +1,169 @@
+--- a/ocppj/ocppj.go	2026-11-25 00:27:12.243700298 +0900
++++ b/ocppj/ocppj.go	2026-11-25 00:27:12.243700298 +0900
+@@ -7,7 +7,9 @@
+ 	"fmt"
+ 	"math/rand"
+ 	"reflect"
++	"sync/atomic"
+ 
++	"github.com/lorenzodonini/ocpp-go/internal/synclog"
+ 	"github.com/lorenzodonini/ocpp-go/logging"
+ 
+ 	"gopkg.in/go-playground/validator.v9"
+@@ -19,19 +21,40 @@
+ var Validate = validator.New()
+ 
+ // The internal validation settings. Enabled by default.
+-var validationEnabled bool
++var validationDisabled atomic.Bool
+ 
+-// The internal verbose logger
+-var log logging.Logger
++// The internal verbose logger. SetLogger may be called at any time.
++var (
++	logTarget                = synclog.New()
++	log       logging.Logger = logTarget
++)
+ 
++// EscapeHTML is the initial setting for escaping "<", ">" and "&" when marshaling.
++// Use SetHTMLEscape to change it while endpoints are running; a direct write to
++// the variable is only safe before any endpoint is started.
+ var EscapeHTML = true
+ 
++// escapeHTMLSet is the race-free setting of SetHTMLEscape; it takes precedence
++// over EscapeHTML once SetHTMLEscape has been called.
++var (
++	escapeHTMLSet atomic.Bool
++	escapeHTMLVal atomic.Bool
++)
++
++func escapeHTML() bool {
++	if escapeHTMLSet.Load() {
++		return escapeHTMLVal.Load()
++	}
++	return EscapeHTML
++}
++
+ func init() {
+ 	_ = Validate.RegisterValidation("errorCode", IsErrorCodeValid)
+-	log = &logging.VoidLogger{}
+-	validationEnabled = true
+ }
+ 
++// validationEnabled reports whether message validation is on (the default).
++func validationEnabled() bool { return !validationDisabled.Load() }
++
+ // Sets a custom Logger implementation, allowing the ocpp-j package to log events.
+ // By default, a VoidLogger is used, so no logs will be sent to any output.
+ //
+@@ -40,13 +63,16 @@
+ 	if logger == nil {
+ 		panic("cannot set a nil logger")
+ 	}
+-	log = logger
++	logTarget.Set(logger)
+ }
+ 
+ // Allows an instance of ocppj to configure if the message is Marshaled by escaping special caracters like "<", ">", "&" etc
+ // For more info https://pkg.go.dev/encoding/json#HTMLEscape
++//
++// It is safe to call at any time.
+ func SetHTMLEscape(flag bool) {
+-	EscapeHTML = flag
++	escapeHTMLVal.Store(flag)
++	escapeHTMLSet.Store(true)
+ }
+ 
+ // Allows to enable/disable automatic validation for OCPP messages
+@@ -57,8 +83,10 @@
+ //
+ // ⚠️ Use at your own risk! When disabled, outgoing and incoming OCPP messages will not be validated anymore,
+ // potentially leading to errors.
++//
++// It is safe to call at any time.
+ func SetMessageValidation(enabled bool) {
+-	validationEnabled = enabled
++	validationDisabled.Store(!enabled)
+ }
+ 
+ // MessageType identifies the type of message exchanged between two OCPP endpoints.
+@@ -79,9 +107,14 @@
+ 	json.Marshaler
+ }
+ 
+-var messageIdGenerator = func() string {
+-	return fmt.Sprintf("%v", rand.Uint32())
+-}
++var messageIdGeneratorP = func() *atomic.Pointer[func() string] {
++	p := &atomic.Pointer[func() string]{}
++	g := func() string { return fmt.Sprintf("%v", rand.Uint32()) }
++	p.Store(&g)
++	return p
++}()
++
++func messageIdGenerator() string { return (*messageIdGeneratorP.Load())() }
+ 
+ // SetMessageIdGenerator sets a lambda function for generating unique IDs for new messages.
+ // The function is invoked automatically when creating a new Call.
+@@ -89,9 +122,11 @@
+ // Settings this overrides the default behavior, which is:
+ //
+ //	fmt.Sprintf("%v", rand.Uint32())
++//
++// It is safe to call at any time.
+ func SetMessageIdGenerator(generator func() string) {
+ 	if generator != nil {
+-		messageIdGenerator = generator
++		messageIdGeneratorP.Store(&generator)
+ 	}
+ }
+ 
+@@ -309,7 +344,7 @@
+ func jsonMarshal(t interface{}) ([]byte, error) {
+ 	buffer := &bytes.Buffer{}
+ 	encoder := json.NewEncoder(buffer)
+-	encoder.SetEscapeHTML(EscapeHTML)
++	encoder.SetEscapeHTML(escapeHTML())
+ 	err := encoder.Encode(t)
+ 	return bytes.TrimRight(buffer.Bytes(), "\n"), err
+ }
+@@ -449,7 +484,11 @@
+ 			log.Infof("No previous request %v sent. Discarding response message", uniqueId)
+ 			return nil, nil
+ 		}
+-		profile, _ := endpoint.GetProfileForFeature(request.GetFeatureName())
++		profile, ok := endpoint.GetProfileForFeature(request.GetFeatureName())
++		if !ok {
++			// A pending request of a feature this endpoint has no profile for.
++			return nil, ocpp.NewError(InternalError, fmt.Sprintf("no profile for feature %v", request.GetFeatureName()), uniqueId)
++		}
+ 		confirmation, err := profile.ParseResponse(request.GetFeatureName(), arr[2], parseRawJsonConfirmation)
+ 		if err != nil {
+ 			return nil, ocpp.NewError(FormatErrorType(endpoint), err.Error(), uniqueId)
+@@ -521,7 +560,7 @@
+ 		Action:        action,
+ 		Payload:       request,
+ 	}
+-	if validationEnabled {
++	if validationEnabled() {
+ 		err := Validate.Struct(call)
+ 		if err != nil {
+ 			return nil, err
+@@ -544,7 +583,7 @@
+ 		UniqueId:      uniqueId,
+ 		Payload:       confirmation,
+ 	}
+-	if validationEnabled {
++	if validationEnabled() {
+ 		err := Validate.Struct(callResult)
+ 		if err != nil {
+ 			return nil, err
+@@ -562,7 +601,7 @@
+ 		ErrorDescription: description,
+ 		ErrorDetails:     details,
+ 	}
+-	if validationEnabled {
++	if validationEnabled() {
+ 		err := Validate.Struct(callError)
+ 		if err != nil {
+ 			return nil, err

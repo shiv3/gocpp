@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- compat/ocppgo dependencies: logrus 1.9.3 (PR #323), universal-translator 0.18.1 and
+  locales 0.14.1 (PR #324), validator.v9 9.31.0, go-jose 4.1.9, jsonschema 6.0.3.
+
 ### Added
 
 - `csms.Conn.ClientIP()`, `csms.ClientIP()` and `csms.WithTrustedProxies(prefixes...)`:
@@ -15,6 +20,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- compat/ocppgo: `ocppj.SetLogger`, `ws.SetLogger`, `ocppj.SetMessageValidation`,
+  `ocppj.SetHTMLEscape` and `ocppj.SetMessageIdGenerator` are race free (safe while
+  endpoints run; ocpp-go issues #231, #309, PRs #391, ocpp-go fork commits f389d7c8,
+  fdfd08fc). `ParseMessage` returns an `InternalError` instead of dereferencing a nil
+  profile for a pending request of an unsupported feature (PR #413, 2bd568b7).
+  The exported variable `ocppj.EscapeHTML` is unchanged (API); `SetHTMLEscape` takes
+  precedence once called.
 - compat/ocppgo client (ocpp-go's code, on by default because these are panic and hang
   fixes; ocpp-go issues #143, #153, #205, PRs #91, and the evcc/grid-x/enesismail fork
   fixes): `Stop` is idempotent and safe before `Start` and during a reconnect (no

@@ -49,7 +49,7 @@ maintain it.
 | 7 | JSON numbers pass through `float64` | r07 | 64-bit ids silently changed or rejected | unchanged | **reproduced** (same decoding code) | not reproduced |
 | 8 | Each inbound frame is decoded twice | r09 | 1.3x to 2.2x the time of a single typed decode | unchanged | same code | single decode |
 | 9 | Hand-written types and `validate` tags differ from the OCA schemas; no OCPP 2.1 | r13 | 3 of 3 schema-valid messages rejected | partly fixed, unreleased | **reproduced** (same tags; leniency is opt-in) | types generated from the schemas; 1.6, 2.0.1, 2.1 |
-| 10 | Configuration is process-wide; `SetMessageValidation(false)` does not disable inbound validation | r10 | reproduced | unchanged | **reproduced** (same package variables) | per-server options |
+| 10 | Configuration is process-wide; `SetMessageValidation(false)` does not disable inbound validation | r10 | reproduced | unchanged | **reproduced** (same package variables; the `SetLogger` race is fixed after `v0.19.0-gocpp.2`) | per-server options |
 | 11 | No `context.Context` in handlers or calls | (API) | - | unchanged | unchanged (API compatibility) | `ctx` everywhere |
 | 12 | Two goroutines and four channels per connection | r12 | 2.00 goroutines per idle connection | unchanged | 1.00 | 1.00 |
 | 13 | Client: calling `Stop` twice panics | r11 | process exits | partly changed | fixed by default in the release after `v0.19.0-gocpp.2` (`v0.19.0-gocpp.2` and earlier: reproduced) | separate implementation |
@@ -541,8 +541,15 @@ is open.
 
 **gocpp.** Native: configuration is per server, through options
 (`csms.WithLenientSchema()`, `WithTimeEncoding(...)`, ...). **Drop-in: r10
-reproduces**; the package variables are part of ocpp-go's API and are kept.
-The settings the drop-in adds (`compat.*`) are per server.
+reproduces** as far as the settings being process-wide (and the inbound
+validation flag) goes: the package variables are part of ocpp-go's API and are
+kept. What changed, from the release after `v0.19.0-gocpp.2`: the setters
+`ocppj.SetLogger`, `ws.SetLogger`, `ocppj.SetMessageValidation`,
+`ocppj.SetHTMLEscape` and `ocppj.SetMessageIdGenerator` are safe to call while
+servers and clients run (the race in the last bullet above is gone; the stored
+r10 output shows 0 data races). The exported variable `ocppj.EscapeHTML` stays
+a plain variable (API); write it only before starting an endpoint, or use
+`SetHTMLEscape`. The settings the drop-in adds (`compat.*`) are per server.
 
 ## 11. No context.Context
 
@@ -758,7 +765,7 @@ gocpp is one option among several.
 - **The drop-in replaces the server runtime only.** Payload decoding,
   validation, the callback FIFO of the 1.6 / 2.0.1 glue, the package-level
   configuration and the whole client side remain ocpp-go's code. On the
-  drop-in, r07, r10 and r13 reproduce exactly as on upstream, and
+  drop-in, r07, r10 (apart from the data race, see section 10) and r13 reproduce exactly as on upstream, and
   r09 is the same code.
 - **Up to and including `v0.19.0-gocpp.2` the drop-in misdelivered a response
   after a reconnect when no disconnect handler was registered** (r08-C). Later
