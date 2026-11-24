@@ -1,8 +1,19 @@
 # Migrating from lorenzodonini/ocpp-go
 
-gocpp is a deliberate rewrite, not a drop-in replacement: there is no automated
-converter and no compatibility shim. The payoff is typed, generics-first handlers and
-a single module that also speaks OCPP 2.1.
+The native gocpp API is a deliberate rewrite: moving to it means changing your
+code, and there is no automated converter. The payoff is typed, generics-first
+handlers and a single module that also speaks OCPP 2.1.
+
+**If you want gocpp's runtime but not a rewrite**, use the drop-in module
+[`compat/ocppgo`](../compat/ocppgo/README.md): it has the public API of ocpp-go
+v0.19.0 and serves connections on the gocpp runtime, with one line in `go.mod`
+and no change to your code:
+
+```
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2
+```
+
+The rest of this page is the API mapping for the native gocpp API.
 
 ## API mapping
 

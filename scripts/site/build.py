@@ -24,7 +24,6 @@ import svg as svglib  # noqa: E402
 
 REPO = "https://github.com/shiv3/gocpp"
 DOCS = REPO + "/blob/main/docs/"
-LT = REPO + "/blob/test/loadtest-4k/interop/"
 PKG = "https://pkg.go.dev/github.com/shiv3/gocpp"
 COMPAT = REPO + "/blob/main/compat/"
 REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2"
@@ -73,20 +72,20 @@ def table(head, rows, caption=None, cls="", num=()):
 
 # --------------------------------------------------------------------------
 # Charts: gocpp against ocpp-go, one small panel per measure (never two scales
-# on one axis). Numbers: interop/loadtest/results/2026-11-21-final/report.md on
-# branch test/loadtest-4k.
+# on one axis). Numbers: the 2026-11-22 and 2026-11-24 comparisons of gocpp and upstream
+# ocpp-go v0.19.0 (same harness); upstream froze in the soak.
 PANELS = [
     # title, unit, gocpp, ocpp-go, format, note
-    ("Idle connection, RSS", "KB per connection, 10,000 idle connections", 13.6, 22.7, "{:.1f} KB", "lower is better"),
-    ("10,000 idle connections", "process RSS, MB", 151, 240, "{:,.0f} MB", "lower is better"),
-    ("4,000-charger soak, memory", "max RSS over 25 minutes, MB", 154, 212, "{:,.0f} MB", "lower is better"),
-    ("4,000-charger soak, goroutines", "maximum over 25 minutes", 5323, 9972, "{:,.0f}", "lower is better"),
-    ("Heartbeat p99 at 30k msg/s", "ms, GOGC=100", 1.7, 2.4, "{:.1f} ms", "lower is better"),
-    ("Heartbeat p99 at 60k msg/s", "ms, GOGC=100", 7.4, 9.3, "{:.1f} ms", "lower is better"),
-    ("Server CPU at 30k msg/s", "cores (of 4)", 1.16, 1.04, "{:.2f} cores", "lower is better; ocpp-go is ahead"),
-    ("Allocation per request at 30k msg/s", "KB", 3.54, 2.94, "{:.2f} KB", "lower is better; ocpp-go is ahead"),
+    ("4,000-charger soak, chargers connected", "median over 25 minutes, 40% mute chargers", 3989, 0, "{:,.0f}", "higher is better; ocpp-go froze after every start"),
+    ("4,000-charger soak, memory", "max RSS over 25 minutes, MB", 163, 501, "{:,.0f} MB", "lower is better; ocpp-go's figure is a frozen process"),
+    ("4,000-charger soak, goroutines", "maximum over 25 minutes", 5306, 22622, "{:,.0f}", "lower is better; ocpp-go's figure is a frozen process"),
+    ("Max RSS at 30k msg/s", "MB, no CSMS calls", 124, 167, "{:,.0f} MB", "lower is better"),
+    ("Heartbeat p99 at 30k msg/s", "ms, no CSMS calls", 1.4, 1.4, "{:.1f} ms", "same bucket"),
+    ("Heartbeat p99 at 60k msg/s", "ms, no CSMS calls", 5.3, 5.3, "{:.1f} ms", "same bucket"),
+    ("Server CPU at 30k msg/s", "cores (of 4)", 0.98, 1.01, "{:.2f} cores", "lower is better; within noise"),
+    ("Allocation per request at 30k msg/s", "KB", 3.57, 2.92, "{:.2f} KB", "lower is better; ocpp-go is ahead"),
 ]
-SERIES = [("gocpp", "gocpp (lenient schema validation)"), ("ocppgo", "ocpp-go (v0.17.2 fork)")]
+SERIES = [("gocpp", "gocpp (lenient schema validation)"), ("ocppgo", "ocpp-go v0.19.0 (upstream)")]
 
 
 def bar_panel(i, title, unit, a, b, fmt, note):
@@ -117,6 +116,7 @@ def bar_panel(i, title, unit, a, b, fmt, note):
 
 def bars_panel(title, unit, rows, note="", label_w=62, w=300):
     """rows: (label, series key, series name, value, format). One scale per panel, bars from zero."""
+    rows = [r for r in rows if r[3] is not None]  # not measured: no bar
     h = 6 + len(rows) * 30
     x0, maxw = label_w, w - label_w - 88
     top = max(r[3] for r in rows)
@@ -157,7 +157,7 @@ def viz(vid, title, sub, series, panels_html, table_html, note, cols=None):
 def chart():
     panels = "".join(bar_panel(i, *p) for i, p in enumerate(PANELS))
     rows = [[esc(t) + ' <span class="unit">(' + esc(u) + ")</span>", esc(f.format(a)), esc(f.format(b))] for t, u, a, b, f, _ in PANELS]
-    tbl = table(["Measure", "gocpp", "ocpp-go (v0.17.2 fork)"], rows, num=(1, 2)).replace(
+    tbl = table(["Measure", "gocpp", "ocpp-go v0.19.0"], rows, num=(1, 2)).replace(
         '<div class="tablewrap "', '<div class="tablewrap" id="cmp-table" hidden', 1)
     legend = "".join('<li><span class="key %s"></span>%s</li>' % (k, esc(n)) for k, n in SERIES)
     return (
@@ -166,10 +166,11 @@ def chart():
         '<button class="btn" type="button" data-table="cmp-table" aria-expanded="false">Show as table</button></div>'
         '<ul class="vlegend" aria-label="Series">' + legend + "</ul>"
         '<div class="panels">' + panels + "</div>" + tbl +
-        '<p class="vnote">Single runs on one WSL2 machine (2026-11-21); latency percentiles are histogram bucket upper bounds with 12% resolution, '
-        "so differences of a bucket or two are noise. gocpp ran with lenient schema validation on; with validation off it used 0.81 cores and 1.39 KB per request at 30k msg/s. "
-        'The ocpp-go build is a fork of v0.17.2 with fixes (<code>v0.17.2-fix.3</code>). At about 280 msg/s (the soak), latency was the same for both (Heartbeat p50/p95/p99 0.2 / 0.5 / 0.8 ms). '
-        'Source: <a href="' + LT + 'loadtest/results/2026-11-21-final/report.md">final acceptance report</a>.</p></div>'
+        "<p class=\"vnote\">Single runs on one WSL2 machine (2026-11-22 and 2026-11-24), gocpp v0.3.x against upstream lorenzodonini/ocpp-go v0.19.0 with its defaults, same harness and fleet. The soak panels are the 25-minute run with 50 CSMS calls per second (2026-11-24); "
+        "the other panels are the 4,000-charger runs without CSMS calls (2026-11-22), where ocpp-go did not freeze. Latency percentiles are histogram bucket upper bounds with 12% resolution, "
+        "so differences of a bucket or two are noise. gocpp ran with lenient schema validation on. "
+        "The upstream server stopped answering after each of the six starts in the soak (52 to 95 seconds in) and stayed stopped until the next restart; the cause is a deadlock between its dispatcher goroutine and its senders, written up in "
+        '<a href="' + DOCS + 'ocpp-go-structural-issues.md">docs/ocpp-go-structural-issues.md</a>. Only 1.6 was measured.</p></div>'
     )
 
 
@@ -273,7 +274,7 @@ def build():
 <li class="tile"><div class="lab">Memory per idle connection</div><div class="val">13.6<small>KB RSS</small></div><div class="cmp">7.8 KB heap + 4.1 KB stack live</div></li>
 <li class="tile"><div class="lab">10,000 idle connections</div><div class="val">151<small>MB RSS</small></div><div class="cmp">one process, measured with raw OCPP WebSocket clients</div></li>
 </ul>
-<p class="fine">Measurements are single runs on one machine and are described under <a href="#footprint">Footprint and latency</a>. Sources: <code>docs/performance.md</code> and the load-test reports on the <code>test/loadtest-4k</code> branch.</p>
+<p class="fine">Measurements are single runs on one machine and are described under <a href="#footprint">Footprint and latency</a>. Sources: <code>docs/performance.md</code> and the load-test runs of 2026-11-21, 2026-11-22 and 2026-11-24.</p>
 </div></header>
 """ % {"repo": REPO, "pkg": PKG})
 
@@ -397,26 +398,26 @@ def build():
 """ + chart() + """
 <h3>What the numbers do and do not say</h3>
 <ul>
-<li>For the same 4,000-charger fleet, gocpp used 27% less memory and 47% fewer goroutines than the ocpp-go fork, and its Heartbeat p99 was lower at 30k and 60k messages per second.</li>
-<li>With lenient validation on, gocpp used slightly more CPU and allocated about 20% more per request than ocpp-go. With validation off it allocated 53% less per request and used less CPU.</li>
-<li>At ordinary rates (a few hundred messages per second for 4,000 chargers) the two libraries were indistinguishable in latency, and neither froze, crashed or leaked in a 25-minute soak with five restarts.</li>
+<li>For the same 4,000-charger fleet without CSMS calls, gocpp used 26% less memory than upstream ocpp-go v0.19.0 at 30k messages per second (124 against 167 MB); Heartbeat p99 and server CPU were the same to within a histogram bucket.</li>
+<li>With lenient validation on, gocpp allocated about 22% more per request than ocpp-go (3.57 against 2.92 KB). With validation off gocpp allocated 1.4 KB, 53% less.</li>
+<li>In the 25-minute soak (40% mute chargers, 50 CSMS calls per second, five restarts), gocpp did not freeze, crash or leak. Upstream ocpp-go v0.19.0 froze after each of its six starts and served no messages for 69% of the run; it also froze with 5 calls per second, and in a capacity ramp with no calls at all at about 31,700 chargers. Not every setup triggers it: it did not freeze in the 4,000-charger runs without calls.</li>
 <li>These are single runs on one shared machine over loopback, without TLS. Treat them as orders of magnitude and measure your own workload; the harness and reports are in the repository.</li>
 </ul>
 <h3>Sizing: what one small server holds</h3>
-<p>A capacity run limited one embedded gocpp server with cgroups and ramped a quiet fleet against it (Heartbeat every 300 seconds, 20% charging with MeterValues every 60 seconds, 40% mute). On <b>1 core and 2 GB</b> it held about 93,700 chargers with a Heartbeat p99 at or under 200 ms (about 100,000 with schema validation off), at about 16 KB per connection; the ocpp-go fork held about 55,000 at 28 KB. On <b>2 cores and 4 GB</b> it held at least 112,000, where the test machine, not the server, ran out of memory. As a sizing rule with headroom: about 60,000 chargers on 1 core / 2 GB and about 100,000 on 2 cores / 4 GB, before TLS. Loopback, single runs. Charts, the reconnect-storm results and the caveats are under <a href="architecture.html#perf-capacity">Sizing and capacity</a>.</p>
+<p>A capacity run limited one embedded gocpp server with cgroups and ramped a quiet fleet against it (Heartbeat every 300 seconds, 20% charging with MeterValues every 60 seconds, 40% mute). On <b>1 core and 2 GB</b> it held about 93,700 chargers with a Heartbeat p99 at or under 200 ms (about 100,000 with schema validation off), at about 16 KB per connection; upstream ocpp-go v0.19.0 froze at about 26,000 to 31,000 chargers (about 37 KB per connection), before reaching a memory or CPU limit. On <b>2 cores and 4 GB</b> it held at least 112,000, where the test machine, not the server, ran out of memory. As a sizing rule with headroom: about 60,000 chargers on 1 core / 2 GB and about 100,000 on 2 cores / 4 GB, before TLS. Loopback, single runs. Charts, the reconnect-storm results and the caveats are under <a href="architecture.html#perf-capacity">Sizing and capacity</a>.</p>
 <h3>The footprint is guarded in CI</h3>
 <p><code>TestIdleFootprintBounds</code> opens 2,000 connections through the real server and fails if heap, stack or goroutines per connection exceed fixed bounds (9 KB heap and 6 KB stack today). The bounds are ratcheted down as the footprint shrinks, so a regression of a few hundred bytes per connection fails the build. <code>TestGatewayIdleFootprintBounds</code> does the same for the connection tier of a split deployment.</p>
 <h3>Tuning the garbage collector</h3>
 <p>Above roughly 10k requests per second, a larger <code>GOGC</code> trades memory for a shorter tail. Always set <code>GOMEMLIMIT</code>.</p>
 """ + table(["GOGC", "Messages/s", "Heartbeat p99", "Max RSS", "Server CPU (cores)"], gogc_rows, caption="4,000 chargers, server pinned to 4 cores, lenient schema, one run per row.", num=(1, 2, 3, 4)) + """
 <p>The connection model, the message paths and the full set of measurements (soak, drain, gateway hop) are on the <a href="architecture.html">architecture and performance page</a>.</p>
-<p class="src">Sources: <a href="%sperformance.md">docs/performance.md</a> (cost model, runtime settings, handler pool sizing, every tuning knob), <code>benchmarks/footprint_test.go</code>, and <a href="%sloadtest/results/2026-11-21-final/report.md">interop/loadtest/results/2026-11-21-final/report.md</a> on branch <code>test/loadtest-4k</code>.</p>
-""" % (DOCS, LT)
+<p class="src">Sources: <a href="%sperformance.md">docs/performance.md</a> (cost model, runtime settings, handler pool sizing, every tuning knob), <code>benchmarks/footprint_test.go</code>, and the load-test runs of 2026-11-21 and 2026-11-22 (harness <code>interop/loadtest</code>).</p>
+""" % DOCS
     parts.append(section("footprint", "Commitment 4", "Footprint and latency", "One goroutine and about 13 KB per idle connection, and a latency tail that stays short at tens of thousands of messages per second.", body))
 
     # ---- testing ---------------------------------------------------------
     test_rows = [
-        ["Differential tests against ocpp-go", "Two minimal CSMS servers with identical canned behaviour, one on each library, receive the same traffic from a charge-point simulator; frames, close codes and server events are diffed.", "157 cases in the full run: 133 identical, including all 68 simulator scenarios; 24 raw-frame, fault and connection cases differ, each explained"],
+        ["Differential tests against ocpp-go", "Two minimal CSMS servers with identical canned behaviour, one on each library, receive the same traffic from a charge-point simulator; frames, close codes and server events are diffed.", "157 cases in the full run against upstream v0.19.0; all 68 simulator scenarios are identical and 23 raw-frame, fault and connection cases differ, each explained"],
         ["Conformance suites", "Per-message validation tables and direction enforcement for every generated message, ported from ocpp-go's per-message tests.", "194 messages across 1.6, 2.0.1 and 2.1; the suites run embedded, split over the in-process link, and split over NATS"],
         ["Fuzzing", "Differential fuzz targets: the fast paths (frame scanner, frame encoder, reflection-free decoder, lenient repair) must agree with the reference implementations on arbitrary bytes.", "4 fuzz targets in <code>core/ocppj</code> and <code>core/schema</code>"],
         ["Chaos tests with real processes", "Gateway, backends and registry run as real processes that are killed, partitioned and restarted while chargers stay connected.", "24 scenarios, run over the gRPC link and again over NATS; a mixed-version run against the previous release is wired up"],
@@ -427,8 +428,8 @@ def build():
     body = """
 <p class="why"><b>Why.</b> For a protocol library, "it works with our simulator" is not evidence. The questions that matter are what chargers see on the wire, what happens when a process dies mid-message, and whether last month's performance is still there.</p>
 """ + table(["Layer", "What it checks", "Scale"], test_rows) + fig(d.parity(), "<b>Differential testing.</b> The same simulator traffic goes to both servers; anything a charger could observe is compared. Differences are either fixed, or documented as deliberate and covered by the compatibility preset.") + """
-<p class="src">Where: <code>interop/parity</code> and its reports on branches <code>test/ocppgo-parity</code> and <code>test/loadtest-4k</code> (<a href="%sparity/results/2026-11-20-main/report.md">full run</a>, <a href="%sparity/results/2026-11-20-compat/report.md">compat run</a>), <code>internal/conformance</code>, <code>internal/e2e</code>, <code>cmd/gocpp-gateway/chaos</code>, <code>.github/workflows/ci.yml</code>, <code>.github/workflows/bench.yml</code>. The differential reports cover OCPP 1.6, the version ocpp-go and the simulator scenarios share.</p>
-""" % (LT, LT)
+<p class="src">Where: the differential harness <code>interop/parity</code>, <code>internal/conformance</code>, <code>internal/e2e</code>, <code>cmd/gocpp-gateway/chaos</code>, <code>.github/workflows/ci.yml</code>, <code>.github/workflows/bench.yml</code>. The differential reports cover OCPP 1.6, the version ocpp-go and the simulator scenarios share.</p>
+"""
     parts.append(section("testing", "Commitment 5", "Behaviour is tested, not assumed", "Claims about wire behaviour, failure handling and performance are backed by tests that run in CI.", body))
 
     # ---- scale -----------------------------------------------------------
@@ -471,7 +472,7 @@ def build():
 """ + table(["", "Result"], perf_rows, caption="4,000 chargers over loopback, gRPC link; single runs on one machine, no TLS.") + """
 <p>In the rollout run (4,000 chargers, 2 gateways, pools of 3 and 2 backends), manual steps of 1%%, 10%%, 50%% and 100%% moved 0.9%%, 9.4%%, 48.7%% and 100%% of chargers with no disconnects and no charger-visible errors, and each revision reached every gateway in 14 to 140 ms. A canary made to answer 30%% of requests with <code>InternalError</code> was rolled back by the automatic controller 20 seconds after its 1%% stage was applied.</p>
 <p>Running several full CSMS instances behind a load balancer, with calls forwarded to the instance that holds the socket, is also supported (<a href="%sclustering.md">clustering</a>); its message-router API is deprecated in favour of the gateway link.</p>
-<p class="src">Guides: <a href="%sgateway.md">gateway mode</a>, <a href="%sstaged-releases.md">staged releases</a>, <a href="%srollout.md">operator runbook</a>, <a href="%sdraining.md">draining</a>, <a href="%sdesign/gateway.md">design document</a>. Reports: <code>interop/loadtest/results/gateway-final-2026-11-21</code> and <code>rollout-2026-11-21</code> on branch <code>test/loadtest-4k</code>. Gateway crash recovery with TLS handshakes was not measured.</p>
+<p class="src">Guides: <a href="%sgateway.md">gateway mode</a>, <a href="%sstaged-releases.md">staged releases</a>, <a href="%srollout.md">operator runbook</a>, <a href="%sdraining.md">draining</a>, <a href="%sdesign/gateway.md">design document</a>. Measurements: the gateway and rollout load-test runs of 2026-11-21. Gateway crash recovery with TLS handshakes was not measured.</p>
 """ % (DOCS, DOCS, DOCS, DOCS, DOCS, DOCS)
     parts.append(section("scale", "Commitment 6", "A path from one process to a fleet", "Start with one embedded server. When deploys must not disconnect chargers, split the connection tier from the processing tier without rewriting handlers.", body))
 
@@ -553,11 +554,11 @@ def build():
 <ul>
 <li><b>API.</b> <code>apidiff</code> in CI: 42 of 42 packages identical to ocpp-go v0.19.0.</li>
 <li><b>ocpp-go's own tests.</b> ocpp-go's OCPP 1.6 and 2.0.1 test suites run against the module on the gocpp runtime in CI, and pass.</li>
-<li><b>Soak.</b> The runtime code under the module held 4,000 simulated chargers for 25 minutes (40%% of them not answering server calls, 50 server calls per second, five server restarts) with no stall and no crash: 152 MB maximum RSS, 5,978 goroutines (about 1.5 per connection), Heartbeat p50 / p95 / p99 of 0.2 / 0.5 / 0.8 ms. In a capacity ramp on 1 core and 2 GB it used about 22 KB per connection.</li>
+<li><b>Soak.</b> The module held 4,000 simulated chargers for 25 minutes (40%% of them not answering server calls, 50 server calls per second, five server restarts) with no stall and no crash: 154 MB maximum RSS, 5,988 goroutines (about 1.5 per connection), Heartbeat p50 / p95 / p99 of 0.3 / 0.6 / 0.9 ms. Upstream ocpp-go v0.19.0 under the same load froze after each of its six starts. In a capacity ramp on 1 core and 2 GB the module held 80,571 chargers at 22 to 23 KB per connection and stopped at a Heartbeat p99 of 1.2 s; upstream stopped at 27,774 chargers (35 to 38 KB per connection) after a freeze.</li>
 </ul>
-<div class="note"><p><b>Read these numbers with care.</b> Single runs over loopback on one shared machine, with a synthetic fleet and no TLS, measured on 2026-11-22 with the same server runtime code that this module ships (the load test was not repeated on the v0.19.0 API surface). Treat them as an indication and measure with your own traffic before a rollout.</p></div>
+<div class="note"><p><b>Read these numbers with care.</b> Single runs over loopback on one shared machine, with a synthetic fleet and no TLS, measured on 2026-11-24 on this module and on upstream ocpp-go v0.19.0 with the same harness. Treat them as an indication and measure with your own traffic before a rollout.</p></div>
 <p>For production, switch in stages: build and run your tests with the replace line, try both runtimes (<code>OCPPGO_COMPAT_RUNTIME=gocpp</code> and <code>=legacy</code>), run a canary, and keep the <code>legacy</code> switch as the fallback. The drop-in keeps ocpp-go's API; to move to gocpp's typed API later, see <a href="%(d)smigration-from-ocpp-go.md">Migrating from ocpp-go</a>.</p>
-<p class="src">Sources: <a href="%(c)socppgo/README.md">compat/ocppgo/README.md</a> (runtime choice, the <code>compat</code> package, known differences); CI jobs <code>ocppgo-compat</code> and <code>ocppgo-apidiff</code>; load-test results on the <code>test/loadtest-4k</code> branch.</p>
+<p class="src">Sources: <a href="%(c)socppgo/README.md">compat/ocppgo/README.md</a> (runtime choice, the <code>compat</code> package, known differences); CI jobs <code>ocppgo-compat</code> and <code>ocppgo-apidiff</code>; the load-test runs of 2026-11-24.</p>
 """ % {"c": COMPAT, "d": DOCS}
     parts.append(section("dropin", "Already on ocpp-go", "Drop-in replacement for ocpp-go", "Keep your code and ocpp-go's API; change the server runtime with one line in go.mod.", body))
 
@@ -572,20 +573,22 @@ def build():
         ["Idle connection", "server pings every 54 s; closes after 60 s of silence with close code 1000", "no server pings; read deadline 60 s, connection dropped (1006)"],
         ["After shutdown starts", "new upgrades get HTTP 503", "keeps accepting"],
         ["Logging", "<code>log/slog</code>", "logrus"],
-        ["Idle footprint (measured)", "1 goroutine, 13.6 KB RSS per connection", "2 goroutines, 22.7 KB RSS per connection"],
-        ["CPU with validation on (measured, 30k msg/s)", "1.16 cores", "1.04 cores"],
+        ["Idle footprint (measured)", "1 goroutine, 13.6 KB RSS per connection", "2 goroutines per connection; 35 to 38 KB RSS per connected charger under the capacity ramp (idle RSS not measured)"],
+        ["CPU with validation on (measured, 30k msg/s, no CSMS calls)", "0.98 cores", "1.01 cores"],
+        ["Mute chargers plus CSMS calls (measured, 4,000 chargers, 50 calls/s, 25 min)", "no freeze, 0 crashes", "froze after each of 6 starts; the dispatcher deadlocks (<a href=\"%socpp-go-structural-issues.md\">analysis</a>)" % DOCS],
         ["Migration path", "native API: compatibility preset and an API mapping; or keep ocpp-go's API with the <a href=\"#dropin\">drop-in module</a>", "n/a"],
         ["Maturity", "pre-v1; API may change", "established, widely used"],
     ]
     body = """
 <p><a href="https://github.com/lorenzodonini/ocpp-go">ocpp-go</a> is the established OCPP library for Go, and gocpp owes it a great deal: the conformance suite is ported from its per-message tests, and its behaviour is the reference for the compatibility preset. gocpp's own API is a deliberate rewrite with different trade-offs; the table below compares that API with ocpp-go. Where ocpp-go follows the specification, gocpp does too. If you want to keep ocpp-go's API, the <a href="#dropin">drop-in module</a> above runs it on the gocpp runtime.</p>
-""" + table(["", "gocpp", "ocpp-go (v0.17.x)"], crows) + """
+""" + table(["", "gocpp", "ocpp-go (v0.19.0)"], crows) + """
+<p>The design-level problems of ocpp-go v0.19.0 that can be reproduced with small programs, and what gocpp changes and does not change about each, are written up in <a href="%socpp-go-structural-issues.md">docs/ocpp-go-structural-issues.md</a>.</p>
 <div class="grid2">
 <div class="card"><h4>Choose gocpp when</h4><ul><li>you need OCPP 2.1, or all three versions in one module</li><li>you want generated, typed messages and handlers</li><li>you run large fleets and care about per-connection cost and isolation</li><li>you want deploys that do not disconnect chargers (experimental gateway mode)</li></ul></div>
 <div class="card"><h4>Stay with ocpp-go when</h4><ul><li>you need a stable v1-style API today; gocpp is pre-v1 (the <a href="#dropin">drop-in module</a> keeps ocpp-go's API and changes the server runtime only)</li><li>your fleet works and you have no reason to change the wire behaviour</li><li>you depend on its feature-profile structure or its ecosystem</li></ul></div>
 </div>
-<p class="src">Sources: the differential reports (<code>interop/parity/results</code>), <a href="%smigration-from-ocpp-go.md">docs/migration-from-ocpp-go.md</a>, the load-test report cited above (ocpp-go measured as the <code>v0.17.2-fix.3</code> fork), and ocpp-go's source (<code>ocppj/dispatcher.go</code>, <code>go.mod</code>). Measured rows are single runs on one machine.</p>
-""" % DOCS
+<p class="src">Sources: the differential reports (<code>interop/parity/results</code>), <a href="%smigration-from-ocpp-go.md">docs/migration-from-ocpp-go.md</a>, the load-test runs cited above (upstream ocpp-go v0.19.0), <a href="%socpp-go-structural-issues.md">docs/ocpp-go-structural-issues.md</a>, and ocpp-go's source (<code>ocppj/dispatcher.go</code>, <code>go.mod</code>). Measured rows are single runs on one machine.</p>
+""" % (DOCS, DOCS, DOCS)
     parts.append(section("compare", "Comparison", "gocpp and ocpp-go", "A factual comparison for engineers choosing between them, including where ocpp-go is the better choice.", body))
 
     # ---- docs ------------------------------------------------------------
@@ -594,6 +597,7 @@ def build():
         (DOCS + "architecture.md", "Architecture", "Layers, connection lifecycle, code generation"),
         (DOCS + "performance.md", "Performance and scaling", "Cost model, runtime settings, tuning knobs"),
         (COMPAT + "ocppgo/README.md", "Drop-in replacement for ocpp-go", "One replace line: runtime choice, compat package, known differences"),
+        (DOCS + "ocpp-go-structural-issues.md", "Structural issues in ocpp-go v0.19.0", "Reproducible design issues, and what gocpp does about each"),
         (DOCS + "migration-from-ocpp-go.md", "Migrating from ocpp-go", "The compatibility preset, row by row"),
         (DOCS + "migration-from-lorenzodonini.md", "API mapping from ocpp-go", "Before and after, call by call"),
         (DOCS + "draining.md", "Draining", "Deploys and reconnect-storm control"),

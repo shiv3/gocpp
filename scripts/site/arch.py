@@ -8,7 +8,7 @@ NAV = [
 ]
 
 G = ("gocpp", "gocpp")
-O = ("ocppgo", "ocpp-go (v0.17.2 fork)")
+O = ("ocppgo", "ocpp-go v0.19.0")
 B = ("before", "gocpp before the footprint work")
 
 
@@ -17,7 +17,7 @@ def _rows3(before, now, other, fmt):
 
 
 def body(h):
-    DOCS, LT, table, fig, section = h.DOCS, h.LT, h.table, h.fig, h.section
+    DOCS, table, fig, section = h.DOCS, h.table, h.fig, h.section
     parts = []
     toc = "".join('<li><a href="#%s">%s</a></li>' % (k, v) for k, v in NAV[1:])
     parts.append("""
@@ -57,9 +57,9 @@ def body(h):
     # ---- goroutines ------------------------------------------------------
     rows = [
         ["Resident goroutines per idle connection", "8", "1", "2"],
-        ["Heap + stack per idle connection", "34 + 27 KB", "7.8 + 4.1 KB", "12.4 KB heap (stack not measured)"],
-        ["RSS per idle connection", "61 KB", "13.6 KB", "22.7 KB"],
-        ["Goroutines per connection under the soak load", "8.3", "1.3", "2.5"],
+        ["Heap + stack per idle connection", "34 + 27 KB", "7.8 + 4.1 KB", "not measured"],
+        ["RSS per idle connection", "61 KB", "13.6 KB", "not measured (35 to 38 KB per connected charger with traffic, capacity ramp)"],
+        ["Goroutines per connection under load", "8.3", "1.3", "2.0 (capacity ramp)"],
     ]
     body_ = fig(d.goroutines(), "<b>Anatomy of a connection.</b> Under load the count is about 1.0 to 1.5 goroutines per connection: the reader plus the handlers and call timers in flight.") + """
 <p>An earlier design used a goroutine for each role: reader, writer, dispatcher, closer, watchdogs. Each one costs a stack and scheduler work even when the connection is idle, and idle is what a charger connection is most of the time. The redesign removed them one by one:</p>
@@ -69,7 +69,7 @@ def body(h):
 <li><b>No closer or watchdog goroutines.</b> Teardown is a <code>context.AfterFunc</code> callback; the read-idle watchdog and the WebSocket ping are <code>time.AfterFunc</code> timers.</li>
 <li><b>Optional handler pool.</b> At tens of thousands of messages per second, growing the stack of a fresh goroutine per message becomes visible (<code>runtime.copystack</code> was 20% of server CPU samples at 60k messages/s). <code>WithHandlerPool</code> keeps warm workers; it is a hand-off, never a queue, so a slow handler cannot delay another connection. Off by default.</li>
 </ul>
-""" + table(["", "Before the redesign", "Now", "ocpp-go (v0.17.2 fork)"], rows) + """
+""" + table(["", "Before the redesign", "Now", "ocpp-go v0.19.0"], rows) + """
 <p class="src">Source: <a href="%sperformance.md">docs/performance.md</a> ("Goroutine model", "Per-connection footprint"), <code>core/dispatcher/conn.go</code>, <code>inbound.go</code>, <code>keepalive.go</code>, <code>handler_pool.go</code>; soak ratios from the 2026-11-20 and 2026-11-21 load-test reports.</p>
 """ % DOCS
     parts.append(section("goroutines", "Architecture", "The one-goroutine connection", "A connection is one reader goroutine plus data. Everything else is a timer, a callback, or a goroutine that exists only while a message is handled.", body_))
@@ -111,33 +111,33 @@ def body(h):
     # ---- footprint -------------------------------------------------------
     fp = [
         ("Resident goroutines", "per idle connection", _rows3(8, 1, 2, "{:.0f}")),
-        ("RSS per idle connection", "KB", _rows3(61, 13.6, 22.7, "{:.1f} KB")),
-        ("10,000 idle connections", "process RSS, MB (before: about 610)", _rows3(610, 151, 240, "{:,.0f} MB")),
-        ("4,000-charger soak, memory", "max RSS, MB", _rows3(501, 154, 212, "{:,.0f} MB")),
-        ("4,000-charger soak, goroutines", "maximum", _rows3(33326, 5323, 9972, "{:,.0f}")),
+        ("RSS per idle connection", "KB", _rows3(61, 13.6, None, "{:.1f} KB")),
+        ("10,000 idle connections", "process RSS, MB (before: about 610)", _rows3(610, 151, None, "{:,.0f} MB")),
+        ("4,000-charger soak, memory", "max RSS, MB (ocpp-go: a frozen process)", _rows3(501, 154, 501, "{:,.0f} MB")),
+        ("4,000-charger soak, goroutines", "maximum (ocpp-go: a frozen process)", _rows3(33326, 5323, 22622, "{:,.0f}")),
         ("Allocation per request", "KB at 30k msg/s, lenient validation", _rows3(7.6, 3.5, 2.9, "{:.1f} KB")),
     ]
     panels = "".join(h.bars_panel(t, u, r) for t, u, r in fp)
-    tbl = table(["Measure", "Before", "gocpp now", "ocpp-go (v0.17.2 fork)"],
-                [[h.esc(t) + ' <span class="unit">(' + h.esc(u) + ")</span>"] + [h.esc(x[4].format(x[3])) for x in r] for t, u, r in fp], num=(1, 2, 3))
+    tbl = table(["Measure", "Before", "gocpp now", "ocpp-go v0.19.0"],
+                [[h.esc(t) + ' <span class="unit">(' + h.esc(u) + ")</span>"] + [h.esc(x[4].format(x[3]) if x[3] is not None else "not measured") for x in r] for t, u, r in fp], num=(1, 2, 3))
     body_ = h.viz("chart-fp", "Per-connection cost: before the redesign, now, and ocpp-go",
                   "Same harness and fleet for all three. Each panel has its own scale; bars start at zero; lower is better.",
                   [("before", B[1] + " (2026-11-20)"), ("gocpp", "gocpp now (2026-11-21)"), O], panels, tbl,
                   "Single runs on one WSL2 machine. Idle figures: 10,000 raw-TCP OCPP WebSocket connections and <code>BenchmarkIdleFootprint</code> (2,000 connections). "
-                  "Soak: 4,000 chargers, 40%% mute, 50 CSMS calls/s, 25 minutes, 5 restarts. ocpp-go allocates less per request than gocpp with lenient validation on; with validation off gocpp allocates 1.4 KB. "
-                  'Source: <a href="%sloadtest/results/2026-11-21-final/report.md">final acceptance report</a>, <a href="%sperformance.md">docs/performance.md</a>.' % (LT, DOCS), cols="c3") + """
+                  "Soak: 4,000 chargers, 40%% mute, 50 CSMS calls/s, 25 minutes, 5 restarts. The upstream ocpp-go v0.19.0 server (2026-11-24 run) froze after each of its six starts, so its soak figures describe a frozen process that keeps accepting sockets; bars are omitted where upstream was not measured. "
+                  "ocpp-go allocates less per request than gocpp with lenient validation on (measured in a run without CSMS calls); with validation off gocpp allocates 1.4 KB. "
+                  'Source: <a href="%sperformance.md">docs/performance.md</a>.' % DOCS, cols="c3") + """
 <h3>RSS is not live memory</h3>
 <p>Heap plus stack per connection is the live cost: about 12 KB for an embedded server and 11 to 14 KB for a gateway session. The RSS of a process that has just taken 10,000 real clients through a 2-minute connect ramp is about 23 KB per session, for the embedded server and the gateway alike: the difference is garbage from the connect storm that the next collection has not freed and heap spans not yet returned to the system (about 1.7 times live at the default <code>GOGC=100</code>). The 13.6 KB figure was taken with idle connections that sent nothing.</p>
 """
     parts.append(section("perf-footprint", "Performance", "Footprint", "What a connection costs, how that changed with the one-goroutine redesign, and how it compares.", body_))
 
     # ---- latency ---------------------------------------------------------
-    def lat(a, b, c, dd, e):
+    def lat(a, b, c, dd):
         f = "{:.1f} ms"
         return [("lenient", "gocpp", "gocpp, lenient validation, GOGC=100", a, f), ("validation off", "gocpp", "gocpp, validation off, GOGC=100", b, f),
-                ("lenient, GOGC=300", "gocpp", "gocpp, lenient validation, GOGC=300", c, f), ("ocpp-go", "ocppgo", "ocpp-go fork, GOGC=100", dd, f),
-                ("ocpp-go, GOGC=300", "ocppgo", "ocpp-go fork, GOGC=300", e, f)]
-    lp = [("Heartbeat p99 at 30,000 messages/s", "ms", lat(1.7, 0.8, 1.0, 2.4, 0.9)), ("Heartbeat p99 at 60,000 messages/s", "ms", lat(7.4, 5.3, 4.2, 9.3, 4.2))]
+                ("lenient, GOGC=300", "gocpp", "gocpp, lenient validation, GOGC=300", c, f), ("ocpp-go", "ocppgo", "ocpp-go v0.19.0, GOGC=100", dd, f)]
+    lp = [("Heartbeat p99 at 30,000 messages/s", "ms", lat(1.7, 0.8, 1.0, 1.4)), ("Heartbeat p99 at 60,000 messages/s", "ms", lat(7.4, 5.3, 4.2, 5.3))]
     panels = "".join(h.bars_panel(t, u, r, label_w=142, w=380) for t, u, r in lp)
     tbl = table(["Configuration", "p99 at 30k msg/s", "p99 at 60k msg/s"],
                 [[h.esc(a[2]), h.esc(a[4].format(a[3])), h.esc(b[4].format(b[3]))] for a, b in zip(lp[0][2], lp[1][2])], num=(1, 2))
@@ -145,30 +145,29 @@ def body(h):
         ["gocpp, lenient", "30k", "104 MB/s", "2.3", "2.3%", "1.7 ms", "151 MB"],
         ["gocpp, lenient, GOGC=300", "30k", "104 MB/s", "0.7", "0.8%", "1.0 ms", "264 MB"],
         ["gocpp, validation off", "30k", "41 MB/s", "0.9", "0.8%", "0.8 ms", "144 MB"],
-        ["ocpp-go fork", "30k", "87 MB/s", "1.4", "1.4%", "2.4 ms", "211 MB"],
-        ["ocpp-go fork, GOGC=300", "30k", "87 MB/s", "0.4", "0.5%", "0.9 ms", "364 MB"],
+        ["ocpp-go v0.19.0", "30k", "2.92 KB per request", "1.8", "1.1%", "1.4 ms", "167 MB"],
         ["gocpp, lenient", "60k", "202 MB/s", "4.7", "5.2%", "7.4 ms", "151 MB"],
         ["gocpp, lenient, GOGC=300", "60k", "204 MB/s", "1.4", "1.7%", "4.2 ms", "270 MB"],
         ["gocpp, validation off", "60k", "80 MB/s", "1.8", "1.8%", "5.3 ms", "146 MB"],
-        ["ocpp-go fork", "60k", "169 MB/s", "2.7", "2.7%", "9.3 ms", "213 MB"],
-        ["ocpp-go fork, GOGC=300", "60k", "170 MB/s", "0.8", "0.9%", "4.2 ms", "368 MB"],
+        ["ocpp-go v0.19.0", "60k", "2.89 KB per request", "3.5", "2.2%", "5.3 ms", "168 MB"],
     ]
     body_ = h.viz("chart-lat", "Heartbeat p99 against message rate",
                   "4,000 chargers with timers sped up to reach the rate; server pinned to 4 cores. One panel per rate, each with its own scale; lower is better.",
                   [G, O], panels, tbl,
                   "Single runs; percentiles are histogram bucket upper bounds with 12%% resolution, so one or two buckets of difference are noise (at 30k, 0.8 to 1.0 ms are neighbouring buckets). "
                   "Neither server is CPU-saturated at these rates (1 to 2 of 4 cores). p50 is 0.1 ms in every row. "
-                  'Source: <a href="%sloadtest/results/2026-11-21-final/report.md">final acceptance report</a>, "High-rate columns".' % LT, cols="c2") + """
+                  "The ocpp-go v0.19.0 bar and table rows come from the 2026-11-22 run without CSMS calls, in which gocpp v0.3.0 also measured 1.4 and 5.3 ms; with 50 CSMS calls per second the upstream server froze before the 30k step. "
+                  "The gocpp bars are from the 2026-11-21 run. GOGC=300 was not measured for ocpp-go.", cols="c2") + """
 <h3>Why the tail grows: time inside GC mark phases</h3>
 <p>At these rates the servers have CPU to spare, so the tail is not queueing for CPU. It follows the share of wall time the process spends inside garbage-collector mark phases, when goroutines are asked to assist and scheduling gets less regular. That share is driven by the allocation rate and by how often a cycle runs:</p>
 """ + table(["Server", "Messages/s", "Allocation", "GC cycles/s", "Time in mark", "Heartbeat p99", "Max RSS"], gc_rows, num=(1, 2, 3, 4, 5, 6),
-            caption="From GODEBUG=gctrace=1 in the same runs. Rule of thumb from docs/performance.md: in-mark share is about alloc MB/s x 0.3 ms / (GOGC/100) per second; keep it under 1%.") + """
+            caption="From GODEBUG=gctrace=1. The ocpp-go rows are from the 2026-11-22 run, the gocpp rows from 2026-11-21 (allocation per request: gocpp 3.5 KB). Rule of thumb from docs/performance.md: in-mark share is about alloc MB/s x 0.3 ms / (GOGC/100) per second; keep it under 1%.") + """
 <ul>
 <li><b>Allocate less.</b> The per-message work (scanner parse, frames that reference the read buffer, a reflection-free lenient decoder, an empty-object fast path) brought lenient mode from 7.6 to 3.5 KB per request, and the p99 at 30k messages/s from 18 ms to 1.7 ms in the same harness.</li>
-<li><b>Collect less often.</b> <code>GOGC=300</code> cuts the cycles to a third and the p99 with them, for about 110 MB more RSS at 4,000 connections. It does the same for ocpp-go (about 150 MB more), so compare libraries at the same setting.</li>
+<li><b>Collect less often.</b> <code>GOGC=300</code> cuts the cycles to a third and the p99 with them, for about 110 MB more RSS at 4,000 connections. Compare libraries at the same setting.</li>
 <li><b>Skip what you do not need.</b> <code>WithOutboundValidation(false)</code> removes the response-side validation pass, about half of the lenient cost per request, once your handler output is covered by tests.</li>
 </ul>
-<p>The price of validation is CPU: at 30k messages/s gocpp with lenient validation used 1.16 cores against 1.04 for ocpp-go and 0.81 with validation off; the handler pool (64 workers) brought lenient down to 0.91.</p>
+<p>The price of validation is CPU: at 30k messages/s gocpp with lenient validation used 1.16 cores and 0.81 with validation off (in the 2026-11-22 run gocpp used 0.98 cores and upstream ocpp-go 1.01); the handler pool (64 workers) brought lenient down to 0.91.</p>
 """
     parts.append(section("perf-latency", "Performance", "Latency under load", "Heartbeat round-trip tail at 30,000 and 60,000 messages per second, and what drives it.", body_))
 
@@ -177,19 +176,20 @@ def body(h):
         ["gocpp, default (lenient)", "154 MB", "5,323", "0.10", "0.2 / 0.5 / 0.8 ms", "6.0 to 6.8 s"],
         ["gocpp, ocpp-go compat preset", "149 MB", "5,318", "0.10", "0.2 / 0.5 / 0.8 ms", "6.0 to 6.8 s"],
         ["gocpp, handler pool 64", "158 MB", "5,373", "0.10", "0.2 / 0.5 / 0.7 ms", "6.0 to 6.8 s"],
-        ["ocpp-go fork", "212 MB", "9,972", "0.09", "0.2 / 0.5 / 0.8 ms", "5.8 to 6.8 s"],
+        ["ocpp-go v0.19.0 (froze after each of 6 starts)", "501 MB", "22,622", "0.11", "0.2 / 0.7 / 1.0 ms, only in the windows in which it answered", "never reached (0 chargers connected before each restart)"],
     ]
     body_ = """
 <p>The soak is the unglamorous case a CSMS actually lives in: 4,000 OCPP 1.6J chargers for 25 minutes, 40% of them mute (connected, sending their own traffic, never answering a CSMS call), 3 flapping, 20 fighting over duplicate ids, 15% running transactions, 50 CSMS calls per second of which about 40% land on mute chargers and time out after 30 seconds, and five SIGTERM restarts of the server.</p>
 """ + table(["Server", "Max RSS", "Max goroutines", "Mean CPU (cores)", "Heartbeat p50 / p95 / p99", "99% reconnected after a restart"], soak_rows, num=(1, 2, 3)) + """
 <ul>
-<li><b>No freeze, crash or leak in any run, for either library.</b> RSS slope stayed within 3 MB per minute in both directions, goroutines per connection were flat, and file descriptors did not drift.</li>
-<li><b>Mute chargers stall nothing.</b> About 26,500 call timeouts per run; the call-outcome mix was the same for every server to within 0.1%% (59.3%% answered, 35.6%% timed out).</li>
-<li><b>Restart recovery is the clients' doing.</b> 99%% of the fleet was back 6 to 7 seconds after the server was healthy, the same for every server: the time is reconnect jitter and backoff, not server work.</li>
+<li><b>gocpp: no freeze, crash or leak in any run.</b> RSS slope stayed within 3 MB per minute in both directions, goroutines per connection were flat, and file descriptors did not drift.</li>
+<li><b>Upstream ocpp-go v0.19.0 froze.</b> It stopped answering every charger after each of the six starts and stayed stopped until the next restart: 0 chargers connected at the end, 307,154 BootNotification requests closed, RSS up to 501 MB, 22,622 goroutines. It also froze with 5 CSMS calls per second, and in a capacity ramp with no calls at about 31,700 chargers; the two 4,000-charger runs without calls did not freeze. The goroutine dumps show the dispatcher's message pump and its senders blocked on the dispatcher's own channels, described in <a href="%socpp-go-structural-issues.md">docs/ocpp-go-structural-issues.md</a>.</li>
+<li><b>Mute chargers stall nothing in gocpp.</b> About 26,500 call timeouts per run; the call-outcome mix of gocpp, the compatibility preset and the handler-pool run was the same to within 0.1%% (59.3%% answered, 35.6%% timed out).</li>
+<li><b>Restart recovery is the clients' doing.</b> For gocpp, 99%% of the fleet was back 6 to 7 seconds after the server was healthy: the time is reconnect jitter and backoff, not server work.</li>
 <li><b>A hot spot hits a bound, not the heap.</b> In an earlier run that aimed 300 calls per second at 100 mute chargers, gocpp answered the excess with <code>ErrQueueFull</code> because the per-connection wait queue is bounded.</li>
 </ul>
-<p class="src">Source: <a href="%sloadtest/results/2026-11-21-final/report.md">2026-11-21 final report</a> and <a href="%sloadtest/results/2026-11-20/report.md">2026-11-20 report</a> (setup, hot-spot test) on branch <code>test/loadtest-4k</code>. Single runs, one machine, loopback, no TLS.</p>
-""" % (LT, LT)
+<p class="src">Source: the load-test runs of 2026-11-20, 2026-11-21 and 2026-11-24 (harness <code>interop/loadtest</code>). Single runs, one machine, loopback, no TLS.</p>
+""" % DOCS
     parts.append(section("perf-soak", "Performance", "A 4,000-charger soak", "Mute chargers, flapping connections, duplicate ids and server restarts, for 25 minutes.", body_))
 
     # ---- drain -----------------------------------------------------------
@@ -213,24 +213,22 @@ def body(h):
     parts.append(section("perf-drain", "Performance", "Drain against a plain restart", "Turning a reconnect storm into a ramp with Server.Drain and the accept rate limit.", body_))
 
     # ---- capacity --------------------------------------------------------
-    CAP = LT + "loadtest/results/capacity-2026-11-22/report.md"
     fc, fk, fm, fs = "{:,.0f}", "{:.1f} KB", "{:,.0f}/s", "{:.1f} s"
     cap = [
         ("Chargers held with Heartbeat p99 at or under 200 ms", "1 core / 2 GB, last stable ramp step", [
             ("lenient", "gocpp", "gocpp, lenient schema, GOMEMLIMIT 80%", 93700, fc),
             ("schema off", "gocpp", "gocpp, schema off, GOMEMLIMIT 80%", 100000, fc),
             ("no GOMEMLIMIT", "gocpp", "gocpp, lenient schema, no GOMEMLIMIT", 78000, fc),
-            ("ocpp-go", "ocppgo", "ocpp-go fork, GOMEMLIMIT 80%", 55000, fc)]),
+            ("ocpp-go", "ocppgo", "ocpp-go v0.19.0, GOMEMLIMIT 80% (froze at about 28,000)", 27774, fc)]),
         ("Server memory per connection", "KB of anonymous memory at that step", [
             ("lenient", "gocpp", "gocpp, lenient schema, GOMEMLIMIT 80%", 16.8, fk),
             ("schema off", "gocpp", "gocpp, schema off, GOMEMLIMIT 80%", 15.3, fk),
             ("no GOMEMLIMIT", "gocpp", "gocpp, lenient schema, no GOMEMLIMIT", 23.6, fk),
-            ("ocpp-go", "ocppgo", "ocpp-go fork, GOMEMLIMIT 80%", 28.1, fk)]),
+            ("ocpp-go", "ocppgo", "ocpp-go v0.19.0, GOMEMLIMIT 80% (RSS per connected charger)", 37.0, fk)]),
         ("Throughput at CPU saturation", "messages per second, 5,000 chargers, timers sped up", [
             ("1 core", "gocpp", "gocpp, lenient schema, 1 core / 2 GB", 47700, fm),
-            ("1 core", "ocppgo", "ocpp-go fork, 1 core / 2 GB", 54400, fm),
             ("2 cores", "gocpp", "gocpp, lenient schema, 2 cores / 4 GB", 97600, fm),
-            ("2 cores", "ocppgo", "ocpp-go fork, 2 cores / 4 GB", 104800, fm)]),
+            ]),
     ]
     panels = "".join(h.bars_panel(t, u, r, label_w=116, w=350) for t, u, r in cap)
     cap_rows = [
@@ -238,10 +236,9 @@ def body(h):
         ["1 core / 2 GB", "gocpp, schema off", "80%", "about 100,000", "117,400: memory above 95%, CPU at 1.00 core", "15.3 KB", "not run"],
         ["1 core / 2 GB", "gocpp, lenient", "none", "78,000 (p99 46 ms)", "78,000: memory above 95%, CPU 0.24 core", "23.6 KB", "not run"],
         ["1 core / 2 GB", "gocpp, lenient, Heartbeat 60 s", "80%", "about 100,000", "115,100: memory above 95%, CPU at 1.00 core", "15.8 KB", "not run"],
-        ["1 core / 2 GB", "ocpp-go fork", "80%", "about 55,000", "67,100: memory above 95%, CPU at 1.00 core", "28.1 KB", "54.4k msg/s (p99 80 ms)"],
+        ["1 core / 2 GB", "ocpp-go v0.19.0", "80%", "26,000 to 31,000 (Heartbeat p99 10 to 29 ms until the freeze)", "freeze at about 28,000 to 32,000 chargers, then memory above 95%", "37 KB (RSS)", "not run"],
         ["2 cores / 4 GB", "gocpp, lenient", "80%", "at least 112,000 (p99 2.4 ms)", "112,400: the test machine ran out of memory; server at 2.8 of 4 GB, 0.33 core", "24.0 KB", "97.6k msg/s (p99 41 ms)"],
         ["2 cores / 4 GB", "gocpp, schema off", "80%", "at least 111,700 (p99 10 ms)", "111,700: test machine memory", "24.8 KB", "not run"],
-        ["2 cores / 4 GB", "ocpp-go fork", "80%", "at least 80,000 (p99 1 ms)", "80,600: test machine memory", "39.0 KB", "104.8k msg/s (p99 32 ms)"],
     ]
     tbl = table(["Server size", "Server", "GOMEMLIMIT", "Chargers held, Heartbeat p99 at or under 200 ms", "Where the ramp stopped", "Memory per connection", "Saturation throughput, 5,000 chargers"], cap_rows)
     storm = [
@@ -278,16 +275,16 @@ def body(h):
             [("gocpp", "gocpp"), O], panels, tbl,
             "Single runs on one shared WSL2 machine over loopback, without TLS. Chargers held: the last 30-second ramp step with the whole fleet connected and Heartbeat p99 at or under 200 ms (histogram buckets, 12%% resolution); "
             "\"about\" values are where p99 first crossed 200 ms. More chargers is better in the first panel, less memory in the second, more messages in the third. "
-            "The ocpp-go chargers reconnected about every 70 seconds in this harness (cause not investigated), which makes its connection figures pessimistic. "
+            "The upstream ocpp-go v0.19.0 server (2026-11-22 and 2026-11-24 runs) stopped at a dispatcher freeze, not at a CPU or memory limit, so its figures say nothing about its capacity above about 30,000 chargers; its throughput at saturation was not measured. "
             "Throughput is a closed loop with 5,000 chargers and the generator close to its own limit; gocpp ran with lenient schema validation on. "
-            'Source: <a href="%s">capacity report, 2026-11-22</a>.' % CAP, cols="c3") + """
+            "Source: capacity run of 2026-11-22 (harness <code>interop/loadtest</code>).", cols="c3") + """
 <h3>What limits a small server</h3>
 <ul>
 <li><b>Memory, then the collector, then CPU.</b> On 1 core / 2 GB with lenient validation the Heartbeat p99 went from 57 ms at 93,700 chargers to 1.9 s at 96,000 while CPU stayed under 0.8 core: the heap had reached <code>GOMEMLIMIT</code> and the collector ran continuously. With schema validation off a connection costs less (15.3 against 16.8 KB) and the server got to about 100,000 before p99 crossed 200 ms, now with CPU at the one-core quota.</li>
 <li><b>Set <code>GOMEMLIMIT</code>.</b> Without it the same server stopped at 78,000 chargers at 0.24 core, because the heap was allowed to grow to 23.6 KB per connection and hit the cgroup limit. At 80% of the limit the collector works harder and holds 16.8 KB.</li>
 <li><b>Two cores and 4 GB were not exhausted.</b> At 112,000 chargers the server used 2.8 GB and 0.33 core with a Heartbeat p99 of 2.4 ms; the ramp ended because the test machine ran out of memory for the load generator. The figure is a lower bound. Memory arithmetic puts the real ceiling at roughly 170,000 to 250,000; that was not measured.</li>
 <li><b>A fleet this quiet barely uses the CPU.</b> 90,000 chargers held for five minutes cost 0.27 core on average (Heartbeat p99 at most 51 ms). A five times higher heartbeat rate (every 60 seconds) brought the p99 over 200 ms at 100,000 chargers and the server to a full core at 115,000.</li>
-<li><b>Throughput scales with cores.</b> With 5,000 chargers and compressed timers, one core saturated at 47,700 messages per second (p99 100 ms; under 37,000 per second the p99 stayed below 64 ms) and two cores at 97,600 (p99 41 ms). The ocpp-go fork was slightly ahead here, 54,400 and 104,800; gocpp ran with lenient schema validation on and was not measured with it off in this experiment.</li>
+<li><b>Throughput scales with cores.</b> With 5,000 chargers and compressed timers, one core saturated at 47,700 messages per second (p99 100 ms; under 37,000 per second the p99 stayed below 64 ms) and two cores at 97,600 (p99 41 ms). Throughput at saturation was not measured for ocpp-go; gocpp ran with lenient schema validation on and was not measured with it off in this experiment.</li>
 </ul>
 <h3>TLS changes the arithmetic</h3>
 <p>The harness speaks plain <code>ws://</code>. A separate micro-benchmark of Go's <code>crypto/tls</code> (TLS 1.3, ECDSA P-256, no client certificates, 20,000 idle connections, one core) measured about 136 us of server CPU per full handshake, or about 7,400 handshakes per second per core, and about 15 KB more memory per idle TLS connection. As an estimate, not a measurement: terminating TLS in the server roughly doubles the memory per connection, so 1 core / 2 GB holds about 50,000 to 60,000 chargers, and reconnecting 90,000 chargers costs about 12 seconds of one core in handshakes alone. Terminating TLS on a proxy or load balancer keeps the numbers above.</p>
@@ -297,7 +294,7 @@ def body(h):
             "One server restarted in place, gocpp with lenient validation. Seconds from the new process being ready; shorter is better. One panel per server size, each with its own scale.",
             [G], spanels, stbl,
             "Single runs, loopback, no TLS and no authentication. Heartbeat p99 is the worst 10-second window and is only an order of magnitude. "
-            'Source: <a href="%s">capacity report, 2026-11-22</a>, "Reconnect storm".' % CAP, cols="c2") + """
+            'Source: capacity run of 2026-11-22, "Reconnect storm".', cols="c2") + """
 <ul>
 <li><b>A plain restart of a single server is fast.</b> 99%% of 90,000 chargers were back 12 seconds after the new process was ready on one core, and 99%% of 100,000 after 7 seconds on two. Server CPU peaked at 0.65 and 0.55 core without throttling; memory peaked at 91%% of the 2 GB limit.</li>
 <li><b>Drain and the accept-rate limit made the single-server restart slower</b>: 62 to 72 seconds to 99%%. The likely reason, not verified with a trace: a server that refuses upgrades during its drain window, or paces them at 3,000 per second, sends the chargers into longer backoffs, and with only one server there is nowhere else for them to go.</li>
@@ -308,11 +305,11 @@ def body(h):
 <li>Loopback, no TLS, no network latency or loss; the generator and the server share one machine (separate cores, shared memory bandwidth and cache).</li>
 <li>Every number is a single run. Throughput varies by 5 to 10%% between runs, and the point where a latency criterion trips varies more, because p99 sits near a cliff when the heap is close to <code>GOMEMLIMIT</code>.</li>
 <li>The two-core figures are lower bounds set by the test machine's memory.</li>
-<li>The ocpp-go fork (v0.17.2 with fixes) reconnected about every 70 seconds in this harness; its connection and CPU figures may be pessimistic.</li>
+<li>Upstream ocpp-go v0.19.0 froze at about 28,000 to 32,000 chargers in this profile (about 31,700 with no CSMS calls), so there is no ocpp-go number for the larger fleets.</li>
 <li>The servers keep no event history and the handlers are trivial. A server that stores events or talks to a database needs more memory and CPU per message.</li>
 </ul>
-<p class="src">Source: <a href="%s">interop/loadtest/results/capacity-2026-11-22/report.md</a> on branch <code>test/loadtest-4k</code>, with the per-run summaries, commands and cgroup samples next to it.</p>
-""" % CAP
+<p class="src">Source: the capacity run of 2026-11-22 and the 2026-11-24 repeat for the drop-in module (harness <code>interop/loadtest</code>).</p>
+"""
     parts.append(section("perf-capacity", "Performance", "Sizing and capacity", "How many chargers one server holds on 1 core / 2 GB and on 2 cores / 4 GB, and what a restart of that fleet looks like.", body_))
 
     # ---- gateway cost ----------------------------------------------------
@@ -355,7 +352,7 @@ def body(h):
 <li><b>A fixed delay was measured and dropped</b>: at 260 messages per second a fixed 100 us raised the Heartbeat p50 from 0.8 to 2.1 ms and total CPU by a quarter.</li>
 </ul>
 <p>Guidance from the documentation: leave it off unless one gateway-backend stream carries more than about 10,000 messages per second and a millisecond of latency is a fair price for the CPU; then start with 200 us on both ends.</p>
-<p class="src">Source: <a href="%sgateway.md">docs/gateway.md</a> ("Performance", "Write linger"), reports <code>gateway-2026-11-21</code> and <code>gateway-final-2026-11-21</code> on branch <code>test/loadtest-4k</code>, gates <code>TestGateHopOverhead</code> and <code>TestGateGRPCHopLatency</code>. Not measured: TLS handshake capacity, gateway crash recovery, behaviour behind a real L4 load balancer.</p>
+<p class="src">Source: <a href="%sgateway.md">docs/gateway.md</a> ("Performance", "Write linger"), the gateway load-test reports of 2026-11-21, gates <code>TestGateHopOverhead</code> and <code>TestGateGRPCHopLatency</code>. Not measured: TLS handshake capacity, gateway crash recovery, behaviour behind a real L4 load balancer.</p>
 """ % DOCS
     parts.append(section("perf-gateway", "Performance", "What the gateway hop costs", "Added latency, CPU per message, and the opt-in write linger that trades one for the other.", body_))
 

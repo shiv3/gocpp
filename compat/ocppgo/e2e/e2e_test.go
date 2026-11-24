@@ -207,8 +207,8 @@ type stopOnce struct {
 
 func (s *stopOnce) Stop() { s.once.Do(s.ChargePoint.Stop) }
 
-// startMu serializes client starts: ocpp-go's ChargePoint.Start writes a package
-// variable (ocppj.FormationViolation), a data race when several start at once.
+// startMu serializes client starts: ocpp-go keeps unsynchronised package level
+// settings (loggers, validation flags), so clients are started one at a time.
 var startMu sync.Mutex
 
 func connectCP(t testing.TB, c *central, id string, h *cpHandler) ocpp16.ChargePoint {

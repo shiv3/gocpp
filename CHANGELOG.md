@@ -55,12 +55,12 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - `WithOCPPGoCompat` (and `dispatcher.OCPPGoErrorCodeMapper`) now target upstream
-  ocpp-go v0.19.0 rather than the v0.17 fork: a CALL whose action is not a string
+  ocpp-go v0.19.0 rather than an earlier ocpp-go line: a CALL whose action is not a string
   is answered with FormationViolation instead of being dropped.
   docs/migration-from-ocpp-go.md has the table of defaults, preset and ocpp-go.
 
 - The ocpp-go drop-in targets upstream ocpp-go v0.19.0 only. The module moved
-  from `compat/ocppgo-v019` to `compat/ocppgo` (the `v0.17.2-fix.x` tree is
+  from `compat/ocppgo-v019` to `compat/ocppgo` (the earlier `v0.17.2` tree is
   removed), so the replace line is now
   `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1`
   (tag `compat/ocppgo/v0.19.0-gocpp.1`, to be created after this change). The CI jobs are `ocppgo-compat`,
@@ -92,7 +92,7 @@ The compatibility modules are tagged separately:
 
 ## [0.3.1] - 2026-11-22
 
-- New nested module `compat/ocppgo`: the public API of ocpp-go `v0.17.2-fix.x` on the gocpp runtime (Phase 1: server side). See compat/ocppgo/README.md.
+- New nested module `compat/ocppgo`: the public API of an earlier ocpp-go line (`v0.17.2`) on the gocpp runtime (Phase 1: server side). See compat/ocppgo/README.md.
 
 ### Added
 
