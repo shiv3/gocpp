@@ -66,6 +66,8 @@ type gocppRuntime struct {
 	tracerProv   trace.TracerProvider
 	frameObs     observability.FrameObserver
 	cfgByVersion map[string]*gdisp.Config
+
+	lenient atomic.Pointer[lenience] // set through the compat package; nil = upstream behaviour
 }
 
 type srvConn struct {
@@ -373,17 +375,10 @@ func (rt *gocppRuntime) onParseError(dc *gdisp.Conn, data []byte, _ error) bool 
 		}
 	}
 	if ocppErr.MessageId != "" {
-		dc.SendCallError(ocppErr.MessageId, string(ocppErr.Code), ocppErr.Description, nil)
+		dc.SendCallError(ocppErr.MessageId, rt.wireCode(dc, string(ocppErr.Code)), ocppErr.Description, nil)
 	}
 	log.Error(ocppErr)
 	return true
-}
-
-func ocppErrToRaw(e *ocpp.Error) *gdisp.RawCallError {
-	return &gdisp.RawCallError{
-		Err:  gocppj.NewCallError(gocppj.ErrorCode(e.Code), e.Description, nil),
-		Wire: string(e.Code),
-	}
 }
 
 // handleCall runs on a gocpp handler goroutine (one per inbound CALL, bounded
@@ -397,11 +392,14 @@ func (rt *gocppRuntime) handleCall(ctx context.Context, dc *gdisp.Conn, action s
 	id, _ := gocppj.MessageIDFromContext(ctx)
 	var raw interface{}
 	if err := json.Unmarshal(payload, &raw); err != nil {
-		return nil, ocppErrToRaw(ocpp.NewError(FormatErrorType(rt.s), err.Error(), id))
+		return nil, rt.errToRaw(dc, ocpp.NewError(FormatErrorType(rt.s), err.Error(), id))
 	}
 	// ocpp-go's own parser decides whether the request is valid and which error answers it.
 	fields := []interface{}{float64(CALL), id, action, raw}
-	msg, err := s.ParseMessage(fields, nil)
+	msg, err := rt.parseLenient(id, action, raw)
+	if msg == nil && err == nil {
+		msg, err = s.ParseMessage(fields, nil)
+	}
 	if err != nil {
 		ocppErr := err.(*ocpp.Error)
 		if s.invalidMessageHook != nil {
@@ -411,7 +409,7 @@ func (rt *gocppRuntime) handleCall(ctx context.Context, dc *gdisp.Conn, action s
 			}
 		}
 		log.Error(ocppErr)
-		return nil, ocppErrToRaw(ocppErr)
+		return nil, rt.errToRaw(dc, ocppErr)
 	}
 	call := msg.(*Call)
 	if s.requestHandler == nil {
@@ -474,7 +472,7 @@ func (rt *gocppRuntime) reply(clientID, requestID string, res *CallResult, cerr 
 				ce.RawDetails = raw
 			}
 		}
-		rawErr := &gdisp.RawCallError{Err: ce, Wire: string(cerr.ErrorCode)}
+		rawErr := &gdisp.RawCallError{Err: ce, Wire: rt.wireCode(sc.dc, string(cerr.ErrorCode))}
 		ch <- inboundReply{err: rawErr}
 		log.Debugf("sent CALL ERROR [%s] for %s", requestID, clientID)
 		return true, nil
@@ -555,7 +553,7 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 			}
 		}
 		if e.MessageId != "" {
-			sc.dc.SendCallError(e.MessageId, string(e.Code), e.Description, nil)
+			sc.dc.SendCallError(e.MessageId, rt.wireCode(sc.dc, string(e.Code)), e.Description, nil)
 		}
 		log.Error(e)
 		// Wait out the timeout here, on the connection's callback worker, instead
@@ -592,7 +590,7 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 			return
 		}
 		callResult := CallResult{MessageTypeId: CALL_RESULT, UniqueId: id, Payload: confirmation}
-		if err = Validate.Struct(callResult); err != nil {
+		if err = Validate.Struct(callResult); err != nil && !rt.tolerated(err, action) {
 			bad(errorFromValidation(err.(validator.ValidationErrors), id, action), fields)
 			return
 		}
