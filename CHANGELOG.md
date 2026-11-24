@@ -6,10 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
+Compat module: the next drop-in tag is `compat/ocppgo/v0.19.0-gocpp.3`. It contains
+OCPP 2.0.1/1.6 type changes that follow the OCA schemas and are **breaking for
+callers of those types** — see "Fixed (compat/ocppgo, breaking…)" below and the compat
+README.
+
 ### Changed
 
 - compat/ocppgo dependencies: logrus 1.9.3 (PR #323), universal-translator 0.18.1 and
   locales 0.14.1 (PR #324), validator.v9 9.31.0, go-jose 4.1.9, jsonschema 6.0.3.
+- The generated `RegisterCSMS` of each version (`v16/handlers`, `v201/handlers`,
+  `v21/handlers`) now registers for that version only (via `csms.OnVersion`), so the
+  registrars of several versions no longer overwrite each other on a shared server. A
+  charge point of another version than the one registered now gets NotImplemented
+  instead of reaching the wrong-version handler.
 
 ### Added
 
@@ -17,6 +29,35 @@ All notable changes to this project are documented here. The format is based on
   the charge point's address behind reverse proxies, from the rightmost
   `X-Forwarded-For` hop that is not a trusted proxy (or `X-Real-IP`). Without the option
   `ClientIP()` is the host of `RemoteAddr` and the headers are never believed.
+- compat/ocppgo: `compat.SetValidationErrorToCallback(endpoint, true)` (opt-in): an
+  answer that fails parsing or validation completes the request's callback at
+  once instead of at the call timeout (ocpp-go issues #175, #234).
+- `compat/ocppgo`: opt-in `compat.Leniency` flags for real-charger quirks, per server,
+  default unchanged: `AllowEmptyConfigurationValue` (also for the ChangeConfiguration
+  request the server sends), `AllowEmptyIdTag` (Authorize, StartTransaction; sent
+  RemoteStartTransaction), `AllowEmptySampledValueValue`, `AllowVendorMeasurands`
+  (measurand and unit), `AllowNumericSampledValue`, `PreserveLargeIntegers` (payload
+  numbers decoded with `json.Number`, so a transactionId of 9223372036854775807 survives)
+  and `LenientDateTime`.
+- `compat/ocppgo`: opt-in server helpers in package `compat`, defaults unchanged:
+  `ConnectionIDs`, `Handler` + `StartWithoutListener` (mount the websocket handler on
+  an external mux or router), `SetBasicAuthIDHandler` (basic auth that sees the charge
+  point id), `SetIDResolver` (id from a nested path), `SetCompression` (permessage-deflate)
+  and `SetConnTimeouts` (call and idle timeout per connection).
+- `csms.OnVersion` / `csms.OnSendVersion` and `dispatcher.HandlerRegistry.RegisterVersion`:
+  a handler registry keyed by (version, action), so one `csms.Server` can serve 1.6,
+  2.0.1 and 2.1 charge points with same-named actions. `csms.On` is unchanged and
+  stays the version-agnostic default.
+- `csms.AfterReply(ctx, fn)` / `dispatcher.AfterReply`: run `fn` after the handler's
+  CALLRESULT has been written (e.g. BootNotification → GetConfiguration; ocpp-go issues
+  #184, #189). Ordering guarantees are documented in `docs/ordering.md`. Costs two
+  allocations (+96 B) per inbound CALL.
+- Lenient-mode extras, all opt-in and only effective with `WithLenientSchema`:
+  `WithLenientEmptyNumbers()` (`""` in a numeric field reads as 0; ocpp-go issue #190),
+  `WithLenientDefaultMissing(prop, value)` / `WithLenientMissingChargingRateUnit()`,
+  `WithLenientUnknownEnumValues(props...)` / `WithLenientVendorMeasurands()`.
+- compat/ocppgo: "bridge mode" (application wraps `ws.WsServer`) is documented; the
+  module `retract`s `v0.17.2-gocpp.1`, which is unmaintained.
 
 ### Fixed
 
@@ -44,24 +85,6 @@ All notable changes to this project are documented here. The format is based on
   made before the drop received the first response after the charge point
   reconnected (ocpp-go issues #67, #294, #306, #363, PR #406, #432).
 
-### Added
-
-- compat/ocppgo: `compat.SetValidationErrorToCallback(endpoint, true)` (opt-in): an
-  answer that fails parsing or validation completes the request's callback at
-  once instead of at the call timeout (ocpp-go issues #175, #234).
-- `compat/ocppgo`: opt-in `compat.Leniency` flags for real-charger quirks, per server,
-  default unchanged: `AllowEmptyConfigurationValue` (also for the ChangeConfiguration
-  request the server sends), `AllowEmptyIdTag` (Authorize, StartTransaction; sent
-  RemoteStartTransaction), `AllowEmptySampledValueValue`, `AllowVendorMeasurands`
-  (measurand and unit), `AllowNumericSampledValue`, `PreserveLargeIntegers` (payload
-  numbers decoded with `json.Number`, so a transactionId of 9223372036854775807 survives)
-  and `LenientDateTime`.
-- `compat/ocppgo`: opt-in server helpers in package `compat`, defaults unchanged:
-  `ConnectionIDs`, `Handler` + `StartWithoutListener` (mount the websocket handler on
-  an external mux or router), `SetBasicAuthIDHandler` (basic auth that sees the charge
-  point id), `SetIDResolver` (id from a nested path), `SetCompression` (permessage-deflate)
-  and `SetConnTimeouts` (call and idle timeout per connection).
-
 ### Fixed (compat/ocppgo, breaking for callers of these types)
 
 - compat/ocppgo OCPP 2.0.1 smart charging types follow the OCA schema where upstream
@@ -87,19 +110,6 @@ All notable changes to this project are documented here. The format is based on
 - compat/ocppgo OCPP 1.6, breaking for callers of these types: `types.ChargingProfile.TransactionId`
   is `*int` (upstream #350); `GetLogResponse.Filename` is limited to 255 (#424); certificate hash
   validation no longer panics in programs that import only OCPP 1.6 packages.
-
-- `csms.OnVersion` / `csms.OnSendVersion` and `dispatcher.HandlerRegistry.RegisterVersion`:
-  a handler registry keyed by (version, action), so one `csms.Server` can serve 1.6,
-  2.0.1 and 2.1 charge points with same-named actions. `csms.On` is unchanged and
-  stays the version-agnostic default.
-
-### Changed
-
-- The generated `RegisterCSMS` of each version (`v16/handlers`, `v201/handlers`,
-  `v21/handlers`) now registers for that version only (via `csms.OnVersion`), so the
-  registrars of several versions no longer overwrite each other on a shared server. A
-  charge point of another version than the one registered now gets NotImplemented
-  instead of reaching the wrong-version handler.
 
 ## [0.3.3] - 2026-11-24
 
@@ -1091,7 +1101,8 @@ All additions are opt-in and preserve prior default behavior.
 ### OCPP spec compatibility
 - OCPP 1.6 (edition 2 + Security Whitepaper), 2.0.1, 2.1.
 
-[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/shiv3/gocpp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/shiv3/gocpp/releases/tag/v0.4.0
 [0.3.3]: https://github.com/shiv3/gocpp/releases/tag/v0.3.3
 [0.3.2]: https://github.com/shiv3/gocpp/releases/tag/v0.3.2
 [0.3.1]: https://github.com/shiv3/gocpp/releases/tag/v0.3.1
