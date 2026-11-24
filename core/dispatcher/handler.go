@@ -24,6 +24,12 @@ type HandlerRegistry struct {
 	fb    FallbackFunc
 	sfb   SendFallbackFunc
 	sends map[string]SendHandlerFunc
+
+	// vhs and vsends hold handlers registered for one protocol version only
+	// (RegisterVersion, RegisterSendVersion). A version-scoped handler wins over
+	// the version-agnostic one in hs / sends for connections of that version.
+	vhs    map[ocppj.Version]map[string]HandlerFunc
+	vsends map[ocppj.Version]map[string]SendHandlerFunc
 }
 
 func NewHandlerRegistry() *HandlerRegistry {
@@ -78,6 +84,59 @@ func (r *HandlerRegistry) Resolve(action string) (HandlerFunc, bool) {
 	return func(ctx context.Context, c *Conn, payload []byte) ([]byte, error) {
 		return fb(ctx, c, action, payload)
 	}, true
+}
+
+// RegisterVersion registers h for action on connections that negotiated
+// version v only. It takes precedence over a handler registered with Register
+// for the same action, which stays the handler of every other version.
+func (r *HandlerRegistry) RegisterVersion(v ocppj.Version, action string, h HandlerFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.vhs == nil {
+		r.vhs = make(map[ocppj.Version]map[string]HandlerFunc)
+	}
+	if r.vhs[v] == nil {
+		r.vhs[v] = make(map[string]HandlerFunc)
+	}
+	r.vhs[v][action] = h
+}
+
+// RegisterSendVersion is RegisterVersion for an inbound SEND.
+func (r *HandlerRegistry) RegisterSendVersion(v ocppj.Version, action string, h SendHandlerFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.vsends == nil {
+		r.vsends = make(map[ocppj.Version]map[string]SendHandlerFunc)
+	}
+	if r.vsends[v] == nil {
+		r.vsends[v] = make(map[string]SendHandlerFunc)
+	}
+	r.vsends[v][action] = h
+}
+
+// ResolveFor is Resolve for a connection of protocol version v: the order is
+// the handler registered for (v, action), then the version-agnostic handler for
+// action, then the SetFallback catch-all.
+func (r *HandlerRegistry) ResolveFor(v ocppj.Version, action string) (HandlerFunc, bool) {
+	r.mu.RLock()
+	h, ok := r.vhs[v][action]
+	r.mu.RUnlock()
+	if ok {
+		return h, true
+	}
+	return r.Resolve(action)
+}
+
+// ResolveSendFor is ResolveSend for a connection of protocol version v, with
+// the same order as ResolveFor.
+func (r *HandlerRegistry) ResolveSendFor(v ocppj.Version, action string) (SendHandlerFunc, bool) {
+	r.mu.RLock()
+	h, ok := r.vsends[v][action]
+	r.mu.RUnlock()
+	if ok {
+		return h, true
+	}
+	return r.ResolveSend(action)
 }
 
 // ResolveSend is LookupSend with the SetSendFallback catch-all.
@@ -182,7 +241,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	}()
 
 	var run func(ctx context.Context, payload []byte) ([]byte, error)
-	if h, ok := c.reg.Resolve(frame.Action); ok {
+	if h, ok := c.reg.ResolveFor(c.version, frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) ([]byte, error) { return h(ctx, c, payload) }
 	}
 	hctx := c.handlerContext(frame.MsgID)
@@ -201,7 +260,7 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 // (missing handler, schema-invalid, handler error) is logged and dropped.
 func (c *Conn) runSendHandler(frame ocppj.Frame) {
 	var run func(ctx context.Context, payload []byte) error
-	if h, ok := c.reg.ResolveSend(frame.Action); ok {
+	if h, ok := c.reg.ResolveSendFor(c.version, frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) error { return h(ctx, c, payload) }
 	}
 	hctx := c.handlerContext(frame.MsgID)

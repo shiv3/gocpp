@@ -44,6 +44,19 @@ All notable changes to this project are documented here. The format is based on
   `compat/ocppgo/scripts/apidiff-allow.txt`; migration notes in the compat README,
   "Breaking changes vs upstream v0.19.0 (schema conformance)".
 
+- `csms.OnVersion` / `csms.OnSendVersion` and `dispatcher.HandlerRegistry.RegisterVersion`:
+  a handler registry keyed by (version, action), so one `csms.Server` can serve 1.6,
+  2.0.1 and 2.1 charge points with same-named actions. `csms.On` is unchanged and
+  stays the version-agnostic default.
+
+### Changed
+
+- The generated `RegisterCSMS` of each version (`v16/handlers`, `v201/handlers`,
+  `v21/handlers`) now registers for that version only (via `csms.OnVersion`), so the
+  registrars of several versions no longer overwrite each other on a shared server. A
+  charge point of another version than the one registered now gets NotImplemented
+  instead of reaching the wrong-version handler.
+
 ## [0.3.3] - 2026-11-24
 
 ### Changed (behaviour change in compat mode)

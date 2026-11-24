@@ -78,6 +78,25 @@ err := v16h.RegisterCP(client, myCP{})
 // CSMS side mirror: v16h.RegisterCSMS(srv, myCSMSHandler{})
 ```
 
+### One server for several protocol versions
+
+`BootNotification` exists in 1.6, 2.0.1 and 2.1 with different payloads, so one
+`csms.Server` that offers several subprotocols
+(`csms.WithSubProtocols("ocpp2.0.1", "ocpp1.6")`) needs a handler per
+(version, action). Each version's `RegisterCSMS` registers its handlers for that
+version only, so both can be registered on the same server:
+
+```go
+_ = v16h.RegisterCSMS(srv, my16Handler{})
+_ = v201h.RegisterCSMS(srv, my201Handler{})
+```
+
+For single messages use `csms.OnVersion(srv, ocppj.V201, profiles.BootNotification, h)`
+(and `csms.OnSendVersion` for 2.1 SEND). Dispatch order for a connection of
+version v: the `OnVersion` handler for (v, action), then the version-agnostic
+`csms.On` handler, then `csms.OnAny`. `csms.On` keeps serving every version.
+`Conn.Version()` tells a shared handler which version it is serving.
+
 ## Sending typed messages
 
 The recommended way to send is the per-version `client` package, which wraps the

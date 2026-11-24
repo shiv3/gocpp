@@ -938,10 +938,7 @@ func (s *Server) waitSplit() {
 // metric series.
 func (s *Server) knownAction() func(string) bool {
 	return func(action string) bool {
-		if _, ok := s.handlers.call(action); ok {
-			return true
-		}
-		if _, ok := s.handlers.send(action); ok {
+		if s.handlers.has(action) {
 			return true
 		}
 		if gateway.LabelAction(action) != gateway.OtherAction {

@@ -132,7 +132,7 @@ func TestHandlersRenderSendNoResponse(t *testing.T) {
 	}
 	s := string(src)
 	assertContains(t, s, "OnNotifyPeriodicEventStream(context.Context, *csms.Conn, messages.NotifyPeriodicEventStream) error")
-	assertContains(t, s, "csms.OnSend(s, profiles.NotifyPeriodicEventStream, h.OnNotifyPeriodicEventStream)")
+	assertContains(t, s, "csms.OnSendVersion(s, ocppj.V21, profiles.NotifyPeriodicEventStream, h.OnNotifyPeriodicEventStream)")
 }
 
 func TestCallsRendersSendNoResponse(t *testing.T) {

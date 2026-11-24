@@ -405,7 +405,7 @@ func (u backendUpstream) Handle(ctx context.Context, env gateway.Envelope) (gate
 		defer cancel()
 	}
 	var run func(ctx context.Context, payload []byte) ([]byte, error)
-	if h, ok := s.handlers.call(env.Action); ok {
+	if h, ok := s.handlers.callFor(env.Version, env.Action); ok {
 		run = func(ctx context.Context, payload []byte) ([]byte, error) { return h(ctx, conn, payload) }
 	}
 	frame := ocppj.Frame{Type: ocppj.Call, MsgID: env.MsgID, Action: env.Action, Payload: env.Payload}
@@ -451,7 +451,7 @@ func (u backendUpstream) Notify(ctx context.Context, env gateway.Envelope) error
 		hctx := ocppj.ContextWithMessageID(context.WithoutCancel(ctx), env.MsgID)
 		hctx = withGatewayConn(hctx, conn)
 		var run func(ctx context.Context, payload []byte) error
-		if h, ok := s.handlers.send(env.Action); ok {
+		if h, ok := s.handlers.sendFor(env.Version, env.Action); ok {
 			run = func(ctx context.Context, payload []byte) error { return h(ctx, conn, payload) }
 		}
 		frame := ocppj.Frame{Type: ocppj.Send, MsgID: env.MsgID, Action: env.Action, Payload: env.Payload}

@@ -10,7 +10,26 @@ import (
 )
 
 // On registers a typed handler for an inbound message (sent by the charge point).
+//
+// The handler serves every protocol version. A server that accepts several
+// versions with same-named actions (BootNotification exists in 1.6, 2.0.1 and
+// 2.1 with different payloads) registers each version's handler with
+// OnVersion; On then acts as the default for versions without their own.
 func On[Req, Resp any](s *Server, m ocppj.Message[Req, Resp], h func(ctx context.Context, c *Conn, req Req) (Resp, error)) error {
+	return on(s, "", m, h)
+}
+
+// OnVersion registers a typed handler for an inbound message on connections
+// that negotiated protocol version v (ocppj.V16, ocppj.V201, ocppj.V21) only.
+// Handlers registered for the same action under different versions coexist, so
+// one Server can serve 1.6 and 2.0.1 charge points. Dispatch order for a
+// connection of version v: the OnVersion handler for (v, action), then the
+// version-agnostic On handler, then OnAny.
+func OnVersion[Req, Resp any](s *Server, v ocppj.Version, m ocppj.Message[Req, Resp], h func(ctx context.Context, c *Conn, req Req) (Resp, error)) error {
+	return on(s, v, m, h)
+}
+
+func on[Req, Resp any](s *Server, v ocppj.Version, m ocppj.Message[Req, Resp], h func(ctx context.Context, c *Conn, req Req) (Resp, error)) error {
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpHandle, m.Direction); err != nil {
 		return err
 	}
@@ -28,10 +47,16 @@ func On[Req, Resp any](s *Server, m ocppj.Message[Req, Resp], h func(ctx context
 	// The same closure is kept in a table typed on *Conn so that a processing
 	// tier behind a gateway can run it with a Conn that is not backed by a
 	// dispatcher.Conn (see Server.handler).
-	s.handlers.setCall(m.Action, typed)
-	s.reg.Register(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) ([]byte, error) {
+	wrapped := func(ctx context.Context, dc *dispatcher.Conn, payload []byte) ([]byte, error) {
 		return typed(ctx, &Conn{inner: dc}, payload)
-	})
+	}
+	if v == "" {
+		s.handlers.setCall(m.Action, typed)
+		s.reg.Register(m.Action, wrapped)
+		return nil
+	}
+	s.handlers.setCallVersion(v, m.Action, typed)
+	s.reg.RegisterVersion(v, m.Action, wrapped)
 	return nil
 }
 

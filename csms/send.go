@@ -10,6 +10,16 @@ import (
 
 // OnSend registers a typed handler for an OCPP 2.1 SEND a CSMS receives.
 func OnSend[Req any](s *Server, m ocppj.SendMessage[Req], h func(ctx context.Context, c *Conn, req Req) error) error {
+	return onSend(s, "", m, h)
+}
+
+// OnSendVersion is OnSend for connections that negotiated protocol version v
+// only; see OnVersion.
+func OnSendVersion[Req any](s *Server, v ocppj.Version, m ocppj.SendMessage[Req], h func(ctx context.Context, c *Conn, req Req) error) error {
+	return onSend(s, v, m, h)
+}
+
+func onSend[Req any](s *Server, v ocppj.Version, m ocppj.SendMessage[Req], h func(ctx context.Context, c *Conn, req Req) error) error {
 	if err := dispatcher.CheckDirection(dispatcher.RoleCSMS, dispatcher.OpHandle, m.Direction); err != nil {
 		return err
 	}
@@ -20,10 +30,16 @@ func OnSend[Req any](s *Server, m ocppj.SendMessage[Req], h func(ctx context.Con
 		}
 		return h(ctx, c, req)
 	}
-	s.handlers.setSend(m.Action, typed)
-	s.reg.RegisterSend(m.Action, func(ctx context.Context, dc *dispatcher.Conn, payload []byte) error {
+	wrapped := func(ctx context.Context, dc *dispatcher.Conn, payload []byte) error {
 		return typed(ctx, &Conn{inner: dc}, payload)
-	})
+	}
+	if v == "" {
+		s.handlers.setSend(m.Action, typed)
+		s.reg.RegisterSend(m.Action, wrapped)
+		return nil
+	}
+	s.handlers.setSendVersion(v, m.Action, typed)
+	s.reg.RegisterSendVersion(v, m.Action, wrapped)
 	return nil
 }
 
