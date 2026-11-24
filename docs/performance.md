@@ -122,7 +122,7 @@ Validation is the largest per-request cost after the transport. In `BenchmarkDis
 
 Lenient is now cheaper than strict: an empty-object fast path (Heartbeat requests, most 1.6 confirmations) and a reflection-free decoder avoid most allocations, while strict still runs the full validator. Under load at 30k msg/s (Heartbeat-heavy mix) lenient allocates 3.5 KB per request and uses 1.16 cores; schema off allocates 1.4 KB and uses 0.81 cores (-30%), and its Heartbeat p99 is 0.8 ms against 1.7 ms. At 60k msg/s: 3.5 vs 1.4 KB, 2.11 vs 1.52 cores.
 
-- Run lenient in production (it is opt-in: `WithLenientSchema()`; the library default is validation off) unless profiling shows validation dominating; it protects handlers from malformed charger payloads and repairs common firmware mistakes.
+- Lenient is the default once a registry is set (`WithLenientSchema()`); keep it in production unless profiling shows validation dominating, in which case `WithStrictSchema(false)` turns it off; it protects handlers from malformed charger payloads and repairs common firmware mistakes.
 - `WithOutboundValidation(false)` skips validation of payloads your own handlers and calls produce (inbound validation is unchanged). That removes the response-side pass, about half of the lenient cost per request, and is the right setting once your handler output is covered by tests.
 - `WithSchemaRegistry` omitted (schema off) is for trusted fleets or a validating proxy in front.
 

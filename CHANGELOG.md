@@ -103,6 +103,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Breaking (draft, behaviour):** `csms.NewServer` and `cp.NewClient` given `WithSchemaRegistry` and no schema
+  option (`WithStrictSchema`, `WithTolerantSchema`, `WithLenientSchema`, `WithOCPPGoValidation`) now validate
+  inbound messages leniently instead of not at all. Structurally broken messages (missing required properties,
+  non-coercible types, bad date-time) are rejected with a CALLERROR where they used to reach the handler; benign
+  drift is repaired. Keep the old behaviour with `WithStrictSchema(false)`. No registry, no change.
 - Docs: README and usage.md state that wire schema validation is off by default (a registry alone validates
   nothing) and recommend `WithLenientSchema()` for production, `WithTolerantSchema()` to observe a fleet.
 - `gocpp-csms serve` answers Get15118EVCertificate with `Failed` instead of `Accepted`
