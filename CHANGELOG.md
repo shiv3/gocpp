@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format is based on
 
 - `cp.OnAny`: a catch-all handler for CSMS-to-charge-point CALLs with the raw payload, the counterpart of `csms.OnAny`, for simulators and interoperability harnesses.
 - Fuzz targets beyond the parser equivalence checks: `FuzzParseRoundTrip` (what `Parse` accepts survives encode and parse), `FuzzValidatorInvariants` (strict/lenient consistency and idempotence), `FuzzTypedDecode` (schema-valid payloads decode into the generated types and re-encode to schema-valid JSON) and `FuzzConnInbound` (arbitrary inbound frames never wedge a connection). A weekly `fuzz` workflow runs them; `make fuzz` runs them locally.
-
+- `internal/hostile`: hostile-peer tests against a live CSMS (slowloris, oversized and fragmented frames, invalid UTF-8, ping flood, half-open and reset connections, interleaved garbage), asserting that other charge points are still served and that no goroutine leaks.
 - `interop/loadtest` and `interop/parity`: the large-fleet load and soak harness (separate Go modules, not part of the root module) and the three parity CSMS binaries it drives (gocpp, the `compat/ocppgo` drop-in and upstream ocpp-go v0.19.0). See `interop/loadtest/README.md`.
 - `cmd/gocpp-csms`: a standalone test CSMS for OCPP 1.6, 2.0.1 and 2.1 in the root
   module (`go install github.com/shiv3/gocpp/cmd/gocpp-csms@latest`), ported from the
@@ -107,6 +107,7 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 
 - Typed request/response decoding accepts integral numbers written with a fraction or exponent (`20000.0`, `2e4`) for integer fields, as JSON Schema's `integer` allows. EVerest's libocpp sends such values, and gocpp used to answer them with a TypeConstraintViolation.
+- `csms.Server.ListenAndServe` now reads request headers for at most 10 seconds per connection (it used `http.ListenAndServe`, which has no timeout), so a peer that never finishes its HTTP request no longer holds a socket and goroutine forever.
 
 ## [0.4.0] - 2026-11-25
 
