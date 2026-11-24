@@ -52,6 +52,7 @@ go.opentelemetry.io/proto/otlp
 go.uber.org/goleak
 go.yaml.in/yaml/v2
 go.yaml.in/yaml/v3
+golang.org/x/crypto
 golang.org/x/mod
 golang.org/x/net
 golang.org/x/sync
