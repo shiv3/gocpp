@@ -18,8 +18,10 @@ A from-scratch alternative to `lorenzodonini/ocpp-go` (and a
   goroutine (about 13 KB RSS idle) bound to a `context`; handlers run on short-lived
   goroutines or an optional warm worker pool; teardown flows from one `cancel(cause)`. Race- and
   goroutine-leak-tested (`-race` + `goleak`).
-- **Two-layer validation** — JSON-Schema validation against the embedded official
-  schemas (source of truth), plus generated `validate` struct tags.
+- **Two-layer validation, opt-in** — JSON-Schema validation against the embedded official
+  schemas (source of truth), plus generated `validate` struct tags. **Wire validation is off
+  by default**: nothing is checked until you set a schema mode (see [Validation](#validation);
+  `WithLenientSchema()` is the recommended production setting).
 - **Pluggable** Storage / Auth / Observability with in-memory / NoOp defaults and
   Prometheus + OpenTelemetry adapters.
 
@@ -177,8 +179,16 @@ see "Stability" in docs/gateway.md for the full list.
 
 ## Validation
 
-Layer 1 (wire): enable strict schema validation on the connection so malformed
-inbound messages are rejected with a `CallError` before reaching your handler:
+**Default: off.** A server or client built without a schema option validates nothing on the
+wire, even if you pass `WithSchemaRegistry`: the registry only supplies the schemas that a mode
+uses. Set a mode explicitly. For production, use `WithLenientSchema()` (rejects structurally
+broken messages and repairs the usual charger mistakes; about +0.35 core at 30k msg/s, see
+[docs/performance.md](docs/performance.md#schema-validation-cost)), or `WithTolerantSchema()` to
+only log violations while you assess a fleet. `WithStrictSchema(true)` suits test chargers and
+simulators that must be exact.
+
+Layer 1 (wire): enable schema validation on the connection so malformed inbound messages are
+rejected with a `CallError` before reaching your handler (strict shown):
 
 ```go
 reg := schema.NewRegistry()
@@ -203,6 +213,10 @@ Schema handling is three-state. With a registry set:
 - `WithStrictSchema(false)` — validation off. **This is the library default**: with no
   schema option set, nothing is validated, even if a registry is configured. Lenient is
   opt-in (only the bundled load-test harness enables it by default).
+
+Layer 2 (the generated `validate` struct tags) is available to application code that calls the
+validator on a decoded message; the dispatcher's own inbound check is layer 1 and only runs when a
+schema mode is set.
 
 `cp.WithTolerantSchema()` / `cp.WithStrictSchema()` do the same on the charge-point side.
 

@@ -282,7 +282,11 @@ Two layers (spec §4.4):
    messages, `WithTolerantSchema()` logs a warning and passes (vendor quirks), and
    `WithStrictSchema(false)` turns validation off. **Off is the library default**: with no
    schema option, nothing is validated even when a registry is set (lenient is opt-in). `WithLenientSchema()` is
-   described below.
+   described below. **Recommendation:** use `WithLenientSchema()` for a production CSMS facing real
+   chargers (it protects handlers from malformed payloads and repairs common firmware mistakes at about
+   +0.35 core per 30k msg/s, see [performance.md](performance.md#schema-validation-cost)); use
+   `WithTolerantSchema()` first if you want to see what your fleet sends without rejecting anything; leave
+   it off only for trusted fleets or behind a validating proxy.
    **Lenient mode** (`csms.WithLenientSchema()` / `cp.WithLenientSchema()`) rejects
    structurally broken messages (missing required fields, wrong shapes) but repairs
    benign drift in inbound requests *and* responses before the typed decode, guided by
