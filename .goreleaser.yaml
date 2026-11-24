@@ -14,6 +14,12 @@ builds:
     env: [CGO_ENABLED=0]
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+  - id: gocpp-csms
+    main: ./cmd/gocpp-csms
+    binary: gocpp-csms
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
   # The gateway tools are separate modules (cmd/*/go.mod) that build against
   # this checkout through their replace directives.
   - id: gocpp-gateway
@@ -35,7 +41,7 @@ archives:
   # One archive per platform with the tools built for every platform; the
   # gateway is not built for Windows, so it ships in its own archive.
   - id: default
-    ids: [gocpp-validate, gocpp-sim, gocppctl]
+    ids: [gocpp-validate, gocpp-sim, gocpp-csms, gocppctl]
     format_overrides:
       - goos: windows
         formats: [zip]

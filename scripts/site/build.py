@@ -514,7 +514,7 @@ def build():
 <div class="grid3">
 <div class="card"><h4>Connection</h4><ul><li>Basic auth and mutual TLS authenticators (Security Profiles 1 to 3)</li><li>Custom charge-point id extraction from the path</li><li>Duplicate-connection policy: close the old one or reject the new one</li><li>Per-charge-point timeouts</li></ul></div>
 <div class="card"><h4>Charge-point client</h4><ul><li>Reconnect with exponential backoff; handlers persist</li><li>Offline queue with optional retry of in-flight calls</li><li>Automatic Heartbeat</li><li>Basic auth, custom headers, TLS configuration</li></ul></div>
-<div class="card"><h4>Tools and addons</h4><ul><li><code>gocpp-validate</code>: check a message against the official schema</li><li><code>gocpp-sim</code>: drive a simulated charge point from a YAML scenario</li><li><code>addons/statefsm</code>: 1.6 connector state machine</li><li><code>addons/tenant</code>: multi-tenant partitioning of stores</li></ul></div>
+<div class="card"><h4>Tools and addons</h4><ul><li><code>gocpp-validate</code>: check a message against the official schema</li><li><code>gocpp-sim</code>: drive a simulated charge point from a YAML scenario</li><li><code>gocpp-csms</code>: standalone test CSMS with a control API and a frame recorder</li><li><code>addons/statefsm</code>: 1.6 connector state machine</li><li><code>addons/tenant</code>: multi-tenant partitioning of stores</li></ul></div>
 </div>
 <p>gocpp is a protocol library: it gives you typed messages, connections and their guarantees. Business logic such as authorization rules, transaction storage and smart-charging decisions lives in your handlers; the storage interfaces it ships are extension points with in-memory defaults.</p>
 """
