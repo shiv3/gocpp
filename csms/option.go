@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/shiv3/gocpp/core/auth"
@@ -22,6 +23,9 @@ type serverConfig struct {
 	// lenientExtras holds the opt-in repairs of lenient mode (empty numbers,
 	// default for a missing property, unknown enum values).
 	lenientExtras schema.LenientOptions
+	// trustedProxies are the reverse proxies whose X-Forwarded-For / X-Real-IP
+	// Conn.ClientIP believes.
+	trustedProxies []netip.Prefix
 	// lenientTimeLocation interprets zone-less date-times in lenient mode (nil = UTC).
 	lenientTimeLocation *time.Location
 	// ocppGoValidation selects ocpp-go's validation policy within lenient mode.
@@ -859,4 +863,16 @@ type AttrSourceOptions struct {
 // Experimental: this API may change before v1.0.
 func WithAttrSource(src gateway.AttrSource, o AttrSourceOptions) Option {
 	return optionFunc(func(c *serverConfig) { c.attrSource, c.attrSourceOpts = src, o })
+}
+
+// WithTrustedProxies names the reverse proxies (load balancers, ingress) that sit
+// in front of the server. Conn.ClientIP then reads the charge point's address from
+// X-Forwarded-For (rightmost hop that is not a trusted proxy) or X-Real-IP when the
+// TCP peer is one of them; headers from any other peer are ignored. Without this
+// option Conn.ClientIP is the host of RemoteAddr. Use netip.MustParsePrefix, a
+// single address is a /32 or /128 prefix.
+func WithTrustedProxies(prefixes ...netip.Prefix) Option {
+	return optionFunc(func(c *serverConfig) {
+		c.trustedProxies = append(append([]netip.Prefix(nil), c.trustedProxies...), prefixes...)
+	})
 }

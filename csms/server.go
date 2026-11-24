@@ -401,6 +401,9 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		RequestHeader: r.Header,
 		TLS:           r.TLS,
 	}
+	if len(s.cfg.trustedProxies) > 0 {
+		meta.ClientIP = ClientIP(r.RemoteAddr, r.Header, s.cfg.trustedProxies)
+	}
 	var gws *gwSession
 	if s.edge != nil {
 		gws = s.edge.newSession(cpID, sess.Epoch)
