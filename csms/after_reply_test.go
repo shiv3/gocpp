@@ -70,6 +70,13 @@ func TestAfterReply_CallResultPrecedesFollowUpCall(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), `"GetConfiguration"`, "then the scheduled CALL")
 
+	// The observer runs right after the write returns, so the peer can read the
+	// frame before it has been recorded.
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(seen) == 2
+	}, 2*time.Second, 5*time.Millisecond)
 	mu.Lock()
 	defer mu.Unlock()
 	require.Equal(t, []string{"CALLRESULT", "CALL:GetConfiguration"}, seen)
