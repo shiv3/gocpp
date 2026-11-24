@@ -47,8 +47,27 @@ type ServerSettings struct {
 	IdleCloseFrame bool
 }
 
+// ConnTimeouts overrides the server-wide timeouts of one connection (0 = the server's).
+type ConnTimeouts struct {
+	// CallTimeout is how long an outbound request waits for its answer.
+	CallTimeout time.Duration
+	// IdleTimeout closes the connection when no frame (data, ping or pong) arrives
+	// within it; the ws.ServerTimeoutConfig.PingWait of this connection.
+	IdleTimeout time.Duration
+}
+
+// Compression selects permessage-deflate for accepted connections.
+type Compression int
+
+const (
+	CompressionDisabled Compression = iota // default, as ocpp-go
+	CompressionContextTakeover
+	CompressionNoContextTakeover
+)
+
 // Conn is what a runtime gets for an accepted WebSocket connection.
 type Conn struct {
+	Timeouts    ConnTimeouts
 	Channel     Channel
 	WS          transport.WS
 	Subprotocol string
@@ -101,6 +120,23 @@ type Native interface {
 	// drops the TCP connection as ocpp-go does, true sends a close frame (1000).
 	// Call before Start.
 	SetIdleCloseFrame(on bool)
+	// ConnectionIDs lists the ids of the connected charge points.
+	ConnectionIDs() []string
+	// Handler is the websocket upgrade handler of the server (id = last path
+	// segment), for mounting on an external mux.
+	Handler() http.Handler
+	// PrepareExternal readies the server for Handler without listening, as
+	// Start does before it listens; Stop shuts it down.
+	PrepareExternal()
+	// SetBasicAuthIDHandler sets a basic auth check that also gets the charge point id.
+	SetBasicAuthIDHandler(h func(id, username, password string) bool)
+	// SetIDResolver derives the charge point id from the request (pathID is the
+	// last path segment); ok=false refuses the upgrade with 404.
+	SetIDResolver(f func(r *http.Request, pathID string) (id string, ok bool))
+	// SetCompression selects permessage-deflate for connections accepted afterwards.
+	SetCompression(c Compression)
+	// SetConnTimeouts sets per-connection timeouts, asked once per upgrade.
+	SetConnTimeouts(f func(r *http.Request, id string) ConnTimeouts)
 	// SetMaxMessageSize limits inbound WebSocket messages (0 = unlimited, the
 	// default and ocpp-go's behaviour). Affects connections accepted afterwards.
 	SetMaxMessageSize(n int64)
@@ -203,6 +239,9 @@ type Control interface {
 	// SetDecoding installs the opt-in payload decoding options (zero value =
 	// upstream behaviour). Safe at any time.
 	SetDecoding(d Decoding)
+	// StartExternal starts the runtime like Start, but without listening: the
+	// application serves the ws.Server's Handler itself.
+	StartExternal(native Native)
 }
 
 // Decoding are the opt-in payload decoding quirks of the gocpp runtime.

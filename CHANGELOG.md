@@ -26,6 +26,11 @@ All notable changes to this project are documented here. The format is based on
   (measurand and unit), `AllowNumericSampledValue`, `PreserveLargeIntegers` (payload
   numbers decoded with `json.Number`, so a transactionId of 9223372036854775807 survives)
   and `LenientDateTime`.
+- `compat/ocppgo`: opt-in server helpers in package `compat`, defaults unchanged:
+  `ConnectionIDs`, `Handler` + `StartWithoutListener` (mount the websocket handler on
+  an external mux or router), `SetBasicAuthIDHandler` (basic auth that sees the charge
+  point id), `SetIDResolver` (id from a nested path), `SetCompression` (permessage-deflate)
+  and `SetConnTimeouts` (call and idle timeout per connection).
 
 ## [0.3.3] - 2026-11-24
 

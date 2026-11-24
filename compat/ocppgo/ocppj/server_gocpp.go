@@ -81,6 +81,9 @@ type srvConn struct {
 	mu       sync.Mutex
 	inflight map[string]chan inboundReply // inbound CALLs whose handler has not answered yet
 	sent     map[string]struct{}          // outbound CALLs owned by the gocpp dispatcher
+	// callTimeout is this connection's call timeout (the server's unless the
+	// application overrode it per connection, see compat.SetConnTimeouts).
+	callTimeout time.Duration
 }
 
 type inboundReply struct {
@@ -251,7 +254,20 @@ func (rt *gocppRuntime) Open(c compatrt.Conn) *gdisp.Conn {
 	ch, _ := c.Channel.(ws.Channel)
 	sc := &srvConn{ch: ch, inflight: map[string]chan inboundReply{}, sent: map[string]struct{}{}}
 	meta := gdisp.ConnMetadata{RemoteAddr: c.RemoteAddr, TLS: c.TLS}
-	sc.dc = gdisp.NewConnShared(ch.ID(), c.WS, rt.cfgFor(c.Subprotocol), rt.reg, meta)
+	cfg := rt.cfgFor(c.Subprotocol)
+	sc.callTimeout = cfg.CallTimeout
+	if c.Timeouts != (compatrt.ConnTimeouts{}) {
+		cc := *cfg // per-connection override of the server-wide settings
+		if c.Timeouts.CallTimeout > 0 {
+			cc.CallTimeout = c.Timeouts.CallTimeout
+			sc.callTimeout = cc.CallTimeout
+		}
+		if c.Timeouts.IdleTimeout > 0 {
+			cc.ReadTimeout = c.Timeouts.IdleTimeout
+		}
+		cfg = &cc
+	}
+	sc.dc = gdisp.NewConnShared(ch.ID(), c.WS, cfg, rt.reg, meta)
 	sc.dc.SetAttachment(sc)
 	sc.dc.HoldInbound()
 	ctx := rt.ctx
@@ -577,7 +593,7 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 		// the next request back until this one has timed out; without that
 		// order the application's per-client callback queue would hand the
 		// next answer to this request's callback.
-		t := time.NewTimer(max(rt.cfg.CallTimeout-time.Since(started), 0))
+		t := time.NewTimer(max(sc.callTimeout-time.Since(started), 0))
 		defer t.Stop()
 		select {
 		case <-t.C:

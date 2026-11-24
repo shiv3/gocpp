@@ -63,6 +63,12 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 | Duplicate charge point id: first wins as upstream (default) or last wins | `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)` |
 | Idle connection: dropped without a close frame as upstream (default) or closed with a frame (1000) | `compat.SetIdleClose(srv, compat.IdleCloseFrame)` before `Start` |
 | Inbound message size: no limit as upstream (default) or a limit (close code 1009) | `compat.SetMaxMessageSize(srv, n)` |
+| List the connected charge point ids | `compat.ConnectionIDs(srv)` |
+| Serve the websocket on your own mux / router (gin, chi, `http.ServeMux`) instead of `Start` listening | `compat.StartWithoutListener(endpoint, srv)`, then `mux.Handle("/ocpp/", compat.Handler(srv))`; stop with the central system's `Stop` |
+| Basic auth that knows the charge point id | `compat.SetBasicAuthIDHandler(srv, func(id, user, pass string) bool)` |
+| Charge point id from a nested path (`/{org}/{cp}`) or the request | `compat.SetIDResolver(srv, func(r *http.Request, pathID string) (string, bool))` |
+| permessage-deflate compression (off as upstream by default) | `compat.SetCompression(srv, compat.CompressionContextTakeover)` |
+| Call timeout / idle timeout per connection (server-wide: `SetCallTimeout`, `SetTimeoutConfig`) | `compat.SetConnTimeouts(srv, func(r, id) compat.ConnTimeouts)` |
 
 `SetObservability` needs the `*ocppj.Server`: build it yourself
 (`ocppj.NewServer(srv, nil, nil, profiles...)`, then `ocpp16.NewCentralSystem(endpoint, srv)`).
