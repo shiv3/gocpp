@@ -19,6 +19,9 @@ import (
 )
 
 type serverConfig struct {
+	// lenientExtras holds the opt-in repairs of lenient mode (empty numbers,
+	// default for a missing property, unknown enum values).
+	lenientExtras schema.LenientOptions
 	// lenientTimeLocation interprets zone-less date-times in lenient mode (nil = UTC).
 	lenientTimeLocation *time.Location
 	// ocppGoValidation selects ocpp-go's validation policy within lenient mode.
@@ -530,6 +533,63 @@ func WithAnswerInvalidResponses(on bool) Option {
 // It has no effect outside lenient mode.
 func WithLenientTimeLocation(loc *time.Location) Option {
 	return optionFunc(func(c *serverConfig) { c.lenientTimeLocation = loc })
+}
+
+// WithLenientEmptyNumbers makes lenient mode read an empty string where the
+// schema wants an integer or a number as 0 (some firmware sends "" for a value it
+// does not have). It is lossy, so it is off by default. Needs WithLenientSchema;
+// it has no effect in any other schema mode or under WithOCPPGoValidation.
+func WithLenientEmptyNumbers() Option {
+	return optionFunc(func(c *serverConfig) { c.lenientExtras.EmptyNumberAsZero = true })
+}
+
+// WithLenientDefaultMissing makes lenient mode fill in value for a required
+// string property the charge point left out, before validation (for example
+// WithLenientDefaultMissing("chargingRateUnit", "W")). value must satisfy the
+// schema. Off by default; needs WithLenientSchema and has no effect under
+// WithOCPPGoValidation.
+func WithLenientDefaultMissing(property, value string) Option {
+	return optionFunc(func(c *serverConfig) {
+		m := make(map[string]string, len(c.lenientExtras.DefaultMissing)+1)
+		for k, v := range c.lenientExtras.DefaultMissing {
+			m[k] = v
+		}
+		m[property] = value
+		c.lenientExtras.DefaultMissing = m
+	})
+}
+
+// WithLenientMissingChargingRateUnit is WithLenientDefaultMissing for a
+// ChargingSchedule without chargingRateUnit (read as "W"), which some stacks
+// omit although both 1.6 and 2.0.1 require it.
+func WithLenientMissingChargingRateUnit() Option {
+	return WithLenientDefaultMissing("chargingRateUnit", "W")
+}
+
+// WithLenientUnknownEnumValues makes lenient mode pass values outside the closed
+// enum of the named properties unchanged, instead of rejecting the message. It
+// is meant for vendor extensions of an open list; see
+// WithLenientVendorMeasurands. Off by default; needs WithLenientSchema and has
+// no effect under WithOCPPGoValidation.
+func WithLenientUnknownEnumValues(properties ...string) Option {
+	return optionFunc(func(c *serverConfig) {
+		c.lenientExtras.UnknownEnum = append(append([]string(nil), c.lenientExtras.UnknownEnum...), properties...)
+	})
+}
+
+// WithLenientVendorMeasurands lets vendor-specific SampledValue measurands
+// (for example "Energy.Request.Target") through lenient validation:
+// WithLenientUnknownEnumValues("measurand").
+func WithLenientVendorMeasurands() Option {
+	return WithLenientUnknownEnumValues("measurand")
+}
+
+// lenientOptions builds the per-message lenient options from the config.
+func (c *serverConfig) lenientOptions() schema.LenientOptions {
+	o := c.lenientExtras
+	o.TimeLocation = c.lenientTimeLocation
+	o.OCPPGo = c.ocppGoValidation
+	return o
 }
 
 // WithAuthenticator sets the connection authenticator (default auth.None).

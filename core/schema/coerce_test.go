@@ -116,3 +116,77 @@ func TestValidateLenient_CoercionCombinesWithEnumAndSoft(t *testing.T) {
 	require.Equal(t, "Accepted", m["status"])
 	require.EqualValues(t, 3, m["count"])
 }
+
+const lenientExtrasSchema = `{
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "Schedule": {
+      "type": "object",
+      "required": ["chargingRateUnit", "period"],
+      "properties": {
+        "chargingRateUnit": { "type": "string", "enum": ["W", "A"] },
+        "period": { "type": "integer" }
+      }
+    }
+  },
+  "properties": {
+    "id":       { "type": "integer" },
+    "level":    { "type": "number" },
+    "measurand": { "type": "string", "enum": ["Energy.Active.Import.Register", "Voltage"] },
+    "unit":     { "type": "string", "enum": ["Wh", "V"] },
+    "schedule": { "$ref": "#/definitions/Schedule" },
+    "samples":  { "type": "array", "items": { "type": "object", "properties": { "measurand": { "type": "string", "enum": ["Voltage"] } } } }
+  }
+}`
+
+func TestValidateLenient_OptInExtras(t *testing.T) {
+	fsys := fstest.MapFS{"s.json": &fstest.MapFile{Data: []byte(lenientExtrasSchema)}}
+	v, err := New(fsys, "s.json")
+	require.NoError(t, err)
+
+	cases := []struct {
+		name     string
+		in       string
+		opts     LenientOptions
+		want     string // "" means rejected
+		wantSoft []string
+	}{
+		{"empty int off", `{"id":""}`, LenientOptions{}, "", nil},
+		{"empty int on", `{"id":""}`, LenientOptions{EmptyNumberAsZero: true}, `{"id":0}`, []string{"type"}},
+		{"empty number on", `{"level":""}`, LenientOptions{EmptyNumberAsZero: true}, `{"level":0}`, []string{"type"}},
+		{"empty string field untouched", `{"unit":""}`, LenientOptions{EmptyNumberAsZero: true}, "", nil},
+		{"empty int on but OCPPGo", `{"id":""}`, LenientOptions{EmptyNumberAsZero: true, OCPPGo: true}, "", nil},
+
+		{"missing unit off", `{"schedule":{"period":1}}`, LenientOptions{}, "", nil},
+		{"missing unit default", `{"schedule":{"period":1}}`,
+			LenientOptions{DefaultMissing: map[string]string{"chargingRateUnit": "W"}},
+			`{"schedule":{"period":1,"chargingRateUnit":"W"}}`, []string{"required"}},
+		{"present unit kept", `{"schedule":{"period":1,"chargingRateUnit":"A"}}`,
+			LenientOptions{DefaultMissing: map[string]string{"chargingRateUnit": "W"}},
+			`{"schedule":{"period":1,"chargingRateUnit":"A"}}`, nil},
+		{"other missing property still rejected", `{"schedule":{"chargingRateUnit":"A"}}`,
+			LenientOptions{DefaultMissing: map[string]string{"chargingRateUnit": "W"}}, "", nil},
+
+		{"vendor measurand off", `{"measurand":"Energy.Request.Target"}`, LenientOptions{}, "", nil},
+		{"vendor measurand on", `{"measurand":"Energy.Request.Target"}`,
+			LenientOptions{UnknownEnum: []string{"measurand"}}, `{"measurand":"Energy.Request.Target"}`, []string{"enum"}},
+		{"vendor measurand nested", `{"samples":[{"measurand":"Power.Offered"}]}`,
+			LenientOptions{UnknownEnum: []string{"measurand"}}, `{"samples":[{"measurand":"Power.Offered"}]}`, []string{"enum"}},
+		{"other enum still rejected", `{"unit":"kW"}`, LenientOptions{UnknownEnum: []string{"measurand"}}, "", nil},
+		{"case fold still wins", `{"measurand":"voltage"}`,
+			LenientOptions{UnknownEnum: []string{"measurand"}}, `{"measurand":"Voltage"}`, []string{"enum"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, soft, err := v.ValidateLenientWith([]byte(tc.in), tc.opts)
+			if tc.want == "" {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tc.want, string(out))
+			require.Equal(t, tc.wantSoft, soft)
+		})
+	}
+}

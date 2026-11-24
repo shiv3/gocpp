@@ -128,3 +128,27 @@ func indexByte(s string, b byte) int {
 	}
 	return len(s)
 }
+
+func TestLenientExtras_OptIn(t *testing.T) {
+	boot := `[2,"1","StartTransaction",{"connectorId":1,"idTag":"T","meterStart":"","timestamp":"2026-01-01T00:00:00Z"}]`
+	meter := `[2,"2","MeterValues",{"connectorId":1,"meterValue":[{"timestamp":"2026-01-01T00:00:00Z","sampledValue":[{"value":"1","measurand":"Energy.Request.Target"}]}]}]`
+	register := func(rig *coerceRig) {
+		require.NoError(t, csms.On(rig.srv, profiles.StartTransaction, func(_ context.Context, _ *csms.Conn, req messages.StartTransactionRequest) (messages.StartTransactionResponse, error) {
+			require.Zero(t, req.MeterStart)
+			return messages.StartTransactionResponse{IDTagInfo: messages.IDTagInfo{Status: "Accepted"}, TransactionID: 1}, nil
+		}))
+		require.NoError(t, csms.On(rig.srv, profiles.MeterValues, func(_ context.Context, _ *csms.Conn, _ messages.MeterValuesRequest) (messages.MeterValuesResponse, error) {
+			return messages.MeterValuesResponse{}, nil
+		}))
+	}
+
+	strict := newCoerceRig(t, csms.WithLenientSchema())
+	register(strict)
+	require.Contains(t, strict.call(t, boot), `[4,"1"`, "empty number rejected by default")
+	require.Contains(t, strict.call(t, meter), `[4,"2"`, "vendor measurand rejected by default")
+
+	lenient := newCoerceRig(t, csms.WithLenientSchema(), csms.WithLenientEmptyNumbers(), csms.WithLenientVendorMeasurands())
+	register(lenient)
+	require.Contains(t, lenient.call(t, boot), `[3,"1"`)
+	require.Contains(t, lenient.call(t, meter), `[3,"2"`)
+}

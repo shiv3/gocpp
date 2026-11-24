@@ -79,7 +79,7 @@ func (v *Validator) validateLenient(raw []byte, opts LenientOptions) (out []byte
 
 	// Schema-guided coercion runs first so that the validation below (and the
 	// typed decode after it) sees the repaired values.
-	if v.coercible {
+	if v.coercible || len(opts.DefaultMissing) > 0 {
 		var changed bool
 		if soft, changed = coerceInstance(v.doc, inst, raw, opts, soft); changed {
 			coerced = true
@@ -122,6 +122,10 @@ func (v *Validator) validateLenient(raw []byte, opts LenientOptions) (out []byte
 		if kw == "enum" {
 			ek, _ := leaf.ErrorKind.(*kind.Enum)
 			canon, ok := caseInsensitiveEnumMatch(inst, leaf.InstanceLocation, ek)
+			if !ok && unknownEnumAllowed(opts.UnknownEnum, leaf.InstanceLocation) {
+				soft = append(soft, "enum")
+				continue
+			}
 			if !ok {
 				return nil, nil, hardViolation(v.name, verr, leaf)
 			}
@@ -147,6 +151,21 @@ func (v *Validator) validateLenient(raw []byte, opts LenientOptions) (out []byte
 		return nil, nil, fmt.Errorf("re-marshal lenient payload: %w", mErr)
 	}
 	return out, soft, nil
+}
+
+// unknownEnumAllowed reports whether the property at loc is one whose enum
+// violations LenientOptions.UnknownEnum passes.
+func unknownEnumAllowed(names []string, loc []string) bool {
+	if len(names) == 0 || len(loc) == 0 {
+		return false
+	}
+	last := loc[len(loc)-1]
+	for _, n := range names {
+		if n == last {
+			return true
+		}
+	}
+	return false
 }
 
 // hardViolation builds the rejection error for the first hard leaf.

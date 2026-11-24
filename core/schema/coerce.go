@@ -21,6 +21,24 @@ type LenientOptions struct {
 	// hard violation. ocpp-go validates with struct tags, not this schema, so the
 	// match is the closest achievable one (see docs/migration-from-ocpp-go.md).
 	OCPPGo bool
+
+	// The fields below are opt-in repairs for known non-conforming stacks. They
+	// are all off by default and ignored when OCPPGo is set.
+
+	// EmptyNumberAsZero turns an empty string where the schema wants an integer
+	// or a number into 0 (soft keyword "type"). Some firmware sends "" for a
+	// value it does not have. It is lossy (the value was absent, not zero), hence
+	// opt-in.
+	EmptyNumberAsZero bool
+	// DefaultMissing supplies a value for a required string property the peer
+	// left out, keyed by property name (for example {"chargingRateUnit": "W"}).
+	// The value is inserted before validation, so it must satisfy the schema; the
+	// repair is recorded as soft keyword "required".
+	DefaultMissing map[string]string
+	// UnknownEnum lists property names (for example "measurand") whose enum
+	// violation is passed instead of rejected, so vendor extensions to an
+	// otherwise closed value list get through unchanged (soft keyword "enum").
+	UnknownEnum []string
 }
 
 // coerceInstance walks inst guided by the schema doc and repairs values that a
@@ -109,6 +127,9 @@ func (c *coercer) walk(node map[string]any, inst any, key string, parent any, id
 	switch v := inst.(type) {
 	case map[string]any:
 		props, _ := node["properties"].(map[string]any)
+		if c.lenient && len(c.opts.DefaultMissing) > 0 && !c.opts.OCPPGo {
+			c.defaultMissing(node, props, v)
+		}
 		for k, child := range v {
 			cs, ok := props[k].(map[string]any)
 			if !ok {
@@ -137,6 +158,30 @@ func (c *coercer) walk(node map[string]any, inst any, key string, parent any, id
 				c.soft = append(c.soft, kw)
 			}
 		}
+	}
+}
+
+// defaultMissing inserts the DefaultMissing value for every required string
+// property of node that obj lacks.
+func (c *coercer) defaultMissing(node, props map[string]any, obj map[string]any) {
+	req, _ := node["required"].([]any)
+	for _, r := range req {
+		name, _ := r.(string)
+		def, ok := c.opts.DefaultMissing[name]
+		if !ok {
+			continue
+		}
+		if _, present := obj[name]; present {
+			continue
+		}
+		if ps, _ := props[name].(map[string]any); ps != nil {
+			if typ, _ := c.resolve(ps)["type"].(string); typ != "string" {
+				continue
+			}
+		}
+		obj[name] = def
+		c.changed = true
+		c.soft = append(c.soft, "required")
 	}
 }
 
@@ -228,12 +273,18 @@ func (c *coercer) coercePrimitive(typ, format string, v any) (any, string, bool)
 			}
 		}
 	case "integer":
+		if s, ok := v.(string); ok && s == "" && c.opts.EmptyNumberAsZero {
+			return json.Number("0"), "type", true
+		}
 		if s, ok := v.(string); ok && isJSONNumber(s) && !strings.ContainsAny(s, ".eE") {
 			if _, err := strconv.ParseInt(s, 10, 64); err == nil {
 				return json.Number(s), "type", true
 			}
 		}
 	case "number":
+		if s, ok := v.(string); ok && s == "" && c.opts.EmptyNumberAsZero {
+			return json.Number("0"), "type", true
+		}
 		if s, ok := v.(string); ok && isJSONNumber(s) {
 			if f, err := strconv.ParseFloat(s, 64); err == nil && !isInf(f) {
 				return json.Number(s), "type", true
