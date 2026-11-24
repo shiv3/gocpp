@@ -244,15 +244,21 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	if h, ok := c.reg.ResolveFor(c.version, frame.Action); ok {
 		run = func(ctx context.Context, payload []byte) ([]byte, error) { return h(ctx, c, payload) }
 	}
-	hctx := c.handlerContext(frame.MsgID)
+	ar := new(afterReply)
+	hctx := context.WithValue(c.handlerContext(frame.MsgID), afterReplyKey{}, ar)
 	out := c.pipe.RunCall(hctx, &frame, run)
 	status = out.Status
 	switch {
 	case out.Err == nil:
-		c.sendCallResult(frame.MsgID, out.Payload)
+		sent := c.sendCallResult(frame.MsgID, out.Payload)
+		if fns := ar.finish(sent); len(fns) > 0 {
+			c.runAfterReply(fns)
+		}
+		return
 	case !out.NoReply:
 		c.sendCallErrorWire(frame.MsgID, out.Wire, out.Err)
 	}
+	ar.finish(false)
 }
 
 // runSendHandler dispatches an inbound SEND (OCPP 2.1). A SEND is unconfirmed:
