@@ -38,6 +38,14 @@ All notable changes to this project are documented here. The format is based on
   #355, #385, #386, #418). The reviewed deviations are listed in
   `compat/ocppgo/scripts/apidiff-allow.txt`; migration notes in the compat README,
   "Breaking changes vs upstream v0.19.0 (schema conformance)".
+- compat/ocppgo OCPP 2.0.1, breaking for callers of these types: `GetCertificateStatusResponse.Status`
+  is `types.Certificate15118EVStatus` (`Accepted`/`Failed`; upstream #429, #381);
+  `types.IdTokenInfo.EvseID` added (struct no longer comparable); `GetVariableResult` gains
+  `AttributeStatusInfo` and accepts `attributeValue` up to 2500; `OCSPRequestDataType.ResponderURL`
+  is required; `LogStatusNotification` accepts `AcceptedCanceled` (#426); an empty
+  `NotifyCustomerInformation.data` is valid (#425, #428); `GetLogResponse.filename` is limited to
+  255 (#424); `GetInstalledCertificateIdsRequest` no longer sends `"certificateType":null` (#427);
+  all per the OCA schemas.
 
 ## [0.3.3] - 2026-11-24
 

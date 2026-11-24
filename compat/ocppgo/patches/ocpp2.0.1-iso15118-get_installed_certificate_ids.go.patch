@@ -1,0 +1,11 @@
+--- a/ocpp2.0.1/iso15118/get_installed_certificate_ids.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/iso15118/get_installed_certificate_ids.go	2026-11-24 00:00:00 +0900
+@@ -31,7 +31,7 @@
+ 
+ // The field definition of the GetInstalledCertificateIdsRequest PDU sent by the CSMS to the Charging Station.
+ type GetInstalledCertificateIdsRequest struct {
+-	CertificateTypes []types.CertificateUse `json:"certificateType" validate:"omitempty,dive,certificateUse"`
++	CertificateTypes []types.CertificateUse `json:"certificateType,omitempty" validate:"omitempty,dive,certificateUse"`
+ }
+ 
+ // The field definition of the GetInstalledCertificateIds response payload sent by the Charging Station to the CSMS in response to a GetInstalledCertificateIdsRequest.

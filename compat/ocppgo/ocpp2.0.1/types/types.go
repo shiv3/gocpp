@@ -155,7 +155,7 @@ type OCSPRequestDataType struct {
 	IssuerNameHash string            `json:"issuerNameHash" validate:"required,max=128"`
 	IssuerKeyHash  string            `json:"issuerKeyHash" validate:"required,max=128"`
 	SerialNumber   string            `json:"serialNumber" validate:"required,max=40"`
-	ResponderURL   string            `json:"responderURL,omitempty" validate:"max=512"`
+	ResponderURL   string            `json:"responderURL" validate:"required,max=512"`
 }
 
 // CertificateHashDataType
@@ -285,6 +285,7 @@ type IdTokenInfo struct {
 	Language2           string              `json:"language2,omitempty" validate:"max=8"`
 	GroupIdToken        *GroupIdToken       `json:"groupIdToken,omitempty"`
 	PersonalMessage     *MessageContent     `json:"personalMessage,omitempty"`
+	EvseID              []int               `json:"evseId,omitempty" validate:"omitempty,min=1"` // Only valid for these EVSEs, not the whole Charging Station.
 }
 
 // NewIdTokenInfo creates an IdTokenInfo. Optional parameters may be set afterwards on the initialized struct.

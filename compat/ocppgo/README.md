@@ -129,6 +129,19 @@ against the schemas are in `ocpp2.0.1_test/schema_conformance_test.go` and
 | `smartcharging.NewGetCompositeScheduleResponse` | `(status)` instead of `(status, evseId)` | drop the second argument, set `Schedule.EvseID` |
 | `types.ChargingSchedulePeriod` (upstream PR #418) | `PhaseToUse *int` added (`phaseToUse`) | additive; unkeyed struct literals need the new field |
 
+### Security, ISO 15118, diagnostics, provisioning (OCPP 2.0.1)
+
+| Type | Change | Migrating |
+|---|---|---|
+| `iso15118.GetCertificateStatusResponse.Status` (upstream issue #429, PR #381) | `types.Certificate15118EVStatus` (`Accepted`, `Failed`) instead of `types.GenericStatus` (`Accepted`, `Rejected`); `NewGetCertificateStatusResponse` takes the same type; `Rejected` is not a schema value and is now refused | use `types.Certificate15188EVStatusAccepted` / `types.Certificate15118EVStatusFailed` |
+| `types.IdTokenInfo` | `EvseID []int` (`evseId`) added; the struct is no longer comparable with `==` (so is `authorization.AuthorizeResponse`) | compare fields, not structs |
+| `provisioning.GetVariableResult` | `AttributeStatusInfo *types.StatusInfo` added; `attributeValue` is accepted up to 2500 characters (was 1000; `SetVariableData` stays at 1000, as in the schema) | additive |
+| `types.OCSPRequestDataType.ResponderURL` | always sent and required (the schema requires `responderURL`); was optional | set it; an empty string is refused |
+| `diagnostics.UploadLogStatus` (issue #426, PR #428) | `UploadLogStatusAcceptedCanceled` added and accepted in `LogStatusNotificationRequest` | additive |
+| `diagnostics.NotifyCustomerInformationRequest.Data` (issue #425, PR #428) | an empty string is valid (no `required`; the schema has no `minLength`) | none |
+| `diagnostics.GetLogResponse.Filename` (issue #424) | at most 255 characters (was 256) | none |
+| `iso15118.GetInstalledCertificateIdsRequest.CertificateTypes` (issue #427) | `certificateType` is omitted when the list is empty or nil (it was sent as `null`); omitted means all types | none |
+
 ## Known differences
 
 - Outbound requests are ordered per charge point, not globally.

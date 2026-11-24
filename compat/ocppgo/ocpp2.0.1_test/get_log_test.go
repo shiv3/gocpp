@@ -46,7 +46,8 @@ func (suite *OcppV2TestSuite) TestGetLogConfirmationValidation() {
 		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAcceptedCanceled}, true},
 		{diagnostics.GetLogResponse{}, false},
 		{diagnostics.GetLogResponse{Status: "invalidLogStatus"}, false},
-		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAccepted, Filename: ">256............................................................................................................................................................................................................................................................."}, false},
+		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAccepted, Filename: newLongString(256)}, false},
+		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAccepted, Filename: newLongString(255)}, true},
 	}
 	ExecuteGenericTestTable(t, confirmationTable)
 }

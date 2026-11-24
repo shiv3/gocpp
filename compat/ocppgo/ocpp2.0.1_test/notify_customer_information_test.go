@@ -22,7 +22,7 @@ func (suite *OcppV2TestSuite) TestNotifyCustomerInformationRequestValidation() {
 		{diagnostics.NotifyCustomerInformationRequest{Data: "dummyData", GeneratedAt: types.DateTime{Time: time.Now()}, RequestID: 42}, true},
 		{diagnostics.NotifyCustomerInformationRequest{Data: "dummyData", GeneratedAt: types.DateTime{Time: time.Now()}}, true},
 		{diagnostics.NotifyCustomerInformationRequest{Data: "dummyData"}, true},
-		{diagnostics.NotifyCustomerInformationRequest{}, false},
+		{diagnostics.NotifyCustomerInformationRequest{Data: "", GeneratedAt: types.DateTime{Time: time.Now()}}, true}, // the schema has no minLength: an empty data string is valid
 		{diagnostics.NotifyCustomerInformationRequest{Data: ">512.............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................", Tbc: false, SeqNo: 0, GeneratedAt: types.DateTime{Time: time.Now()}, RequestID: 42}, false},
 		{diagnostics.NotifyCustomerInformationRequest{Data: "dummyData", Tbc: false, SeqNo: -1, GeneratedAt: types.DateTime{Time: time.Now()}, RequestID: 42}, false},
 		{diagnostics.NotifyCustomerInformationRequest{Data: "dummyData", Tbc: false, SeqNo: 0, GeneratedAt: types.DateTime{Time: time.Now()}, RequestID: -1}, false},

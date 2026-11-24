@@ -65,7 +65,7 @@ type GetLogRequest struct {
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type GetLogResponse struct {
 	Status   LogStatus `json:"status" validate:"required,logStatus"`            // This field indicates whether the Charging Station was able to accept the request.
-	Filename string    `json:"filename,omitempty" validate:"omitempty,max=256"` // This contains the name of the log file that will be uploaded. This field is not present when no logging information is available.
+	Filename string    `json:"filename,omitempty" validate:"omitempty,max=255"` // This contains the name of the log file that will be uploaded. This field is not present when no logging information is available.
 }
 
 // The CSMS can request a Charging Station to upload a file with log information to a given location (URL).

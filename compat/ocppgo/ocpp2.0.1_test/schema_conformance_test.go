@@ -3,10 +3,15 @@
 package ocpp2_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/lorenzodonini/ocpp-go/internal/schematest"
+	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/authorization"
+	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/diagnostics"
+	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/iso15118"
+	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/provisioning"
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types"
 )
@@ -67,4 +72,71 @@ func TestSchemaConformanceCompositeScheduleMarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 	schematest.Marshal(t, v201, "GetCompositeScheduleResponse", resp)
+}
+
+func TestSchemaConformanceSecurityDiagnosticsProvisioning(t *testing.T) {
+	long := func(n int) string { return strings.Repeat("a", n) }
+	runConformance(t, []conformanceCase{
+		{"AuthorizeResponse",
+			`{"idTokenInfo":{"status":"Accepted","evseId":[1,2]}}`,
+			func() any { return &authorization.AuthorizeResponse{} }},
+		{"AuthorizeRequest",
+			`{"idToken":{"idToken":"1234","type":"KeyCode"},"iso15118CertificateHashData":[{"hashAlgorithm":"SHA256","issuerNameHash":"a","issuerKeyHash":"b","serialNumber":"1","responderURL":"http://ocsp.example.org"}]}`,
+			func() any { return &authorization.AuthorizeRequest{} }},
+		{"GetCertificateStatusRequest",
+			`{"ocspRequestData":{"hashAlgorithm":"SHA256","issuerNameHash":"a","issuerKeyHash":"b","serialNumber":"1","responderURL":"http://ocsp.example.org"}}`,
+			func() any { return &iso15118.GetCertificateStatusRequest{} }},
+		{"GetCertificateStatusResponse",
+			`{"status":"Failed","statusInfo":{"reasonCode":"ocspFailed"}}`,
+			func() any { return &iso15118.GetCertificateStatusResponse{} }},
+		{"GetCertificateStatusResponse",
+			`{"status":"Accepted","ocspResult":"AAAA"}`,
+			func() any { return &iso15118.GetCertificateStatusResponse{} }},
+		{"LogStatusNotificationRequest",
+			`{"status":"AcceptedCanceled","requestId":3}`,
+			func() any { return &diagnostics.LogStatusNotificationRequest{} }},
+		{"NotifyCustomerInformationRequest",
+			`{"data":"","seqNo":0,"generatedAt":"2025-01-01T10:00:00Z","requestId":1}`,
+			func() any { return &diagnostics.NotifyCustomerInformationRequest{} }},
+		{"GetLogResponse",
+			`{"status":"AcceptedCanceled","filename":"` + long(255) + `"}`,
+			func() any { return &diagnostics.GetLogResponse{} }},
+		{"GetVariablesResponse",
+			`{"getVariableResult":[{"attributeStatus":"Rejected","attributeStatusInfo":{"reasonCode":"notSupported","additionalInfo":"x"},"component":{"name":"c"},"variable":{"name":"v"}},{"attributeStatus":"Accepted","attributeValue":"` + long(2500) + `","component":{"name":"c"},"variable":{"name":"v"}}]}`,
+			func() any { return &provisioning.GetVariablesResponse{} }},
+		{"GetInstalledCertificateIdsRequest",
+			`{}`,
+			func() any { return &iso15118.GetInstalledCertificateIdsRequest{} }},
+		{"GetInstalledCertificateIdsRequest",
+			`{"certificateType":["V2GRootCertificate","CSMSRootCertificate"]}`,
+			func() any { return &iso15118.GetInstalledCertificateIdsRequest{} }},
+	})
+}
+
+// "asking for all certificates" must not put "certificateType":null (or []) on the wire.
+func TestSchemaConformanceGetInstalledCertificateIdsAll(t *testing.T) {
+	for _, req := range []*iso15118.GetInstalledCertificateIdsRequest{
+		{},
+		{CertificateTypes: []types.CertificateUse{}},
+	} {
+		if data := schematest.Marshal(t, v201, "GetInstalledCertificateIdsRequest", req); string(data) != "{}" {
+			t.Errorf("got %s, want {}", data)
+		}
+	}
+}
+
+// Values outside the schema are still rejected by the struct validation.
+func TestSchemaConformanceStillRejects(t *testing.T) {
+	bad := []any{
+		&iso15118.GetCertificateStatusResponse{Status: "Rejected"},
+		&diagnostics.LogStatusNotificationRequest{Status: "Accepted"},
+		&diagnostics.GetLogResponse{Status: diagnostics.LogStatusAccepted, Filename: strings.Repeat("a", 256)},
+		&provisioning.GetVariableResult{AttributeStatus: provisioning.GetVariableStatusAccepted, AttributeValue: strings.Repeat("a", 2501), Component: types.Component{Name: "c"}, Variable: types.Variable{Name: "v"}},
+		&types.OCSPRequestDataType{HashAlgorithm: types.SHA256, IssuerNameHash: "a", IssuerKeyHash: "b", SerialNumber: "1"}, // responderURL is required
+	}
+	for _, v := range bad {
+		if err := validate(v); err == nil {
+			t.Errorf("%T: expected a validation error", v)
+		}
+	}
 }
