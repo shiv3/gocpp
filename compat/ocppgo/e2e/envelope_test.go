@@ -229,3 +229,106 @@ func TestInvalidAnswer(t *testing.T) {
 		t.Fatalf("hook calls %v, want 1", hooked)
 	}
 }
+
+// TestInvalidAnswerKeepsCallbackOrder: while a request whose answer failed
+// validation waits for its timeout, the answer to the request sent after it must
+// reach that request's own callback (ocpp-go's per-client callback queue is
+// first-in first-out), not the callback of the invalid one.
+func TestInvalidAnswerKeepsCallbackOrder(t *testing.T) {
+	if os.Getenv("OCPPGO_COMPAT_RUNTIME") == "legacy" {
+		t.Skip("uses compat.SetCallTimeout, a feature of the gocpp runtime")
+	}
+	srv := ws.NewServer()
+	endpoint := ocppj.NewServer(srv, nil, nil, core.Profile)
+	compat.SetCallTimeout(endpoint, 800*time.Millisecond)
+	c := &central{h: &csHandler{}, port: freePort(t), srv: srv}
+	c.cs = ocpp16.NewCentralSystem(endpoint, srv)
+	c.cs.SetCoreHandler(c.h)
+	errs := make(chan error, 8)
+	go func() {
+		for err := range c.cs.Errors() {
+			errs <- err
+		}
+	}()
+	srv.AddHttpHandler("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	go c.cs.Start(c.port, "/{ws}")
+	waitFor(t, "listening", func() bool {
+		resp, err := healthGet(c.port)
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err == nil
+	})
+	t.Cleanup(srv.Stop)
+
+	conn, _, err := dialCP(c, "CP-ORDER")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	waitFor(t, "connected", func() bool { return compat.Connections(srv) == 1 })
+
+	type outcome struct {
+		which string
+		res   ocpp.Response
+		err   error
+	}
+	got := make(chan outcome, 2)
+	if err := c.cs.SendRequestAsync("CP-ORDER", core.NewRemoteStartTransactionRequest("TAG"), func(r ocpp.Response, err error) { got <- outcome{"A", r, err} }); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.cs.SendRequestAsync("CP-ORDER", core.NewResetRequest(core.ResetTypeSoft), func(r ocpp.Response, err error) { got <- outcome{"B", r, err} }); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+
+	readID := func() string {
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var arr []json.RawMessage
+		if err := json.Unmarshal(data, &arr); err != nil || len(arr) < 2 {
+			t.Fatalf("bad call frame %s", data)
+		}
+		var id string
+		_ = json.Unmarshal(arr[1], &id)
+		return id
+	}
+	// A is answered with an invalid payload; every call after it (B) is answered
+	// as soon as it arrives.
+	idA := readID()
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(`[3,"`+idA+`",{"status":"Bogus"}]`)); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var arr []json.RawMessage
+			if json.Unmarshal(data, &arr) == nil && len(arr) >= 2 && string(arr[0]) == "2" {
+				_ = conn.WriteMessage(websocket.TextMessage, []byte(`[3,`+string(arr[1])+`,{"status":"Accepted"}]`))
+			}
+		}
+	}()
+
+	first := <-got
+	second := <-got
+	if first.which != "A" || first.err == nil || time.Since(start) < 600*time.Millisecond {
+		t.Fatalf("first callback = %s (err %v) after %v, want A with the timeout error", first.which, first.err, time.Since(start))
+	}
+	if second.which != "B" || second.err != nil {
+		t.Fatalf("second callback = %s (err %v), want B without error", second.which, second.err)
+	}
+	if _, ok := second.res.(*core.ResetConfirmation); !ok {
+		t.Fatalf("B's callback got %T, want *core.ResetConfirmation", second.res)
+	}
+	select {
+	case err := <-errs:
+		t.Fatalf("unexpected error on Errors(): %v", err)
+	default:
+	}
+}

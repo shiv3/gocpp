@@ -551,13 +551,23 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 			sc.dc.SendCallError(e.MessageId, string(e.Code), e.Description, nil)
 		}
 		log.Error(e)
-		remaining := rt.cfg.CallTimeout - time.Since(started)
-		time.AfterFunc(max(remaining, 0), func() {
-			if sc.dc.Context().Err() == nil {
-				log.Infof("request %v for %v timed out", id, clientID)
-				cancel(ocpp.NewError(GenericError, "Request timed out", id))
-			}
-		})
+		// Wait out the timeout here, on the connection's callback worker, instead
+		// of on a timer. The worker runs the callbacks of one connection in
+		// submission order, so the answers of the requests sent meanwhile are
+		// not delivered ahead of this request's timeout error. ocpp-go keeps
+		// the next request back until this one has timed out; without that
+		// order the application's per-client callback queue would hand the
+		// next answer to this request's callback.
+		t := time.NewTimer(max(rt.cfg.CallTimeout-time.Since(started), 0))
+		defer t.Stop()
+		select {
+		case <-t.C:
+		case <-sc.dc.Context().Done():
+		}
+		if sc.dc.Context().Err() == nil {
+			log.Infof("request %v for %v timed out", id, clientID)
+			cancel(ocpp.NewError(GenericError, "Request timed out", id))
+		}
 	}
 	var ce *gocppj.CallError
 	switch {
