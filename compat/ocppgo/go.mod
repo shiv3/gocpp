@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/relvacode/iso8601 v1.6.0
-	github.com/shiv3/gocpp v0.3.2
+	github.com/shiv3/gocpp v0.3.3
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel/trace v1.47.0
