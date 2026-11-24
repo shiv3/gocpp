@@ -3,6 +3,7 @@ package ocpp2
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/lorenzodonini/ocpp-go/internal/callbackqueue"
 	"github.com/lorenzodonini/ocpp-go/ocpp"
@@ -49,16 +50,85 @@ type chargingStation struct {
 	callbacks            callbackqueue.CallbackQueue
 	stopC                chan struct{}
 	errC                 chan error // external error channel
+	// lifeMu guards stopC and stopped; errMu orders sends to errC against closing it.
+	lifeMu  sync.Mutex
+	stopped bool
+	errMu   sync.RWMutex
 }
 
 func (cs *chargingStation) error(err error) {
-	if cs.errC != nil {
-		cs.errC <- err
+	cs.errMu.RLock()
+	defer cs.errMu.RUnlock()
+	if cs.errC == nil {
+		return
 	}
+	select {
+	case cs.errC <- err:
+	case <-cs.stopChan():
+	}
+}
+
+// stopChan returns the channel closed by Stop (nil before the first Start).
+func (cs *chargingStation) stopChan() chan struct{} {
+	cs.lifeMu.Lock()
+	defer cs.lifeMu.Unlock()
+	return cs.stopC
+}
+
+func (cs *chargingStation) isStopped() bool {
+	cs.lifeMu.Lock()
+	defer cs.lifeMu.Unlock()
+	return cs.stopped
+}
+
+// begin prepares a (re)start: a fresh stop channel, and no response or error of
+// an earlier run left behind for the next callback.
+func (cs *chargingStation) begin() {
+	cs.lifeMu.Lock()
+	cs.stopC = make(chan struct{}, 1)
+	cs.stopped = false
+	cs.lifeMu.Unlock()
+	for {
+		select {
+		case <-cs.responseHandler:
+		case <-cs.errorHandler:
+		default:
+			return
+		}
+	}
+}
+
+// pushResponse and pushError hand an inbound message to asyncCallbackHandler
+// without blocking the sender for ever once the client was stopped.
+func (cs *chargingStation) pushResponse(r ocpp.Response) {
+	select {
+	case cs.responseHandler <- r:
+	case <-cs.stopChan():
+	}
+}
+
+func (cs *chargingStation) pushError(e error) {
+	select {
+	case cs.errorHandler <- e:
+	case <-cs.stopChan():
+	}
+}
+
+// safely runs an application callback; a panic is reported through Errors()
+// instead of ending the process.
+func (cs *chargingStation) safely(what string, f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			cs.error(fmt.Errorf("panic in %s: %v", what, r))
+		}
+	}()
+	f()
 }
 
 // Errors returns a channel for error messages. If it doesn't exist it es created.
 func (cs *chargingStation) Errors() <-chan error {
+	cs.errMu.Lock()
+	defer cs.errMu.Unlock()
 	if cs.errC == nil {
 		cs.errC = make(chan error, 1)
 	}
@@ -68,7 +138,7 @@ func (cs *chargingStation) Errors() <-chan error {
 // Callback invoked whenever a queued request is canceled, due to timeout.
 // By default, the callback returns a GenericError to the caller, who sent the original request.
 func (cs *chargingStation) onRequestTimeout(_ string, _ ocpp.Request, err *ocpp.Error) {
-	cs.errorHandler <- err
+	cs.pushError(err)
 }
 
 func (cs *chargingStation) BootNotification(reason provisioning.BootReason, model string, vendor string, props ...func(request *provisioning.BootNotificationRequest)) (*provisioning.BootNotificationResponse, error) {
@@ -538,18 +608,22 @@ func (cs *chargingStation) asyncCallbackHandler() {
 		case confirmation := <-cs.responseHandler:
 			// Get and invoke callback
 			if callback, ok := cs.callbacks.Dequeue("main"); ok {
-				callback(confirmation, nil)
+				cs.safely("response callback", func() { callback(confirmation, nil) })
 			} else {
 				cs.error(fmt.Errorf("no callback available for incoming response %v", confirmation.GetFeatureName()))
 			}
 		case protoError := <-cs.errorHandler:
 			// Get and invoke callback
 			if callback, ok := cs.callbacks.Dequeue("main"); ok {
-				callback(nil, protoError)
+				cs.safely("error callback", func() { callback(nil, protoError) })
 			} else {
 				cs.error(fmt.Errorf("no callback available for incoming error %w", protoError))
 			}
-		case <-cs.stopC:
+		case <-cs.stopChan():
+			// Callbacks of a stopped client are dropped (not invoked), as in 1.6, so
+			// that a restarted client does not hand its first answer to one of them.
+			for _, ok := cs.callbacks.Dequeue("main"); ok; _, ok = cs.callbacks.Dequeue("main") {
+			}
 			return
 		}
 	}
@@ -594,7 +668,7 @@ func (cs *chargingStation) sendResponse(response ocpp.Response, err error, reque
 
 func (cs *chargingStation) Start(csmsUrl string) error {
 	// Start client
-	cs.stopC = make(chan struct{}, 1)
+	cs.begin()
 	err := cs.client.Start(csmsUrl)
 	// Async response handler receives incoming responses/errors and triggers callbacks
 	if err == nil {
@@ -605,14 +679,32 @@ func (cs *chargingStation) Start(csmsUrl string) error {
 
 func (cs *chargingStation) StartWithRetries(csmsUrl string) {
 	// Start client
-	cs.stopC = make(chan struct{}, 1)
+	cs.begin()
 	cs.client.StartWithRetries(csmsUrl)
 	// Async response handler receives incoming responses/errors and triggers callbacks
 	go cs.asyncCallbackHandler()
 }
 
+// Stop stops the client. It may be called more than once and before Start.
 func (cs *chargingStation) Stop() {
 	cs.client.Stop()
+	cs.lifeMu.Lock()
+	cs.stopped = true
+	if cs.stopC != nil {
+		select {
+		case <-cs.stopC:
+		default:
+			close(cs.stopC)
+		}
+	}
+	cs.lifeMu.Unlock()
+
+	cs.errMu.Lock()
+	if cs.errC != nil {
+		close(cs.errC)
+		cs.errC = nil
+	}
+	cs.errMu.Unlock()
 }
 
 func (cs *chargingStation) IsConnected() bool {
@@ -634,6 +726,17 @@ func (cs *chargingStation) notSupportedError(requestId string, action string) {
 }
 
 func (cs *chargingStation) handleIncomingRequest(request ocpp.Request, requestId string, action string) {
+	if cs.isStopped() {
+		return // the client was stopped: no handler runs and nothing is answered
+	}
+	// A panic in an application handler is answered with an InternalError and
+	// reported through Errors() instead of ending the process.
+	defer func() {
+		if r := recover(); r != nil {
+			_ = cs.client.SendError(requestId, ocppj.InternalError, "internal error", nil)
+			cs.error(fmt.Errorf("panic in handler for %s request %s: %v", action, requestId, r))
+		}
+	}()
 	profile, found := cs.client.GetProfileForFeature(action)
 	// Check whether action is supported and a listener for it exists
 	if !found {

@@ -52,7 +52,7 @@ maintain it.
 | 10 | Configuration is process-wide; `SetMessageValidation(false)` does not disable inbound validation | r10 | reproduced | unchanged | **reproduced** (same package variables) | per-server options |
 | 11 | No `context.Context` in handlers or calls | (API) | - | unchanged | unchanged (API compatibility) | `ctx` everywhere |
 | 12 | Two goroutines and four channels per connection | r12 | 2.00 goroutines per idle connection | unchanged | 1.00 | 1.00 |
-| 13 | Client: calling `Stop` twice panics | r11 | process exits | partly changed | **reproduced** (client is ocpp-go's code) | separate implementation |
+| 13 | Client: calling `Stop` twice panics | r11 | process exits | partly changed | fixed by default in the release after `v0.19.0-gocpp.2` (`v0.19.0-gocpp.2` and earlier: reproduced) | separate implementation |
 
 ## 1. Server dispatcher: one goroutine, one lock, blocking sends
 
@@ -676,11 +676,31 @@ longer. Setting a shorter timeout bounds it
 (`ocppj.NewDefaultClientDispatcher(...).SetTimeout`); the stall itself is not
 removed by that.
 
+Separately from that stall, `DefaultClientDispatcher.Pause` waited on the timer
+channel while holding the dispatcher lock, which can block for ever once the
+pump has drained the timer (the pump and `SendRequest` then wait for the lock);
+the drop-in fixes that one (below).
+
 **Why it matters / gocpp.** This affects tools built on ocpp-go's client
 (simulators, load generators, tests), not a CSMS. It is a local bug, not a
-design issue; it is listed because **the drop-in does not change it**: the
-client side of the drop-in is ocpp-go's unchanged code, and r11 gives the same
-result on both. gocpp's native client (`cp`) is a separate implementation.
+design issue. **Drop-in:** the client is ocpp-go's code, hardened from the
+release after `v0.19.0-gocpp.2` by default (these are panic and hang fixes):
+`Stop` can be called any number of times and before `Start`, also while a
+reconnection is in progress (no connection is left behind); `SendRequest`
+during or after `Stop` returns an error instead of hanging or panicking
+(`send on closed channel`); `ws.Client.Write` never sends on a closed channel;
+the dispatcher's `Pause` no longer deadlocks; a panic in an application handler
+or callback is recovered (the request is answered with `InternalError`, the
+panic is reported on `Errors()`); requests that arrive after `Stop` are
+ignored; `ws.Client`'s error channel and handlers are synchronised. r11-A is
+not reproduced any more ([output](../interop/ocppgo-repro/out/r11_client_crash.compat.txt)).
+What stays as in ocpp-go: a request that was in flight when the connection
+dropped is awaited again after the reconnect until the call timeout, then
+reported to its callback (r11-B still shows that stall of up to 30 s);
+`ocppj` request/response ordering relative to inbound calls; no
+`SetAutoReconnect`. For simulators and load generators gocpp's native client
+(`cp`) is the recommended client: it is a separate implementation (context
+support, calls fail when the connection drops, no process-wide settings).
 
 ## Upstream master after v0.19.0
 
@@ -738,7 +758,7 @@ gocpp is one option among several.
 - **The drop-in replaces the server runtime only.** Payload decoding,
   validation, the callback FIFO of the 1.6 / 2.0.1 glue, the package-level
   configuration and the whole client side remain ocpp-go's code. On the
-  drop-in, r07, r10, r11 and r13 reproduce exactly as on upstream, and
+  drop-in, r07, r10 and r13 reproduce exactly as on upstream, and
   r09 is the same code.
 - **Up to and including `v0.19.0-gocpp.2` the drop-in misdelivered a response
   after a reconnect when no disconnect handler was registered** (r08-C). Later
@@ -788,7 +808,7 @@ gocpp is one option among several.
   - An ordinary lifecycle (connect, requests both ways, disconnect, `Stop`)
     showed **no data race** under `-race` (r10). The race found needs a
     setter called while another server runs.
-  - The client `send on closed channel` could not be reproduced (r11-B).
+  - The client `send on closed channel` could not be reproduced by r11-B (found by a targeted test, since fixed on the drop-in).
 
 ## If you use the drop-in
 

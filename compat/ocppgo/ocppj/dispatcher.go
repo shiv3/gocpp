@@ -96,6 +96,7 @@ type DefaultClientDispatcher struct {
 	timer               *time.Timer
 	paused              bool
 	timeout             time.Duration
+	stopped             bool // set by Stop: requests are refused, nothing is sent on requestChannel
 }
 
 const (
@@ -126,6 +127,7 @@ func (d *DefaultClientDispatcher) Start() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 	d.requestChannel = make(chan bool, 1)
+	d.stopped = false
 	d.timer = time.NewTimer(defaultTimeoutTick) // Default to 24 hours tick
 	go d.messagePump()
 }
@@ -133,7 +135,7 @@ func (d *DefaultClientDispatcher) Start() {
 func (d *DefaultClientDispatcher) IsRunning() bool {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
-	return d.requestChannel != nil
+	return d.requestChannel != nil && !d.stopped
 }
 
 func (d *DefaultClientDispatcher) IsPaused() bool {
@@ -145,6 +147,10 @@ func (d *DefaultClientDispatcher) IsPaused() bool {
 func (d *DefaultClientDispatcher) Stop() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
+	if d.requestChannel == nil || d.stopped {
+		return // not started, or already stopped
+	}
+	d.stopped = true
 	close(d.requestChannel)
 	// TODO: clear pending requests?
 }
@@ -165,8 +171,17 @@ func (d *DefaultClientDispatcher) SendRequest(req RequestBundle) error {
 		return err
 	}
 	d.mutex.RLock()
-	d.requestChannel <- true
-	d.mutex.RUnlock()
+	defer d.mutex.RUnlock()
+	if d.requestChannel == nil || d.stopped {
+		return fmt.Errorf("ocppj client is stopped, couldn't send request")
+	}
+	// The channel is a doorbell: the request is in the queue already. Never block
+	// here, a full bell means the pump has been woken up already (and a blocked
+	// send would keep Stop from taking the lock).
+	select {
+	case d.requestChannel <- true:
+	default:
+	}
 	return nil
 }
 
@@ -187,6 +202,7 @@ func (d *DefaultClientDispatcher) messagePump() {
 				d.requestQueue.Init()
 				d.mutex.Lock()
 				d.requestChannel = nil
+				d.stopped = false
 				d.mutex.Unlock()
 				return
 			}
@@ -223,7 +239,10 @@ func (d *DefaultClientDispatcher) messagePump() {
 			rdy = false
 			// Set timer
 			if !d.timer.Stop() {
-				<-d.timer.C
+				select {
+				case <-d.timer.C:
+				default:
+				}
 			}
 			d.timer.Reset(d.timeout)
 		}
@@ -253,10 +272,17 @@ func (d *DefaultClientDispatcher) dispatchNextRequest() {
 func (d *DefaultClientDispatcher) Pause() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-	if !d.timer.Stop() {
-		<-d.timer.C
+	if d.timer != nil {
+		// The timer may have fired and been drained by the pump already; a blocking
+		// receive would hang here while holding the lock the pump needs.
+		if !d.timer.Stop() {
+			select {
+			case <-d.timer.C:
+			default:
+			}
+		}
+		d.timer.Reset(defaultTimeoutTick)
 	}
-	d.timer.Reset(defaultTimeoutTick)
 	d.paused = true
 }
 
@@ -269,7 +295,10 @@ func (d *DefaultClientDispatcher) Resume() {
 		d.timer.Reset(d.timeout)
 	} else {
 		// Can dispatch a new request. Notifying message pump.
-		d.readyForDispatch <- true
+		select {
+		case d.readyForDispatch <- true:
+		default:
+		}
 	}
 }
 
@@ -287,8 +316,12 @@ func (d *DefaultClientDispatcher) CompleteRequest(requestId string) {
 	d.requestQueue.Pop()
 	d.pendingRequestState.DeletePendingRequest(requestId)
 	log.Debugf("removed request %v from front of queue", bundle.Call.UniqueId)
-	// Signal that next message in queue may be sent
-	d.readyForDispatch <- true
+	// Signal that next message in queue may be sent (a doorbell: one pending
+	// signal is as good as several, and the pump itself calls this on a timeout)
+	select {
+	case d.readyForDispatch <- true:
+	default:
+	}
 }
 
 // ServerDispatcher contains the state and logic for handling outgoing messages on a server endpoint.

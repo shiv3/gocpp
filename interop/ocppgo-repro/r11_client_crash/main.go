@@ -159,10 +159,11 @@ func main() {
 	}
 	fmt.Printf("library: %s (client code: ocpp-go's own in both variants)\n", h.Variant)
 	diedA, errA, headA := h.RunChild("A", 10*time.Second)
-	fmt.Printf("A. double Stop: process died=%v (%v)\n%s\n", diedA, errA, headA)
+	crashedA := diedA && errA != nil // the child returns normally when the second Stop returns
+	fmt.Printf("A. double Stop: process crashed=%v (%v)\n%s\n", crashedA, errA, headA)
 	fmt.Printf("B. %d charge points sending Heartbeat every 2 ms; the server drops every connection every 300 ms\n", *n)
 	t0 := time.Now()
 	diedB, errB, headB := h.RunChild("B", *dur)
 	fmt.Printf("B. process died=%v after %.1f s (%v)\n%s", diedB, time.Since(t0).Seconds(), errB, headB)
-	h.Result(diedA || diedB, "client process crashed: double Stop=%v, sending while connections drop=%v (see the B lines: the clients may stop exchanging messages without crashing)", diedA, diedB)
+	h.Result(crashedA || diedB, "client process crashed: double Stop=%v, sending while connections drop=%v (see the B lines: the clients may stop exchanging messages without crashing)", crashedA, diedB)
 }

@@ -51,9 +51,7 @@ jobs:
       # and fail on the unmodified upstream tag as well.
       - run: go test -vet=off -count=1 -timeout 5m -skip 'TestMockOcppJ/(TestCentralSystemInvalidMessageHook|TestChargePointInvalidMessageHook)' ./ocppj/
       # ws black-box suite (the toxiproxy network suite skips without a server).
-      # (ocpp-go's unmodified client has a data race in TestClientErrors, hence the
-      # skip under -race; the server side is race clean.)
-      - run: go test -race -count=1 -timeout 4m -skip 'TestClientErrors|TestNetworkErrors' ./ws/
+      - run: go test -race -count=1 -timeout 4m -skip 'TestNetworkErrors' ./ws/
       - run: go test -count=1 -timeout 4m ./ws/
       # Real WebSockets: ocpp-go's client against the compat central system.
       # One process per test: ocpp-go keeps unsynchronised package level settings

@@ -198,10 +198,10 @@ func NewChargePoint(id string, endpoint *ocppj.Client, client ws.WsClient) Charg
 	endpoint.SetOnRequestCanceled(cp.onRequestTimeout)
 
 	cp.client.SetResponseHandler(func(confirmation ocpp.Response, requestId string) {
-		cp.confirmationHandler <- confirmation
+		cp.pushResponse(confirmation)
 	})
 	cp.client.SetErrorHandler(func(err *ocpp.Error, details interface{}) {
-		cp.errorHandler <- err
+		cp.pushError(err)
 	})
 	cp.client.SetRequestHandler(cp.handleIncomingRequest)
 	return &cp
