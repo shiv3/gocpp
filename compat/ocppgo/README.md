@@ -5,13 +5,13 @@
 gocpp runtime. An application switches to it with one line in its `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.3
 ```
 
 ## Versions
 
 Use `compat/ocppgo` **`v0.19.0-gocpp.x`** (tags `compat/ocppgo/v0.19.0-gocpp.N`,
-for example `v0.19.0-gocpp.2` above). This line tracks upstream
+for example `v0.19.0-gocpp.3` above). This line tracks upstream
 `lorenzodonini/ocpp-go` v0.19.0 and is the only one that is maintained.
 
 Two other sets of tags exist, and they stay on the Go module proxy only because
