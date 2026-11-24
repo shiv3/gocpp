@@ -40,14 +40,13 @@ repository and run `go build` in `cmd/gocpp-gateway` or `cmd/gocppctl` (their
 ## Drop-in replacement for ocpp-go
 
 Already on `lorenzodonini/ocpp-go`? You can move a server to the gocpp runtime
-**without changing application code**: the compatibility modules have exactly the
-public API of ocpp-go (checked with `apidiff` in CI) and run ocpp-go's own test
-suites on gocpp. Add one `replace` line to your `go.mod`:
+**without changing application code**: the compatibility module has exactly the
+public API of ocpp-go v0.19.0 (checked with `apidiff` in CI) and runs ocpp-go's own
+test suites on gocpp. Add one `replace` line to your `go.mod`:
 
-| You use | Add to `go.mod` |
-|---|---|
-| ocpp-go `v0.17.x` (incl. the `v0.17.2-fix.x` line) | `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.17.2-gocpp.1` |
-| ocpp-go `v0.19.0` | `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1` |
+```
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1
+```
 
 Then `go mod tidy` and build as before. What changes at runtime (server side):
 
@@ -59,10 +58,8 @@ Then `go mod tidy` and build as before. What changes at runtime (server side):
   `github.com/lorenzodonini/ocpp-go/compat` package.
 
 `OCPPGO_COMPAT_RUNTIME=legacy` switches back to ocpp-go's original code path without
-a rebuild. The client side stays ocpp-go's own implementation. Details, known
-differences and a staged rollout plan: [compat/ocppgo/README.md](compat/ocppgo/README.md),
-[compat/ocppgo/ROLLOUT.md](compat/ocppgo/ROLLOUT.md),
-[compat/ocppgo-v019/README.md](compat/ocppgo-v019/README.md). To migrate to the native
+a rebuild. The client side stays ocpp-go's own implementation. Details and known
+differences: [compat/ocppgo-v019/README.md](compat/ocppgo-v019/README.md). To migrate to the native
 gocpp API instead, see [docs/migration-from-ocpp-go.md](docs/migration-from-ocpp-go.md).
 
 ## Quick start
@@ -247,7 +244,7 @@ The `internal/conformance` suite ports lorenzodonini/ocpp-go's per-message test 
 - [docs/usage.md](docs/usage.md) — usage guide
 - [docs/architecture.md](docs/architecture.md) — design & concurrency model
 - [docs/migration-from-ocpp-go.md](docs/migration-from-ocpp-go.md) — moving from ocpp-go (native API or drop-in)
-- [compat/ocppgo/README.md](compat/ocppgo/README.md) — the ocpp-go drop-in module
+- [compat/ocppgo-v019/README.md](compat/ocppgo-v019/README.md) — the ocpp-go drop-in module
 
 ## License
 
