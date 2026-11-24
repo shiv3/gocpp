@@ -182,7 +182,7 @@ func (s *Server) SendRequest(clientID string, request ocpp.Request) error {
 	if !s.rt.running() {
 		return fmt.Errorf("ocppj server is not started, couldn't send request")
 	}
-	call, err := s.CreateCall(request)
+	call, err := s.rt.createCall(s, request)
 	if err != nil {
 		return err
 	}

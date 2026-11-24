@@ -32,6 +32,36 @@ type Leniency struct {
 	// sampledValue list (upstream: PropertyConstraintViolation, minimum 1). Also
 	// applies to OCPP 2.0.1 MeterValues, which has the same constraint.
 	AllowEmptySampledValue bool
+	// AllowEmptyConfigurationValue accepts an empty ChangeConfiguration value,
+	// in a request this server sends (upstream: SendRequest fails with a
+	// validation error) and, through the same filter, in any received message
+	// that carries one.
+	AllowEmptyConfigurationValue bool
+	// AllowEmptyIdTag accepts an empty idTag in Authorize and StartTransaction
+	// requests received and in RemoteStartTransaction requests sent (upstream:
+	// OccurrenceConstraintViolation / validation error).
+	AllowEmptyIdTag bool
+	// AllowEmptySampledValueValue accepts a sampledValue whose value is the empty
+	// string in MeterValues and StopTransaction (upstream: OccurrenceConstraintViolation).
+	AllowEmptySampledValueValue bool
+	// AllowVendorMeasurands accepts measurand and unit values outside the OCPP 1.6
+	// enumerations (vendor extensions, typos such as "Energy.Active.lmport.Register")
+	// in MeterValues and StopTransaction. Only OCPP 1.6 messages are affected.
+	AllowVendorMeasurands bool
+	// AllowNumericSampledValue accepts a JSON number as sampledValue.value of
+	// OCPP 1.6 MeterValues and StopTransaction ("value": 12.5 instead of "12.5";
+	// upstream: FormatViolation). The number is passed to the handler as the string of its digits.
+	AllowNumericSampledValue bool
+	// PreserveLargeIntegers decodes the payload numbers of received requests and
+	// answers without rounding them through float64, so that an integer up to the
+	// int64 range, such as a transactionId of 9223372036854775807, reaches the
+	// handler intact (upstream: FormatViolation, the value rounds to 2^63).
+	PreserveLargeIntegers bool
+	// LenientDateTime repairs near-RFC3339 timestamps in received messages before
+	// they are parsed: "2024-01-02 03:04:05", a missing zone (taken as UTC),
+	// "+0100" without the colon, a comma as the fractional separator, a date
+	// without time. Timestamps that cannot be repaired still reject the message.
+	LenientDateTime bool
 	// SpecSpellingOccurenceV16 sends the OCPP 1.6 spelling
 	// "OccurenceConstraintViolation" in CALLERRORs on OCPP 1.6 connections
 	// instead of ocpp-go's "OccurrenceConstraintViolation".
@@ -39,7 +69,8 @@ type Leniency struct {
 }
 
 func (l Leniency) filter() ValidationErrorFilter {
-	if !l.AllowEmptyChargePointVendor && !l.AllowLongConfigurationValues && !l.AllowEmptySampledValue {
+	if !l.AllowEmptyChargePointVendor && !l.AllowLongConfigurationValues && !l.AllowEmptySampledValue &&
+		!l.AllowEmptyConfigurationValue && !l.AllowEmptyIdTag && !l.AllowEmptySampledValueValue && !l.AllowVendorMeasurands {
 		return nil
 	}
 	return func(action, field, tag string) bool {
@@ -51,9 +82,32 @@ func (l Leniency) filter() ValidationErrorFilter {
 			return true
 		case l.AllowEmptySampledValue && action == "MeterValues" && field == "MeterValue.SampledValue" && tag == "min":
 			return true
+		case l.AllowEmptyConfigurationValue && action == "ChangeConfiguration" && field == "Value" && tag == "required":
+			return true
+		case l.AllowEmptyIdTag && field == "IdTag" && tag == "required" &&
+			(action == "Authorize" || action == "StartTransaction" || action == "RemoteStartTransaction"):
+			return true
+		case l.AllowEmptySampledValueValue && isSampledValueField(action, field, "Value") && tag == "required":
+			return true
+		case l.AllowVendorMeasurands && isSampledValueField(action, field, "Measurand") && tag == "measurand16":
+			return true
+		case l.AllowVendorMeasurands && isSampledValueField(action, field, "Unit") && tag == "unitOfMeasure":
+			return true
 		}
 		return false
 	}
+}
+
+// isSampledValueField reports whether field is the given field of a SampledValue
+// of an OCPP 1.6 MeterValues or StopTransaction message (indexes stripped).
+func isSampledValueField(action, field, name string) bool {
+	switch action {
+	case "MeterValues":
+		return field == "MeterValue.SampledValue."+name
+	case "StopTransaction":
+		return field == "TransactionData.SampledValue."+name
+	}
+	return false
 }
 
 func stripIndexes(s string) string {
@@ -82,6 +136,11 @@ func SetValidationLeniency(s *ocppj.Server, l Leniency) bool {
 		return false
 	}
 	c.SetValidation(compatrt.ValidationFilter(l.filter()), l.SpecSpellingOccurenceV16)
+	c.SetDecoding(compatrt.Decoding{
+		UseNumber:           l.PreserveLargeIntegers,
+		NumericSampledValue: l.AllowNumericSampledValue,
+		LenientDateTime:     l.LenientDateTime,
+	})
 	return true
 }
 
@@ -94,5 +153,6 @@ func SetValidationErrorFilter(s *ocppj.Server, f ValidationErrorFilter) bool {
 		return false
 	}
 	c.SetValidation(compatrt.ValidationFilter(f), false)
+	c.SetDecoding(compatrt.Decoding{})
 	return true
 }

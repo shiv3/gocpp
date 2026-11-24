@@ -35,9 +35,15 @@ import (
 type csHandler struct {
 	boots, heartbeats, meters, statuses atomic.Int64
 	txID                                atomic.Int64
+	// last requests seen by the opt-in leniency tests
+	lastMeter atomic.Pointer[core.MeterValuesRequest]
+	lastStart atomic.Pointer[core.StartTransactionRequest]
+	lastAuth  atomic.Pointer[core.AuthorizeRequest]
+	lastStop  atomic.Pointer[core.StopTransactionRequest]
 }
 
 func (h *csHandler) OnAuthorize(id string, r *core.AuthorizeRequest) (*core.AuthorizeConfirmation, error) {
+	h.lastAuth.Store(r)
 	return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted)), nil
 }
 func (h *csHandler) OnBootNotification(id string, r *core.BootNotificationRequest) (*core.BootNotificationConfirmation, error) {
@@ -59,6 +65,7 @@ func (h *csHandler) OnHeartbeat(id string, r *core.HeartbeatRequest) (*core.Hear
 }
 func (h *csHandler) OnMeterValues(id string, r *core.MeterValuesRequest) (*core.MeterValuesConfirmation, error) {
 	h.meters.Add(1)
+	h.lastMeter.Store(r)
 	return core.NewMeterValuesConfirmation(), nil
 }
 func (h *csHandler) OnStatusNotification(id string, r *core.StatusNotificationRequest) (*core.StatusNotificationConfirmation, error) {
@@ -66,9 +73,11 @@ func (h *csHandler) OnStatusNotification(id string, r *core.StatusNotificationRe
 	return core.NewStatusNotificationConfirmation(), nil
 }
 func (h *csHandler) OnStartTransaction(id string, r *core.StartTransactionRequest) (*core.StartTransactionConfirmation, error) {
+	h.lastStart.Store(r)
 	return core.NewStartTransactionConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted), int(h.txID.Add(1))), nil
 }
 func (h *csHandler) OnStopTransaction(id string, r *core.StopTransactionRequest) (*core.StopTransactionConfirmation, error) {
+	h.lastStop.Store(r)
 	return core.NewStopTransactionConfirmation(), nil
 }
 func (h *csHandler) OnDiagnosticsStatusNotification(id string, r *firmware.DiagnosticsStatusNotificationRequest) (*firmware.DiagnosticsStatusNotificationConfirmation, error) {

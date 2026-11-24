@@ -1,5 +1,5 @@
---- a/ocppj/server.go	2026-11-22 09:42:14.116533313 +0900
-+++ b/ocppj/server.go	2026-11-22 09:42:14.116533313 +0900
+--- a/ocppj/server.go	2026-11-24 23:44:14.142242172 +0900
++++ b/ocppj/server.go	2026-11-24 23:44:14.146242160 +0900
 @@ -23,6 +23,8 @@
  	invalidMessageHook        InvalidMessageHook
  	dispatcher                ServerDispatcher
@@ -79,7 +79,8 @@
 +	if !s.rt.running() {
  		return fmt.Errorf("ocppj server is not started, couldn't send request")
  	}
- 	call, err := s.CreateCall(request)
+-	call, err := s.CreateCall(request)
++	call, err := s.rt.createCall(s, request)
  	if err != nil {
  		return err
  	}
@@ -120,7 +121,7 @@
  	jsonMessage, err := callError.MarshalJSON()
  	if err != nil {
  		return ocpp.NewError(GenericError, err.Error(), requestId)
-@@ -318,7 +349,13 @@
+@@ -319,7 +350,13 @@
  
  func (s *Server) onClientConnected(ws ws.Channel) {
  	// Create state for connected client
@@ -135,7 +136,7 @@
  	// Invoke callback
  	if s.newClientHandler != nil {
  		s.newClientHandler(ws)
-@@ -327,10 +364,36 @@
+@@ -328,10 +365,36 @@
  
  func (s *Server) onClientDisconnected(ws ws.Channel) {
  	// Clear state for disconnected client

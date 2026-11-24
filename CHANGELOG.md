@@ -19,6 +19,13 @@ All notable changes to this project are documented here. The format is based on
 - compat/ocppgo: `compat.SetValidationErrorToCallback(endpoint, true)` (opt-in): an
   answer that fails parsing or validation completes the request's callback at
   once instead of at the call timeout (ocpp-go issues #175, #234).
+- `compat/ocppgo`: opt-in `compat.Leniency` flags for real-charger quirks, per server,
+  default unchanged: `AllowEmptyConfigurationValue` (also for the ChangeConfiguration
+  request the server sends), `AllowEmptyIdTag` (Authorize, StartTransaction; sent
+  RemoteStartTransaction), `AllowEmptySampledValueValue`, `AllowVendorMeasurands`
+  (measurand and unit), `AllowNumericSampledValue`, `PreserveLargeIntegers` (payload
+  numbers decoded with `json.Number`, so a transactionId of 9223372036854775807 survives)
+  and `LenientDateTime`.
 
 ## [0.3.3] - 2026-11-24
 
