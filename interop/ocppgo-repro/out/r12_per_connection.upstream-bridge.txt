@@ -1,0 +1,11 @@
+$ ./run.sh r12 upstream -n 1000 -bridge   (2026-11-24T14:50:41Z, go1.27.4 linux/amd64)
+library: ocpp-go v0.19.0 (upstream) (app-side WsServer wrapper)
+1000 idle connections (the raw test clients run no goroutines)
+goroutines: 4 before, 2003 now = 2.00 per connection
+    1001  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+    1000  select | ws.(*Server).writePump
+       1  running | pprof.writeGoroutineStacks <- pprof.writeGoroutine <- pprof.(*Profile).WriteTo
+       1  select | ocppj.(*DefaultServerDispatcher).messagePump
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 2.00 goroutines per idle connection
+exit status: 0

@@ -78,6 +78,10 @@ type Opt struct {
 	WSTimeouts  *ws.ServerTimeoutConfig
 	Handler     *Handler
 	Before      func(cs *CS) // called before Start
+	// Wrap, when set, hands the central system an application-side WsServer
+	// that delegates to the library's own *ws.Server (r12 bridge mode).
+	// CS.WS stays the inner server, which is where compat.Set* must be called.
+	Wrap func(inner *ws.Server) ws.WsServer
 }
 
 // StartCS starts an OCPP 1.6 central system on a free port, the way the
@@ -93,8 +97,12 @@ func StartCS(o Opt) *CS {
 	if o.WSTimeouts != nil {
 		srv.SetTimeoutConfig(*o.WSTimeouts)
 	}
-	endpoint := newEndpoint(srv, o.CallTimeout) // build-tag specific (timeout_*.go)
-	cs := &CS{CentralSystem: ocpp16.NewCentralSystem(endpoint, srv), WS: srv, Endpoint: endpoint, Port: port}
+	var front ws.WsServer = srv
+	if o.Wrap != nil {
+		front = o.Wrap(srv)
+	}
+	endpoint := newEndpoint(front, o.CallTimeout) // build-tag specific (timeout_*.go)
+	cs := &CS{CentralSystem: ocpp16.NewCentralSystem(endpoint, front), WS: srv, Endpoint: endpoint, Port: port}
 	hd := o.Handler
 	if hd == nil {
 		hd = &Handler{}

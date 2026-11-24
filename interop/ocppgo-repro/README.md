@@ -44,8 +44,8 @@ defaults are 30 s for calls and 10 s for writes).
 | `r08_callback_fifo` | A: an invalid answer surfaces as a timeout. B: an answer racing the timeout goes to another request's callback. C: without a disconnect handler, a stale callback gets the first answer after a reconnect. C2: the same through the typed API panics | A as described; B and C reproduced; C2 ends the process | B not reproduced; C reproduced up to `v0.19.0-gocpp.2`, fixed by default after it; C2 does not end the process | 15 s |
 | `r09_decode_bench` | cost of ocpp-go's inbound decode path against one typed decode (`go test -bench`) | 1.3x to 2.2x | same code | 20 s |
 | `r10_globals` | settings are process-wide; `SetMessageValidation(false)` leaves inbound validation on; `SetLogger` races with a running server | reproduced | reproduced | 10 s |
-| `r11_client_crash` | client: A: `Stop` twice panics. B: sending while connections drop (no crash observed) | A reproduced; B no crash | same (the client is ocpp-go's code) | 50 s |
-| `r12_per_connection` | goroutines per idle server connection | 2.00 | 1.00 | 5 s |
+| `r11_client_crash` | client: A: `Stop` twice panics. B: sending while connections drop (no crash; the client stalls while drops continue: `-flap-for 12s` with `-call-timeout 30s` or `3s` shows recovery after one call timeout) | A reproduced; B no crash | same (the client is ocpp-go's code) | 50 s |
+| `r12_per_connection` | goroutines per idle server connection | 2.00 | 1.00; with `-bridge` (app-side `WsServer` wrapper, 1,000 connections) 3.00 (upstream with the wrapper: 2.00) | 5 s |
 | `r13_tag_drift` | three messages that are valid against the OCA schemas are rejected by the struct tags | reproduced (3/3) | reproduced (3/3) | 1 s |
 
 `native/r07` sends the same numbers to a gocpp server built with the native API

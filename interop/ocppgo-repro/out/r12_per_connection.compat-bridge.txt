@@ -1,0 +1,11 @@
+$ ./run.sh r12 compat -n 1000 -bridge   (2026-11-24T14:50:43Z, go1.27.4 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line) (app-side WsServer wrapper)
+1000 idle connections (the raw test clients run no goroutines)
+goroutines: 2 before, 3002 now = 3.00 per connection
+    1001  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+    1000  select | ocppj.(*bridgeWS).Read <- dispatcher.(*Conn).reader
+    1000  select | ws.(*serverConn).writeLoop
+       1  running | pprof.writeGoroutineStacks <- pprof.writeGoroutine <- pprof.(*Profile).WriteTo
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: REPRODUCED: 3.00 goroutines per idle connection
+exit status: 0
