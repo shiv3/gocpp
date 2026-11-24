@@ -75,8 +75,13 @@ type Conn struct {
 	handlerBase  context.Context
 	closeWSOnce  sync.Once
 	closedMetric sync.Once
-	done         chan struct{}
-	wg           sync.WaitGroup
+
+	// badMu guards the bad frame count of MaxBadFrames.
+	badMu    sync.Mutex
+	badCount int
+	badStart time.Time
+	done     chan struct{}
+	wg       sync.WaitGroup
 
 	// Transient background goroutines (async calls and their callbacks, the
 	// OCPP keepalive loop, ping callbacks). bgWG tracks them; bgClosed (under
@@ -678,6 +683,11 @@ func (c *Conn) handleMessage(msg []byte) bool {
 	}
 	c.observeInbound(msg, frame, err)
 	if err != nil {
+		reason := "parse"
+		if errors.Is(err, ocppj.ErrIgnoredMessageType) {
+			reason = "unknown_type"
+		}
+		c.noteBadFrame(reason)
 		if h := c.cfg.ParseErrorHook; h != nil && h(c, msg, err) {
 			return true
 		}
@@ -804,6 +814,7 @@ func (c *Conn) checkMessageID(frame ocppj.Frame) bool {
 			}
 		}
 	}
+	c.noteBadFrame("message_id")
 	c.cfg.Logger.WarnContext(c.ctx, "dropping message with invalid message id",
 		"cp_id", c.id, "action", frame.Action, "empty", empty, "length", utf8.RuneCountInString(frame.MsgID))
 	return false

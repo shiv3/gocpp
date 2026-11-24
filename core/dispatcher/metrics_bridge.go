@@ -73,3 +73,9 @@ func (b *metricsBridge) PingLatency(version string, d time.Duration) {
 		m.PingLatency(version, d)
 	}
 }
+
+func (b *metricsBridge) BadFrame(version, reason string) {
+	if m, ok := b.m.(observability.BadFrameMetrics); ok {
+		m.BadFrame(version, reason)
+	}
+}

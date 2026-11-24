@@ -53,6 +53,12 @@ type InboundOutcome struct {
 	Wire string
 	// NoReply is set when the ErrorCodeMapper suppressed the CALLERROR.
 	NoReply bool
+	// PeerFault is set when the CALL was rejected for its own content: it failed
+	// schema validation or its payload could not be decoded. It is not set for an
+	// unknown action, a handler failure or a locally produced invalid response.
+	PeerFault bool
+
+	faultReason string
 }
 
 // RunCall runs one inbound CALL through the pipeline: signature unwrap, the
@@ -164,6 +170,12 @@ func (p *Pipeline) fail(out *InboundOutcome, status string, ce *ocppj.CallError)
 func (p *Pipeline) builtin(out *InboundOutcome, status string, src ErrorSource, action string, err error, def *ocppj.CallError) {
 	wire, reply := p.MapBuiltinError(src, action, err, def, true)
 	*out = InboundOutcome{Status: status, Err: def, Wire: wire, NoReply: !reply}
+	switch src {
+	case ErrorSourceSchema:
+		out.PeerFault, out.faultReason = true, "schema"
+	case ErrorSourceDecode:
+		out.PeerFault, out.faultReason = true, "decode"
+	}
 }
 
 // RawCallError is a handler error that is already a finished CALLERROR: the

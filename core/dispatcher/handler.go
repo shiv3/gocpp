@@ -248,6 +248,9 @@ func (c *Conn) runHandler(frame ocppj.Frame) {
 	hctx := context.WithValue(c.handlerContext(frame.MsgID), afterReplyKey{}, ar)
 	out := c.pipe.RunCall(hctx, &frame, run)
 	status = out.Status
+	if out.PeerFault {
+		c.noteBadFrame(out.faultReason)
+	}
 	switch {
 	case out.Err == nil:
 		sent := c.sendCallResult(frame.MsgID, out.Payload)

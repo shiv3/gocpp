@@ -60,6 +60,14 @@ All notable changes to this project are documented here. The format is based on
   control API with a bearer token. New extension hooks `WrapOCPP` and `WrapControl`.
   See "Hosted test CSMS" in `docs/gocpp-csms.md`.
 
+- `csms.WithMaxBadFrames(n, window)` / `cp.WithMaxBadFrames` (`dispatcher.Config.MaxBadFrames`,
+  `BadFrameWindow`): opt-in. Close a connection with 1008 (policy violation) once the peer has
+  sent `n` bad frames within `window`: not valid OCPP-J, unsupported MessageTypeId, a CALL with
+  a bad message id, or a CALL rejected by schema validation or undecodable. Off by default.
+  Every bad frame is counted by the new optional `observability.BadFrameMetrics`
+  (Prometheus `gocpp_bad_frames_total{version,reason}`, OTel `gocpp.bad_frames`), also
+  when the limit is off. `dispatcher.InboundOutcome` gains `PeerFault`.
+
 ### Changed
 
 - `gocpp-csms serve` answers Get15118EVCertificate with `Failed` instead of `Accepted`

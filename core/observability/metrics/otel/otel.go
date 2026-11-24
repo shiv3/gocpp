@@ -24,6 +24,7 @@ type metrics struct {
 	queueDepth  metric.Int64Histogram
 	pingLatency metric.Float64Histogram
 	softViol    metric.Int64Counter
+	badFrames   metric.Int64Counter
 	sessDur     metric.Float64Histogram
 	closes      metric.Int64Counter
 	accepts     metric.Int64Counter
@@ -85,6 +86,12 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 		return nil, err
 	}
 
+	badFrames, err := m.Int64Counter("gocpp.bad_frames",
+		metric.WithDescription("inbound frames that were malformed or rejected for their content, by reason"))
+	if err != nil {
+		return nil, err
+	}
+
 	sessDur, err := m.Float64Histogram("gocpp.session.duration",
 		metric.WithDescription("connection lifetime, observed at close"), metric.WithUnit("s"))
 	if err != nil {
@@ -138,6 +145,7 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 		queueDepth:  queueDepth,
 		pingLatency: pingLatency,
 		softViol:    softViol,
+		badFrames:   badFrames,
 	}, nil
 }
 
@@ -215,4 +223,9 @@ func (m *metrics) EdgeResponse(version, action string) {
 
 func (m *metrics) TenantInflight(tenant string, delta int) {
 	m.tenantInfl.Add(context.Background(), int64(delta), metric.WithAttributes(attribute.String("tenant", tenant)))
+}
+
+func (m *metrics) BadFrame(version, reason string) {
+	m.badFrames.Add(context.Background(), 1, metric.WithAttributes(
+		attribute.String("version", version), attribute.String("reason", reason)))
 }

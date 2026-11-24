@@ -133,7 +133,7 @@ CSMS (`csms.With*`): `WithSubProtocols`, `WithPath`, `WithCPIDExtractor`, `WithC
 (+ `WithLenientTimeLocation`), `WithAuthenticator`, `WithMetrics`, `WithTracerProvider`, `WithConnectionRegistry`,
 `WithDuplicatePolicy`, `WithTransactionStore` and `WithConfigStore` (application-facing storage slots, see below), `WithMessageRouter` (deprecated, see docs/clustering.md),
 `WithGlobalConcurrencyLimit`, `WithWebSocketPingInterval` + `WithWebSocketPongWait`,
-`WithSerializedCalls` / `WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`,
+`WithSerializedCalls` / `WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`, `WithMaxBadFrames`,
 `WithMaxConnections`, `WithOnConnect`, `WithOnDisconnect`, `WithOriginPatterns`,
 `WithInsecureSkipVerifyOrigin`, `WithCheckOrigin`, `WithInstanceID` (see [clustering](clustering.md)), `WithAcceptRateLimit` and `Server.Drain` (see [draining](draining.md)).
 
@@ -142,7 +142,7 @@ CP (`cp.With*`): `WithSubProtocols`, `WithCallTimeout`, `WithLogger`,
 (+ `WithLenientTimeLocation`), `WithBasicAuth`,
 `WithHTTPHeader`, `WithTLSConfig`, `WithHeartbeatInterval`,
 `WithWebSocketPingInterval` + `WithWebSocketPongWait`, `WithSerializedCalls` /
-`WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`,
+`WithConcurrentCalls`, `WithHandlerTimeout`, `WithMaxMessageSize`, `WithMaxBadFrames`,
 `WithOfflineQueue` + `WithRetryInFlightCalls`, `WithOnConnect`, `WithOnDisconnect`,
 `WithOnReconnect`.
 
@@ -154,6 +154,7 @@ Defaults that are easy to get wrong (library defaults, both CSMS and CP unless n
 | `WithWebSocketPingInterval` / `WithWebSocketPongWait` / `WithWebSocketReadTimeout` | 54s / 60s / 60s (0 disables) |
 | `WithCallTimeout` | 30s |
 | `WithMaxMessageSize` | 1 MiB (larger closes with 1009) |
+| `WithMaxBadFrames` | off (bad frames are answered or dropped, never a reason to close) |
 | `csms.WithMaxConnections` | 0 = unlimited |
 
 `csms.WithTransactionStore` and `csms.WithConfigStore` are **application-facing extension
@@ -217,6 +218,12 @@ v16client.NewCSMS(conn).GetConfigurationAsync(ctx, req, func(resp v16msg.GetConf
   `conn.Done()` (CSMS) or `cp.ConnDone(ctx)` (charge point).
 - `WithMaxMessageSize(n)` (CSMS and CP) sets the largest inbound WebSocket message, default
   1 MiB; a larger message closes the connection with 1009.
+- `WithMaxBadFrames(n, window)` (CSMS and CP, opt-in) closes a connection with 1008 once the
+  peer sent `n` bad frames within `window` (0 = whole connection life): not valid OCPP-J, an
+  unsupported MessageTypeId, a CALL with a bad message id, or a CALL rejected by schema
+  validation or whose payload cannot be decoded. An unknown action does not count. Every bad
+  frame is exported as `gocpp_bad_frames_total{version,reason}` whether or not the limit is set.
+  A useful internet-facing value is `WithMaxBadFrames(20, time.Minute)`.
 - `csms.WithMaxConnections(n)` caps simultaneous charge points (0 = unlimited). Over the
   cap the upgrade is refused with HTTP 503 + `Retry-After` before the handshake. A charge
   point reconnecting under an id that is already connected replaces its old connection and
