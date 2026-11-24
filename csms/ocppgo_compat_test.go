@@ -384,13 +384,13 @@ func TestOCPPGoCompat_ShutdownKeepsAccepting(t *testing.T) {
 		url := "ws" + ts.URL[len("http"):] + "/ocpp/"
 		a, _, err := websocket.Dial(ctx, url+"A", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 		require.NoError(t, err)
-		defer a.CloseNow()
+		defer func() { _ = a.CloseNow() }()
 		time.Sleep(100 * time.Millisecond)
 		require.NoError(t, srv.Shutdown(ctx))
 		_, _, before = a.Read(ctx) // the existing connection is closed
 		b, _, after := websocket.Dial(ctx, url+"B", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
 		if b != nil {
-			defer b.CloseNow()
+			defer func() { _ = b.CloseNow() }()
 		}
 		return before, after
 	}
