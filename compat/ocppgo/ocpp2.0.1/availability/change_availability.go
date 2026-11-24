@@ -53,6 +53,7 @@ func isValidChangeAvailabilityStatus(fl validator.FieldLevel) bool {
 type ChangeAvailabilityRequest struct {
 	OperationalStatus OperationalStatus `json:"operationalStatus" validate:"required,operationalStatus"`
 	Evse              *types.EVSE       `json:"evse,omitempty" validate:"omitempty"`
+	CustomData        *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the ChangeAvailability response payload, sent by the Charging Station to the CSMS in response to a ChangeAvailabilityRequest.
@@ -60,6 +61,7 @@ type ChangeAvailabilityRequest struct {
 type ChangeAvailabilityResponse struct {
 	Status     ChangeAvailabilityStatus `json:"status" validate:"required,changeAvailabilityStatus"`
 	StatusInfo *types.StatusInfo        `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData        `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // CSMS can request a Charging Station to change its availability.

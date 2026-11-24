@@ -43,3 +43,29 @@ github.com/lorenzodonini/ocpp-go/ocpp2.0.1/provisioning|- GetVariableResult.Attr
 
 # schema UploadLogStatusEnumType includes AcceptedCanceled. Upstream issue #426, PR #428.
 github.com/lorenzodonini/ocpp-go/ocpp2.0.1/diagnostics|- UploadLogStatusAcceptedCanceled: added
+
+# schema CustomDataType: every message and every nested object of OCPP 2.0.1 may carry
+# "customData" (vendorId plus arbitrary vendor properties), which upstream cannot send or
+# receive. Upstream issues #365, #384. One pattern per package; "<Type>" matches any type name.
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/authorization|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/availability|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/data|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/diagnostics|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/display|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/firmware|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/iso15118|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/localauth|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/meter|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/provisioning|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/remotecontrol|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/reservation|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/security|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/tariffcost|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/transactions|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types|- <Type>.CustomData: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types|- CustomData: added
+
+# OCPP 1.6 ChargingProfile.transactionId is optional (schema: integer, not required);
+# a pointer tells "absent" from 0. Upstream issue #350.
+github.com/lorenzodonini/ocpp-go/ocpp1.6/types|- ChargingProfile.TransactionId: changed from int to *int

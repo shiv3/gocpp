@@ -79,9 +79,26 @@ const (
 	SHA512 HashAlgorithmType = "SHA512"
 )
 
+func isValidHashAlgorithmType(fl validator.FieldLevel) bool {
+	algorithm := HashAlgorithmType(fl.Field().String())
+	switch algorithm {
+	case SHA256, SHA384, SHA512:
+		return true
+	default:
+		return false
+	}
+}
+
+func init() {
+	// Registered here (with the 16 suffix, like this package's other validators), not
+	// borrowed from the 2.0.1 types package: a program that imports only OCPP 1.6
+	// packages must not panic with "Undefined validation function 'hashAlgorithm'".
+	_ = Validate.RegisterValidation("hashAlgorithm16", isValidHashAlgorithmType)
+}
+
 // CertificateHashDataType
 type CertificateHashData struct {
-	HashAlgorithm  HashAlgorithmType `json:"hashAlgorithm" validate:"required,hashAlgorithm"`
+	HashAlgorithm  HashAlgorithmType `json:"hashAlgorithm" validate:"required,hashAlgorithm16"`
 	IssuerNameHash string            `json:"issuerNameHash" validate:"required,max=128"`
 	IssuerKeyHash  string            `json:"issuerKeyHash" validate:"required,max=128"`
 	SerialNumber   string            `json:"serialNumber" validate:"required,max=40"`

@@ -39,6 +39,7 @@ type CustomerInformationRequest struct {
 	CustomerIdentifier  string                     `json:"customerIdentifier,omitempty" validate:"max=64"`
 	IdToken             *types.IdToken             `json:"idToken,omitempty" validate:"omitempty,dive"`
 	CustomerCertificate *types.CertificateHashData `json:"customerCertificate,omitempty" validate:"omitempty,dive"`
+	CustomData          *types.CustomData          `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the CustomerInformation response payload, sent by the Charging Station to the CSMS in response to a CustomerInformationRequest.
@@ -46,6 +47,7 @@ type CustomerInformationRequest struct {
 type CustomerInformationResponse struct {
 	Status     CustomerInformationStatus `json:"status" validate:"required,customerInformationStatus"`
 	StatusInfo *types.StatusInfo         `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData         `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // CSMS can request a Charging Station to clear its Authorization Cache.

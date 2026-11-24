@@ -1,0 +1,18 @@
+--- a/ocpp2.0.1/authorization/authorize.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/authorization/authorize.go	2026-11-24 00:00:00 +0900
+@@ -40,6 +40,7 @@
+ 	Certificate         string                      `json:"certificate,omitempty" validate:"max=5500"`
+ 	IdToken             types.IdToken               `json:"idToken" validate:"required"`
+ 	CertificateHashData []types.OCSPRequestDataType `json:"iso15118CertificateHashData,omitempty" validate:"max=4,dive"`
++	CustomData          *types.CustomData           `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the Authorize response payload, sent by the Charging Station to the CSMS in response to an AuthorizeRequest.
+@@ -47,6 +48,7 @@
+ type AuthorizeResponse struct {
+ 	CertificateStatus AuthorizeCertificateStatus `json:"certificateStatus,omitempty" validate:"omitempty,authorizeCertificateStatus"`
+ 	IdTokenInfo       types.IdTokenInfo          `json:"idTokenInfo" validate:"required"`
++	CustomData        *types.CustomData          `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // Before the owner of an electric vehicle can start or stop charging, the Charging Station has to authorize the operation.

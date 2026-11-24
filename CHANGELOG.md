@@ -51,6 +51,12 @@ All notable changes to this project are documented here. The format is based on
   `NotifyCustomerInformation.data` is valid (#425, #428); `GetLogResponse.filename` is limited to
   255 (#424); `GetInstalledCertificateIdsRequest` no longer sends `"certificateType":null` (#427);
   all per the OCA schemas.
+- compat/ocppgo OCPP 2.0.1: every request, response and nested struct has
+  `CustomData *types.CustomData` (`vendorId` plus arbitrary vendor properties, kept in `Extra`;
+  upstream #365, #384); breaking for callers using unkeyed struct literals of these types.
+- compat/ocppgo OCPP 1.6, breaking for callers of these types: `types.ChargingProfile.TransactionId`
+  is `*int` (upstream #350); `GetLogResponse.Filename` is limited to 255 (#424); certificate hash
+  validation no longer panics in programs that import only OCPP 1.6 packages.
 
 - `csms.OnVersion` / `csms.OnSendVersion` and `dispatcher.HandlerRegistry.RegisterVersion`:
   a handler registry keyed by (version, action), so one `csms.Server` can serve 1.6,

@@ -1,6 +1,6 @@
 --- a/ocpp2.0.1/smartcharging/get_composite_schedule.go	2026-11-24 00:00:00 +0900
 +++ b/ocpp2.0.1/smartcharging/get_composite_schedule.go	2026-11-24 00:00:00 +0900
-@@ -29,9 +29,14 @@
+@@ -29,9 +29,15 @@
  	}
  }
  
@@ -14,10 +14,17 @@
 +	Duration               int                            `json:"duration" validate:"gte=0"`
 +	ScheduleStart          *types.DateTime                `json:"scheduleStart" validate:"required"`
 +	ChargingRateUnit       types.ChargingRateUnitType     `json:"chargingRateUnit" validate:"required,chargingRateUnit201"`
++	CustomData             *types.CustomData              `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
  }
  
  // The field definition of the GetCompositeSchedule request payload sent by the CSMS to the Charging System.
-@@ -44,9 +49,9 @@
+@@ -39,14 +45,16 @@
+ 	Duration         int                        `json:"duration" validate:"gte=0"`
+ 	ChargingRateUnit types.ChargingRateUnitType `json:"chargingRateUnit,omitempty" validate:"omitempty,chargingRateUnit201"`
+ 	EvseID           int                        `json:"evseId" validate:"gte=0"`
++	CustomData       *types.CustomData          `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
  // This field definition of the GetCompositeSchedule response payload, sent by the Charging System to the CSMS in response to a GetCompositeScheduleRequest.
  // In case the request was invalid, or couldn't be processed, an error will be sent instead.
  type GetCompositeScheduleResponse struct {
@@ -27,10 +34,11 @@
 +	Status     GetCompositeScheduleStatus `json:"status" validate:"required,getCompositeScheduleStatus"`
 +	StatusInfo *types.StatusInfo          `json:"statusInfo,omitempty" validate:"omitempty"`
 +	Schedule   *CompositeSchedule         `json:"schedule,omitempty" validate:"omitempty"`
++	CustomData *types.CustomData          `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
  }
  
  // The CSMS MAY request the Charging System to report the Composite Charging Schedule by sending a GetCompositeScheduleRequest.
-@@ -82,8 +87,8 @@
+@@ -82,8 +90,8 @@
  }
  
  // Creates a new GetCompositeScheduleResponse, containing all required fields. Optional fields may be set afterwards.

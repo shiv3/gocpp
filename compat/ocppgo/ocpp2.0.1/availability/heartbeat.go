@@ -13,12 +13,14 @@ const HeartbeatFeatureName = "Heartbeat"
 
 // The field definition of the Heartbeat request payload sent by the Charging Station to the CSMS.
 type HeartbeatRequest struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the Heartbeat response payload, sent by the CSMS to the Charging Station in response to a HeartbeatRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type HeartbeatResponse struct {
-	CurrentTime types.DateTime `json:"currentTime" validate:"required"`
+	CurrentTime types.DateTime    `json:"currentTime" validate:"required"`
+	CustomData  *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // A Charging Station may send a heartbeat to let the CSMS know the Charging Station is still connected, after a configurable time interval.

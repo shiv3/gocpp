@@ -2,6 +2,8 @@ package tariffcost
 
 import (
 	"reflect"
+
+	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types"
 )
 
 // -------------------- Cost Updated (CSMS -> CS) --------------------
@@ -10,13 +12,15 @@ const CostUpdatedFeatureName = "CostUpdated"
 
 // The field definition of the CostUpdated request payload sent by the CSMS to the Charging Station.
 type CostUpdatedRequest struct {
-	TotalCost     float64 `json:"totalCost" validate:"required"`
-	TransactionID string  `json:"transactionId" validate:"required,max=36"`
+	TotalCost     float64           `json:"totalCost" validate:"required"`
+	TransactionID string            `json:"transactionId" validate:"required,max=36"`
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the CostUpdated response payload, sent by the Charging Station to the CSMS in response to a CostUpdatedRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type CostUpdatedResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The driver wants to know how much the running total cost is, updated at a relevant interval, while a transaction is ongoing.

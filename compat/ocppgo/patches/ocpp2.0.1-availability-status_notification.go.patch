@@ -1,0 +1,24 @@
+--- a/ocpp2.0.1/availability/status_notification.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/availability/status_notification.go	2026-11-24 00:00:00 +0900
+@@ -33,15 +33,17 @@
+ 
+ // The field definition of the StatusNotification request payload sent by the Charging Station to the CSMS.
+ type StatusNotificationRequest struct {
+-	Timestamp       *types.DateTime `json:"timestamp" validate:"required"`
+-	ConnectorStatus ConnectorStatus `json:"connectorStatus" validate:"required,connectorStatus"`
+-	EvseID          int             `json:"evseId" validate:"gte=0"`
+-	ConnectorID     int             `json:"connectorId" validate:"gte=0"`
++	Timestamp       *types.DateTime   `json:"timestamp" validate:"required"`
++	ConnectorStatus ConnectorStatus   `json:"connectorStatus" validate:"required,connectorStatus"`
++	EvseID          int               `json:"evseId" validate:"gte=0"`
++	ConnectorID     int               `json:"connectorId" validate:"gte=0"`
++	CustomData      *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the StatusNotification response payload, sent by the CSMS to the Charging Station in response to a StatusNotificationRequest.
+ // In case the request was invalid, or couldn't be processed, an error will be sent instead.
+ type StatusNotificationResponse struct {
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // The Charging Station notifies the CSMS about a connector status change.

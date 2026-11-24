@@ -47,25 +47,28 @@ func isValidLogStatus(fl validator.FieldLevel) bool {
 
 // LogParameters specifies the requested log and the location to which the log should be sent. It is used in GetLogRequest.
 type LogParameters struct {
-	RemoteLocation  string          `json:"remoteLocation" validate:"required,max=512,url"`
-	OldestTimestamp *types.DateTime `json:"oldestTimestamp,omitempty" validate:"omitempty"`
-	LatestTimestamp *types.DateTime `json:"latestTimestamp,omitempty" validate:"omitempty"`
+	RemoteLocation  string            `json:"remoteLocation" validate:"required,max=512,url"`
+	OldestTimestamp *types.DateTime   `json:"oldestTimestamp,omitempty" validate:"omitempty"`
+	LatestTimestamp *types.DateTime   `json:"latestTimestamp,omitempty" validate:"omitempty"`
+	CustomData      *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The field definition of the GetLog request payload sent by the CSMS to the Charging Station.
 type GetLogRequest struct {
-	LogType       LogType       `json:"logType" validate:"required,logType"`
-	RequestID     int           `json:"requestId" validate:"gte=0"`
-	Retries       *int          `json:"retries,omitempty" validate:"omitempty,gte=0"`
-	RetryInterval *int          `json:"retryInterval,omitempty" validate:"omitempty,gte=0"`
-	Log           LogParameters `json:"log" validate:"required"`
+	LogType       LogType           `json:"logType" validate:"required,logType"`
+	RequestID     int               `json:"requestId" validate:"gte=0"`
+	Retries       *int              `json:"retries,omitempty" validate:"omitempty,gte=0"`
+	RetryInterval *int              `json:"retryInterval,omitempty" validate:"omitempty,gte=0"`
+	Log           LogParameters     `json:"log" validate:"required"`
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the GetLog response payload, sent by the Charging Station to the CSMS in response to a GetLogRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type GetLogResponse struct {
-	Status   LogStatus `json:"status" validate:"required,logStatus"`            // This field indicates whether the Charging Station was able to accept the request.
-	Filename string    `json:"filename,omitempty" validate:"omitempty,max=255"` // This contains the name of the log file that will be uploaded. This field is not present when no logging information is available.
+	Status     LogStatus         `json:"status" validate:"required,logStatus"`            // This field indicates whether the Charging Station was able to accept the request.
+	Filename   string            `json:"filename,omitempty" validate:"omitempty,max=255"` // This contains the name of the log file that will be uploaded. This field is not present when no logging information is available.
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"`       // vendor specific extension data (schema customData)
 }
 
 // The CSMS can request a Charging Station to upload a file with log information to a given location (URL).

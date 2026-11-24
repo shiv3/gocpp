@@ -1,0 +1,18 @@
+--- a/ocpp2.0.1/smartcharging/notify_ev_charging_schedule.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/smartcharging/notify_ev_charging_schedule.go	2026-11-24 00:00:00 +0900
+@@ -15,6 +15,7 @@
+ 	TimeBase         *types.DateTime        `json:"timeBase" validate:"required"`
+ 	EvseID           int                    `json:"evseId" validate:"gt=0"`
+ 	ChargingSchedule types.ChargingSchedule `json:"chargingSchedule" validate:"required,dive"`
++	CustomData       *types.CustomData      `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the NotifyEVChargingSchedule response payload, sent by the CSMS to the Charging Station in response to a NotifyEVChargingScheduleRequest.
+@@ -22,6 +23,7 @@
+ type NotifyEVChargingScheduleResponse struct {
+ 	Status     types.GenericStatus `json:"status" validate:"required,genericStatus"`
+ 	StatusInfo *types.StatusInfo   `json:"statusInfo,omitempty" validate:"omitempty,dive"` // Detailed status information.
++	CustomData *types.CustomData   `json:"customData,omitempty" validate:"omitempty"`      // vendor specific extension data (schema customData)
+ }
+ 
+ // A power renegotiation, either initiated by the EV or by the CSMS, may involve the EV providing a power profile.

@@ -1,0 +1,20 @@
+--- a/ocpp2.0.1/iso15118/get_15118ev_certificate.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/iso15118/get_15118ev_certificate.go	2026-11-24 00:00:00 +0900
+@@ -34,7 +34,8 @@
+ type Get15118EVCertificateRequest struct {
+ 	SchemaVersion string            `json:"iso15118SchemaVersion" validate:"required,max=50"`
+ 	Action        CertificateAction `json:"action" validate:"required,certificateAction"`
+-	ExiRequest    string            `json:"exiRequest" validate:"required,max=5600"` // Raw CertificateInstallationReq request from EV, Base64 encoded.
++	ExiRequest    string            `json:"exiRequest" validate:"required,max=5600"`   // Raw CertificateInstallationReq request from EV, Base64 encoded.
++	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the Get15118EVCertificate response payload, sent by the CSMS to the Charging Station in response to a Get15118EVCertificateRequest.
+@@ -43,6 +44,7 @@
+ 	Status      types.Certificate15118EVStatus `json:"status" validate:"required,15118EVCertificate"`
+ 	ExiResponse string                         `json:"exiResponse" validate:"required,max=5600"` // Raw CertificateInstallationRes response for the EV, Base64 encoded.
+ 	StatusInfo  *types.StatusInfo              `json:"statusInfo,omitempty" validate:"omitempty"`
++	CustomData  *types.CustomData              `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // An EV connected to a Charging Station may request a new certificate.

@@ -41,13 +41,15 @@ func isValidPublishFirmwareStatus(fl validator.FieldLevel) bool {
 type PublishFirmwareStatusNotificationRequest struct {
 	Status PublishFirmwareStatus `json:"status" validate:"required,publishFirmwareStatus"` // This contains the progress status of the publishfirmware installation.
 	//TODO: add required_if validation tag after upgrade to govalidator v10
-	Location  []string `json:"location,omitempty" validate:"omitempty,dive,max=512"` // Can be multiple URI’s, if the Local Controller supports e.g. HTTP, HTTPS, and FTP.
-	RequestID *int     `json:"requestId,omitempty" validate:"omitempty,gte=0"`       // The request id that was provided in the PublishFirmwareRequest which triggered this action.
+	Location   []string          `json:"location,omitempty" validate:"omitempty,dive,max=512"` // Can be multiple URI’s, if the Local Controller supports e.g. HTTP, HTTPS, and FTP.
+	RequestID  *int              `json:"requestId,omitempty" validate:"omitempty,gte=0"`       // The request id that was provided in the PublishFirmwareRequest which triggered this action.
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"`            // vendor specific extension data (schema customData)
 }
 
 // This field definition of the PublishFirmwareStatusNotification response payload, sent by the CSMS to the Charging Station in response to a PublishFirmwareStatusNotificationRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type PublishFirmwareStatusNotificationResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The local controller sends a PublishFirmwareStatusNotificationRequest to inform the CSMS about the current PublishFirmware status.

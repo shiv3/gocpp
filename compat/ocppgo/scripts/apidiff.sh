@@ -48,16 +48,29 @@ for p in $pkgs; do
   n=$((n + 1))
   if [ -n "$out" ] && [ -f "$allow" ]; then
     # entries are "<import path>|<apidiff line>"; drop the ones for this package
+    # "<Type>" in an entry matches one identifier: "- <Type>.CustomData: added"
     out="$(printf '%s\n' "$out" | ALLOW="$allow" PKG="$p" USED="$used" awk '
       BEGIN {
         while ((getline l < ENVIRON["ALLOW"]) > 0) {
           if (l ~ /^[[:space:]]*(#|$)/) continue
           i = index(l, "|"); if (i == 0) continue
-          if (substr(l, 1, i - 1) == ENVIRON["PKG"]) ok[substr(l, i + 1)] = 1
+          if (substr(l, 1, i - 1) != ENVIRON["PKG"]) continue
+          e = substr(l, i + 1)
+          if (index(e, "<Type>") > 0) { g = e; gsub(/[][().+?^$*\\]/, "\\\\&", g); gsub(/<Type>/, "[A-Za-z0-9_]+", g); pat[e] = "^" g "$" }
+          else ok[e] = 1
         }
       }
-      /^- / && ($0 in ok) { print ENVIRON["PKG"] "|" $0 >> ENVIRON["USED"]; next }
+      /^- / {
+        if ($0 in ok) { print ENVIRON["PKG"] "|" $0 >> ENVIRON["USED"]; next }
+        hit = 0
+        for (e in pat) if ($0 ~ pat[e]) { print ENVIRON["PKG"] "|" e >> ENVIRON["USED"]; hit = 1; break }
+        if (hit) next
+      }
       { print }
+    ' | awk '
+      # drop a section header that has no entry left
+      /^(Incompatible|Compatible) changes:$/ { held = $0; next }
+      { if (held != "") { if ($0 ~ /^- /) print held; held = "" } print }
     ')"
     # only section headers left: no difference
     printf '%s\n' "$out" | grep -q '^- ' || out=""

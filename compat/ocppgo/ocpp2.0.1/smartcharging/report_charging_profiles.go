@@ -17,12 +17,14 @@ type ReportChargingProfilesRequest struct {
 	Tbc                 bool                          `json:"tbc,omitempty" validate:"omitempty"`
 	EvseID              int                           `json:"evseId" validate:"gte=0"`
 	ChargingProfile     []types.ChargingProfile       `json:"chargingProfile" validate:"required,min=1,dive"`
+	CustomData          *types.CustomData             `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the ReportChargingProfiles response payload, sent by the CSMS to the Charging Station in
 // response to a ReportChargingProfilesRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type ReportChargingProfilesResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS can ask a Charging Station to report all, or a subset of all the install Charging Profiles

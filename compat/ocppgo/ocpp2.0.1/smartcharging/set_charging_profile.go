@@ -34,6 +34,7 @@ func isValidChargingProfileStatus(fl validator.FieldLevel) bool {
 type SetChargingProfileRequest struct {
 	EvseID          int                    `json:"evseId" validate:"gte=0"`
 	ChargingProfile *types.ChargingProfile `json:"chargingProfile" validate:"required"`
+	CustomData      *types.CustomData      `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the SetChargingProfile response payload, sent by the Charging Station to the CSMS in response to a SetChargingProfileRequest.
@@ -41,6 +42,7 @@ type SetChargingProfileRequest struct {
 type SetChargingProfileResponse struct {
 	Status     ChargingProfileStatus `json:"status" validate:"required,chargingProfileStatus201"`
 	StatusInfo *types.StatusInfo     `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData     `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS may influence the charging power or current drawn from a specific EVSE or

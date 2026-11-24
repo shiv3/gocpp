@@ -82,14 +82,16 @@ func isValidIdToken(sl validator.StructLevel) {
 }
 
 type AdditionalInfo struct {
-	AdditionalIdToken string `json:"additionalIdToken" validate:"required,max=36"`
-	Type              string `json:"type" validate:"required,max=50"`
+	AdditionalIdToken string      `json:"additionalIdToken" validate:"required,max=36"`
+	Type              string      `json:"type" validate:"required,max=50"`
+	CustomData        *CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 type IdToken struct {
 	IdToken        string           `json:"idToken" validate:"max=36"`
 	Type           IdTokenType      `json:"type" validate:"required,idTokenType"`
 	AdditionalInfo []AdditionalInfo `json:"additionalInfo,omitempty" validate:"omitempty,dive"`
+	CustomData     *CustomData      `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // Generic Device Model Status
@@ -156,6 +158,7 @@ type OCSPRequestDataType struct {
 	IssuerKeyHash  string            `json:"issuerKeyHash" validate:"required,max=128"`
 	SerialNumber   string            `json:"serialNumber" validate:"required,max=40"`
 	ResponderURL   string            `json:"responderURL" validate:"required,max=512"`
+	CustomData     *CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // CertificateHashDataType
@@ -164,6 +167,7 @@ type CertificateHashData struct {
 	IssuerNameHash string            `json:"issuerNameHash" validate:"required,max=128"`
 	IssuerKeyHash  string            `json:"issuerKeyHash" validate:"required,max=128"`
 	SerialNumber   string            `json:"serialNumber" validate:"required,max=40"`
+	CustomData     *CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // CertificateHashDataChain
@@ -171,6 +175,7 @@ type CertificateHashDataChain struct {
 	CertificateType          CertificateUse        `json:"certificateType" validate:"required,certificateUse"`
 	CertificateHashData      CertificateHashData   `json:"certificateHashData" validate:"required"`
 	ChildCertificateHashData []CertificateHashData `json:"childCertificateHashData,omitempty" validate:"omitempty,dive"`
+	CustomData               *CustomData           `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // Certificate15118EVStatus
@@ -256,14 +261,16 @@ func isValidMessageFormatType(fl validator.FieldLevel) bool {
 }
 
 type MessageContent struct {
-	Format   MessageFormatType `json:"format" validate:"required,messageFormat"`
-	Language string            `json:"language,omitempty" validate:"max=8"`
-	Content  string            `json:"content" validate:"required,max=512"`
+	Format     MessageFormatType `json:"format" validate:"required,messageFormat"`
+	Language   string            `json:"language,omitempty" validate:"max=8"`
+	Content    string            `json:"content" validate:"required,max=512"`
+	CustomData *CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 type GroupIdToken struct {
-	IdToken string      `json:"idToken" validate:"max=36"`
-	Type    IdTokenType `json:"type" validate:"required,idTokenType"`
+	IdToken    string      `json:"idToken" validate:"max=36"`
+	Type       IdTokenType `json:"type" validate:"required,idTokenType"`
+	CustomData *CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 func isValidGroupIdToken(sl validator.StructLevel) {
@@ -286,6 +293,7 @@ type IdTokenInfo struct {
 	GroupIdToken        *GroupIdToken       `json:"groupIdToken,omitempty"`
 	PersonalMessage     *MessageContent     `json:"personalMessage,omitempty"`
 	EvseID              []int               `json:"evseId,omitempty" validate:"omitempty,min=1"` // Only valid for these EVSEs, not the whole Charging Station.
+	CustomData          *CustomData         `json:"customData,omitempty" validate:"omitempty"`   // vendor specific extension data (schema customData)
 }
 
 // NewIdTokenInfo creates an IdTokenInfo. Optional parameters may be set afterwards on the initialized struct.
@@ -295,8 +303,9 @@ func NewIdTokenInfo(status AuthorizationStatus) *IdTokenInfo {
 
 // StatusInfo is an element providing more information about the message status.
 type StatusInfo struct {
-	ReasonCode     string `json:"reasonCode" validate:"required,max=20"`                 // A predefined code for the reason why the status is returned in this response. The string is case- insensitive.
-	AdditionalInfo string `json:"additionalInfo,omitempty" validate:"omitempty,max=512"` // Additional text to provide detailed information.
+	ReasonCode     string      `json:"reasonCode" validate:"required,max=20"`                 // A predefined code for the reason why the status is returned in this response. The string is case- insensitive.
+	AdditionalInfo string      `json:"additionalInfo,omitempty" validate:"omitempty,max=512"` // Additional text to provide detailed information.
+	CustomData     *CustomData `json:"customData,omitempty" validate:"omitempty"`             // vendor specific extension data (schema customData)
 }
 
 // NewStatusInfo creates a StatusInfo struct.
@@ -307,27 +316,31 @@ func NewStatusInfo(reasonCode string, additionalInfo string) *StatusInfo {
 
 // EVSE represents the Electric Vehicle Supply Equipment, formerly referred to as connector(s).
 type EVSE struct {
-	ID          int  `json:"id" validate:"gte=0"`                              // The EVSE Identifier. When 0, the ID references the Charging Station as a whole.
-	ConnectorID *int `json:"connectorId,omitempty" validate:"omitempty,gte=0"` // An id to designate a specific connector (on an EVSE) by connector index number.
+	ID          int         `json:"id" validate:"gte=0"`                              // The EVSE Identifier. When 0, the ID references the Charging Station as a whole.
+	ConnectorID *int        `json:"connectorId,omitempty" validate:"omitempty,gte=0"` // An id to designate a specific connector (on an EVSE) by connector index number.
+	CustomData  *CustomData `json:"customData,omitempty" validate:"omitempty"`        // vendor specific extension data (schema customData)
 }
 
 // Component represents a physical or logical component.
 type Component struct {
-	Name     string `json:"name" validate:"required,max=50"`                // Name of the component. Name should be taken from the list of standardized component names whenever possible. Case Insensitive. strongly advised to use Camel Case.
-	Instance string `json:"instance,omitempty" validate:"omitempty,max=50"` // Name of instance in case the component exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.
-	EVSE     *EVSE  `json:"evse,omitempty" validate:"omitempty"`            // Specifies the EVSE when component is located at EVSE level, also specifies the connector when component is located at Connector level.
+	Name       string      `json:"name" validate:"required,max=50"`                // Name of the component. Name should be taken from the list of standardized component names whenever possible. Case Insensitive. strongly advised to use Camel Case.
+	Instance   string      `json:"instance,omitempty" validate:"omitempty,max=50"` // Name of instance in case the component exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.
+	EVSE       *EVSE       `json:"evse,omitempty" validate:"omitempty"`            // Specifies the EVSE when component is located at EVSE level, also specifies the connector when component is located at Connector level.
+	CustomData *CustomData `json:"customData,omitempty" validate:"omitempty"`      // vendor specific extension data (schema customData)
 }
 
 // Variable is a reference key to a component-variable.
 type Variable struct {
-	Name     string `json:"name" validate:"required,max=50"`                // Name of the variable. Name should be taken from the list of standardized variable names whenever possible. Case Insensitive. strongly advised to use Camel Case.
-	Instance string `json:"instance,omitempty" validate:"omitempty,max=50"` // Name of instance in case the variable exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.
+	Name       string      `json:"name" validate:"required,max=50"`                // Name of the variable. Name should be taken from the list of standardized variable names whenever possible. Case Insensitive. strongly advised to use Camel Case.
+	Instance   string      `json:"instance,omitempty" validate:"omitempty,max=50"` // Name of instance in case the variable exists as multiple instances. Case Insensitive. strongly advised to use Camel Case.
+	CustomData *CustomData `json:"customData,omitempty" validate:"omitempty"`      // vendor specific extension data (schema customData)
 }
 
 // ComponentVariable is used to report components, variables and variable attributes and characteristics.
 type ComponentVariable struct {
-	Component Component `json:"component" validate:"required"` // Component for which a report of Variable is requested.
-	Variable  Variable  `json:"variable" validate:"required"`  // Variable for which report is requested.
+	Component  Component   `json:"component" validate:"required"`             // Component for which a report of Variable is requested.
+	Variable   Variable    `json:"variable" validate:"required"`              // Variable for which report is requested.
+	CustomData *CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // Attribute is an enumeration type used when requesting a variable value.
@@ -373,21 +386,24 @@ func isValidCostKind(fl validator.FieldLevel) bool {
 
 // Defines the time interval the SalesTariffEntry is valid for, based upon relative times.
 type RelativeTimeInterval struct {
-	Start    int  `json:"start"`                                         // Start of the interval, in seconds from NOW.
-	Duration *int `json:"duration,omitempty" validate:"omitempty,gte=0"` // Duration of the interval, in seconds.
+	Start      int         `json:"start"`                                         // Start of the interval, in seconds from NOW.
+	Duration   *int        `json:"duration,omitempty" validate:"omitempty,gte=0"` // Duration of the interval, in seconds.
+	CustomData *CustomData `json:"customData,omitempty" validate:"omitempty"`     // vendor specific extension data (schema customData)
 }
 
 // Cost details.
 type CostType struct {
-	CostKind         CostKind `json:"costKind" validate:"required,costKind"`                        // The kind of cost referred to in the message element amount.
-	Amount           int      `json:"amount" validate:"gte=0"`                                      // The estimated or actual cost per kWh.
-	AmountMultiplier *int     `json:"amountMultiplier,omitempty" validate:"omitempty,min=-3,max=3"` // The exponent to base 10 (dec).
+	CostKind         CostKind    `json:"costKind" validate:"required,costKind"`                        // The kind of cost referred to in the message element amount.
+	Amount           int         `json:"amount" validate:"gte=0"`                                      // The estimated or actual cost per kWh.
+	AmountMultiplier *int        `json:"amountMultiplier,omitempty" validate:"omitempty,min=-3,max=3"` // The exponent to base 10 (dec).
+	CustomData       *CustomData `json:"customData,omitempty" validate:"omitempty"`                    // vendor specific extension data (schema customData)
 }
 
 // Contains price information and/or alternative costs.
 type ConsumptionCost struct {
-	StartValue float64    `json:"startValue"`                          // The lowest level of consumption that defines the starting point of this consumption block
-	Cost       []CostType `json:"cost" validate:"required,max=3,dive"` // Contains the cost details.
+	StartValue float64     `json:"startValue"`                                // The lowest level of consumption that defines the starting point of this consumption block
+	Cost       []CostType  `json:"cost" validate:"required,max=3,dive"`       // Contains the cost details.
+	CustomData *CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // NewConsumptionCost instantiates a new ConsumptionCost struct. No additional parameters need to be set.
@@ -403,6 +419,7 @@ type SalesTariffEntry struct {
 	EPriceLevel          *int                 `json:"ePriceLevel,omitempty" validate:"omitempty,gte=0"`          // The price level of this SalesTariffEntry (referring to NumEPriceLevels). Small values for the EPriceLevel represent a cheaper TariffEntry.
 	RelativeTimeInterval RelativeTimeInterval `json:"relativeTimeInterval" validate:"required"`                  // The time interval the SalesTariffEntry is valid for, based upon relative times.
 	ConsumptionCost      []ConsumptionCost    `json:"consumptionCost,omitempty" validate:"omitempty,max=3,dive"` // Additional means for further relative price information and/or alternative costs.
+	CustomData           *CustomData          `json:"customData,omitempty" validate:"omitempty"`                 // vendor specific extension data (schema customData)
 }
 
 // Sales tariff associated with this charging schedule.
@@ -411,6 +428,7 @@ type SalesTariff struct {
 	SalesTariffDescription string             `json:"salesTariffDescription,omitempty" validate:"omitempty,max=32"` // A human readable title/short description of the sales tariff e.g. for HMI display purposes.
 	NumEPriceLevels        *int               `json:"numEPriceLevels,omitempty" validate:"omitempty"`               // Defines the overall number of distinct price levels used across all provided SalesTariff elements.
 	SalesTariffEntry       []SalesTariffEntry `json:"salesTariffEntry" validate:"required,min=1,max=1024,dive"`     // Encapsulates elements describing all relevant details for one time interval of the SalesTariff.
+	CustomData             *CustomData        `json:"customData,omitempty" validate:"omitempty"`                    // vendor specific extension data (schema customData)
 }
 
 // NewSalesTariff instantiates a new SalesTariff struct. Only required fields are passed as parameters.
@@ -498,10 +516,11 @@ func isValidChargingLimitSource(fl validator.FieldLevel) bool {
 }
 
 type ChargingSchedulePeriod struct {
-	StartPeriod  int     `json:"startPeriod" validate:"gte=0"`
-	Limit        float64 `json:"limit" validate:"gte=0"`
-	NumberPhases *int    `json:"numberPhases,omitempty" validate:"omitempty,gte=0"`
-	PhaseToUse   *int    `json:"phaseToUse,omitempty" validate:"omitempty,gte=0"`
+	StartPeriod  int         `json:"startPeriod" validate:"gte=0"`
+	Limit        float64     `json:"limit" validate:"gte=0"`
+	NumberPhases *int        `json:"numberPhases,omitempty" validate:"omitempty,gte=0"`
+	PhaseToUse   *int        `json:"phaseToUse,omitempty" validate:"omitempty,gte=0"`
+	CustomData   *CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 func NewChargingSchedulePeriod(startPeriod int, limit float64) ChargingSchedulePeriod {
@@ -516,6 +535,7 @@ type ChargingSchedule struct {
 	MinChargingRate        *float64                 `json:"minChargingRate,omitempty" validate:"omitempty,gte=0"`
 	ChargingSchedulePeriod []ChargingSchedulePeriod `json:"chargingSchedulePeriod" validate:"required,min=1,max=1024"`
 	SalesTariff            *SalesTariff             `json:"salesTariff,omitempty" validate:"omitempty"` // Sales tariff associated with this charging schedule.
+	CustomData             *CustomData              `json:"customData,omitempty" validate:"omitempty"`  // vendor specific extension data (schema customData)
 }
 
 func NewChargingSchedule(id int, chargingRateUnit ChargingRateUnitType, schedulePeriod ...ChargingSchedulePeriod) *ChargingSchedule {
@@ -532,6 +552,7 @@ type ChargingProfile struct {
 	ValidTo                *DateTime                  `json:"validTo,omitempty"`
 	TransactionID          string                     `json:"transactionId,omitempty" validate:"omitempty,max=36"`
 	ChargingSchedule       []ChargingSchedule         `json:"chargingSchedule" validate:"required,min=1,max=3,dive"`
+	CustomData             *CustomData                `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 func NewChargingProfile(id int, stackLevel int, chargingProfilePurpose ChargingProfilePurposeType, chargingProfileKind ChargingProfileKindType, schedule []ChargingSchedule) *ChargingProfile {
@@ -656,8 +677,9 @@ func isValidLocation(fl validator.FieldLevel) bool {
 }
 
 type UnitOfMeasure struct {
-	Unit       string `json:"unit,omitempty" validate:"omitempty,max=20"`
-	Multiplier *int   `json:"multiplier,omitempty" validate:"omitempty,gte=0"`
+	Unit       string      `json:"unit,omitempty" validate:"omitempty,max=20"`
+	Multiplier *int        `json:"multiplier,omitempty" validate:"omitempty,gte=0"`
+	CustomData *CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 //TODO: remove SignatureMethod (obsolete from 2.0.1 onwards)
@@ -706,10 +728,11 @@ func isValidEncodingMethod(fl validator.FieldLevel) bool {
 }
 
 type SignedMeterValue struct {
-	SignedMeterData string `json:"signedMeterData" validate:"required,max=2500"` // Base64 encoded, contains the signed data which might contain more then just the meter value. It can contain information like timestamps, reference to a customer etc.
-	SigningMethod   string `json:"signingMethod" validate:"required,max=50"`     // Method used to create the digital signature.
-	EncodingMethod  string `json:"encodingMethod" validate:"required,max=50"`    // Method used to encode the meter values before applying the digital signature algorithm.
-	PublicKey       string `json:"publicKey" validate:"required,max=2500"`       // Base64 encoded, sending depends on configuration variable PublicKeyWithSignedMeterValue.
+	SignedMeterData string      `json:"signedMeterData" validate:"required,max=2500"` // Base64 encoded, contains the signed data which might contain more then just the meter value. It can contain information like timestamps, reference to a customer etc.
+	SigningMethod   string      `json:"signingMethod" validate:"required,max=50"`     // Method used to create the digital signature.
+	EncodingMethod  string      `json:"encodingMethod" validate:"required,max=50"`    // Method used to encode the meter values before applying the digital signature algorithm.
+	PublicKey       string      `json:"publicKey" validate:"required,max=2500"`       // Base64 encoded, sending depends on configuration variable PublicKeyWithSignedMeterValue.
+	CustomData      *CustomData `json:"customData,omitempty" validate:"omitempty"`    // vendor specific extension data (schema customData)
 }
 
 type SampledValue struct {
@@ -720,11 +743,13 @@ type SampledValue struct {
 	Location         Location          `json:"location,omitempty" validate:"omitempty,location201"`      // Indicates where the measured value has been sampled.
 	SignedMeterValue *SignedMeterValue `json:"signedMeterValue,omitempty" validate:"omitempty"`          // Contains the MeterValueSignature with sign/encoding method information.
 	UnitOfMeasure    *UnitOfMeasure    `json:"unitOfMeasure,omitempty" validate:"omitempty"`             // Represents a UnitOfMeasure including a multiplier.
+	CustomData       *CustomData       `json:"customData,omitempty" validate:"omitempty"`                // vendor specific extension data (schema customData)
 }
 
 type MeterValue struct {
 	Timestamp    DateTime       `json:"timestamp" validate:"required"`
 	SampledValue []SampledValue `json:"sampledValue" validate:"required,min=1,dive"`
+	CustomData   *CustomData    `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // Validator used for validating all OCPP 2.0 messages.

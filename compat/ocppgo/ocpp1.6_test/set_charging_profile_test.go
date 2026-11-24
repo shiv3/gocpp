@@ -77,7 +77,7 @@ func (suite *OcppV16TestSuite) TestSetChargingProfileE2EMocked() {
 		assert.Equal(t, chargingProfilePurpose, request.ChargingProfile.ChargingProfilePurpose)
 		assert.Equal(t, types.RecurrencyKindType(""), request.ChargingProfile.RecurrencyKind)
 		assert.Equal(t, stackLevel, request.ChargingProfile.StackLevel)
-		assert.Equal(t, 0, request.ChargingProfile.TransactionId)
+		assert.Nil(t, request.ChargingProfile.TransactionId)
 		assert.Nil(t, request.ChargingProfile.ValidFrom)
 		assert.Nil(t, request.ChargingProfile.ValidTo)
 		assert.Equal(t, chargingRateUnit, request.ChargingProfile.ChargingSchedule.ChargingRateUnit)

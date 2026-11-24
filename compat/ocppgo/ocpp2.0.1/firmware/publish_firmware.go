@@ -12,11 +12,12 @@ const PublishFirmwareFeatureName = "PublishFirmware"
 
 // The field definition of the PublishFirmware request payload sent by the CSMS to the Charging Station.
 type PublishFirmwareRequest struct {
-	Location      string `json:"location" validate:"required,max=512"`               // This contains a string containing a URI pointing to a location from which to retrieve the firmware.
-	Retries       *int   `json:"retries,omitempty" validate:"omitempty,gte=0"`       // This specifies how many times Charging Station must try to download the firmware before giving up. If this field is not present, it is left to Charging Station to decide how many times it wants to retry.
-	Checksum      string `json:"checksum" validate:"required,max=32"`                // The MD5 checksum over the entire firmware file as a hexadecimal string of length 32.
-	RequestID     int    `json:"requestId" validate:"gte=0"`                         // The Id of the request.
-	RetryInterval *int   `json:"retryInterval,omitempty" validate:"omitempty,gte=0"` // The interval in seconds after which a retry may be attempted. If this field is not present, it is left to Charging Station to decide how long to wait between attempts.
+	Location      string            `json:"location" validate:"required,max=512"`               // This contains a string containing a URI pointing to a location from which to retrieve the firmware.
+	Retries       *int              `json:"retries,omitempty" validate:"omitempty,gte=0"`       // This specifies how many times Charging Station must try to download the firmware before giving up. If this field is not present, it is left to Charging Station to decide how many times it wants to retry.
+	Checksum      string            `json:"checksum" validate:"required,max=32"`                // The MD5 checksum over the entire firmware file as a hexadecimal string of length 32.
+	RequestID     int               `json:"requestId" validate:"gte=0"`                         // The Id of the request.
+	RetryInterval *int              `json:"retryInterval,omitempty" validate:"omitempty,gte=0"` // The interval in seconds after which a retry may be attempted. If this field is not present, it is left to Charging Station to decide how long to wait between attempts.
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"`          // vendor specific extension data (schema customData)
 }
 
 // This field definition of the PublishFirmware response payload, sent by the Charging Station to the CSMS in response to a PublishFirmwareRequest.
@@ -24,6 +25,7 @@ type PublishFirmwareRequest struct {
 type PublishFirmwareResponse struct {
 	Status     types.GenericStatus `json:"status" validate:"required,genericStatus"`
 	StatusInfo *types.StatusInfo   `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData   `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS sends a PublishFirmwareRequest to instruct the Local Controller to download and publish the firmware,

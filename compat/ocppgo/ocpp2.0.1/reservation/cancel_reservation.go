@@ -32,7 +32,8 @@ func isValidCancelReservationStatus(fl validator.FieldLevel) bool {
 
 // The field definition of the CancelReservation request payload sent by the CSMS to the Charging Station.
 type CancelReservationRequest struct {
-	ReservationID int `json:"reservationId" validate:"gte=0"`
+	ReservationID int               `json:"reservationId" validate:"gte=0"`
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the CancelReservation response payload, sent by the Charging Station to the CSMS in response to a CancelReservationRequest.
@@ -40,6 +41,7 @@ type CancelReservationRequest struct {
 type CancelReservationResponse struct {
 	Status     CancelReservationStatus `json:"status" validate:"required,cancelReservationStatus201"`
 	StatusInfo *types.StatusInfo       `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // To cancel a reservation the CSMS SHALL send an CancelReservationRequest to the Charging Station.

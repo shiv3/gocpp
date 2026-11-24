@@ -131,7 +131,7 @@ func NewChargingSchedule(chargingRateUnit ChargingRateUnitType, schedulePeriod .
 
 type ChargingProfile struct {
 	ChargingProfileId      int                        `json:"chargingProfileId"`
-	TransactionId          int                        `json:"transactionId,omitempty"`
+	TransactionId          *int                       `json:"transactionId,omitempty"`
 	StackLevel             int                        `json:"stackLevel" validate:"gte=0"`
 	ChargingProfilePurpose ChargingProfilePurposeType `json:"chargingProfilePurpose" validate:"required,chargingProfilePurpose16"`
 	ChargingProfileKind    ChargingProfileKindType    `json:"chargingProfileKind" validate:"required,chargingProfileKind16"`

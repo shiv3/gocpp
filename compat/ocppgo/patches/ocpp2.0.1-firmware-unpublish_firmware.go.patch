@@ -1,0 +1,20 @@
+--- a/ocpp2.0.1/firmware/unpublish_firmware.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/firmware/unpublish_firmware.go	2026-11-24 00:00:00 +0900
+@@ -33,13 +33,15 @@
+ 
+ // The field definition of the UnpublishFirmware request payload sent by the CSMS to the Charging Station.
+ type UnpublishFirmwareRequest struct {
+-	Checksum string `json:"checksum" validate:"required,max=32"` // The MD5 checksum over the entire firmware file as a hexadecimal string of length 32.
++	Checksum   string            `json:"checksum" validate:"required,max=32"`       // The MD5 checksum over the entire firmware file as a hexadecimal string of length 32.
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the UnpublishFirmware response payload, sent by the Charging Station to the CSMS in response to a UnpublishFirmwareRequest.
+ // In case the request was invalid, or couldn't be processed, an error will be sent instead.
+ type UnpublishFirmwareResponse struct {
+-	Status UnpublishFirmwareStatus `json:"status" validate:"required,unpublishFirmwareStatus"`
++	Status     UnpublishFirmwareStatus `json:"status" validate:"required,unpublishFirmwareStatus"`
++	CustomData *types.CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // Allows to stop a Local Controller from publishing a firmware update to connected Charging Stations.

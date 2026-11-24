@@ -1,0 +1,18 @@
+--- a/ocpp2.0.1/remotecontrol/request_start_transaction.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/remotecontrol/request_start_transaction.go	2026-11-24 00:00:00 +0900
+@@ -36,6 +36,7 @@
+ 	IDToken         types.IdToken          `json:"idToken"`
+ 	ChargingProfile *types.ChargingProfile `json:"chargingProfile,omitempty"`
+ 	GroupIdToken    *types.IdToken         `json:"groupIdToken,omitempty" validate:"omitempty,dive"`
++	CustomData      *types.CustomData      `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the RequestStartTransaction response payload, sent by the Charging Station to the CSMS in response to a RequestStartTransactionRequest.
+@@ -44,6 +45,7 @@
+ 	Status        RequestStartStopStatus `json:"status" validate:"required,requestStartStopStatus"`
+ 	TransactionID string                 `json:"transactionId,omitempty" validate:"max=36"`
+ 	StatusInfo    *types.StatusInfo      `json:"statusInfo,omitempty"`
++	CustomData    *types.CustomData      `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // The CSMS may remotely start a transaction for a user.

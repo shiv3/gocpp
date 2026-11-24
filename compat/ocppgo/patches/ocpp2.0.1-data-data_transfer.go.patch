@@ -1,0 +1,24 @@
+--- a/ocpp2.0.1/data/data_transfer.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/data/data_transfer.go	2026-11-24 00:00:00 +0900
+@@ -34,9 +34,10 @@
+ 
+ // The field definition of the DataTransfer request payload sent by an endpoint to ther other endpoint.
+ type DataTransferRequest struct {
+-	MessageID string      `json:"messageId,omitempty" validate:"max=50"`
+-	Data      interface{} `json:"data,omitempty"`
+-	VendorID  string      `json:"vendorId" validate:"required,max=255"`
++	MessageID  string            `json:"messageId,omitempty" validate:"max=50"`
++	Data       interface{}       `json:"data,omitempty"`
++	VendorID   string            `json:"vendorId" validate:"required,max=255"`
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the DataTransfer response payload, sent by an endpoint in response to a DataTransferRequest, coming from the other endpoint.
+@@ -45,6 +46,7 @@
+ 	Status     DataTransferStatus `json:"status" validate:"required,dataTransferStatus201"`
+ 	Data       interface{}        `json:"data,omitempty"`
+ 	StatusInfo *types.StatusInfo  `json:"statusInfo,omitempty" validate:"omitempty"`
++	CustomData *types.CustomData  `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // If a CS needs to send information to the CSMS for a function not supported by OCPP, it SHALL use a DataTransfer message.

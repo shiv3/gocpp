@@ -14,11 +14,13 @@ const ClearedChargingLimitFeatureName = "ClearedChargingLimit"
 type ClearedChargingLimitRequest struct {
 	ChargingLimitSource types.ChargingLimitSourceType `json:"chargingLimitSource" validate:"required,chargingLimitSource"`
 	EvseID              *int                          `json:"evseId,omitempty" validate:"omitempty,gte=0"`
+	CustomData          *types.CustomData             `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the ClearedChargingLimit response payload, sent by the CSMS to the Charging Station in response to a ClearedChargingLimitRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type ClearedChargingLimitResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // When an external control system sends a signal to release a previously imposed charging limit to a Charging Station,

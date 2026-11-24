@@ -35,13 +35,14 @@ func isValidSetMonitoringStatus(fl validator.FieldLevel) bool {
 
 // Hold parameters of a SetVariableMonitoring request.
 type SetMonitoringData struct {
-	ID          *int            `json:"id,omitempty" validate:"omitempty"`    // An id SHALL only be given to replace an existing monitor. The Charging Station handles the generation of id’s for new monitors.
-	Transaction bool            `json:"transaction,omitempty"`                // Monitor only active when a transaction is ongoing on a component relevant to this transaction.
-	Value       float64         `json:"value"`                                // Value for threshold or delta monitoring. For Periodic or PeriodicClockAligned this is the interval in seconds.
-	Type        MonitorType     `json:"type" validate:"required,monitorType"` // The type of this monitor, e.g. a threshold, delta or periodic monitor.
-	Severity    int             `json:"severity" validate:"min=0,max=9"`      // The severity that will be assigned to an event that is triggered by this monitor. The severity range is 0-9, with 0 as the highest and 9 as the lowest severity level.
-	Component   types.Component `json:"component" validate:"required"`        // Component for which monitor is set.
-	Variable    types.Variable  `json:"variable" validate:"required"`         // Variable for which monitor is set.
+	ID          *int              `json:"id,omitempty" validate:"omitempty"`         // An id SHALL only be given to replace an existing monitor. The Charging Station handles the generation of id’s for new monitors.
+	Transaction bool              `json:"transaction,omitempty"`                     // Monitor only active when a transaction is ongoing on a component relevant to this transaction.
+	Value       float64           `json:"value"`                                     // Value for threshold or delta monitoring. For Periodic or PeriodicClockAligned this is the interval in seconds.
+	Type        MonitorType       `json:"type" validate:"required,monitorType"`      // The type of this monitor, e.g. a threshold, delta or periodic monitor.
+	Severity    int               `json:"severity" validate:"min=0,max=9"`           // The severity that will be assigned to an event that is triggered by this monitor. The severity range is 0-9, with 0 as the highest and 9 as the lowest severity level.
+	Component   types.Component   `json:"component" validate:"required"`             // Component for which monitor is set.
+	Variable    types.Variable    `json:"variable" validate:"required"`              // Variable for which monitor is set.
+	CustomData  *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // Holds the result of SetVariableMonitoring request.
@@ -53,17 +54,20 @@ type SetMonitoringResult struct {
 	Component  types.Component     `json:"component" validate:"required"`                  // Component for which status is returned.
 	Variable   types.Variable      `json:"variable" validate:"required"`                   // Variable for which status is returned.
 	StatusInfo *types.StatusInfo   `json:"statusInfo,omitempty" validate:"omitempty"`      // Detailed status information.
+	CustomData *types.CustomData   `json:"customData,omitempty" validate:"omitempty"`      // vendor specific extension data (schema customData)
 }
 
 // The field definition of the SetVariableMonitoring request payload sent by the CSMS to the Charging Station.
 type SetVariableMonitoringRequest struct {
 	MonitoringData []SetMonitoringData `json:"setMonitoringData" validate:"required,min=1,dive"` // List of MonitoringData containing monitoring settings.
+	CustomData     *types.CustomData   `json:"customData,omitempty" validate:"omitempty"`        // vendor specific extension data (schema customData)
 }
 
 // This field definition of the SetVariableMonitoring response payload, sent by the Charging Station to the CSMS in response to a SetVariableMonitoringRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type SetVariableMonitoringResponse struct {
 	MonitoringResult []SetMonitoringResult `json:"setMonitoringResult" validate:"required,min=1,dive"` //  List of result statuses per monitor.
+	CustomData       *types.CustomData     `json:"customData,omitempty" validate:"omitempty"`          // vendor specific extension data (schema customData)
 }
 
 // The CSMS may request the Charging Station to set monitoring triggers on Variables. Multiple triggers can be

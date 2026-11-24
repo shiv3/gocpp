@@ -56,12 +56,13 @@ func isValidDataType(fl validator.FieldLevel) bool {
 
 // VariableCharacteristics represents a fixed read-only parameters of a variable.
 type VariableCharacteristics struct {
-	Unit               string   `json:"unit,omitempty" validate:"max=16"`          // Unit of the variable. When the transmitted value has a unit, this field SHALL be included.
-	DataType           DataType `json:"dataType" validate:"required,dataTypeEnum"` // Data type of this variable.
-	MinLimit           *float64 `json:"minLimit,omitempty"`                        // Minimum possible value of this variable.
-	MaxLimit           *float64 `json:"maxLimit,omitempty"`                        // Maximum possible value of this variable. When the datatype of this Variable is String, OptionList, SequenceList or MemberList, this field defines the maximum length of the (CSV) string.
-	ValuesList         string   `json:"valuesList,omitempty" validate:"max=1000"`  // Allowed values when variable is Option/Member/SequenceList. This is a comma separated list.
-	SupportsMonitoring bool     `json:"supportsMonitoring"`                        // Flag indicating if this variable supports monitoring.
+	Unit               string            `json:"unit,omitempty" validate:"max=16"`          // Unit of the variable. When the transmitted value has a unit, this field SHALL be included.
+	DataType           DataType          `json:"dataType" validate:"required,dataTypeEnum"` // Data type of this variable.
+	MinLimit           *float64          `json:"minLimit,omitempty"`                        // Minimum possible value of this variable.
+	MaxLimit           *float64          `json:"maxLimit,omitempty"`                        // Maximum possible value of this variable. When the datatype of this Variable is String, OptionList, SequenceList or MemberList, this field defines the maximum length of the (CSV) string.
+	ValuesList         string            `json:"valuesList,omitempty" validate:"max=1000"`  // Allowed values when variable is Option/Member/SequenceList. This is a comma separated list.
+	SupportsMonitoring bool              `json:"supportsMonitoring"`                        // Flag indicating if this variable supports monitoring.
+	CustomData         *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // NewVariableCharacteristics returns a pointer to a new VariableCharacteristics struct.
@@ -71,11 +72,12 @@ func NewVariableCharacteristics(dataType DataType, supportsMonitoring bool) *Var
 
 // VariableAttribute describes the attribute data of a variable.
 type VariableAttribute struct {
-	Type       types.Attribute `json:"type,omitempty" validate:"omitempty,attribute"`        // Actual, MinSet, MaxSet, etc. Defaults to Actual if absent.
-	Value      string          `json:"value,omitempty" validate:"max=2500"`                  // Value of the attribute. May only be omitted when mutability is set to 'WriteOnly'.
-	Mutability Mutability      `json:"mutability,omitempty" validate:"omitempty,mutability"` // Defines the mutability of this attribute. Default is ReadWrite when omitted.
-	Persistent bool            `json:"persistent,omitempty"`                                 // If true, value will be persistent across system reboots or power down. Default when omitted is false.
-	Constant   bool            `json:"constant,omitempty"`                                   // If true, value that will never be changed by the Charging Station at runtime. Default when omitted is false.
+	Type       types.Attribute   `json:"type,omitempty" validate:"omitempty,attribute"`        // Actual, MinSet, MaxSet, etc. Defaults to Actual if absent.
+	Value      string            `json:"value,omitempty" validate:"max=2500"`                  // Value of the attribute. May only be omitted when mutability is set to 'WriteOnly'.
+	Mutability Mutability        `json:"mutability,omitempty" validate:"omitempty,mutability"` // Defines the mutability of this attribute. Default is ReadWrite when omitted.
+	Persistent bool              `json:"persistent,omitempty"`                                 // If true, value will be persistent across system reboots or power down. Default when omitted is false.
+	Constant   bool              `json:"constant,omitempty"`                                   // If true, value that will never be changed by the Charging Station at runtime. Default when omitted is false.
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"`            // vendor specific extension data (schema customData)
 }
 
 // NewVariableAttribute creates a VariableAttribute struct, with all default values set.
@@ -92,20 +94,23 @@ type ReportData struct {
 	Variable                types.Variable           `json:"variable" validate:"required"`
 	VariableAttribute       []VariableAttribute      `json:"variableAttribute" validate:"required,min=1,max=4,dive"`
 	VariableCharacteristics *VariableCharacteristics `json:"variableCharacteristics,omitempty" validate:"omitempty"`
+	CustomData              *types.CustomData        `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The field definition of the NotifyReport request payload sent by the Charging Station to the CSMS.
 type NotifyReportRequest struct {
-	RequestID   int             `json:"requestId" validate:"gte=0"`                     // The id of the GetMonitoringRequest that requested this report.
-	GeneratedAt *types.DateTime `json:"generatedAt" validate:"required"`                // Timestamp of the moment this message was generated at the Charging Station.
-	Tbc         bool            `json:"tbc,omitempty" validate:"omitempty"`             // “to be continued” indicator. Indicates whether another part of the monitoringData follows in an upcoming notifyMonitoringReportRequest message. Default value when omitted is false.
-	SeqNo       int             `json:"seqNo" validate:"gte=0"`                         // Sequence number of this message. First message starts at 0.
-	ReportData  []ReportData    `json:"reportData,omitempty" validate:"omitempty,dive"` // List of ReportData
+	RequestID   int               `json:"requestId" validate:"gte=0"`                     // The id of the GetMonitoringRequest that requested this report.
+	GeneratedAt *types.DateTime   `json:"generatedAt" validate:"required"`                // Timestamp of the moment this message was generated at the Charging Station.
+	Tbc         bool              `json:"tbc,omitempty" validate:"omitempty"`             // “to be continued” indicator. Indicates whether another part of the monitoringData follows in an upcoming notifyMonitoringReportRequest message. Default value when omitted is false.
+	SeqNo       int               `json:"seqNo" validate:"gte=0"`                         // Sequence number of this message. First message starts at 0.
+	ReportData  []ReportData      `json:"reportData,omitempty" validate:"omitempty,dive"` // List of ReportData
+	CustomData  *types.CustomData `json:"customData,omitempty" validate:"omitempty"`      // vendor specific extension data (schema customData)
 }
 
 // The field definition of the NotifyReport response payload, sent by the CSMS to the Charging Station in response to a NotifyReportRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type NotifyReportResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // A Charging Station may send reports to the CSMS on demand, when requested to do so.

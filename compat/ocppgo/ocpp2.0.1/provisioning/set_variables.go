@@ -34,10 +34,11 @@ func isValidSetVariableStatus(fl validator.FieldLevel) bool {
 }
 
 type SetVariableData struct {
-	AttributeType  types.Attribute `json:"attributeType,omitempty" validate:"omitempty,attribute"`
-	AttributeValue string          `json:"attributeValue" validate:"required,max=1000"`
-	Component      types.Component `json:"component" validate:"required"`
-	Variable       types.Variable  `json:"variable" validate:"required"`
+	AttributeType  types.Attribute   `json:"attributeType,omitempty" validate:"omitempty,attribute"`
+	AttributeValue string            `json:"attributeValue" validate:"required,max=1000"`
+	Component      types.Component   `json:"component" validate:"required"`
+	Variable       types.Variable    `json:"variable" validate:"required"`
+	CustomData     *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 type SetVariableResult struct {
@@ -46,17 +47,20 @@ type SetVariableResult struct {
 	Component       types.Component   `json:"component" validate:"required"`
 	Variable        types.Variable    `json:"variable" validate:"required"`
 	StatusInfo      *types.StatusInfo `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData      *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The field definition of the SetVariables request payload sent by the CSMS to the Charging Station.
 type SetVariablesRequest struct {
 	SetVariableData []SetVariableData `json:"setVariableData" validate:"required,min=1,dive"` // List of Component-Variable pairs and attribute values to set.
+	CustomData      *types.CustomData `json:"customData,omitempty" validate:"omitempty"`      // vendor specific extension data (schema customData)
 }
 
 // This field definition of the SetVariables response payload, sent by the Charging Station to the CSMS in response to a SetVariablesRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type SetVariablesResponse struct {
 	SetVariableResult []SetVariableResult `json:"setVariableResult" validate:"required,min=1,dive"` //  List of result statuses per Component-Variable.
+	CustomData        *types.CustomData   `json:"customData,omitempty" validate:"omitempty"`        // vendor specific extension data (schema customData)
 }
 
 // A Charging Station can have a lot of variables that can be configured/changed by the CSMS.
@@ -88,12 +92,12 @@ func (c SetVariablesResponse) GetFeatureName() string {
 
 // Creates a new SetVariablesRequest, containing all required fields.  There are no optional fields for this message.
 func NewSetVariablesRequest(variableData []SetVariableData) *SetVariablesRequest {
-	return &SetVariablesRequest{variableData}
+	return &SetVariablesRequest{SetVariableData: variableData}
 }
 
 // Creates a new SetVariablesResponse, containing all required fields. There are no optional fields for this message.
 func NewSetVariablesResponse(result []SetVariableResult) *SetVariablesResponse {
-	return &SetVariablesResponse{result}
+	return &SetVariablesResponse{SetVariableResult: result}
 }
 
 func init() {

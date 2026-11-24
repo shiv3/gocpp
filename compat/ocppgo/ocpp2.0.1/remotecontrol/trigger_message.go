@@ -60,8 +60,9 @@ func isValidTriggerMessageStatus(fl validator.FieldLevel) bool {
 
 // The field definition of the TriggerMessage request payload sent by the CSMS to the Charging Station.
 type TriggerMessageRequest struct {
-	RequestedMessage MessageTrigger `json:"requestedMessage" validate:"required,messageTrigger201"`
-	Evse             *types.EVSE    `json:"evse,omitempty" validate:"omitempty"`
+	RequestedMessage MessageTrigger    `json:"requestedMessage" validate:"required,messageTrigger201"`
+	Evse             *types.EVSE       `json:"evse,omitempty" validate:"omitempty"`
+	CustomData       *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the TriggerMessage response payload, sent by the Charging Station to the CSMS in response to a TriggerMessageRequest.
@@ -69,6 +70,7 @@ type TriggerMessageRequest struct {
 type TriggerMessageResponse struct {
 	Status     TriggerMessageStatus `json:"status" validate:"required,triggerMessageStatus201"`
 	StatusInfo *types.StatusInfo    `json:"statusInfo,omitempty"`
+	CustomData *types.CustomData    `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS may request a Charging Station to send a Charging Station-initiated message.

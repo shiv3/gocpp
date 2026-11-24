@@ -1,0 +1,41 @@
+--- a/ocpp2.0.1/firmware/update_firmware.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/firmware/update_firmware.go	2026-11-24 00:00:00 +0900
+@@ -39,19 +39,21 @@
+ 
+ // Represents a copy of the firmware that can be loaded/updated on the Charging Station.
+ type Firmware struct {
+-	Location           string          `json:"location" validate:"required,max=512,uri"`         // URI defining the origin of the firmware.
+-	RetrieveDateTime   *types.DateTime `json:"retrieveDateTime" validate:"required"`             // Date and time at which the firmware shall be retrieved.
+-	InstallDateTime    *types.DateTime `json:"installDateTime,omitempty" validate:"omitempty"`   // Date and time at which the firmware shall be installed.
+-	SigningCertificate string          `json:"signingCertificate,omitempty" validate:"max=5500"` // Certificate with which the firmware was signed. PEM encoded X.509 certificate.
+-	Signature          string          `json:"signature,omitempty" validate:"max=800"`           // Base64 encoded firmware signature.
++	Location           string            `json:"location" validate:"required,max=512,uri"`         // URI defining the origin of the firmware.
++	RetrieveDateTime   *types.DateTime   `json:"retrieveDateTime" validate:"required"`             // Date and time at which the firmware shall be retrieved.
++	InstallDateTime    *types.DateTime   `json:"installDateTime,omitempty" validate:"omitempty"`   // Date and time at which the firmware shall be installed.
++	SigningCertificate string            `json:"signingCertificate,omitempty" validate:"max=5500"` // Certificate with which the firmware was signed. PEM encoded X.509 certificate.
++	Signature          string            `json:"signature,omitempty" validate:"max=800"`           // Base64 encoded firmware signature.
++	CustomData         *types.CustomData `json:"customData,omitempty" validate:"omitempty"`        // vendor specific extension data (schema customData)
+ }
+ 
+ // The field definition of the UpdateFirmware request payload sent by the CSMS to the Charging Station.
+ type UpdateFirmwareRequest struct {
+-	Retries       *int     `json:"retries,omitempty" validate:"omitempty,gte=0"`       // This specifies how many times Charging Station must try to download the firmware before giving up. If this field is not present, it is left to Charging Station to decide how many times it wants to retry.
+-	RetryInterval *int     `json:"retryInterval,omitempty" validate:"omitempty,gte=0"` // The interval in seconds after which a retry may be attempted. If this field is not present, it is left to Charging Station to decide how long to wait between attempts.
+-	RequestID     int      `json:"requestId" validate:"gte=0"`                         // The Id of the request.
+-	Firmware      Firmware `json:"firmware" validate:"required"`                       // Specifies the firmware to be updated on the Charging Station.
++	Retries       *int              `json:"retries,omitempty" validate:"omitempty,gte=0"`       // This specifies how many times Charging Station must try to download the firmware before giving up. If this field is not present, it is left to Charging Station to decide how many times it wants to retry.
++	RetryInterval *int              `json:"retryInterval,omitempty" validate:"omitempty,gte=0"` // The interval in seconds after which a retry may be attempted. If this field is not present, it is left to Charging Station to decide how long to wait between attempts.
++	RequestID     int               `json:"requestId" validate:"gte=0"`                         // The Id of the request.
++	Firmware      Firmware          `json:"firmware" validate:"required"`                       // Specifies the firmware to be updated on the Charging Station.
++	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"`          // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the UpdateFirmware response payload, sent by the Charging Station to the CSMS in response to a UpdateFirmwareRequest.
+@@ -59,6 +61,7 @@
+ type UpdateFirmwareResponse struct {
+ 	Status     UpdateFirmwareStatus `json:"status" validate:"required,updateFirmwareStatus"`
+ 	StatusInfo *types.StatusInfo    `json:"statusInfo,omitempty" validate:"omitempty"`
++	CustomData *types.CustomData    `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // A CSMS may instruct a Charging Station to update its firmware, by downloading and installing a new version.

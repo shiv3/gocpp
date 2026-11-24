@@ -1,0 +1,28 @@
+--- a/ocpp2.0.1/diagnostics/clear_variable_monitoring.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/diagnostics/clear_variable_monitoring.go	2026-11-24 00:00:00 +0900
+@@ -31,19 +31,22 @@
+ }
+ 
+ type ClearMonitoringResult struct {
+-	ID     int                   `json:"id" validate:"required,gte=0"`
+-	Status ClearMonitoringStatus `json:"status" validate:"required,clearMonitoringStatus"`
++	ID         int                   `json:"id" validate:"required,gte=0"`
++	Status     ClearMonitoringStatus `json:"status" validate:"required,clearMonitoringStatus"`
++	CustomData *types.CustomData     `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // The field definition of the ClearVariableMonitoring request payload sent by the CSMS to the Charging Station.
+ type ClearVariableMonitoringRequest struct {
+-	ID []int `json:"id" validate:"required,min=1,dive,gte=0"` // List of the monitors to be cleared, identified by their Id.
++	ID         []int             `json:"id" validate:"required,min=1,dive,gte=0"`   // List of the monitors to be cleared, identified by their Id.
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the ClearVariableMonitoring response payload, sent by the Charging Station to the CSMS in response to a ClearVariableMonitoringRequest.
+ // In case the request was invalid, or couldn't be processed, an error will be sent instead.
+ type ClearVariableMonitoringResponse struct {
+ 	ClearMonitoringResult []ClearMonitoringResult `json:"clearMonitoringResult" validate:"required,min=1,dive"` // List of result statuses per monitor.
++	CustomData            *types.CustomData       `json:"customData,omitempty" validate:"omitempty"`            // vendor specific extension data (schema customData)
+ }
+ 
+ // The CSMS asks the Charging Station to clear/remove a display message that has been configured in the Charging Station.
