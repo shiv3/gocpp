@@ -1,4 +1,12 @@
-package main
+// Package recorder writes the NDJSON frame log of gocpp-csms: one line per
+// charge-point CALL the CSMS handled,
+//
+//	{"seq":N,"cpId":"..","action":"..","payload":{...}}
+//
+// with seq counting from 1 across all connections, and the ports sentinel line
+// of the legacy e2e mode. The format is part of the frozen legacy contract (see
+// legacy_contract_test.go); serve mode writes the same lines.
+package recorder
 
 import (
 	"bufio"
@@ -7,6 +15,7 @@ import (
 	"sync"
 )
 
+// Recorder serialises frame lines onto one writer, flushing after each line.
 type Recorder struct {
 	mu  sync.Mutex
 	seq int64
@@ -21,13 +30,16 @@ type recordedFrame struct {
 	Payload any    `json:"payload"`
 }
 
-func NewRecorder(out *bufio.Writer) *Recorder {
+// New returns a Recorder writing to out.
+func New(out *bufio.Writer) *Recorder {
 	return &Recorder{
 		enc: json.NewEncoder(out),
 		out: out,
 	}
 }
 
+// Record writes one frame line. payload is encoded as JSON (a json.RawMessage
+// is written compacted, as is).
 func (r *Recorder) Record(cpID, action string, payload any) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -44,6 +56,7 @@ func (r *Recorder) Record(cpID, action string, payload any) error {
 	return r.out.Flush()
 }
 
+// Flush flushes the underlying writer.
 func (r *Recorder) Flush() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

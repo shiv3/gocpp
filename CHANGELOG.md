@@ -18,6 +18,22 @@ All notable changes to this project are documented here. The format is based on
   and timed command sequences. A contract test pins the stdout format, the control
   envelopes and the default answers. Shipped in the release archives. See
   `docs/gocpp-csms.md`.
+- `gocpp-csms serve`: a configurable serve mode next to the frozen `--version` mode.
+  One listener serves OCPP 1.6, 2.0.1 and 2.1 (subprotocol negotiation) under a
+  configurable path prefix (charge point id = last path segment); flags with
+  `GOCPP_CSMS_*` environment defaults; TLS, mTLS (optionally binding the certificate
+  common name to the charge point id) and HTTP Basic Auth from a static file (clear or
+  bcrypt passwords); JSON or text logs with a level; `/healthz`, `/readyz` and
+  Prometheus `/metrics`; a drain on SIGTERM; a connection limit. Every
+  charge-point-initiated action of each version gets a schema-valid accepting answer
+  (security, firmware, diagnostics and log status, the 2.x Notify* family,
+  ReportChargingProfiles, ...), with real transaction tracking (1.6 transaction ids,
+  2.x `transactionInfo`, `idTokenInfo`) readable on `GET /transactions`.
+  `POST /command` sends any CSMS-initiated action of the charge point's version with a
+  raw JSON payload validated against the schema first; `GET /connections` lists the
+  connected charge points. `--record` writes the legacy NDJSON frame lines on stdout.
+  The binary is split into internal packages with documented extension points for
+  later features (see "Architecture" in `docs/gocpp-csms.md`).
 
 ## [0.4.0] - 2026-11-25
 

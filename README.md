@@ -236,10 +236,13 @@ go install github.com/shiv3/gocpp/cmd/gocpp-csms@latest
   message against the official schema.
 - `gocpp-sim run -s scenario.yaml` — drive a simulated charge point through a YAML
   scenario against a CSMS.
-- `gocpp-csms --version 1.6` — a standalone test CSMS for charge points to dial into:
-  default answers, a frame recorder on stdout and an HTTP control API to send commands
-  and switch the answers. It is the CSMS of the ocpp-cp-simulator e2e suite. See
-  [docs/gocpp-csms.md](docs/gocpp-csms.md).
+- `gocpp-csms serve` — a standalone test CSMS for charge points to dial into: OCPP
+  1.6, 2.0.1 and 2.1 on one port, optional TLS/mTLS and Basic Auth, schema-valid
+  answers to every charge point action, transaction tracking, a generic command API
+  for every CSMS-initiated action, `/healthz`, `/readyz` and Prometheus `/metrics`.
+  `gocpp-csms --version 1.6` is the single-version mode of the ocpp-cp-simulator e2e
+  suite (frame recorder on stdout, control API to send commands and switch the
+  answers). See [docs/gocpp-csms.md](docs/gocpp-csms.md).
 
 ## Testing
 

@@ -17,8 +17,19 @@ It is the CSMS used by the e2e suite of
 [ocpp-cp-simulator](https://github.com/shiv3/ocpp-cp-simulator), which used to carry
 its own copy under `e2e/csms/`. The mode that suite uses is described below as the
 **legacy e2e mode**; its interface is frozen and pinned by
-`cmd/gocpp-csms/legacy_contract_test.go`. Further modes and features will be opt-in
-flags and endpoints that leave this mode unchanged.
+`cmd/gocpp-csms/legacy_contract_test.go`.
+
+The **serve mode** (`gocpp-csms serve`) is the configurable CSMS for everything else:
+one listener for OCPP 1.6, 2.0.1 and 2.1, TLS, mTLS and Basic Auth, health, readiness
+and Prometheus endpoints, a generic command API for every CSMS-initiated action, and
+schema-valid answers to every charge-point-initiated action. New features are opt-in
+flags and endpoints of the serve mode; the legacy e2e mode does not change.
+
+| Started as | Mode |
+|---|---|
+| `gocpp-csms --version 1.6\|2.0.1\|2.1` | legacy e2e mode (frozen) |
+| `gocpp-csms serve [flags]` | serve mode |
+| `gocpp-csms` (nothing) | usage error, exit status 2 (kept from the legacy contract) |
 
 ## Legacy e2e mode
 
@@ -33,7 +44,8 @@ or `ocpp2.1`). It opens two listeners on ephemeral loopback ports:
   (no TLS, no authentication);
 - the control listener: `http://127.0.0.1:<http>`.
 
-A missing or unknown `--version` prints a message on stderr and exits with status 2.
+A missing or unknown `--version` prints a message on stderr and exits with status 2
+(without `--version` the message points at `gocpp-csms serve`).
 SIGINT or SIGTERM shuts both listeners down, flushes stdout and exits 0. All logs go
 to stderr.
 
@@ -160,3 +172,193 @@ runs.
 5. Treat every later stdout line as a frame record; use `seq` to wait for frames
    sent after a given point.
 6. Stop with SIGTERM.
+
+## Serve mode
+
+```sh
+gocpp-csms serve                                   # ws://:8080/ocpp/<cpId>, control on 127.0.0.1:8081
+gocpp-csms serve --ocpp-addr :443 --tls-cert cert.pem --tls-key key.pem \
+  --basic-auth-file chargers.txt --log-level debug
+```
+
+One OCPP listener serves every configured version; the WebSocket subprotocol a charge
+point offers (`ocpp1.6`, `ocpp2.0.1`, `ocpp2.1`) picks the version of its connection.
+The charge point id is the last path segment under the path prefix, so
+`/ocpp/CP1` and `/ocpp/site-a/CP1` both connect `CP1` (a prefix without a trailing
+slash is treated as if it had one).
+
+### Flags
+
+Every flag has an environment default: `--foo-bar` reads `GOCPP_CSMS_FOO_BAR`; a flag
+on the command line wins. An environment value that does not parse is a usage error
+(exit status 2).
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--ocpp-addr` | `:8080` | OCPP WebSocket listen address |
+| `--control-addr` | `127.0.0.1:8081` | control API, `/healthz`, `/readyz`, `/metrics` |
+| `--path-prefix` | `/ocpp/` | path charge points dial under; id = last segment |
+| `--versions` | `2.1,2.0.1,1.6` | accepted OCPP versions, in order of preference |
+| `--tls-cert`, `--tls-key` | | serve `wss://` with this PEM certificate and key |
+| `--tls-client-ca` | | require a client certificate signed by this PEM CA bundle (mTLS) |
+| `--mtls-match-cpid` | `false` | also require the client certificate's common name to equal the charge point id |
+| `--basic-auth-file` | | require HTTP Basic Auth (see below) |
+| `--log-format` | `json` | `json` or `text`, on stderr |
+| `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
+| `--max-connections` | `0` | simultaneous charge points (0 = unlimited); beyond it upgrades get 503 |
+| `--inbound-concurrency` | `0` | inbound handlers running at once over all connections (0 = unlimited) |
+| `--drain-timeout` | `30s` | on SIGTERM, time to close charge point connections |
+| `--command-timeout` | `30s` | timeout of a CSMS-initiated command |
+| `--boot-interval` | `300` | `interval` of BootNotification answers |
+| `--schema` | `strict` | validation of charge point messages: `strict`, `tolerant`, `lenient`, `off` |
+| `--record` | `false` | NDJSON frame lines on stdout (format of the legacy mode) |
+| `--announce` | `false` | `E2E_CSMS_PORTS {"ocpp":N,"http":N}` as the first stdout line |
+
+Without `--record` and `--announce` stdout stays empty; logs always go to stderr.
+`--record` writes the line before the CALL is answered; with
+`--inbound-concurrency 1` its `seq` is the receive order over all connections, as in
+the legacy mode (otherwise only per-connection order is likely, not guaranteed).
+
+### Authentication
+
+`--basic-auth-file` lists one charge point per line, `cpId:secret`, where the secret
+is the password in clear or its bcrypt hash (`$2a$`, `$2b$`, `$2y$`); blank lines and
+`#` comments are ignored; the id ends at the first colon. A charge point not in the
+file, without credentials or with a wrong password is refused with 401 before the
+WebSocket upgrade (OCPP security profiles 1 and 2).
+
+```
+# chargers.txt
+CP1:correct horse battery staple
+CP2:$2b$10$Vb6...
+```
+
+`--tls-client-ca` makes the TLS handshake require a client certificate from that CA
+(profile 3); add `--mtls-match-cpid` to bind the certificate to the charge point id.
+Basic Auth and the certificate check can be combined; both must pass.
+
+### Answers to the charge point
+
+Every action a charge point may send in its version is answered with a schema-valid
+answer that accepts it; nothing is answered NotSupported:
+
+- BootNotification `Accepted` with `--boot-interval` and `currentTime`; Heartbeat
+  `currentTime`.
+- Authorize: `Accepted` (`idTagInfo` in 1.6, `idTokenInfo` in 2.x).
+- DataTransfer, SignCertificate, GetCertificateStatus, NotifyEVChargingNeeds,
+  NotifyEVChargingSchedule, RequestBatterySwap, PullDynamicScheduleUpdate:
+  `{"status":"Accepted"}`. Get15118EVCertificate: `Accepted` with an empty
+  `exiResponse`. VatNumberValidation (2.1): `Accepted`, echoing `vatNumber`.
+  GetCertificateChainStatus (2.1): every requested certificate `Good`, next update in
+  24 h.
+- Everything else (StatusNotification, MeterValues, firmware, diagnostics and log
+  status, SecurityEventNotification, the 2.x Notify* family, ReportChargingProfiles,
+  ClearedChargingLimit, ReservationStatusUpdate, ...): `{}`. The 2.1 SEND
+  NotifyPeriodicEventStream is accepted (and recorded).
+
+Transactions are tracked per charge point and connector:
+
+- 1.6 StartTransaction gets a `transactionId` from a process-wide counter (1, 2, ...)
+  and `idTagInfo` `Accepted`; a transaction still open on the same connector is ended
+  (`Replaced`). StopTransaction ends it (`idTagInfo` `Accepted` when the request
+  carries an `idTag`, otherwise `{}`). MeterValues with a `transactionId` mark it
+  updated.
+- 2.x TransactionEvent `Started`/`Updated`/`Ended` creates, updates and ends the
+  transaction with the charge point's `transactionInfo` (id, charging state, stopped
+  reason, `seqNo`, EVSE and connector, energy register); the answer carries
+  `idTokenInfo` `Accepted` when the event has an `idToken`, otherwise `{}`.
+
+### Control API
+
+The control API has no authentication of its own: keep `--control-addr` on loopback
+(the default) or behind something that authenticates. Same envelope as the legacy
+mode, plus `errorCode` (the OCPP error code when the
+charge point answered with a CALLERROR).
+
+- `GET /healthz` - `{"ok":true}` while the process runs.
+- `GET /readyz` - `ok` (200), or 503 while draining or shutting down.
+- `GET /metrics` - Prometheus: gocpp's connection, call, schema and session metrics
+  plus Go and process metrics.
+- `POST /command` - any CALL the CSMS may send in the charge point's negotiated
+  version, with the request as `payload`:
+
+  ```json
+  {"cpId":"CP1","action":"SetChargingProfile","payload":{"connectorId":1,"csChargingProfiles":{...}}}
+  ```
+
+  The legacy flat shape (request fields next to `cpId` and `action`) is accepted too.
+  The payload is validated against the version's request schema before it is sent.
+  400: bad JSON, missing `cpId`/`action`, `payload` mixed with other fields, an action
+  the CSMS cannot send in that version (`unsupported 1.6 action "X"`), a payload that
+  does not match the schema; 404: not connected; 200 `{"ok":true,"result":<answer>}`;
+  200 `{"ok":false,"error":..,"errorCode":..}` for a CALLERROR, or `ok:false` without
+  `errorCode` for a timeout or a dropped connection.
+- `GET /connections` - `[{"cpId","version","subprotocol","remoteAddr"}]`.
+- `GET /transactions[?cpId=X][&active=true]` - the transaction store (active ones and
+  the last 1000 ended ones), ordered by creation.
+
+### Shutdown
+
+SIGTERM or SIGINT starts a drain: new upgrades are refused with 503 and `Retry-After`,
+`/readyz` fails, and the open connections are closed (WebSocket close code 1012)
+spread over `--drain-timeout`; then both listeners stop, stdout is flushed and the
+process exits 0.
+
+## Architecture
+
+```
+cmd/gocpp-csms/
+  main.go                  mode switch: "serve" -> internal/server, otherwise internal/legacy
+  ext_<name>.go            one file per serve-mode extension (init appends to serveExtensions)
+  legacy_contract_test.go  the frozen legacy contract (runs the real binary)
+  serve_test.go            serve mode as a process
+  internal/
+    legacy/    legacy e2e mode (frozen): typed handlers, /behavior, /sequence, offline gate
+    recorder/  NDJSON frame lines and the ports sentinel (shared, format frozen)
+    config/    serve flags, GOCPP_CSMS_* env defaults, Binder for extension flags
+    server/    serve wiring: listeners, TLS, auth, metrics, health, drain; Extension, Hooks, Runtime
+    actions/   per-version action sets by direction (from the generated handler interfaces), schema registry
+    inbound/   answers to charge point CALLs (accept-all defaults), Override / Observe
+    dispatch/  CSMS->CP commands: schema validation + CallRaw, POST /command
+    txn/       transaction store (1.6 ids, 2.x transactionInfo)
+    authn/     Basic Auth file, client certificate check, authenticator composition
+    httpapi/   control API envelope
+```
+
+The legacy package is closed: nothing in serve mode imports it, and changes to it are
+changes to the frozen contract. Serve-mode features build on the packages above
+without editing them, through these extension points:
+
+- **`server.Extension`** (`Name`, `Flags(*config.Binder)`, `Setup(*server.Hooks)`):
+  an optional feature lives in its own `internal/<feature>` package and is compiled in
+  by a file `cmd/gocpp-csms/ext_<feature>.go` whose `init` appends it to
+  `serveExtensions`. Its flags are declared through the Binder (env defaults follow
+  the same rule) and should default to "off".
+- **`server.Hooks`** (during `Setup`):
+  - `Inbound.Override(version, action, responder)` replaces one answer
+    (`Inbound.Default` gives the built-in one to wrap); `Inbound.Observe(fn)` sees every
+    handled CALL with its answer.
+  - `FrameObserver(fn)` - raw frames in both directions, fan-out (gocpp takes a single
+    observer; the server multiplexes).
+  - `OnConnect(fn)` / `OnDisconnect(fn)` - fan-out as well.
+  - `Handle(pattern, handler)` - control API routes (`http.ServeMux` patterns, e.g.
+    `GET /chargepoints/{id}`).
+  - `SetAuthenticator(a)` / `Authenticator()` - replace (or wrap) the static
+    authenticator, `SetCPIDExtractor(fn)` - change how the id is read from the URL.
+  - `CSMSOptions(...)` - any other `csms.Option`; `Metrics` - register Prometheus
+    collectors; `Txns`, `Recorder` - shared state.
+  - `OnStart(fn(ctx, *Runtime))` - runs once listening; `Runtime` has the
+    `csms.Server`, the `dispatch.Dispatcher` (send validated commands with
+    `Dispatcher.Send`) and the stores; `ctx` ends at shutdown.
+
+Planned extensions and where they attach:
+
+- *Hosted test CSMS* (message log, registry): `FrameObserver` for a log of every frame
+  including CALLRESULT/CALLERROR and outbound calls (the stdout recorder format stays as
+  it is), `Handle` for `/messages` and the registry API, `SetAuthenticator` for
+  per-charge-point passwords and open/private modes, `SetCPIDExtractor` for an
+  instance segment in the URL, `OnConnect` and `CSMSOptions` for connection limits.
+- *Smart-charging controller profile* (per-connector state model): `Inbound.Observe`
+  for StatusNotification, MeterValues, BootNotification and transactions,
+  `Inbound.Override` for boot policies, `OnStart` + `Runtime.Dispatcher` for setup
+  sequences and limits, `Handle` for `/chargepoints` and `Txns.EndAll` for reboots.
