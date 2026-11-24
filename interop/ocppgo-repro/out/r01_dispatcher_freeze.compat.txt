@@ -1,0 +1,15 @@
+$ ./run.sh r01 compat    (2026-11-24T09:21:13Z, go1.27.3 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+healthy charge points: 200
+send loop returned: 200 calls sent
+canary Heartbeat 0: answered in 100µs (calls sent 200, answered 196 of 200)
+canary Heartbeat 1: answered in 250µs (calls sent 200, answered 200 of 200)
+canary Heartbeat 2: answered in 240µs (calls sent 200, answered 200 of 200)
+canary Heartbeat 3: answered in 230µs (calls sent 200, answered 200 of 200)
+
+goroutines by state and top frames (server and test clients share this process):
+     402  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+       1  running | pprof.writeGoroutineStacks <- pprof.writeGoroutine <- pprof.(*Profile).WriteTo
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: 200/200 calls sent, 200 answered; canary answered 4/4 Heartbeats
+exit status: 0

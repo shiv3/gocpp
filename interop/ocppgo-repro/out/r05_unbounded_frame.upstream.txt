@@ -1,0 +1,9 @@
+$ ./run.sh r05 upstream    (2026-11-24T09:25:29Z, go1.27.3 linux/amd64)
+library: ocpp-go v0.19.0 (upstream)
+frame: 64 MiB (one DataTransfer call)
+client write error: <nil>
+server reply: "[3,\"big-1\",{\"status\":\"Accepted\"}]" (read error: <nil>)
+process RSS before: 11 MiB, peak RSS: 360 MiB (5.5x the frame)
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 64 MiB frame: accepted and answered=true; peak RSS grew by 349 MiB
+exit status: 0

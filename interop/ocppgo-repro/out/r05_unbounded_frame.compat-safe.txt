@@ -1,0 +1,10 @@
+$ ./run.sh r05 compat-safe    (2026-11-24T09:25:31Z, go1.27.3 linux/amd64)
+opt-in safer behaviours of the drop-in: ON (last-wins duplicates, 1 MiB inbound limit, close frame on idle close)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+frame: 64 MiB (one DataTransfer call)
+client write error: <nil>
+server reply: "" (read error: websocket: close 1009 (message too big): read limited at 1048577 bytes)
+process RSS before: 14 MiB, peak RSS: 17 MiB (0.0x the frame)
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: 64 MiB frame: accepted and answered=false; peak RSS grew by 3 MiB
+exit status: 0

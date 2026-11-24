@@ -1,0 +1,23 @@
+$ ./run.sh r02 compat    (2026-11-24T09:21:51Z, go1.27.3 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+mute: 300, healthy: 8, call timeout: 2s
+healthy calls answered before the mute calls: 22241
+canary Heartbeat 0: answered in 110µs (healthy calls answered 112486, mute timeouts delivered 2/300)
+canary Heartbeat 1: answered in 110µs (healthy calls answered 157667, mute timeouts delivered 300/300)
+canary Heartbeat 2: answered in 140µs (healthy calls answered 203359, mute timeouts delivered 300/300)
+canary Heartbeat 3: answered in 290µs (healthy calls answered 248892, mute timeouts delivered 300/300)
+canary Heartbeat 4: answered in 480µs (healthy calls answered 294173, mute timeouts delivered 300/300)
+healthy calls answered in the last 2 s: 94937
+
+goroutines by state and top frames (server and test clients share this process):
+     616  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+       8  chan receive | main.main.func2
+       2  runnable | compatrt.Get[...] <- compatrt.Inline[...] <- ocpp1%2e6.(*centralSystem).runCallback
+       2  runnable | ocppj.appendFrame <- ocppj.EncodeCall <- dispatcher.(*Conn).call
+       2  select | dispatcher.(*Conn).call <- dispatcher.(*Conn).runAsyncJob
+       1  runnable | ocpp1%2e6.(*centralSystem).runCallback.gowrap1
+       1  runnable | reflect.mapassign_faststr <- reflect.Value.SetMapIndex <- v2.makeMapArshaler.func3
+       1  runnable | syscall.Syscall <- syscall.read <- syscall.Read
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: mute timeouts delivered 300/300; healthy calls answered in the last 2 s: 94937; canary 5/5
+exit status: 0

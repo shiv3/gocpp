@@ -1,0 +1,24 @@
+$ ./run.sh r03 upstream    (2026-11-24T09:23:09Z, go1.27.3 linux/amd64)
+library: ocpp-go v0.19.0 (upstream)
+server write timeout: 3s, answer size: 16 MiB
+canary Heartbeat before: 230µs <nil>
+stalled charge point sent 3 DataTransfer requests and stopped reading
+t= 1.0s canary Heartbeat: answered in 180µs
+t= 2.0s canary Heartbeat: answered in 210µs
+t= 3.0s canary Heartbeat: answered in 160µs
+t= 6.0s canary Heartbeat: NO ANSWER within 2 s
+t= 9.0s canary Heartbeat: NO ANSWER within 2 s
+t=12.0s canary Heartbeat: NO ANSWER within 2 s
+
+goroutines by state and top frames (server and test clients share this process):
+       3  sync.Mutex.Lock | ws.(*Server).wsHandler <- ws.(*Server).Start.func1 <- http.HandlerFunc.ServeHTTP
+       2  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+       1  chan send | ws.(*Server).Write <- ocppj.(*Server).SendResponse <- ocpp1%2e6.(*centralSystem).sendResponse
+       1  running | pprof.writeGoroutineStacks <- pprof.writeGoroutine <- pprof.(*Profile).WriteTo
+       1  select | ocppj.(*DefaultServerDispatcher).messagePump
+       1  select | ws.(*Server).writePump
+       1  sync.RWMutex.Lock | ws.(*Server).cleanupConnection <- ws.(*Server).writePump
+       1  sync.RWMutex.RLock | ws.(*Server).Write <- ocppj.(*Server).SendResponse <- ocpp1%2e6.(*centralSystem).sendResponse
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: canary answered 3/6 Heartbeats while one charge point was not reading
+exit status: 0

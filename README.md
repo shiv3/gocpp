@@ -23,6 +23,10 @@ A from-scratch alternative to `lorenzodonini/ocpp-go` (and a
 - **Pluggable** Storage / Auth / Observability with in-memory / NoOp defaults and
   Prometheus + OpenTelemetry adapters.
 
+What gocpp changes compared with ocpp-go v0.19.0, with a repro program for each point,
+and what it does not change, is written up in
+[docs/ocpp-go-structural-issues.md](docs/ocpp-go-structural-issues.md).
+
 ## Install
 
 ```sh
@@ -245,6 +249,7 @@ The `internal/conformance` suite ports lorenzodonini/ocpp-go's per-message test 
 - [docs/architecture.md](docs/architecture.md) — design & concurrency model
 - [docs/migration-from-ocpp-go.md](docs/migration-from-ocpp-go.md) — moving from ocpp-go (native API or drop-in)
 - [compat/ocppgo/README.md](compat/ocppgo/README.md) — the ocpp-go drop-in module
+- [docs/ocpp-go-structural-issues.md](docs/ocpp-go-structural-issues.md) — reproducible design issues of ocpp-go v0.19.0, how gocpp behaves, and the limits of both
 
 ## License
 

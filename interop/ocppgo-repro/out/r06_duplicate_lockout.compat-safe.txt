@@ -1,0 +1,8 @@
+$ ./run.sh r06 compat-safe    (2026-11-24T09:25:31Z, go1.27.3 linux/amd64)
+opt-in safer behaviours of the drop-in: ON (last-wins duplicates, 1 MiB inbound limit, close frame on idle close)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+first connection: Heartbeat answered in 280µs (<nil>); the link now goes silent without a close
+t= 5.0s attempt 1: served (Heartbeat answered)
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: reconnecting charge point refused 0 time(s); served again after 5 s
+exit status: 0

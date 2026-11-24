@@ -1,0 +1,30 @@
+$ ./run.sh r08 upstream    (2026-11-24T09:27:44Z, go1.27.3 linux/amd64)
+library: ocpp-go v0.19.0 (upstream)
+call timeout: 2s
+
+A. charge point received: [2,"1473749869","GetConfiguration",{"key":["k"]}]
+A. charge point answered at once with an invalid payload (configurationKey without the required key)
+A. t=0.00s charge point received: [4,"1473749869","OccurrenceConstraintViolation","Field CallResult.Payload.ConfigurationKey[0].Key required but not found for feature GetConfiguration",{}]
+A. t=2.00s application: GetConfiguration callback: response=<nil> err=ocpp message (1473749869): GenericError - Request timed out
+A. t=2.00s charge point received: [2,"3710338009","ChangeAvailability",{"connectorId":1,"type":"Operative"}]
+A. t=2.00s application: ChangeAvailability callback: response=ChangeAvailability err=<nil>
+
+B. 300 charge points, GetConfiguration answered within +-1.5 ms of the timeout, then ChangeAvailability:
+B. callbacks given the right response: 368, a timeout/error: 221, the response of ANOTHER request: 11; never called: 0; library errors ("no handler available"): 11; send errors: 0
+B. example: charge point b0020: the callback of ChangeAvailability was given a *core.GetConfigurationConfirmation
+
+C. the ChangeAvailability callback (sent before the drop) was called with response=GetConfiguration err=<nil>
+C. (the other callback was not called within 2 s)
+
+misdelivered responses counted in B and C: 12
+RESULT-SO-FAR [ocpp-go v0.19.0 (upstream)]: misdelivered=12 (C2 follows; if the library's typed wrapper receives the wrong type the process dies here)
+
+panic: interface conversion: ocpp.Response is *core.GetConfigurationConfirmation, not *core.ChangeAvailabilityConfirmation
+
+goroutine 3037 [running]:
+github.com/lorenzodonini/ocpp-go/ocpp1%2e6.(*centralSystem).ChangeAvailability.func1({0xba98a8?, 0x5d09baa6750?}, {0x0?, 0x0?})
+	$GOMODCACHE/github.com/lorenzodonini/ocpp-go@v0.19.0/ocpp1.6/central_system.go:71 +0x6d
+created by github.com/lorenzodonini/ocpp-go/ocpp1%2e6.(*centralSystem).handleIncomingConfirmation in goroutine 3051
+	$GOMODCACHE/github.com/lorenzodonini/ocpp-go@v0.19.0/ocpp1.6/central_system.go:700 +0xf9
+exit status 2
+exit status: 1

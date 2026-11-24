@@ -1,0 +1,9 @@
+$ ./run.sh r05 compat    (2026-11-24T09:25:30Z, go1.27.3 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+frame: 64 MiB (one DataTransfer call)
+client write error: <nil>
+server reply: "[3,\"big-1\",{\"status\":\"Accepted\"}]" (read error: <nil>)
+process RSS before: 14 MiB, peak RSS: 364 MiB (5.5x the frame)
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: REPRODUCED: 64 MiB frame: accepted and answered=true; peak RSS grew by 350 MiB
+exit status: 0
