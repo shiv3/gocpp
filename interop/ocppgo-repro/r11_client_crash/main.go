@@ -30,7 +30,9 @@ import (
 )
 
 // flappingServer answers every call and drops all connections every period.
-func flappingServer(period time.Duration) int {
+// flapFor > 0 stops dropping connections after that long.
+func flappingServer(period, flapFor time.Duration) int {
+	t0 := time.Now()
 	var mu sync.Mutex
 	conns := map[*websocket.Conn]bool{}
 	up := websocket.Upgrader{Subprotocols: []string{"ocpp1.6"}}
@@ -59,6 +61,9 @@ func flappingServer(period time.Duration) int {
 	}))
 	go func() {
 		for range time.Tick(period) {
+			if flapFor > 0 && time.Since(t0) > flapFor {
+				return
+			}
 			mu.Lock()
 			for c := range conns {
 				_ = c.UnderlyingConn().Close() // abrupt drop, no close frame
@@ -70,22 +75,37 @@ func flappingServer(period time.Duration) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
+// callTimeout is the client dispatcher's request timeout; 0 keeps ocpp-go's
+// default (30 s). flapFor limits how long the part-B server drops connections.
+var (
+	flapFor     time.Duration
+	callTimeout time.Duration
+)
+
 func newCP(id string) ocpp16.ChargePoint {
 	c := ws.NewClient()
 	cfg := ws.NewClientTimeoutConfig()
 	cfg.RetryBackOffWaitMinimum = 50 * time.Millisecond // reconnect quickly (default 10 s + jitter)
 	cfg.RetryBackOffRandomRange = 0
 	c.SetTimeoutConfig(cfg)
-	return ocpp16.NewChargePoint(id, ocppj.NewClient(id, c, nil, nil, core.Profile), c)
+	var d ocppj.ClientDispatcher
+	if callTimeout > 0 {
+		dd := ocppj.NewDefaultClientDispatcher(ocppj.NewFIFOClientQueue(0))
+		dd.SetTimeout(callTimeout)
+		d = dd
+	}
+	return ocpp16.NewChargePoint(id, ocppj.NewClient(id, c, d, nil, core.Profile), c)
 }
 
 func main() {
 	n := flag.Int("n", 200, "charge points in part B")
 	dur := flag.Duration("d", 40*time.Second, "how long part B runs at most")
+	flag.DurationVar(&flapFor, "flap-for", 0, "part B: the server stops dropping connections after this long (0: never)")
+	flag.DurationVar(&callTimeout, "call-timeout", 0, "client dispatcher request timeout (0: ocpp-go default, 30 s)")
 	flag.Parse()
 	switch {
 	case h.IsChild("A"):
-		port := flappingServer(time.Hour)
+		port := flappingServer(time.Hour, 0)
 		cp := newCP("cp-a")
 		if err := cp.Start(fmt.Sprintf("ws://127.0.0.1:%d", port)); err != nil {
 			panic(err)
@@ -96,7 +116,7 @@ func main() {
 		fmt.Println("A. second Stop returned")
 		return
 	case h.IsChild("B"):
-		port := flappingServer(300 * time.Millisecond)
+		port := flappingServer(300*time.Millisecond, flapFor)
 		var ok atomic.Int64
 		t0 := time.Now()
 		var cps []ocpp16.ChargePoint

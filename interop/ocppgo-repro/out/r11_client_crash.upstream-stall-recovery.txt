@@ -1,0 +1,36 @@
+$ go run ./r11_client_crash -n 100 -d 70s -flap-for 12s -call-timeout 0   (2026-11-24T14:55:56Z, go1.27.4 linux/amd64)
+library: ocpp-go v0.19.0 (upstream) (client code: ocpp-go's own in both variants)
+B. 100 charge points sending Heartbeat every 2 ms; the server drops every connection every 300 ms
+B. t= 5s process alive; Heartbeats answered so far 82458 (+82458 in 5 s); charge points reporting IsConnected: 100/100
+B. t=10s process alive; Heartbeats answered so far 99034 (+16576 in 5 s); charge points reporting IsConnected: 100/100
+B. t=15s process alive; Heartbeats answered so far 103262 (+4228 in 5 s); charge points reporting IsConnected: 100/100
+B. t=20s process alive; Heartbeats answered so far 107430 (+4168 in 5 s); charge points reporting IsConnected: 100/100
+B. t=25s process alive; Heartbeats answered so far 111544 (+4114 in 5 s); charge points reporting IsConnected: 100/100
+B. t=30s process alive; Heartbeats answered so far 115679 (+4135 in 5 s); charge points reporting IsConnected: 100/100
+B. t=35s process alive; Heartbeats answered so far 119822 (+4143 in 5 s); charge points reporting IsConnected: 100/100
+B. t=40s process alive; Heartbeats answered so far 123879 (+4057 in 5 s); charge points reporting IsConnected: 100/100
+B. t=45s process alive; Heartbeats answered so far 250074 (+126195 in 5 s); charge points reporting IsConnected: 100/100
+B. t=50s process alive; Heartbeats answered so far 441519 (+191445 in 5 s); charge points reporting IsConnected: 100/100
+B. t=55s process alive; Heartbeats answered so far 632816 (+191297 in 5 s); charge points reporting IsConnected: 100/100
+B. t=60s process alive; Heartbeats answered so far 823743 (+190927 in 5 s); charge points reporting IsConnected: 100/100
+B. t=65s process alive; Heartbeats answered so far 1014692 (+190949 in 5 s); charge points reporting IsConnected: 100/100
+B. t=70s process alive; Heartbeats answered so far 1206188 (+191496 in 5 s); charge points reporting IsConnected: 100/100
+
+$ go run ./r11_client_crash -n 100 -d 70s -flap-for 12s -call-timeout 3s   (2026-11-24T14:57:06Z, go1.27.4 linux/amd64)
+library: ocpp-go v0.19.0 (upstream) (client code: ocpp-go's own in both variants)
+B. 100 charge points sending Heartbeat every 2 ms; the server drops every connection every 300 ms
+B. t= 5s process alive; Heartbeats answered so far 129836 (+129836 in 5 s); charge points reporting IsConnected: 100/100
+B. t=10s process alive; Heartbeats answered so far 185598 (+55762 in 5 s); charge points reporting IsConnected: 100/100
+B. t=15s process alive; Heartbeats answered so far 356016 (+170418 in 5 s); charge points reporting IsConnected: 100/100
+B. t=20s process alive; Heartbeats answered so far 788689 (+432673 in 5 s); charge points reporting IsConnected: 100/100
+B. t=25s process alive; Heartbeats answered so far 979610 (+190921 in 5 s); charge points reporting IsConnected: 100/100
+B. t=30s process alive; Heartbeats answered so far 1167658 (+188048 in 5 s); charge points reporting IsConnected: 100/100
+B. t=35s process alive; Heartbeats answered so far 1358904 (+191246 in 5 s); charge points reporting IsConnected: 100/100
+B. t=40s process alive; Heartbeats answered so far 1545133 (+186229 in 5 s); charge points reporting IsConnected: 100/100
+B. t=45s process alive; Heartbeats answered so far 1736904 (+191771 in 5 s); charge points reporting IsConnected: 100/100
+B. t=50s process alive; Heartbeats answered so far 1928137 (+191233 in 5 s); charge points reporting IsConnected: 100/100
+B. t=55s process alive; Heartbeats answered so far 2113823 (+185686 in 5 s); charge points reporting IsConnected: 100/100
+B. t=60s process alive; Heartbeats answered so far 2303753 (+189930 in 5 s); charge points reporting IsConnected: 100/100
+B. t=65s process alive; Heartbeats answered so far 2495006 (+191253 in 5 s); charge points reporting IsConnected: 100/100
+B. t=70s process alive; Heartbeats answered so far 2686281 (+191275 in 5 s); charge points reporting IsConnected: 100/100
+

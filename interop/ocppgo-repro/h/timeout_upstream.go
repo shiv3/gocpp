@@ -16,7 +16,7 @@ const Variant = "ocpp-go v0.19.0 (upstream)"
 
 // newEndpoint sets the call timeout the only way upstream offers: by
 // injecting a DefaultServerDispatcher (ocppj.NewServer(ws, dispatcher, nil, ...)).
-func newEndpoint(srv *ws.Server, callTimeout time.Duration) *ocppj.Server {
+func newEndpoint(srv ws.WsServer, callTimeout time.Duration) *ocppj.Server {
 	d := ocppj.NewDefaultServerDispatcher(ocppj.NewFIFOQueueMap(0))
 	if callTimeout > 0 {
 		d.SetTimeout(callTimeout)

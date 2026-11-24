@@ -151,8 +151,17 @@ can be empty when an answer and a timeout for the same request cross.
   no CSMS calls it did not stop at 4,000 charge points, but it did stop during
   a connection ramp at about 31,700 connections (path 4). The goroutine dumps
   of the stopped servers show the same blocked sends as r01 and r02. The
-  load-test harness is not part of this repository's main branch, so treat
-  these figures as context; r01 and r02 reproduce the mechanism in seconds.
+  harness is on the branch `test/loadtest-4k`, not on `main`:
+  [`interop/loadtest/`](https://github.com/shiv3/gocpp/tree/test/loadtest-4k/interop/loadtest)
+  (its [README](https://github.com/shiv3/gocpp/blob/test/loadtest-4k/interop/loadtest/README.md)
+  lists every flag). To run it, check out that branch, build a CSMS binary
+  from `interop/parity/` (`cs-gocpp`, `cs-ocppgo-upstream` or
+  `cs-ocppgo-compat`) and the harness, then for example
+  `loadtest -server-bin ./cs-ocppgo-upstream -steps 4000:50:25m -restarts 5 -call-timeout 30s`
+  (`-mute 0.4` is the default mix shown above; add `-server-args=-compat`
+  for the drop-in preset of `cs-gocpp`). A freeze is detected by two canary
+  charge points; the harness then saves a goroutine dump. Treat
+  the figures as context; r01 and r02 reproduce the mechanism in seconds.
 
 **Why it is structural.** Each path can be patched (make one send
 non-blocking, take a read lock instead of a write lock), and the pull requests
@@ -579,6 +588,30 @@ drop-in. In the load test of section 1 (server in its own process), RSS per
 connection during the ramp was 35 to 38 KB on v0.19.0, 22 to 23 KB on the
 drop-in and 17.5 to 23 KB on native gocpp.
 
+**Bridge mode.** The 1.00 above holds when the drop-in owns the sockets,
+that is, when the `ws.WsServer` passed to `ocppj.NewServer` /
+`ocpp16.NewCentralSystem` is the module's own `*ws.Server`. An application
+that wraps it in its own `ws.WsServer` (for example to add authentication or
+routing in front of it) no longer matches that type, and the module then runs
+in *bridge mode*
+([`compat/ocppgo/ocppj/server_gocpp.go`](../compat/ocppgo/ocppj/server_gocpp.go),
+`newGocppRuntime` and `attach`): the application's server keeps the sockets and
+the runtime is fed through its message handler. Each connection then has the
+wrapped server's own goroutines **plus** the runtime's reader. Measured with
+`./run.sh r12 compat -- -n 1000 -bridge` (the program wraps the module's
+`*ws.Server` in a type that only delegates):
+**3.00 goroutines per connection** (reader of the runtime's bridge, the wrapped
+server's `writeLoop`, and its socket reader), against 1.00 without the wrapper
+([output](../interop/ocppgo-repro/out/r12_per_connection.compat-bridge.txt));
+the same wrapper on upstream v0.19.0 stays at 2.00
+([output](../interop/ocppgo-repro/out/r12_per_connection.upstream-bridge.txt)).
+So in bridge mode the drop-in uses more goroutines per connection than
+upstream, not fewer; the dispatcher fixes of sections 1 and 2 still apply. The
+`compat.Set*` options that act on sockets (`SetDuplicatePolicy`,
+`SetMaxMessageSize`, `SetIdleClose`, `SetAdmission`, ...) take a
+`*ws.Server`: call them on the inner `*ws.Server` that your wrapper delegates
+to, not on the wrapper.
+
 At a few thousand connections this difference does not matter. It matters for
 how many connections fit in one process and for headroom during a reconnect
 wave. The two-pump layout is the usual way to use gorilla/websocket, so this is
@@ -602,8 +635,46 @@ Part B of the same program (200 clients sending while the server drops all
 connections every 300 ms, for 40 s) looked for a `send on closed channel` in
 `Write` (`:1054-1060` against `:999-1007`). **It did not crash.** What it did
 show is a period of more than 10 s in which no Heartbeat was answered although
-the server was up and the clients reported `IsConnected() == true`; the cause
-was not analysed.
+the server was up and the clients reported `IsConnected() == true`. This is
+not a crash but a stall of the client's request queue, and it follows from how
+the client dispatcher handles a request that is in flight when the connection
+drops:
+
+1. On a read or write error, `ws.Client.writePump` calls `closure`, which runs
+   `cleanup()` and the disconnect handler, and then `handleReconnection()`
+   (`ws/websocket.go:905-966`, `cleanup` at `:999-1007`,
+   `handleReconnection` at `:1009-1042`); `ocppj.Client.onDisconnected` calls
+   `dispatcher.Pause()` (`ocppj/client.go:347-353`).
+2. `Pause` only stops the timer and sets `paused` (`ocppj/dispatcher.go:253-261`).
+   The request that was in flight stays in the pending state and at the head
+   of the queue; it is not re-sent and not failed.
+3. After the reconnect, `onReconnected` calls `dispatcher.Resume()`
+   (`ocppj/client.go:355-360`). `Resume` sees `HasPendingRequest()` and does
+   nothing but re-arm the timer with the full call timeout, 30 s by default
+   (`dispatcher.go:263-274`, `defaultMessageTimeout` at `:103`). The answer can
+   never arrive on the new connection, and `messagePump` dispatches nothing
+   else until that timer fires (`:173-231`, `rdy` stays false).
+4. Every further disconnect repeats step 3 and restarts the 30 s. When
+   connections drop more often than the timeout, a client whose request was in
+   flight at a drop is stuck for as long as the drops continue. Meanwhile
+   `IsConnected()` is true, and new requests are accepted into the queue.
+
+To check this, [r11](../interop/ocppgo-repro/r11_client_crash/main.go) has two
+more flags: `-flap-for D` makes the server stop dropping connections after
+`D`, and `-call-timeout T` sets the client dispatcher's timeout. With drops
+stopping at 12 s and 100 clients, throughput fell from about 190,000 answered
+Heartbeats per 5 s to about 4,100 (a few clients get through) between 15 s
+and 40 s and returned to full speed at 45 s, which is 12 s plus the 30 s
+default timeout; with `-call-timeout 3s` it was back at full speed by 15 to
+20 s
+([output](../interop/ocppgo-repro/out/r11_client_crash.upstream-stall-recovery.txt)).
+Recovery time follows the timeout, not the reconnect. A client that reconnects
+cleanly with nothing in flight is not affected, so a real charge point that
+sends one message at a time and drops rarely sees a stall of at most one
+timeout, but a charge point behind a flapping connection can sit idle far
+longer. Setting a shorter timeout bounds it
+(`ocppj.NewDefaultClientDispatcher(...).SetTimeout`); the stall itself is not
+removed by that.
 
 **Why it matters / gocpp.** This affects tools built on ocpp-go's client
 (simulators, load generators, tests), not a CSMS. It is a local bug, not a
@@ -722,7 +793,11 @@ gocpp is one option among several.
 ## If you use the drop-in
 
 The [drop-in module](../compat/ocppgo/README.md) removes sections 1, 2, 4 and
-the race of section 3 (and, from the release after `v0.19.0-gocpp.2`, its reconnect case) without code changes. To also cover what its
+the race of section 3 (and, from the release after `v0.19.0-gocpp.2`, its reconnect case) without code changes. Use `compat/ocppgo` at
+`v0.19.0-gocpp.x`: that line tracks upstream v0.19.0
+([versions](../compat/ocppgo/README.md#versions)). Older tags on the Go proxy,
+`compat/ocppgo/v0.17.2-gocpp.1` and `compat/ocppgo-v019/*`, are deprecated and
+unmaintained. To also cover what its
 upstream-compatible defaults leave open, do the following before `Start`:
 
 - [ ] On `v0.19.0-gocpp.2` and earlier: **always register the disconnect
@@ -739,6 +814,19 @@ upstream-compatible defaults leave open, do the following before `Start`:
       `ocpp16.NewCentralSystem(nil, srv)` or `ocppj.NewServer(srv, nil, nil, …)`
       and set the call timeout with `compat.SetCallTimeout`;
       `compat.Runtime(endpoint)` reports which runtime is in use.
+- [ ] **Coming from a fork of ocpp-go?** Several forks changed duplicate
+      handling to last-wins and added inbound size limits. The drop-in's
+      defaults are upstream v0.19.0's (first-wins, no limit), so moving to
+      them silently reverses both. To keep the behaviour you had, set
+      `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)` and
+      `compat.SetMaxMessageSize(srv, n)` (above), and check whether you also
+      relied on other changes your fork made; the drop-in has only upstream's
+      API and the options listed in its README.
+- [ ] **If you wrap `ws.WsServer` yourself** (your own type around the
+      module's `*ws.Server`), the module runs in bridge mode and does not own
+      the sockets: call every `compat.Set*` that takes a `*ws.Server` on the
+      inner server, and expect about 3 goroutines per connection instead of 1
+      (section 12).
 - [ ] Review `PingWait` against your chargers' ping and Heartbeat behaviour;
       see "Idle timeout" under
       [Known differences](../compat/ocppgo/README.md#known-differences).

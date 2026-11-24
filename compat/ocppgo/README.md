@@ -8,6 +8,23 @@ gocpp runtime. An application switches to it with one line in its `go.mod`:
 replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2
 ```
 
+## Versions
+
+Use `compat/ocppgo` **`v0.19.0-gocpp.x`** (tags `compat/ocppgo/v0.19.0-gocpp.N`,
+for example `v0.19.0-gocpp.2` above). This line tracks upstream
+`lorenzodonini/ocpp-go` v0.19.0 and is the only one that is maintained.
+
+Two other sets of tags exist, and they stay on the Go module proxy only because
+published module versions are permanent:
+
+- `compat/ocppgo/v0.17.2-gocpp.1` (and its `-rc` tags) on the same module path
+  as above. It is unmaintained and deprecated; the `go.mod` of this module
+  retracts it, which takes effect from the next `compat/ocppgo` tag on
+  (`go list -m -versions` then hides it, and `@latest` never selects it).
+- `compat/ocppgo-v019/v0.19.0-gocpp.1`, from an earlier layout in which the
+  v0.19.0 module lived in a different directory. That directory is gone; the
+  tags are unmaintained and deprecated. Use `compat/ocppgo` instead.
+
 See `MAINTAINING.md` for CI checks, the upstream pin and releasing, and `ROLLOUT.md` for a staged rollout.
 
 Before going live, go through the checklist in
@@ -31,6 +48,24 @@ new, and `UPSTREAM` for the pinned source.
   frames; `Stop` closes with 1000.
 - The client side (`ws.Client`, `ocppj.Client`, `ocpp1.6.ChargePoint`, ...) is
   ocpp-go's unchanged code.
+
+## Wrapping `ws.WsServer` (bridge mode)
+
+The table below applies when the server passed to `ocppj.NewServer` /
+`ocpp16.NewCentralSystem` is this module's own `*ws.Server`: then the gocpp
+dispatcher owns the sockets (about 1 goroutine per idle connection). If your
+application wraps it in its own `ws.WsServer` implementation (or passes any
+other `ws.WsServer`), the module runs in *bridge mode*: your server keeps the
+sockets and the runtime is fed through its message handler. In that case:
+
+- call every `compat.Set*` that takes a `*ws.Server` (`SetDuplicatePolicy`,
+  `SetMaxMessageSize`, `SetIdleClose`, `SetAdmission`, ...) on the inner
+  `*ws.Server` that your wrapper delegates to;
+- expect about **3 goroutines per idle connection** (measured with 1,000
+  connections and a delegating wrapper: 3.00; upstream v0.19.0 with the same
+  wrapper: 2.00), not 1. See
+  [section 12](../../docs/ocpp-go-structural-issues.md#12-goroutines-per-connection)
+  and `interop/ocppgo-repro/r12_per_connection` (`-bridge`).
 
 ## Choosing the runtime
 
@@ -158,6 +193,10 @@ against the schemas are in `ocpp2.0.1_test/schema_conformance_test.go` and
   a dropped (1006) idle connection. gocpp's safer variants are options
   (`compat.SetMaxMessageSize`, `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)`,
   `compat.SetIdleClose(srv, compat.IdleCloseFrame)`); see "Operating a server".
+  If you come from a fork of ocpp-go that switched to last-wins duplicates and
+  added message size limits, set `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)`
+  and `compat.SetMaxMessageSize(srv, n)` to keep that behaviour; the defaults here
+  are upstream's.
 - Idle timeout: like ocpp-go's server, this one never pings. A connection that has
   received no frame (message, ping or pong) for `ws.ServerTimeoutConfig.PingWait`
   (60 s by default) is dropped. A charger that neither pings nor sends anything for

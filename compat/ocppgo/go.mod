@@ -34,3 +34,10 @@ require (
 )
 
 replace github.com/shiv3/gocpp => ../..
+
+// The tag compat/ocppgo/v0.17.2-gocpp.1 predates the v0.19.0 line, is not
+// maintained and is superseded by compat/ocppgo v0.19.0-gocpp.x. It cannot be
+// deleted from the module proxy; retracting it hides it from `go list -m
+// -versions` and keeps `@latest` away from it. Takes effect from the next
+// compat/ocppgo tag.
+retract v0.17.2-gocpp.1

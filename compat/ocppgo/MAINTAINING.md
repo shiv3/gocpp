@@ -67,3 +67,8 @@ module path to one tree per tag, so the tree has its own `go.mod` (module path
 `UPSTREAM` pin, `patches/` and tags (`compat/ocppgo/v0.19.0-gocpp.N`). Tags of the
 earlier layout (`compat/ocppgo/v0.17.2-gocpp.1`, `compat/ocppgo-v019/v0.19.0-gocpp.1`)
 stay on the Go proxy but are superseded and not maintained.
+The `go.mod` of this module carries `retract v0.17.2-gocpp.1` for the old tag on
+this path; a retraction is only seen by users from the next tag of the module
+on, so keep it in every release. The `compat/ocppgo-v019/*` tags belong to a
+different module path and cannot be retracted from here; the README's
+"Versions" section tells users which tags to use.
