@@ -131,15 +131,16 @@ func SetAdmission(s *ws.Server, a Admission) bool {
 type DuplicatePolicy int
 
 const (
-	// DuplicateLastWins (the default) lets the new connection take over the id and
-	// closes the old one with 1008. A charge point that lost its connection without
-	// the server noticing is never locked out.
-	DuplicateLastWins DuplicatePolicy = iota
-	// DuplicateFirstWins is what ocpp-go v0.19.0 does: the old connection stays and
-	// the new one is upgraded, then closed with 1008 ("a connection with this ID
-	// already exists"). Not the default: a charge point reconnecting after a
-	// half-open drop is refused until the server times the old socket out.
-	DuplicateFirstWins
+	// DuplicateFirstWins is what ocpp-go v0.19.0 does and the default of this
+	// module: the old connection stays and the new one is upgraded, then closed
+	// with 1008 ("a connection with this ID already exists"). A charge point
+	// reconnecting after a half-open drop is refused until the server times the
+	// old socket out.
+	DuplicateFirstWins DuplicatePolicy = iota
+	// DuplicateLastWins is gocpp's own policy: the new connection takes over the
+	// id and the old one is closed with 1008. A charge point that lost its
+	// connection without the server noticing is never locked out.
+	DuplicateLastWins
 )
 
 // SetDuplicatePolicy selects the duplicate id policy of s. It returns false when s
@@ -150,6 +151,43 @@ func SetDuplicatePolicy(s *ws.Server, p DuplicatePolicy) bool {
 		return false
 	}
 	n.SetFirstWins(p == DuplicateFirstWins)
+	return true
+}
+
+// IdleClose says how a ws.Server ends a connection that was idle for
+// ServerTimeoutConfig.PingWait.
+type IdleClose int
+
+const (
+	// IdleCloseDrop is what ocpp-go v0.19.0 does and the default: the TCP
+	// connection is dropped without a close frame (the charge point sees close
+	// code 1006).
+	IdleCloseDrop IdleClose = iota
+	// IdleCloseFrame sends a close frame with code 1000 first.
+	IdleCloseFrame
+)
+
+// SetIdleClose selects how s closes an idle connection. Call it before Start. It
+// returns false when s is not the module's own server.
+func SetIdleClose(s *ws.Server, c IdleClose) bool {
+	n, ok := native(s)
+	if !ok {
+		return false
+	}
+	n.SetIdleCloseFrame(c == IdleCloseFrame)
+	return true
+}
+
+// SetMaxMessageSize limits the size of an inbound WebSocket message of s, in
+// bytes; a larger message closes the connection with 1009. The default, 0, is
+// ocpp-go v0.19.0's behaviour: no limit. It applies to connections accepted
+// afterwards. It returns false when s is not the module's own server.
+func SetMaxMessageSize(s *ws.Server, n int64) bool {
+	nat, ok := native(s)
+	if !ok {
+		return false
+	}
+	nat.SetMaxMessageSize(n)
 	return true
 }
 

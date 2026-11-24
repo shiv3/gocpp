@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gorilla/websocket"
+	"github.com/lorenzodonini/ocpp-go/compat"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -234,9 +235,12 @@ func TestServerStartErrors(t *testing.T) {
 // never lock it out. The NEW connection takes over; the OLD one is closed with
 // a PolicyViolation close frame.
 func TestClientDuplicateConnection(t *testing.T) {
+	// These tests cover gocpp's last-wins policy; upstream's first wins is the default.
+	lastWins := NewServer()
+	compat.SetDuplicatePolicy(lastWins, compat.DuplicateLastWins)
 	newC := make(chan string, 10)
 	disconnC := make(chan string, 10)
-	wsServer := newWebsocketServer(t, func(data []byte) ([]byte, error) {
+	wsServer := newWebsocketServerWith(t, lastWins, func(data []byte) ([]byte, error) {
 		return data, nil // echo
 	})
 	wsServer.SetNewClientHandler(func(ws Channel) {
@@ -309,7 +313,10 @@ func TestClientDuplicateConnection(t *testing.T) {
 // during the 2026-07-28 lockout) must neither panic, deadlock, nor lock the
 // charger out: after the storm the latest connection is functional.
 func TestClientDuplicateConnectionStorm(t *testing.T) {
-	wsServer := newWebsocketServer(t, func(data []byte) ([]byte, error) {
+	// These tests cover gocpp's last-wins policy; upstream's first wins is the default.
+	lastWins := NewServer()
+	compat.SetDuplicatePolicy(lastWins, compat.DuplicateLastWins)
+	wsServer := newWebsocketServerWith(t, lastWins, func(data []byte) ([]byte, error) {
 		return data, nil // echo
 	})
 	wsServer.SetNewClientHandler(func(ws Channel) {})

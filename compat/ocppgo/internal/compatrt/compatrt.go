@@ -42,6 +42,9 @@ type ServerSettings struct {
 	WriteWait      time.Duration
 	PingWait       time.Duration
 	MaxMessageSize int64
+	// IdleCloseFrame: a connection closed for being idle gets a close frame (1000)
+	// instead of being dropped (ocpp-go's behaviour, the default).
+	IdleCloseFrame bool
 }
 
 // Conn is what a runtime gets for an accepted WebSocket connection.
@@ -90,10 +93,17 @@ type Native interface {
 	// "rate_limited", "draining", "shutting_down", "full", "auth_rejected",
 	// "bad_request" or "subprotocol" or "duplicate".
 	SetUpgradeObserver(fn func(result string))
-	// SetFirstWins selects the duplicate id policy: false (default) lets a new
-	// connection take over the id and closes the old one; true keeps the old
-	// connection and closes the new one with 1008, as ocpp-go v0.19.0 does.
+	// SetFirstWins selects the duplicate id policy: false lets a new
+	// connection take over the id and closes the old one; true (default) keeps the old
+	// connection and closes the new one with 1008, as ocpp-go v0.19.0 does (the default).
 	SetFirstWins(on bool)
+	// SetIdleCloseFrame selects the close of an idle connection: false (default)
+	// drops the TCP connection as ocpp-go does, true sends a close frame (1000).
+	// Call before Start.
+	SetIdleCloseFrame(on bool)
+	// SetMaxMessageSize limits inbound WebSocket messages (0 = unlimited, the
+	// default and ocpp-go's behaviour). Affects connections accepted afterwards.
+	SetMaxMessageSize(n int64)
 }
 
 // Admission limits upgrades (zero values: no limit).

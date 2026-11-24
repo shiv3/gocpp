@@ -291,3 +291,175 @@ func TestMaxMessageSizeUnlimited(t *testing.T) {
 	require.Equal(t, "closed:StatusMessageTooBig", run(t, csms.WithMaxMessageSize(0)))
 	require.Equal(t, `[3,"big",{"status":"Accepted"}]`, run(t, csms.WithUnlimitedMessageSize()))
 }
+
+// The preset reproduces ocpp-go's first-wins duplicate handling, unlimited message
+// size and abrupt idle close; options after it put gocpp's behaviour back.
+func TestOCPPGoCompat_ConnectionDefaults(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	dial := func(url string) *websocket.Conn {
+		c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = c.CloseNow() })
+		return c
+	}
+	start := func(opts ...csms.Option) (string, func()) {
+		srv := csms.NewServer(append([]csms.Option{csms.WithSubProtocols("ocpp1.6"), csms.WithOCPPGoCompat()}, opts...)...)
+		ts := httptest.NewServer(srv.Handler())
+		return "ws" + ts.URL[len("http"):] + "/ocpp/dup", ts.Close
+	}
+	// duplicate: first wins in the preset, last wins when put back.
+	for _, tc := range []struct {
+		name  string
+		opt   csms.Option
+		want  websocket.StatusCode // close code of the connection that loses
+		loser int                  // 0 = first, 1 = second
+	}{
+		{"preset", nil, websocket.StatusPolicyViolation, 1},
+		{"put back", csms.WithDuplicatePolicy(csms.DuplicatePolicyCloseExisting), websocket.StatusPolicyViolation, 0},
+	} {
+		t.Run("duplicate "+tc.name, func(t *testing.T) {
+			var opts []csms.Option
+			if tc.opt != nil {
+				opts = append(opts, tc.opt)
+			}
+			url, closeTS := start(opts...)
+			defer closeTS()
+			a := dial(url)
+			time.Sleep(100 * time.Millisecond)
+			b := dial(url)
+			c := []*websocket.Conn{a, b}[tc.loser]
+			_, _, err := c.Read(ctx)
+			require.Equal(t, tc.want, websocket.CloseStatus(err))
+		})
+	}
+	// idle: the preset drops the connection, GracefulIdleClose sends 1000.
+	for _, tc := range []struct {
+		name string
+		opt  csms.Option
+		want websocket.StatusCode
+	}{
+		{"preset", nil, -1},
+		{"graceful", csms.WithGracefulIdleClose(), websocket.StatusNormalClosure},
+	} {
+		t.Run("idle "+tc.name, func(t *testing.T) {
+			opts := []csms.Option{csms.WithWebSocketReadTimeout(300 * time.Millisecond)}
+			if tc.opt != nil {
+				opts = append(opts, tc.opt)
+			}
+			url, closeTS := start(opts...)
+			defer closeTS()
+			a := dial(url)
+			_, _, err := a.Read(ctx)
+			require.Equal(t, tc.want, websocket.CloseStatus(err), "%v", err)
+		})
+	}
+	// size: unlimited in the preset, limit when put back.
+	big := `[2,"big","DataTransfer",{"vendorId":"v","data":"` + strings.Repeat("a", 1<<20+100) + `"}]`
+	run := func(opt csms.Option) string {
+		rig := newRigFor(t, "ocpp1.6", reg16(t), csms.WithOCPPGoCompat(), opt)
+		require.NoError(t, csms.On(rig.srv, profiles.DataTransfer, func(context.Context, *csms.Conn, messages.DataTransferRequest) (messages.DataTransferResponse, error) {
+			return messages.DataTransferResponse{Status: "Accepted"}, nil
+		}))
+		require.NoError(t, rig.ws.Write(rig.ctx, websocket.MessageText, []byte(big)))
+		_, data, err := rig.ws.Read(rig.ctx)
+		if err != nil {
+			return "closed:" + websocket.CloseStatus(err).String()
+		}
+		return string(data)
+	}
+	require.Equal(t, `[3,"big",{"status":"Accepted"}]`, run(csms.WithWebSocketReadTimeout(60*time.Second)))
+	require.Equal(t, "closed:StatusMessageTooBig", run(csms.WithMaxMessageSize(1<<20)))
+}
+
+// With the preset Shutdown closes the current connections and upgrades keep
+// being accepted; WithRefuseUpgradesAfterShutdown puts the 503 back.
+func TestOCPPGoCompat_ShutdownKeepsAccepting(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	run := func(opts ...csms.Option) (before, after error) {
+		srv := csms.NewServer(append([]csms.Option{csms.WithSubProtocols("ocpp1.6"), csms.WithOCPPGoCompat()}, opts...)...)
+		ts := httptest.NewServer(srv.Handler())
+		defer ts.Close()
+		url := "ws" + ts.URL[len("http"):] + "/ocpp/"
+		a, _, err := websocket.Dial(ctx, url+"A", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+		require.NoError(t, err)
+		defer func() { _ = a.CloseNow() }()
+		time.Sleep(100 * time.Millisecond)
+		require.NoError(t, srv.Shutdown(ctx))
+		_, _, before = a.Read(ctx) // the existing connection is closed
+		b, _, after := websocket.Dial(ctx, url+"B", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+		if b != nil {
+			defer func() { _ = b.CloseNow() }()
+		}
+		return before, after
+	}
+	before, after := run()
+	require.Error(t, before)
+	require.NoError(t, after)
+	before, after = run(csms.WithRefuseUpgradesAfterShutdown())
+	require.Error(t, before)
+	require.Error(t, after)
+}
+
+// WithOCPPGoValidation (the preset) rejects what ocpp-go rejects and accepts what it accepts.
+func TestOCPPGoCompat_Validation(t *testing.T) {
+	rig := newRigFor(t, "ocpp1.6", reg16(t), csms.WithOCPPGoCompat())
+	require.NoError(t, csms.On(rig.srv, profiles.StatusNotification, func(context.Context, *csms.Conn, messages.StatusNotificationRequest) (messages.StatusNotificationResponse, error) {
+		return messages.StatusNotificationResponse{}, nil
+	}))
+	require.NoError(t, csms.On(rig.srv, profiles.StartTransaction, func(context.Context, *csms.Conn, messages.StartTransactionRequest) (messages.StartTransactionResponse, error) {
+		return messages.StartTransactionResponse{TransactionID: 1, IDTagInfo: messages.IDTagInfo{Status: "Accepted"}}, nil
+	}))
+	require.NoError(t, csms.On(rig.srv, profiles.DataTransfer, func(context.Context, *csms.Conn, messages.DataTransferRequest) (messages.DataTransferResponse, error) {
+		return messages.DataTransferResponse{Status: "Accepted"}, nil
+	}))
+	// rejected as by ocpp-go
+	require.Contains(t, rig.call(t, `[2,"1","StatusNotification",{"connectorId":"1","errorCode":"NoError","status":"Available"}]`), `"FormationViolation"`)
+	require.Contains(t, rig.call(t, `[2,"2","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"available"}]`), `"GenericError"`)
+	require.Contains(t, rig.call(t, `[2,"3","StartTransaction",{"connectorId":1,"idTag":"T","meterStart":0,"timestamp":"2026-01-01 00:00:00"}]`), `"FormationViolation"`)
+	// accepted as by ocpp-go
+	require.Contains(t, rig.call(t, `[2,"4","StartTransaction",{"connectorId":1,"idTag":"T","meterStart":0,"timestamp":"2026-01-01T00:00:00"}]`), `[3,"4"`)
+	require.Contains(t, rig.call(t, `[2,"5","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Available","extra":1}]`), `[3,"5"`)
+	require.Contains(t, rig.call(t, `[2,"6","DataTransfer",{"vendorId":"v","data":{"a":1}}]`), `[3,"6"`)
+	// WithLenientSchema after the preset brings the broader repairs back
+	rig2 := newRigFor(t, "ocpp1.6", reg16(t), csms.WithOCPPGoCompat(), csms.WithLenientSchema())
+	require.NoError(t, csms.On(rig2.srv, profiles.StatusNotification, func(context.Context, *csms.Conn, messages.StatusNotificationRequest) (messages.StatusNotificationResponse, error) {
+		return messages.StatusNotificationResponse{}, nil
+	}))
+	require.Contains(t, rig2.call(t, `[2,"1","StatusNotification",{"connectorId":"1","errorCode":"NoError","status":"Available"}]`), `[3,"1"`)
+}
+
+// An invalid CALLRESULT is answered with a CALLERROR carrying the request's id in
+// the preset (ocpp-go), and not otherwise; the call fails locally either way.
+func TestOCPPGoCompat_AnswerInvalidResponse(t *testing.T) {
+	run := func(opts ...csms.Option) (reply string, callErr error) {
+		rig := newRigFor(t, "ocpp1.6", reg16(t), append([]csms.Option{csms.WithOCPPGoCompat()}, opts...)...)
+		var conn *csms.Conn
+		require.Eventually(t, func() bool { conn, _ = rig.srv.Get("cp1"); return conn != nil }, 5*time.Second, 10*time.Millisecond)
+		done := make(chan error, 1)
+		go func() {
+			_, err := csms.Call(rig.ctx, conn, profiles.Reset, messages.ResetRequest{Type: messages.ResetRequestTypeSoft})
+			done <- err
+		}()
+		_, data, err := rig.ws.Read(rig.ctx)
+		require.NoError(t, err)
+		id := strings.Split(string(data), `"`)[1]
+		require.NoError(t, rig.ws.Write(rig.ctx, websocket.MessageText, []byte(`[3,"`+id+`",{"status":"Bogus"}]`)))
+		callErr = <-done
+		rctx, cancel := context.WithTimeout(rig.ctx, 500*time.Millisecond)
+		defer cancel()
+		_, back, err := rig.ws.Read(rctx)
+		if err == nil {
+			reply = string(back)
+		}
+		return reply, callErr
+	}
+	reply, err := run()
+	require.Error(t, err)
+	require.Contains(t, reply, `[4,"`)
+	require.Contains(t, reply, `"GenericError"`)
+	reply, err = run(csms.WithAnswerInvalidResponses(false))
+	require.Error(t, err)
+	require.Empty(t, reply)
+}

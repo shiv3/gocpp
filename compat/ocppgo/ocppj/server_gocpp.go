@@ -110,6 +110,8 @@ func (rt *gocppRuntime) buildConfig() {
 	if rt.native != nil {
 		set := rt.native.Settings()
 		cfg.ReadTimeout = set.PingWait
+		// ocpp-go drops an idle connection without a close frame.
+		cfg.AbortOnReadIdle = !set.IdleCloseFrame
 		if set.WriteWait > 0 {
 			cfg.WriteTimeout = set.WriteWait
 		}

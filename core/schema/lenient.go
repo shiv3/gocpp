@@ -112,6 +112,13 @@ func (v *Validator) validateLenient(raw []byte, opts LenientOptions) (out []byte
 	var rewrites []rewrite
 	for _, leaf := range leaves {
 		kw := keywordOf(leaf)
+		if opts.OCPPGo {
+			if kw == "additionalProperties" {
+				soft = append(soft, kw)
+				continue
+			}
+			return nil, nil, hardViolation(v.name, verr, leaf)
+		}
 		if kw == "enum" {
 			ek, _ := leaf.ErrorKind.(*kind.Enum)
 			canon, ok := caseInsensitiveEnumMatch(inst, leaf.InstanceLocation, ek)

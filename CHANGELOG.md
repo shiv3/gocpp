@@ -6,7 +6,33 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed (behaviour change in compat mode)
+
+- `csms.WithOCPPGoCompat()` / `cp.WithOCPPGoCompat()` validate like ocpp-go
+  (`WithOCPPGoValidation()` instead of `WithLenientSchema()`: wrong types, enum case,
+  out-of-range values and malformed timestamps are rejected, a zone-less timestamp,
+  unknown properties and structured `data` are accepted); `csms` also sets
+  `WithKeepAcceptingAfterShutdown()` (`Shutdown` closes the current connections,
+  upgrades stay accepted). `WithLenientSchema()` / `WithRefuseUpgradesAfterShutdown()`
+  after the preset restore the previous behaviour.
+- `csms.WithOCPPGoCompat()` now also sets `WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade)`
+  (first wins), `WithUnlimitedMessageSize()` and the new `WithAbruptIdleClose()` (an
+  idle connection is dropped without a close frame, as ocpp-go); `cp.WithOCPPGoCompat()`
+  also sets `WithUnlimitedMessageSize()`. Put gocpp's behaviour back with options after
+  the preset: `WithDuplicatePolicy(DuplicatePolicyCloseExisting)`, `WithMaxMessageSize(n)`,
+  `WithGracefulIdleClose()`. Defaults without the preset are unchanged.
+- `compat/ocppgo`: the defaults now follow ocpp-go v0.19.0 exactly: duplicate ids are
+  first wins (`compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)` selects gocpp's
+  policy; the constants are renumbered, FirstWins is the zero value), an idle connection
+  is dropped without a close frame (`compat.SetIdleClose(srv, compat.IdleCloseFrame)`
+  sends 1000) and there is no inbound size limit (`compat.SetMaxMessageSize(srv, n)`).
+  Panic containment and the per-charger request order are kept.
+
 ### Added
+
+- `dispatcher.Config.AnswerInvalidResponse`, `csms.WithAnswerInvalidResponses` / `cp.WithAnswerInvalidResponses` (in the compat presets: an invalid CALLRESULT is answered with a CALLERROR, as ocpp-go).
+- `schema.LenientOptions.OCPPGo`, `csms.WithOCPPGoValidation()` / `cp.WithOCPPGoValidation()`, `csms.WithKeepAcceptingAfterShutdown()`.
+- `dispatcher.Config.AbortOnReadIdle`, `csms.WithAbruptIdleClose()` / `WithGracefulIdleClose()`.
 
 - `csms.DuplicatePolicyRejectNewAfterUpgrade`: first connection wins and the
   newcomer is upgraded then closed with 1008, as upstream ocpp-go v0.19.0 does.

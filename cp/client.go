@@ -51,7 +51,7 @@ func NewClient(cpID, csmsURL string, opts ...Option) *Client {
 				if !ok {
 					return payload, nil, nil
 				}
-				return v.ValidateLenientWith(payload, schema.LenientOptions{TimeLocation: cfg.lenientTimeLocation})
+				return v.ValidateLenientWith(payload, schema.LenientOptions{TimeLocation: cfg.lenientTimeLocation, OCPPGo: cfg.ocppGoValidation})
 			}
 		} else {
 			cfg.dispatcher.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {

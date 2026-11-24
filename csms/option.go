@@ -21,7 +21,11 @@ import (
 type serverConfig struct {
 	// lenientTimeLocation interprets zone-less date-times in lenient mode (nil = UTC).
 	lenientTimeLocation *time.Location
-	dispatcher          dispatcher.Config
+	// ocppGoValidation selects ocpp-go's validation policy within lenient mode.
+	ocppGoValidation bool
+	// keepAcceptingAfterShutdown: Shutdown only closes the current connections.
+	keepAcceptingAfterShutdown bool
+	dispatcher                 dispatcher.Config
 	// timeEncoding rewrites outbound date-times (zero = untouched).
 	timeEncoding    schema.TimeEncoding
 	subProtocols    []string
@@ -126,10 +130,10 @@ const (
 	// DuplicatePolicyRejectNew, the charger sees an open-then-closed socket rather
 	// than a refused upgrade (HTTP 409).
 	//
-	// Not part of WithOCPPGoCompat: a charger that reconnects after a half-open
-	// drop is refused for as long as the server has not noticed the old socket is
-	// dead (up to the read timeout), and keeps retrying. Choose it only to
-	// reproduce ocpp-go's behaviour for chargers tuned against it.
+	// Part of WithOCPPGoCompat. Be aware that a charger that reconnects after a
+	// half-open drop is refused for as long as the server has not noticed the old
+	// socket is dead (up to the read timeout), and keeps retrying; put
+	// DuplicatePolicyCloseExisting back after WithOCPPGoCompat to avoid that.
 	DuplicatePolicyRejectNewAfterUpgrade
 )
 
@@ -273,11 +277,43 @@ func WithMaxMessageSize(n int64) Option {
 }
 
 // WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
-// as upstream ocpp-go v0.19.0 has none. Not part of WithOCPPGoCompat and not
+// as upstream ocpp-go v0.19.0 has none. Part of WithOCPPGoCompat; not
 // recommended on an internet-facing endpoint: a peer can then make this process
-// buffer a message of any size. Prefer a larger WithMaxMessageSize.
+// buffer a message of any size. After WithOCPPGoCompat, WithMaxMessageSize(n)
+// puts a limit back.
 func WithUnlimitedMessageSize() Option {
 	return optionFunc(func(c *serverConfig) { c.dispatcher.MaxMessageSize = -1 })
+}
+
+// WithKeepAcceptingAfterShutdown makes Shutdown close the connections that exist
+// when it is called and nothing more: upgrades keep being accepted and served
+// afterwards, as with ocpp-go, whose server has no shutdown state beyond closing
+// its listener (which the embedder does when it mounts Handler on its own HTTP
+// server). Part of WithOCPPGoCompat. WithRefuseUpgradesAfterShutdown, the default,
+// answers every upgrade from the moment Shutdown or Close is called with 503.
+// Close always stops the server for good.
+func WithKeepAcceptingAfterShutdown() Option {
+	return optionFunc(func(c *serverConfig) { c.keepAcceptingAfterShutdown = true })
+}
+
+// WithRefuseUpgradesAfterShutdown is the default (HTTP 503 once Shutdown or
+// Close has begun); it puts that back after WithOCPPGoCompat.
+func WithRefuseUpgradesAfterShutdown() Option {
+	return optionFunc(func(c *serverConfig) { c.keepAcceptingAfterShutdown = false })
+}
+
+// WithAbruptIdleClose makes a connection ended by the read idle timeout
+// (WithWebSocketReadTimeout) drop the TCP connection without a close frame, so
+// the charger sees close code 1006 as with ocpp-go. Part of WithOCPPGoCompat.
+// WithGracefulIdleClose, the default, sends a close frame with 1000 instead.
+func WithAbruptIdleClose() Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.AbortOnReadIdle = true })
+}
+
+// WithGracefulIdleClose closes an idle connection with a close frame (1000), the
+// default; it puts that back after WithOCPPGoCompat.
+func WithGracefulIdleClose() Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.AbortOnReadIdle = false })
 }
 
 // WithMaxConnections caps the number of simultaneously connected charge points
@@ -462,7 +498,31 @@ func WithOutboundValidation(on bool) Option {
 func WithLenientSchema() Option {
 	return optionFunc(func(c *serverConfig) {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+		c.ocppGoValidation = false
 	})
+}
+
+// WithOCPPGoValidation validates inbound messages the way upstream ocpp-go
+// v0.19.0 effectively does, which is the validation of WithOCPPGoCompat: schema
+// violations reject the message (wrong types, enum values including their case,
+// out of range or over-long values, missing properties) except for what ocpp-go
+// accepts too: unknown properties, a null payload, a zone-less date-time and
+// structured JSON in a DataTransfer "data" property. WithLenientSchema, listed
+// afterwards, brings back gocpp's broader repairs. Needs WithSchemaRegistry.
+func WithOCPPGoValidation() Option {
+	return optionFunc(func(c *serverConfig) {
+		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+		c.ocppGoValidation = true
+	})
+}
+
+// WithAnswerInvalidResponses makes the server answer a CALLRESULT that fails
+// validation with a CALLERROR carrying the request's message id (OCPP 1.6 and
+// 2.0.1), as ocpp-go does; the caller's request still fails at once. Part of
+// WithOCPPGoCompat. Off by default: the failure stays local and the peer hears
+// nothing. WithAnswerInvalidResponses(false) turns it off again.
+func WithAnswerInvalidResponses(on bool) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.AnswerInvalidResponse = on })
 }
 
 // WithLenientTimeLocation sets the location in which lenient mode interprets
@@ -587,16 +647,24 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 // upstream ocpp-go v0.19.0 where gocpp differs, so chargers tuned against ocpp-go keep
 // working during a staged migration. It is shorthand for, in order:
 //
-//   - WithLenientSchema()
+//   - WithOCPPGoValidation(): ocpp-go's validation instead of WithLenientSchema()
+//   - WithAnswerInvalidResponses(true): an invalid CALLRESULT is answered with a CALLERROR
 //   - WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper())
 //   - WithMessageIDPolicy(dispatcher.MessageIDDrop)
 //   - WithTimeEncoding(UTC, whole seconds)
 //   - WithWebSocketPingInterval(0): ocpp-go servers never ping
 //   - WithWebSocketReadTimeout(60s): ocpp-go's server ping wait
+//   - WithAbruptIdleClose(): an idle connection is dropped without a close frame
+//   - WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade): first wins
+//   - WithUnlimitedMessageSize(): no inbound size limit
+//   - WithKeepAcceptingAfterShutdown(): Shutdown closes the current connections only
 //
-// Not included, because reproducing them would be harmful: first-wins duplicate
-// ids (DuplicatePolicyRejectNewAfterUpgrade) and no inbound size limit
-// (WithUnlimitedMessageSize); add them explicitly if wanted.
+// The last two are risky on an exposed endpoint (a charger reconnecting after a
+// half-open drop is refused until the old socket times out; a peer can make the
+// process buffer any message size); put gocpp's behaviour back with
+// WithDuplicatePolicy(DuplicatePolicyCloseExisting), WithMaxMessageSize(n),
+// WithGracefulIdleClose() and WithRefuseUpgradesAfterShutdown().
+// Handler panics stay contained (InternalError) and are not reproduced.
 //
 // Options listed after it win, so any single behaviour can be put back, e.g.
 // csms.WithOCPPGoCompat(), csms.WithWebSocketPingInterval(54*time.Second). The
@@ -605,12 +673,17 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 func WithOCPPGoCompat() Option {
 	return optionFunc(func(c *serverConfig) {
 		for _, o := range []Option{
-			WithLenientSchema(),
+			WithOCPPGoValidation(),
+			WithAnswerInvalidResponses(true),
 			WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper()),
 			WithMessageIDPolicy(dispatcher.MessageIDDrop),
 			WithTimeEncoding(schema.TimeEncoding{UTC: true, Precision: schema.TimePrecisionSeconds}),
 			WithWebSocketPingInterval(0),
 			WithWebSocketReadTimeout(60 * time.Second),
+			WithAbruptIdleClose(),
+			WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade),
+			WithUnlimitedMessageSize(),
+			WithKeepAcceptingAfterShutdown(),
 		} {
 			o.apply(c)
 		}

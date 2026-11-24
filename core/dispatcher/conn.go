@@ -297,6 +297,20 @@ func (c *Conn) closeWS(code transport.StatusCode, reason string) {
 	c.closeWSOnce.Do(func() { _ = c.ws.Close(code, reason) })
 }
 
+// errReadIdle is the cause of a connection ended by the read idle watchdog.
+var errReadIdle = errors.New("read idle timeout")
+
+// abortWS drops the socket without a close frame when the transport can; it
+// reports whether it did. The first close of the socket decides, as for closeWS.
+func (c *Conn) abortWS() bool {
+	a, ok := c.ws.(transport.Aborter)
+	if !ok {
+		return false
+	}
+	c.closeWSOnce.Do(func() { _ = a.Abort() })
+	return true
+}
+
 // closeForCause closes the socket gracefully with the close code that matches
 // why the connection ended. The reader and writer deliberately do not abort the
 // socket on cancellation (the websocket library drops the TCP connection without
@@ -306,6 +320,7 @@ func (c *Conn) closeForCause() {
 	cause := context.Cause(c.ctx)
 	var status *CloseStatus
 	switch {
+	case c.cfg.AbortOnReadIdle && errors.Is(cause, errReadIdle) && c.abortWS():
 	case errors.As(cause, &status):
 		c.closeWS(status.Code, truncateCloseReason(status.Reason))
 	case errors.Is(cause, ocppj.ErrGatewayDraining), errors.Is(cause, ocppj.ErrDrainTimeout):
