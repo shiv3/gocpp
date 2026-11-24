@@ -151,12 +151,13 @@ can be empty when an answer and a timeout for the same request cross.
   no CSMS calls it did not stop at 4,000 charge points, but it did stop during
   a connection ramp at about 31,700 connections (path 4). The goroutine dumps
   of the stopped servers show the same blocked sends as r01 and r02. The
-  harness is on the branch `test/loadtest-4k`, not on `main`:
-  [`interop/loadtest/`](https://github.com/shiv3/gocpp/tree/test/loadtest-4k/interop/loadtest)
-  (its [README](https://github.com/shiv3/gocpp/blob/test/loadtest-4k/interop/loadtest/README.md)
-  lists every flag). To run it, check out that branch, build a CSMS binary
-  from `interop/parity/` (`cs-gocpp`, `cs-ocppgo-upstream` or
-  `cs-ocppgo-compat`) and the harness, then for example
+  harness is in this repository:
+  [`interop/loadtest/`](../interop/loadtest)
+  (its [README](../interop/loadtest/README.md)
+  lists every flag). To run it, build a CSMS binary
+  from [`interop/parity/`](../interop/parity) (`make` builds `cs-gocpp`,
+  `cs-ocppgo-upstream` and `cs-ocppgo-compat` into `interop/parity/bin/`) and
+  the harness (`cd interop/loadtest && go build`), then for example
   `loadtest -server-bin ./cs-ocppgo-upstream -steps 4000:50:25m -restarts 5 -call-timeout 30s`
   (`-mute 0.4` is the default mix shown above; add `-server-args=-compat`
   for the drop-in preset of `cs-gocpp`). A freeze is detected by two canary

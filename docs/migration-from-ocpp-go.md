@@ -123,11 +123,10 @@ Replies that stay different on purpose, with or without the preset:
 
 ## Verification
 
-The differential harness (`interop/parity` on the `test/loadtest-4k` branch)
-replays raw-frame, fault and connection cases (groups A to C), data-flow cases
+A differential harness replayed raw-frame, fault and connection cases (groups A to C), data-flow cases
 (D) and the 68 simulator scenarios (E) against a CSMS on upstream ocpp-go v0.19.0
 and one on gocpp, with and without the preset, and against the drop-in module
-`compat/ocppgo`. The reports are under `interop/parity/results/` on that branch.
+`compat/ocppgo`. The CSMS servers it used are in `interop/parity`.
 What remains different with the preset:
 
 - ocpp-go validates with struct tags, gocpp with the JSON schemas, so a field with

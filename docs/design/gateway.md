@@ -1,8 +1,6 @@
 # gocpp gateway mode: splitting the connection tier from the processing tier
 
 Status: design proposal, 2026-11-21. Based on gocpp `origin/main` at `e26604c` (v0.2.0+).
-Artifacts: `/work/scratch/gocpp-gateway/hop-proto.go.txt` (hop-cost prototype),
-`/work/scratch/gocpp-gateway/hop-proto-results.txt` (its output).
 
 ## 0. Summary
 
@@ -365,7 +363,7 @@ from the no-responders case. Why not a log: see failure semantics; a message
 answered after the charger's timeout is a duplicate generator.
 
 Measured hop cost (prototype, loopback, 300-byte payloads, 4 cores shared by
-both ends, `/work/scratch/gocpp-gateway/hop-proto-results.txt`):
+both ends):
 
 | | 30k req/s open loop | saturation, 256 in flight |
 |---|---|---|
@@ -573,8 +571,7 @@ schema off.
 | Gateway crash | all sessions back within 2 min at 200 accepts/s per gateway; registry correct within 15 s + one reconcile pass | lease + admission |
 | Accept capacity | >= 500 full TLS handshakes/s per core (ECDSA P-256), more with resumption | to be measured; sets the admission default |
 
-How to measure, using `/work/wt/gocpp-loadtest/interop/loadtest` (branch
-`test/loadtest-4k`):
+How to measure, using `interop/loadtest`:
 
 - Parity server `interop/parity/cs-gocpp` gets `-mode embedded|gateway|backend`
   (same handlers in all three, which is itself the "same code" proof).

@@ -537,8 +537,8 @@ outside the backend as `ext.*` session attributes. The runbook is
 
 ## Performance
 
-Measured with the load-test harness (`interop/loadtest` on branch `test/loadtest-4k`,
-`results/gateway-2026-11-21`): 4,000 chargers, loopback, gateway on 2 pinned cores,
+Measured with the load-test harness (`interop/loadtest`,
+run `gateway-2026-11-21`): 4,000 chargers, loopback, gateway on 2 pinned cores,
 2 backends on 2 cores each, gRPC link, schema off, compared with one embedded server
 on 6 cores (throughput and memory rows), and the final acceptance run below. Targets are those of design section 2.7.
 
@@ -551,11 +551,11 @@ on 6 cores (throughput and memory rows), and the final acceptance run below. Tar
 | Gateway rollout, reconnects within the pace | met, same run: SIGTERM drain of one of two gateways over 20 s dipped to 3,625 and 3,270 of 4,000 chargers up and was back to 99% within 1.8 s of the replacement being ready, no freeze. 10,000 chargers over 3 gateways, three drains in turn: dips to 9,565 / 9,364 / 9,015, all back within 3.3 s, no freeze (`results/gateway-final-2026-11-21/report.md`) |
 | Gateway crash, accept capacity (500 handshakes/s per core) | not measured here (no TLS in the harness) |
 
-Final acceptance run (`results/gateway-final-2026-11-21` on `test/loadtest-4k`, split and embedded concurrently on pinned cores): Heartbeat steady p50/p99 0.5/1.1 ms against 0.3/0.5 ms embedded (+0.2 ms p50, +0.6 ms p99); at about 300 msg/s the whole split deployment used 0.32 cores against 0.12 embedded, dominated by fixed per-session costs (that run is not CPU bound; the throughput comparison is below).
+Final acceptance run (run `gateway-final-2026-11-21`, split and embedded concurrently on pinned cores): Heartbeat steady p50/p99 0.5/1.1 ms against 0.3/0.5 ms embedded (+0.2 ms p50, +0.6 ms p99); at about 300 msg/s the whole split deployment used 0.32 cores against 0.12 embedded, dominated by fixed per-session costs (that run is not CPU bound; the throughput comparison is below).
 
 Cost of the split: total CPU is about 1.4x the embedded server (3.3 vs 2.4 cores at 37k
 msg/s); the gRPC hop is about 25 us of CPU per message over both ends. The profile
-(`results/.../profiles`) shows the gateway at 27% in `write(2)`: the WebSocket reply write
+(the run's CPU profiles) shows the gateway at 27% in `write(2)`: the WebSocket reply write
 and the link stream write, in roughly equal parts. Link write coalescing, a second stream
 per backend and stack reservation in the backend's request goroutines followed (see
 below): in the same harness at 35k msg/s total CPU went from 1.35x to 1.29x of embedded
