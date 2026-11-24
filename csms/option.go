@@ -31,6 +31,9 @@ type serverConfig struct {
 	lenientTimeLocation *time.Location
 	// ocppGoValidation selects ocpp-go's validation policy within lenient mode.
 	ocppGoValidation bool
+	// schemaModeSet records that a schema option chose the mode (also Off), so
+	// a registry without a mode defaults to lenient.
+	schemaModeSet bool
 	// keepAcceptingAfterShutdown: Shutdown only closes the current connections.
 	keepAcceptingAfterShutdown bool
 	dispatcher                 dispatcher.Config
@@ -540,8 +543,10 @@ func WithStrictSchema(strict bool) Option {
 	return optionFunc(func(c *serverConfig) {
 		if strict {
 			c.dispatcher.SchemaMode = dispatcher.SchemaModeStrict
+			c.schemaModeSet = true
 		} else {
 			c.dispatcher.SchemaMode = dispatcher.SchemaModeOff
+			c.schemaModeSet = true
 		}
 	})
 }
@@ -552,6 +557,7 @@ func WithStrictSchema(strict bool) Option {
 func WithTolerantSchema() Option {
 	return optionFunc(func(c *serverConfig) {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeTolerant
+		c.schemaModeSet = true
 	})
 }
 
@@ -574,6 +580,7 @@ func WithOutboundValidation(on bool) Option {
 func WithLenientSchema() Option {
 	return optionFunc(func(c *serverConfig) {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+		c.schemaModeSet = true
 		c.ocppGoValidation = false
 	})
 }
@@ -588,6 +595,7 @@ func WithLenientSchema() Option {
 func WithOCPPGoValidation() Option {
 	return optionFunc(func(c *serverConfig) {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+		c.schemaModeSet = true
 		c.ocppGoValidation = true
 	})
 }

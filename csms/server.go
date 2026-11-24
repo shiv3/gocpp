@@ -99,6 +99,11 @@ func NewServer(opts ...Option) *Server {
 			cfg.link = splitHub.Backend()
 		}
 	}
+	if cfg.registry != nil && !cfg.schemaModeSet {
+		// A registry without a schema option validates leniently; WithStrictSchema(false)
+		// turns validation off explicitly.
+		cfg.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+	}
 	if cfg.registry != nil && !cfg.timeEncoding.IsZero() {
 		cfg.dispatcher.OutboundTransform = func(version ocppj.Version, action, kind string, payload []byte) ([]byte, error) {
 			v, ok := cfg.registry.Lookup(string(version), action, kind)
