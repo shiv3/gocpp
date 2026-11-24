@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,6 +60,7 @@ type serverConn struct {
 	done     chan struct{}
 	idle     *time.Timer
 	cleanup  sync.Once
+	pingWait time.Duration // idle timeout of this connection
 }
 
 // Server is the websocket server of ocpp-go, implemented on coder/websocket.
@@ -73,13 +75,18 @@ type Server struct {
 	newClientHandler    func(ws Channel)
 	disconnectedHandler func(ws Channel)
 	basicAuthHandler    func(username string, password string) bool
-	tlsCertificatePath  string
-	tlsCertificateKey   string
-	timeoutConfig       ServerTimeoutConfig
-	subprotocols        []string
-	checkOrigin         func(r *http.Request) bool
-	connMutex           sync.RWMutex
-	httpHandler         *mux.Router
+	// Opt-in extras set through the compat package (see compatrt.Native).
+	basicAuthIDHandler func(id, username, password string) bool
+	idResolver         func(r *http.Request, pathID string) (string, bool)
+	connTimeouts       func(r *http.Request, id string) compatrt.ConnTimeouts
+	compression        atomic.Int32 // compatrt.Compression
+	tlsCertificatePath string
+	tlsCertificateKey  string
+	timeoutConfig      ServerTimeoutConfig
+	subprotocols       []string
+	checkOrigin        func(r *http.Request) bool
+	connMutex          sync.RWMutex
+	httpHandler        *mux.Router
 
 	stateMu sync.Mutex // guards errC, addr, httpServer replacement
 	errMu   sync.RWMutex
@@ -108,6 +115,38 @@ func (n native) SetRuntime(rt compatrt.Runtime) {
 func (n native) Settings() compatrt.ServerSettings {
 	c := n.s.timeoutConfig
 	return compatrt.ServerSettings{WriteWait: c.WriteWait, PingWait: c.PingWait, MaxMessageSize: n.s.adm.maxMsg.Load(), IdleCloseFrame: n.s.adm.idleFrame.Load()}
+}
+
+func (n native) ConnectionIDs() []string {
+	n.s.connMutex.RLock()
+	defer n.s.connMutex.RUnlock()
+	ids := make([]string, 0, len(n.s.connections))
+	for id := range n.s.connections {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (n native) Handler() http.Handler { return http.HandlerFunc(n.s.wsHandler) }
+
+func (n native) PrepareExternal() {
+	httpServer := n.s.prepare()
+	httpServer.RegisterOnShutdown(n.s.stopConnections)
+}
+
+func (n native) SetBasicAuthIDHandler(h func(id, username, password string) bool) {
+	n.s.basicAuthIDHandler = h
+}
+
+func (n native) SetIDResolver(f func(r *http.Request, pathID string) (string, bool)) {
+	n.s.idResolver = f
+}
+
+func (n native) SetCompression(c compatrt.Compression) { n.s.compression.Store(int32(c)) }
+
+func (n native) SetConnTimeouts(f func(r *http.Request, id string) compatrt.ConnTimeouts) {
+	n.s.connTimeouts = f
 }
 
 func newServer() *Server {
@@ -233,11 +272,14 @@ func (server *Server) AddHttpHandler(listenPath string, handler func(w http.Resp
 	server.httpHandler.HandleFunc(listenPath, handler)
 }
 
-func (server *Server) Start(port int, listenPath string) {
+// prepare resets the connection table and, after a Stop, replaces the
+// http.Server, as every Start does. It returns the http.Server to use.
+func (server *Server) prepare() *http.Server {
 	server.connMutex.Lock()
 	server.connections = make(map[string]*WebSocket)
 	server.connMutex.Unlock()
 	server.stateMu.Lock()
+	defer server.stateMu.Unlock()
 	if server.httpServer == nil || server.stopping.Load() {
 		// First start after a Stop: an http.Server cannot serve again after Shutdown.
 		server.httpServer = &http.Server{TLSConfig: server.tlsConfig}
@@ -248,8 +290,11 @@ func (server *Server) Start(port int, listenPath string) {
 		}
 		server.stopping.Store(false)
 	}
-	httpServer := server.httpServer
-	server.stateMu.Unlock()
+	return server.httpServer
+}
+
+func (server *Server) Start(port int, listenPath string) {
+	httpServer := server.prepare()
 
 	addr := fmt.Sprintf(":%v", port)
 	httpServer.Addr = addr
@@ -429,6 +474,14 @@ func sameOrigin(r *http.Request) bool {
 
 func (server *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
 	id := path.Base(r.URL.Path)
+	if server.idResolver != nil {
+		var ok bool
+		if id, ok = server.idResolver(r, id); !ok {
+			server.upgradeResult("bad_request")
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+	}
 	res, ok := server.admit(w, id)
 	if !ok {
 		return
@@ -457,6 +510,20 @@ out:
 		username, password, ok := r.BasicAuth()
 		if ok {
 			ok = server.basicAuthHandler(username, password)
+		}
+		if !ok {
+			server.upgradeResult("auth_rejected")
+			server.error(fmt.Errorf("basic auth failed: credentials invalid"))
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	if server.basicAuthIDHandler != nil {
+		username, password, ok := r.BasicAuth()
+		if ok {
+			ok = server.basicAuthIDHandler(id, username, password)
 		}
 		if !ok {
 			server.upgradeResult("auth_rejected")
@@ -497,6 +564,20 @@ out:
 		Subprotocols:       nil,
 		InsecureSkipVerify: true, // origin was checked above
 		CompressionMode:    websocket.CompressionDisabled,
+	}
+	switch compatrt.Compression(server.compression.Load()) {
+	case compatrt.CompressionContextTakeover:
+		opts.CompressionMode = websocket.CompressionContextTakeover
+	case compatrt.CompressionNoContextTakeover:
+		opts.CompressionMode = websocket.CompressionNoContextTakeover
+	}
+	var ct compatrt.ConnTimeouts
+	if server.connTimeouts != nil {
+		ct = server.connTimeouts(r, id)
+	}
+	sc.pingWait = server.timeoutConfig.PingWait
+	if ct.IdleTimeout > 0 {
+		sc.pingWait = ct.IdleTimeout
 	}
 	if negotiated != "" {
 		opts.Subprotocols = []string{negotiated}
@@ -546,6 +627,7 @@ out:
 			Channel:     ws,
 			WS:          sc.t,
 			Subprotocol: negotiated,
+			Timeouts:    ct,
 			RemoteAddr:  r.RemoteAddr,
 			TLS:         r.TLS,
 		})
@@ -599,8 +681,8 @@ out:
 		context.AfterFunc(sc.dc.Context(), func() { sc.finish(ws) })
 		return
 	}
-	sc.idle = time.AfterFunc(idleTimeout(server.timeoutConfig.PingWait), func() { _ = sc.c.CloseNow() })
-	if server.timeoutConfig.PingWait == 0 {
+	sc.idle = time.AfterFunc(idleTimeout(sc.pingWait), func() { _ = sc.c.CloseNow() })
+	if sc.pingWait == 0 {
 		sc.idle.Stop()
 	}
 	go sc.writeLoop(ws)
@@ -653,8 +735,8 @@ func (sc *serverConn) noteActivity() {
 		sc.dc.NoteActivity()
 		return
 	}
-	if sc.idle != nil && sc.srv.timeoutConfig.PingWait > 0 {
-		sc.idle.Reset(sc.srv.timeoutConfig.PingWait)
+	if sc.idle != nil && sc.pingWait > 0 {
+		sc.idle.Reset(sc.pingWait)
 	}
 }
 
