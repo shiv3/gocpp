@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- CI job `test-32bit`: `go vet` and the test suite of the root module under `GOARCH=386`, and a `GOARCH=arm` build, so 32-bit overflows and 64-bit atomic alignment faults are caught.
+
 - `cp.OnAny`: a catch-all handler for CSMS-to-charge-point CALLs with the raw payload, the counterpart of `csms.OnAny`, for simulators and interoperability harnesses.
 - Fuzz targets beyond the parser equivalence checks: `FuzzParseRoundTrip` (what `Parse` accepts survives encode and parse), `FuzzValidatorInvariants` (strict/lenient consistency and idempotence), `FuzzTypedDecode` (schema-valid payloads decode into the generated types and re-encode to schema-valid JSON) and `FuzzConnInbound` (arbitrary inbound frames never wedge a connection). A weekly `fuzz` workflow runs them; `make fuzz` runs them locally.
 - `internal/hostile`: hostile-peer tests against a live CSMS (slowloris, oversized and fragmented frames, invalid UTF-8, ping flood, half-open and reset connections, interleaved garbage), asserting that other charge points are still served and that no goroutine leaks.
