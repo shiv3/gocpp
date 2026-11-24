@@ -57,8 +57,8 @@ func (s *clientState) AddPendingRequest(requestID string, req ocpp.Request) {
 }
 
 func (s *clientState) GetPendingRequest(requestID string) (ocpp.Request, bool) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	if s.requestID != requestID {
 		return nil, false
 	}
@@ -81,8 +81,8 @@ func (s *clientState) ClearPendingRequests() {
 }
 
 func (s *clientState) HasPendingRequest() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return s.requestID != ""
 }
 
@@ -163,31 +163,18 @@ func (d *serverState) DeletePendingRequest(clientID string, requestID string) {
 	state.DeletePendingRequest(requestID)
 }
 
-// GetClientState returns the state of a client, creating it on first use.
-//
-// This runs for every incoming message, so the common case, an existing entry, only
-// takes the read lock. A writer queued on a shared mutex holds back every new reader,
-// and the dispatcher's message pump is one of them.
 func (d *serverState) GetClientState(clientID string) ClientState {
-	if d.mutex == nil {
-		return d.getOrCreateState(clientID)
+	if d.mutex != nil {
+		d.mutex.Lock()
+		defer d.mutex.Unlock()
 	}
-	d.mutex.RLock()
-	state, exists := d.pendingRequestState[clientID]
-	d.mutex.RUnlock()
-	if exists {
-		return state
-	}
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-	// Another goroutine may have created the entry in the meantime.
 	return d.getOrCreateState(clientID)
 }
 
 func (d *serverState) HasPendingRequest(clientID string) bool {
 	if d.mutex != nil {
-		d.mutex.RLock()
-		defer d.mutex.RUnlock()
+		d.mutex.Lock()
+		defer d.mutex.Unlock()
 	}
 	state, exists := d.pendingRequestState[clientID]
 	return exists && state.HasPendingRequest()
@@ -195,8 +182,8 @@ func (d *serverState) HasPendingRequest(clientID string) bool {
 
 func (d *serverState) HasPendingRequests() bool {
 	if d.mutex != nil {
-		d.mutex.RLock()
-		defer d.mutex.RUnlock()
+		d.mutex.Lock()
+		defer d.mutex.Unlock()
 	}
 	for _, s := range d.pendingRequestState {
 		if s.HasPendingRequest() {

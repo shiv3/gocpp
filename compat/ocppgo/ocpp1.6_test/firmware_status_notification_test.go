@@ -2,6 +2,7 @@ package ocpp16_test
 
 import (
 	"fmt"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -11,7 +12,7 @@ import (
 // Test
 func (suite *OcppV16TestSuite) TestFirmwareStatusNotificationRequestValidation() {
 	t := suite.T()
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{firmware.FirmwareStatusNotificationRequest{Status: firmware.FirmwareStatusDownloaded}, true},
 		{firmware.FirmwareStatusNotificationRequest{}, false},
 		{firmware.FirmwareStatusNotificationRequest{Status: "invalidFirmwareStatus"}, false},
@@ -21,7 +22,7 @@ func (suite *OcppV16TestSuite) TestFirmwareStatusNotificationRequestValidation()
 
 func (suite *OcppV16TestSuite) TestFirmwareStatusNotificationConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{firmware.FirmwareStatusNotificationConfirmation{}, true},
 	}
 	ExecuteGenericTestTable(t, confirmationTable)
@@ -38,7 +39,7 @@ func (suite *OcppV16TestSuite) TestFirmwareStatusNotificationE2EMocked() {
 	firmwareStatusNotificationConfirmation := firmware.NewFirmwareStatusNotificationConfirmation()
 	channel := NewMockWebSocket(wsId)
 
-	firmwareListener := MockCentralSystemFirmwareManagementListener{}
+	firmwareListener := &MockCentralSystemFirmwareManagementListener{}
 	firmwareListener.On("OnFirmwareStatusNotification", mock.AnythingOfType("string"), mock.Anything).Return(firmwareStatusNotificationConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(1).(*firmware.FirmwareStatusNotificationRequest)
 		require.True(t, ok)

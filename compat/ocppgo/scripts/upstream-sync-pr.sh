@@ -6,9 +6,9 @@
 #
 #   scripts/upstream-sync-pr.sh [--dry-run]
 #
-# A "line" is the tag prefix of UPSTREAM_TAG up to the second dot (v0.17 for
-# v0.17.2-fix.3): the API line this module implements. A new line (v0.18) is not
-# a sync; it needs a decision and its own tree.
+# Only tags of upstream lorenzodonini/ocpp-go are followed. A "line" is the tag
+# prefix of UPSTREAM_TAG up to the second dot (v0.19 for v0.19.0): the API line this
+# module implements. A new line (v0.20) is not a sync; it needs a decision.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=../UPSTREAM

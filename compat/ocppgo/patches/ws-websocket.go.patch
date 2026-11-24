@@ -1,5 +1,5 @@
---- a/ws/websocket.go	2026-11-22 09:42:14.128533316 +0900
-+++ b/ws/websocket.go	2026-11-22 09:42:14.128533316 +0900
+--- a/ws/websocket.go	2026-11-22 22:53:19.201999791 +0900
++++ b/ws/websocket.go	2026-11-22 22:54:00.581982837 +0900
 @@ -5,7 +5,6 @@
  package ws
  
@@ -8,7 +8,7 @@
  	"crypto/tls"
  	"encoding/base64"
  	"fmt"
-@@ -17,7 +16,6 @@
+@@ -18,7 +17,6 @@
  	"sync"
  	"time"
  
@@ -16,10 +16,10 @@
  	"github.com/gorilla/websocket"
  	"github.com/lorenzodonini/ocpp-go/logging"
  )
-@@ -131,6 +129,11 @@
- 	// closed is set (under sendMutex) once the connection's channels have
- 	// been closed.
- 	closed bool
+@@ -129,6 +127,11 @@
+ 	forceCloseC        chan error                // used by the readPump to notify a forcefully closed connection to the writePump.
+ 	pingMessage        chan []byte
+ 	tlsConnectionState *tls.ConnectionState
 +	// remote is the peer address of a connection accepted by a Server, whose
 +	// connection is not a gorilla one (see server.go).
 +	remote net.Addr
@@ -28,7 +28,7 @@
  }
  
  // Retrieves the unique Identifier of the websocket (typically, the URL suffix).
-@@ -140,6 +143,9 @@
+@@ -138,6 +141,9 @@
  
  // Returns the address of the remote peer.
  func (websocket *WebSocket) RemoteAddr() net.Addr {
@@ -38,8 +38,8 @@
  	return websocket.connection.RemoteAddr()
  }
  
-@@ -257,496 +263,6 @@
- 	Addr() *net.TCPAddr
+@@ -259,431 +265,6 @@
+ 	Connections(websocketId string) *WebSocket
  }
  
 -// Default implementation of a Websocket server.
@@ -158,13 +158,21 @@
 -	return server.addr
 -}
 -
+-func (server *Server) Connections(websocketId string) *WebSocket {
+-	server.connMutex.RLock()
+-	defer server.connMutex.RUnlock()
+-	return server.connections[websocketId]
+-}
+-
 -func (server *Server) AddHttpHandler(listenPath string, handler func(w http.ResponseWriter, r *http.Request)) {
 -	server.httpHandler.HandleFunc(listenPath, handler)
 -}
 -
 -func (server *Server) Start(port int, listenPath string) {
--
+-	server.connMutex.Lock()
 -	server.connections = make(map[string]*WebSocket)
+-	server.connMutex.Unlock()
+-
 -	if server.httpServer == nil {
 -		server.httpServer = &http.Server{}
 -	}
@@ -222,63 +230,28 @@
 -		return fmt.Errorf("couldn't stop websocket connection. No connection with id %s is open", id)
 -	}
 -	log.Debugf("sending stop signal for websocket %s", ws.ID())
--	ws.sendMutex.Lock()
--	defer ws.sendMutex.Unlock()
--	if ws.closed {
--		return fmt.Errorf("couldn't stop websocket connection. Socket with id %s is already closed", id)
--	}
--	select {
--	case ws.closeC <- closeError:
--		return nil
--	default:
--		return fmt.Errorf("couldn't stop websocket connection. Close already signaled for socket with id %s", id)
--	}
+-	ws.closeC <- closeError
+-	return nil
 -}
 -
 -func (server *Server) stopConnections() {
 -	server.connMutex.RLock()
--	conns := make([]*WebSocket, 0, len(server.connections))
+-	defer server.connMutex.RUnlock()
 -	for _, conn := range server.connections {
--		conns = append(conns, conn)
--	}
--	server.connMutex.RUnlock()
--	for _, ws := range conns {
--		ws.sendMutex.Lock()
--		if !ws.closed {
--			select {
--			case ws.closeC <- websocket.CloseError{Code: websocket.CloseNormalClosure, Text: ""}:
--			default:
--			}
--		}
--		ws.sendMutex.Unlock()
+-		conn.closeC <- websocket.CloseError{Code: websocket.CloseNormalClosure, Text: ""}
 -	}
 -}
 -
--// Write queues data for the given connection without ever blocking the whole
--// server: the previous implementation held the global connMutex while doing a
--// blocking send on a 1-slot channel, so a single stalled connection could
--// freeze every other connection (2026-07-28 outage, amplification factor).
--// The send is non-blocking; a full queue means the connection is stalled or
--// dead, and the error propagates to the caller like any other write failure.
 -func (server *Server) Write(webSocketId string, data []byte) error {
 -	server.connMutex.RLock()
+-	defer server.connMutex.RUnlock()
 -	ws, ok := server.connections[webSocketId]
--	server.connMutex.RUnlock()
 -	if !ok {
 -		return fmt.Errorf("couldn't write to websocket. No socket with id %v is open", webSocketId)
 -	}
 -	log.Debugf("queuing data for websocket %s", webSocketId)
--	ws.sendMutex.Lock()
--	defer ws.sendMutex.Unlock()
--	if ws.closed {
--		return fmt.Errorf("couldn't write to websocket. Socket with id %v is closed", webSocketId)
--	}
--	select {
--	case ws.outQueue <- data:
--		return nil
--	default:
--		return fmt.Errorf("couldn't write to websocket. Output queue for socket with id %v is full", webSocketId)
--	}
+-	ws.outQueue <- data
+-	return nil
 -}
 -
 -func (server *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -336,18 +309,12 @@
 -		server.error(fmt.Errorf("upgrade failed: %w", err))
 -		return
 -	}
--	if server.timeoutConfig.MaxMessageSize > 0 {
--		conn.SetReadLimit(server.timeoutConfig.MaxMessageSize)
--	}
 -
 -	// The id of the charge point is the final path element
 -	ws := WebSocket{
--		connection: conn,
--		id:         id,
--		// Generously buffered so that Write's non-blocking send only fails
--		// when the connection is genuinely stalled (writePump not draining),
--		// not on ordinary bursts of queued messages.
--		outQueue:           make(chan []byte, 32),
+-		connection:         conn,
+-		id:                 id,
+-		outQueue:           make(chan []byte, 1),
 -		closeC:             make(chan websocket.CloseError, 1),
 -		forceCloseC:        make(chan error, 1),
 -		pingMessage:        make(chan []byte, 1),
@@ -363,33 +330,21 @@
 -		_ = conn.Close()
 -		return
 -	}
--	// Check whether client exists. Last-wins policy: the NEW connection takes
--	// over the slot and the old one is closed. A charger that lost its
--	// previous connection re-dials, and a stale (often already dead) entry
--	// must never lock it out — the previous first-wins policy turned a
--	// fleet-wide reconnect burst into a permanent lockout (central-system
--	// production incident, 2026-07-28).
+-	// Check whether client exists
 -	server.connMutex.Lock()
--	oldWs, exists := server.connections[id]
+-	// There is already a connection with the same ID. Close the new one immediately with a PolicyViolation.
+-	if _, exists := server.connections[id]; exists {
+-		server.connMutex.Unlock()
+-		server.error(fmt.Errorf("client %s already exists, closing duplicate client", id))
+-		_ = conn.WriteControl(websocket.CloseMessage,
+-			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "a connection with this ID already exists"),
+-			time.Now().Add(server.timeoutConfig.WriteWait))
+-		_ = conn.Close()
+-		return
+-	}
+-	// Add new client
 -	server.connections[ws.id] = &ws
 -	server.connMutex.Unlock()
--	if exists {
--		server.error(fmt.Errorf("client %s already exists, closing stale connection and keeping the new one", id))
--		// Politely close the old connection (WriteControl is documented safe
--		// for concurrent use with the old connection's pumps), then
--		// force-close it so its pumps exit and run cleanupConnection — whose
--		// pointer guard keeps it from deleting the new entry.
--		_ = oldWs.connection.WriteControl(websocket.CloseMessage,
--			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "replaced by a new connection with the same ID"),
--			time.Now().Add(server.timeoutConfig.WriteWait))
--		_ = oldWs.connection.Close()
--		// Notify the application of the old connection's termination BEFORE
--		// the new-client handler below, preserving the disconnect → connect
--		// order the application layer expects.
--		if server.disconnectedHandler != nil {
--			server.disconnectedHandler(oldWs)
--		}
--	}
 -	// Read and write routines are started in separate goroutines and function will return immediately
 -	go server.writePump(&ws)
 -	go server.readPump(&ws)
@@ -411,12 +366,7 @@
 -
 -	conn.SetPingHandler(func(appData string) error {
 -		log.Debugf("ping received from %s", ws.ID())
--		// Never block the read loop: if a pong is already pending (the client
--		// floods pings, or writePump has exited), drop this one.
--		select {
--		case ws.pingMessage <- []byte(appData):
--		default:
--		}
+-		ws.pingMessage <- []byte(appData)
 -		err := conn.SetReadDeadline(server.getReadTimeout())
 -		return err
 -	})
@@ -507,25 +457,10 @@
 -func (server *Server) cleanupConnection(ws *WebSocket) {
 -	_ = ws.connection.Close()
 -	server.connMutex.Lock()
--	ws.sendMutex.Lock()
--	ws.closed = true
 -	close(ws.outQueue)
 -	close(ws.closeC)
--	ws.sendMutex.Unlock()
--	// Pointer guard: only delete the map entry if it still belongs to THIS
--	// connection. Under the last-wins policy a newer connection may have taken
--	// over the id, and a late cleanup of the replaced connection must not
--	// remove (or notify a disconnect for) the newer one — the takeover path in
--	// wsHandler already invoked the disconnected handler for it.
--	replaced := server.connections[ws.id] != ws
--	if !replaced {
--		delete(server.connections, ws.id)
--	}
+-	delete(server.connections, ws.id)
 -	server.connMutex.Unlock()
--	if replaced {
--		log.Infof("closed stale connection to %s (id taken over by a newer connection)", ws.ID())
--		return
--	}
 -	log.Infof("closed connection to %s", ws.ID())
 -	if server.disconnectedHandler != nil {
 -		server.disconnectedHandler(ws)

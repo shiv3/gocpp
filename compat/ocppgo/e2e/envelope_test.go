@@ -106,7 +106,9 @@ func TestEnvelopeErrors(t *testing.T) {
 			hookCall{"FormationViolation", "Invalid Call message. Expected array length 4", "i2", 5}, false},
 		{`[9,"i3",{}]`, `[4,"i3","MessageTypeNotSupported","Invalid message type ID 9",{}]`,
 			hookCall{"MessageTypeNotSupported", "Invalid message type ID 9", "i3", 3}, false},
-		{`[2,"i4",5,{}]`, ``, hookCall{"FormationViolation", "Invalid element 5 at 2, expected action (string)", "", 4}, false},
+		// v0.19 answers it: the id is known there.
+		{`[2,"i4",5,{}]`, `[4,"i4","FormationViolation","Invalid element 5 at 2, expected action (string)",{}]`,
+			hookCall{"FormationViolation", "Invalid element 5 at 2, expected action (string)", "i4", 4}, false},
 		{`[2,"i5"]`, ``, hookCall{"FormationViolation", "Invalid message. Expected array length >= 3", "", 2}, false},
 		{`[2,7,"Heartbeat",{}]`, ``, hookCall{"FormationViolation", "Invalid element 7 at 1, expected unique ID (string)", "", 4}, false},
 		{`["x","i6","Heartbeat",{}]`, ``, hookCall{"FormationViolation", "Invalid element x at 0, expected message type (int)", "", 4}, false},
@@ -139,8 +141,11 @@ func TestEnvelopeErrors(t *testing.T) {
 	if got, want := roundTrip(`[2,"r1","Heartbeat"]`), `[4,"r1","GenericError","replaced by hook",{}]`; got != want {
 		t.Errorf("replaced: answered %q, want %q", got, want)
 	}
-	// No id known, so nothing is sent, replaced or not.
-	if got := roundTrip(`[2,"r2",5,{}]`); got != "" {
+	if got, want := roundTrip(`[2,"r2",5,{}]`), `[4,"r2","GenericError","replaced by hook",{}]`; got != want {
+		t.Errorf("replaced (action not a string): answered %q, want %q", got, want)
+	}
+	// An id that is not a string is not known, so nothing is sent, replaced or not.
+	if got := roundTrip(`[2,7,"Heartbeat",{}]`); got != "" {
 		t.Errorf("replaced without id: answered %q", got)
 	}
 }

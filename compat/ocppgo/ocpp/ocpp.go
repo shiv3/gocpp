@@ -45,7 +45,12 @@ func NewError(errorCode ErrorCode, description string, messageId string) *Error 
 	return &Error{Code: errorCode, Description: description, MessageId: messageId}
 }
 
-func (err *Error) Error() string {
+// Creates a new OCPP Error without messageId, which is added by the handlers parent.
+func NewHandlerError(errorCode ErrorCode, description string) *Error {
+	return &Error{Code: errorCode, Description: description, MessageId: ""}
+}
+
+func (err Error) Error() string {
 	return fmt.Sprintf("ocpp message (%s): %v - %v", err.MessageId, err.Code, err.Description)
 }
 
@@ -107,3 +112,12 @@ func (p *Profile) ParseResponse(featureName string, rawResponse interface{}, res
 	responseType := feature.GetResponseType()
 	return responseParser(rawResponse, responseType)
 }
+
+// Dialect is the OCPP version the Endpoint supports
+type Dialect int
+
+const (
+	_ Dialect = iota
+	V16
+	V2
+)

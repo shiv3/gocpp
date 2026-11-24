@@ -558,7 +558,11 @@ func (cs *chargingStation) asyncCallbackHandler() {
 func (cs *chargingStation) sendResponse(response ocpp.Response, err error, requestId string) {
 	if err != nil {
 		// Send error response
-		err = cs.client.SendError(requestId, ocppj.InternalError, err.Error(), nil)
+		if ocppError, ok := err.(*ocpp.Error); ok {
+			err = cs.client.SendError(requestId, ocppError.Code, ocppError.Description, nil)
+		} else {
+			err = cs.client.SendError(requestId, ocppj.InternalError, err.Error(), nil)
+		}
 		if err != nil {
 			// Error while sending an error. Will attempt to send a default error instead
 			cs.client.HandleFailedResponseError(requestId, err, "")
@@ -589,8 +593,6 @@ func (cs *chargingStation) sendResponse(response ocpp.Response, err error, reque
 }
 
 func (cs *chargingStation) Start(csmsUrl string) error {
-	// Overriding some protocol-specific values in the lower layers globally
-	ocppj.FormationViolation = ocppj.FormatViolationV2
 	// Start client
 	cs.stopC = make(chan struct{}, 1)
 	err := cs.client.Start(csmsUrl)
@@ -599,6 +601,14 @@ func (cs *chargingStation) Start(csmsUrl string) error {
 		go cs.asyncCallbackHandler()
 	}
 	return err
+}
+
+func (cs *chargingStation) StartWithRetries(csmsUrl string) {
+	// Start client
+	cs.stopC = make(chan struct{}, 1)
+	cs.client.StartWithRetries(csmsUrl)
+	// Async response handler receives incoming responses/errors and triggers callbacks
+	go cs.asyncCallbackHandler()
 }
 
 func (cs *chargingStation) Stop() {

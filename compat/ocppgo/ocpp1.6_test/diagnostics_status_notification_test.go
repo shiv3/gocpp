@@ -2,6 +2,7 @@ package ocpp16_test
 
 import (
 	"fmt"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -11,7 +12,7 @@ import (
 // Test
 func (suite *OcppV16TestSuite) TestDiagnosticsStatusNotificationRequestValidation() {
 	t := suite.T()
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{firmware.DiagnosticsStatusNotificationRequest{Status: firmware.DiagnosticsStatusUploaded}, true},
 		{firmware.DiagnosticsStatusNotificationRequest{}, false},
 		{firmware.DiagnosticsStatusNotificationRequest{Status: "invalidDiagnosticsStatus"}, false},
@@ -21,7 +22,7 @@ func (suite *OcppV16TestSuite) TestDiagnosticsStatusNotificationRequestValidatio
 
 func (suite *OcppV16TestSuite) TestDiagnosticsStatusNotificationConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{firmware.DiagnosticsStatusNotificationConfirmation{}, true},
 	}
 	ExecuteGenericTestTable(t, confirmationTable)
@@ -38,7 +39,7 @@ func (suite *OcppV16TestSuite) TestDiagnosticsStatusNotificationE2EMocked() {
 	diagnosticsStatusNotificationConfirmation := firmware.NewDiagnosticsStatusNotificationConfirmation()
 	channel := NewMockWebSocket(wsId)
 
-	firmwareListener := MockCentralSystemFirmwareManagementListener{}
+	firmwareListener := &MockCentralSystemFirmwareManagementListener{}
 	firmwareListener.On("OnDiagnosticsStatusNotification", mock.AnythingOfType("string"), mock.Anything).Return(diagnosticsStatusNotificationConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(1).(*firmware.DiagnosticsStatusNotificationRequest)
 		require.True(t, ok)

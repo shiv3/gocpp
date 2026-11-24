@@ -397,7 +397,7 @@ func (rt *gocppRuntime) handleCall(ctx context.Context, dc *gdisp.Conn, action s
 	id, _ := gocppj.MessageIDFromContext(ctx)
 	var raw interface{}
 	if err := json.Unmarshal(payload, &raw); err != nil {
-		return nil, ocppErrToRaw(ocpp.NewError(FormationViolation, err.Error(), id))
+		return nil, ocppErrToRaw(ocpp.NewError(FormatErrorType(rt.s), err.Error(), id))
 	}
 	// ocpp-go's own parser decides whether the request is valid and which error answers it.
 	fields := []interface{}{float64(CALL), id, action, raw}
@@ -564,14 +564,14 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 	case cerr == nil:
 		var raw interface{}
 		if err := json.Unmarshal(resp, &raw); err != nil {
-			bad(ocpp.NewError(FormationViolation, err.Error(), id), []interface{}{float64(CALL_RESULT), id})
+			bad(ocpp.NewError(FormatErrorType(rt.s), err.Error(), id), []interface{}{float64(CALL_RESULT), id})
 			return
 		}
 		fields := []interface{}{float64(CALL_RESULT), id, raw}
 		profile, _ := s.GetProfileForFeature(action)
 		confirmation, err := profile.ParseResponse(action, raw, parseRawJsonConfirmation)
 		if err != nil {
-			bad(ocpp.NewError(FormationViolation, err.Error(), id), fields)
+			bad(ocpp.NewError(FormatErrorType(rt.s), err.Error(), id), fields)
 			return
 		}
 		callResult := CallResult{MessageTypeId: CALL_RESULT, UniqueId: id, Payload: confirmation}

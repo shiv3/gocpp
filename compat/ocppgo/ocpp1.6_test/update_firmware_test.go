@@ -2,18 +2,19 @@ package ocpp16_test
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"time"
 )
 
 // Test
 func (suite *OcppV16TestSuite) TestUpdateFirmwareRequestValidation() {
 	t := suite.T()
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{firmware.UpdateFirmwareRequest{Location: "ftp:some/path", Retries: newInt(10), RetryInterval: newInt(10), RetrieveDate: types.NewDateTime(time.Now())}, true},
 		{firmware.UpdateFirmwareRequest{Location: "ftp:some/path", Retries: newInt(10), RetrieveDate: types.NewDateTime(time.Now())}, true},
 		{firmware.UpdateFirmwareRequest{Location: "ftp:some/path", RetrieveDate: types.NewDateTime(time.Now())}, true},
@@ -28,7 +29,7 @@ func (suite *OcppV16TestSuite) TestUpdateFirmwareRequestValidation() {
 
 func (suite *OcppV16TestSuite) TestUpdateFirmwareConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{firmware.UpdateFirmwareConfirmation{}, true},
 	}
 	ExecuteGenericTestTable(t, confirmationTable)
@@ -49,7 +50,7 @@ func (suite *OcppV16TestSuite) TestUpdateFirmwareE2EMocked() {
 	updateFirmwareConfirmation := firmware.NewUpdateFirmwareConfirmation()
 	channel := NewMockWebSocket(wsId)
 
-	firmwareListener := MockChargePointFirmwareManagementListener{}
+	firmwareListener := &MockChargePointFirmwareManagementListener{}
 	firmwareListener.On("OnUpdateFirmware", mock.Anything).Return(updateFirmwareConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(0).(*firmware.UpdateFirmwareRequest)
 		require.NotNil(t, request)

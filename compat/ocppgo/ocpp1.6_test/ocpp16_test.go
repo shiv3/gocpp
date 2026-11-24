@@ -7,22 +7,26 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/require"
+	"time"
 
 	"github.com/lorenzodonini/ocpp-go/ocpp"
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/certificates"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/extendedtriggermessage"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/firmware"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/localauth"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/remotetrigger"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/reservation"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/securefirmware"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/security"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/lorenzodonini/ocpp-go/ocppj"
 	"github.com/lorenzodonini/ocpp-go/ws"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -178,32 +182,24 @@ type MockFeature struct {
 	mock.Mock
 }
 
-func (f MockFeature) GetFeatureName() string {
+func (f *MockFeature) GetFeatureName() string {
 	return MockFeatureName
 }
 
-func (f MockFeature) GetRequestType() reflect.Type {
+func (f *MockFeature) GetRequestType() reflect.Type {
 	return reflect.TypeOf(MockRequest{})
 }
 
-func (f MockFeature) GetResponseType() reflect.Type {
+func (f *MockFeature) GetResponseType() reflect.Type {
 	return reflect.TypeOf(MockConfirmation{})
 }
 
-func (r MockRequest) GetFeatureName() string {
+func (r *MockRequest) GetFeatureName() string {
 	return MockFeatureName
 }
 
-func (c MockConfirmation) GetFeatureName() string {
+func (c *MockConfirmation) GetFeatureName() string {
 	return MockFeatureName
-}
-
-func newMockRequest(value string) *MockRequest {
-	return &MockRequest{MockValue: value}
-}
-
-func newMockConfirmation(value string) *MockConfirmation {
-	return &MockConfirmation{MockValue: value}
 }
 
 // ---------------------- MOCK CS CORE LISTENER ----------------------
@@ -336,13 +332,13 @@ type MockChargePointLocalAuthListListener struct {
 	mock.Mock
 }
 
-func (localAuthListListener MockChargePointLocalAuthListListener) OnGetLocalListVersion(request *localauth.GetLocalListVersionRequest) (confirmation *localauth.GetLocalListVersionConfirmation, err error) {
+func (localAuthListListener *MockChargePointLocalAuthListListener) OnGetLocalListVersion(request *localauth.GetLocalListVersionRequest) (confirmation *localauth.GetLocalListVersionConfirmation, err error) {
 	args := localAuthListListener.MethodCalled("OnGetLocalListVersion", request)
 	conf := args.Get(0).(*localauth.GetLocalListVersionConfirmation)
 	return conf, args.Error(1)
 }
 
-func (localAuthListListener MockChargePointLocalAuthListListener) OnSendLocalList(request *localauth.SendLocalListRequest) (confirmation *localauth.SendLocalListConfirmation, err error) {
+func (localAuthListListener *MockChargePointLocalAuthListListener) OnSendLocalList(request *localauth.SendLocalListRequest) (confirmation *localauth.SendLocalListConfirmation, err error) {
 	args := localAuthListListener.MethodCalled("OnSendLocalList", request)
 	conf := args.Get(0).(*localauth.SendLocalListConfirmation)
 	return conf, args.Error(1)
@@ -353,13 +349,13 @@ type MockCentralSystemFirmwareManagementListener struct {
 	mock.Mock
 }
 
-func (firmwareListener MockCentralSystemFirmwareManagementListener) OnDiagnosticsStatusNotification(chargePointId string, request *firmware.DiagnosticsStatusNotificationRequest) (confirmation *firmware.DiagnosticsStatusNotificationConfirmation, err error) {
+func (firmwareListener *MockCentralSystemFirmwareManagementListener) OnDiagnosticsStatusNotification(chargePointId string, request *firmware.DiagnosticsStatusNotificationRequest) (confirmation *firmware.DiagnosticsStatusNotificationConfirmation, err error) {
 	args := firmwareListener.MethodCalled("OnDiagnosticsStatusNotification", chargePointId, request)
 	conf := args.Get(0).(*firmware.DiagnosticsStatusNotificationConfirmation)
 	return conf, args.Error(1)
 }
 
-func (firmwareListener MockCentralSystemFirmwareManagementListener) OnFirmwareStatusNotification(chargePointId string, request *firmware.FirmwareStatusNotificationRequest) (confirmation *firmware.FirmwareStatusNotificationConfirmation, err error) {
+func (firmwareListener *MockCentralSystemFirmwareManagementListener) OnFirmwareStatusNotification(chargePointId string, request *firmware.FirmwareStatusNotificationRequest) (confirmation *firmware.FirmwareStatusNotificationConfirmation, err error) {
 	args := firmwareListener.MethodCalled("OnFirmwareStatusNotification", chargePointId, request)
 	conf := args.Get(0).(*firmware.FirmwareStatusNotificationConfirmation)
 	return conf, args.Error(1)
@@ -370,13 +366,13 @@ type MockChargePointFirmwareManagementListener struct {
 	mock.Mock
 }
 
-func (firmwareListener MockChargePointFirmwareManagementListener) OnGetDiagnostics(request *firmware.GetDiagnosticsRequest) (confirmation *firmware.GetDiagnosticsConfirmation, err error) {
+func (firmwareListener *MockChargePointFirmwareManagementListener) OnGetDiagnostics(request *firmware.GetDiagnosticsRequest) (confirmation *firmware.GetDiagnosticsConfirmation, err error) {
 	args := firmwareListener.MethodCalled("OnGetDiagnostics", request)
 	conf := args.Get(0).(*firmware.GetDiagnosticsConfirmation)
 	return conf, args.Error(1)
 }
 
-func (firmwareListener MockChargePointFirmwareManagementListener) OnUpdateFirmware(request *firmware.UpdateFirmwareRequest) (confirmation *firmware.UpdateFirmwareConfirmation, err error) {
+func (firmwareListener *MockChargePointFirmwareManagementListener) OnUpdateFirmware(request *firmware.UpdateFirmwareRequest) (confirmation *firmware.UpdateFirmwareConfirmation, err error) {
 	args := firmwareListener.MethodCalled("OnUpdateFirmware", request)
 	conf := args.Get(0).(*firmware.UpdateFirmwareConfirmation)
 	return conf, args.Error(1)
@@ -392,13 +388,13 @@ type MockChargePointReservationListener struct {
 	mock.Mock
 }
 
-func (reservationListener MockChargePointReservationListener) OnReserveNow(request *reservation.ReserveNowRequest) (confirmation *reservation.ReserveNowConfirmation, err error) {
+func (reservationListener *MockChargePointReservationListener) OnReserveNow(request *reservation.ReserveNowRequest) (confirmation *reservation.ReserveNowConfirmation, err error) {
 	args := reservationListener.MethodCalled("OnReserveNow", request)
 	conf := args.Get(0).(*reservation.ReserveNowConfirmation)
 	return conf, args.Error(1)
 }
 
-func (reservationListener MockChargePointReservationListener) OnCancelReservation(request *reservation.CancelReservationRequest) (confirmation *reservation.CancelReservationConfirmation, err error) {
+func (reservationListener *MockChargePointReservationListener) OnCancelReservation(request *reservation.CancelReservationRequest) (confirmation *reservation.CancelReservationConfirmation, err error) {
 	args := reservationListener.MethodCalled("OnCancelReservation", request)
 	conf := args.Get(0).(*reservation.CancelReservationConfirmation)
 	return conf, args.Error(1)
@@ -414,7 +410,7 @@ type MockChargePointRemoteTriggerListener struct {
 	mock.Mock
 }
 
-func (remoteTriggerListener MockChargePointRemoteTriggerListener) OnTriggerMessage(request *remotetrigger.TriggerMessageRequest) (confirmation *remotetrigger.TriggerMessageConfirmation, err error) {
+func (remoteTriggerListener *MockChargePointRemoteTriggerListener) OnTriggerMessage(request *remotetrigger.TriggerMessageRequest) (confirmation *remotetrigger.TriggerMessageConfirmation, err error) {
 	args := remoteTriggerListener.MethodCalled("OnTriggerMessage", request)
 	conf := args.Get(0).(*remotetrigger.TriggerMessageConfirmation)
 	return conf, args.Error(1)
@@ -430,19 +426,19 @@ type MockChargePointSmartChargingListener struct {
 	mock.Mock
 }
 
-func (smartChargingListener MockChargePointSmartChargingListener) OnSetChargingProfile(request *smartcharging.SetChargingProfileRequest) (confirmation *smartcharging.SetChargingProfileConfirmation, err error) {
+func (smartChargingListener *MockChargePointSmartChargingListener) OnSetChargingProfile(request *smartcharging.SetChargingProfileRequest) (confirmation *smartcharging.SetChargingProfileConfirmation, err error) {
 	args := smartChargingListener.MethodCalled("OnSetChargingProfile", request)
 	conf := args.Get(0).(*smartcharging.SetChargingProfileConfirmation)
 	return conf, args.Error(1)
 }
 
-func (smartChargingListener MockChargePointSmartChargingListener) OnClearChargingProfile(request *smartcharging.ClearChargingProfileRequest) (confirmation *smartcharging.ClearChargingProfileConfirmation, err error) {
+func (smartChargingListener *MockChargePointSmartChargingListener) OnClearChargingProfile(request *smartcharging.ClearChargingProfileRequest) (confirmation *smartcharging.ClearChargingProfileConfirmation, err error) {
 	args := smartChargingListener.MethodCalled("OnClearChargingProfile", request)
 	conf := args.Get(0).(*smartcharging.ClearChargingProfileConfirmation)
 	return conf, args.Error(1)
 }
 
-func (smartChargingListener MockChargePointSmartChargingListener) OnGetCompositeSchedule(request *smartcharging.GetCompositeScheduleRequest) (confirmation *smartcharging.GetCompositeScheduleConfirmation, err error) {
+func (smartChargingListener *MockChargePointSmartChargingListener) OnGetCompositeSchedule(request *smartcharging.GetCompositeScheduleRequest) (confirmation *smartcharging.GetCompositeScheduleConfirmation, err error) {
 	args := smartChargingListener.MethodCalled("OnGetCompositeSchedule", request)
 	conf := args.Get(0).(*smartcharging.GetCompositeScheduleConfirmation)
 	return conf, args.Error(1)
@@ -510,6 +506,7 @@ func setupDefaultCentralSystemHandlers(suite *OcppV16TestSuite, coreListener cor
 	})
 	suite.centralSystem.SetCoreHandler(coreListener)
 	suite.mockWsServer.On("Start", mock.AnythingOfType("int"), mock.AnythingOfType("string")).Return(options.startReturnArgument)
+	suite.mockWsServer.On("Stop").Return()
 	suite.mockWsServer.On("Write", mock.AnythingOfType("string"), mock.Anything).Return(options.writeReturnArgument).Run(func(args mock.Arguments) {
 		clientId := args.String(0)
 		data := args.Get(1)
@@ -594,6 +591,8 @@ func testUnsupportedRequestFromChargePoint(suite *OcppV16TestSuite, request ocpp
 	assert.Nil(t, err)
 	_, ok := <-resultChannel
 	assert.True(t, ok)
+	// Stop the central system
+	suite.centralSystem.Stop()
 }
 
 func testUnsupportedRequestFromCentralSystem(suite *OcppV16TestSuite, request ocpp.Request, requestJson string, messageId string) {
@@ -634,6 +633,8 @@ func testUnsupportedRequestFromCentralSystem(suite *OcppV16TestSuite, request oc
 	assert.Nil(t, err)
 	_, ok := <-resultChannel
 	assert.True(t, ok)
+	// Stop the central system
+	suite.centralSystem.Stop()
 }
 
 type GenericTestEntry struct {
@@ -694,20 +695,54 @@ func (suite *OcppV16TestSuite) SetupTest() {
 	reservationProfile := reservation.Profile
 	remoteTriggerProfile := remotetrigger.Profile
 	smartChargingProfile := smartcharging.Profile
+	certificatesProfile := certificates.Profile
+	secureFirmwareUpdateProfile := securefirmware.Profile
+	extendedTriggerMessageProfile := extendedtriggermessage.Profile
+	securityProfile := security.Profile
 	mockClient := MockWebsocketClient{}
 	mockServer := MockWebsocketServer{}
 	suite.mockWsClient = &mockClient
 	suite.mockWsServer = &mockServer
 	suite.clientDispatcher = ocppj.NewDefaultClientDispatcher(ocppj.NewFIFOClientQueue(queueCapacity))
 	suite.serverDispatcher = ocppj.NewDefaultServerDispatcher(ocppj.NewFIFOQueueMap(queueCapacity))
-	suite.ocppjChargePoint = ocppj.NewClient("test_id", suite.mockWsClient, suite.clientDispatcher, nil, coreProfile, localAuthListProfile, firmwareProfile, reservationProfile, remoteTriggerProfile, smartChargingProfile)
-	suite.ocppjCentralSystem = ocppj.NewServer(suite.mockWsServer, suite.serverDispatcher, nil, coreProfile, localAuthListProfile, firmwareProfile, reservationProfile, remoteTriggerProfile, smartChargingProfile)
+	suite.ocppjChargePoint = ocppj.NewClient(
+		"test_id",
+		suite.mockWsClient,
+		suite.clientDispatcher,
+		nil,
+		coreProfile,
+		localAuthListProfile,
+		firmwareProfile,
+		reservationProfile,
+		remoteTriggerProfile,
+		smartChargingProfile,
+		certificatesProfile,
+		extendedTriggerMessageProfile,
+		securityProfile,
+		secureFirmwareUpdateProfile,
+	)
+	suite.ocppjCentralSystem = ocppj.NewServer(
+		suite.mockWsServer,
+		suite.serverDispatcher,
+		nil,
+		coreProfile,
+		localAuthListProfile,
+		firmwareProfile,
+		reservationProfile,
+		remoteTriggerProfile,
+		smartChargingProfile,
+		certificatesProfile,
+		extendedTriggerMessageProfile,
+		securityProfile,
+		secureFirmwareUpdateProfile,
+	)
 	suite.chargePoint = ocpp16.NewChargePoint("test_id", suite.ocppjChargePoint, suite.mockWsClient)
 	suite.centralSystem = ocpp16.NewCentralSystem(suite.ocppjCentralSystem, suite.mockWsServer)
 	suite.messageIdGenerator = TestRandomIdGenerator{generator: func() string {
 		return defaultMessageId
 	}}
 	ocppj.SetMessageIdGenerator(suite.messageIdGenerator.generateId)
+	types.DateTimeFormat = time.RFC3339
 }
 
 func (suite *OcppV16TestSuite) TestIsConnected() {
@@ -720,8 +755,7 @@ func (suite *OcppV16TestSuite) TestIsConnected() {
 	assert.False(t, suite.chargePoint.IsConnected())
 }
 
-//TODO: implement generic protocol tests
-
+// TODO: implement generic protocol tests
 func TestOcpp16Protocol(t *testing.T) {
 	suite.Run(t, new(OcppV16TestSuite))
 }

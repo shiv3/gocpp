@@ -1,15 +1,16 @@
 # gocpp ocpp-go compatibility module
 
 `github.com/shiv3/gocpp/compat/ocppgo` has the public API of
-`github.com/lorenzodonini/ocpp-go` (the `v0.17.2-fix.x` line) and runs on the
+`github.com/lorenzodonini/ocpp-go` **v0.19.0** and runs on the
 gocpp runtime. An application switches to it with one line in its `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.17.2-gocpp.1
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1
 ```
 
-Status: released (`v0.17.2-gocpp.1`, on gocpp v0.3.2). The server side runs on gocpp;
-the client side is ocpp-go's own code. Rollout guide: [ROLLOUT.md](ROLLOUT.md). See `NOTICE` for what is upstream code and what is
+See `MAINTAINING.md` for CI checks, the upstream pin and releasing, and `ROLLOUT.md` for a staged rollout.
+
+Status: server side on the gocpp runtime; the client side is upstream's. See `NOTICE` for what is upstream code and what is
 new, and `UPSTREAM` for the pinned source.
 
 ## What runs on gocpp
@@ -67,6 +68,7 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 - `InvalidMessageHook` is called for every frame ocpp-go calls it for, including
   envelope errors (wrong array length, unknown message type), and the envelope
   error texts are ocpp-go's own.
+- There is no `ServerTimeoutConfig.MaxMessageSize`: the server reads without a size limit, as upstream v0.19 does.
 - Idle connections are closed with a close frame (1000) on the gocpp runtime.
 - New upgrades are refused with HTTP 503 once `Stop` has begun.
 - ocpp-go's package level state (`ocppj.FormationViolation`, loggers, ...) is

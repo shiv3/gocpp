@@ -2,21 +2,23 @@ package ocpp16_test
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"time"
 )
 
 // Test
 func (suite *OcppV16TestSuite) TestGetCompositeScheduleRequestValidation() {
 	t := suite.T()
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{smartcharging.GetCompositeScheduleRequest{ConnectorId: 1, Duration: 600, ChargingRateUnit: types.ChargingRateUnitWatts}, true},
 		{smartcharging.GetCompositeScheduleRequest{ConnectorId: 1, Duration: 600}, true},
 		{smartcharging.GetCompositeScheduleRequest{ConnectorId: 1}, true},
+		{smartcharging.GetCompositeScheduleRequest{ConnectorId: 0}, true},
 		{smartcharging.GetCompositeScheduleRequest{}, true},
 		{smartcharging.GetCompositeScheduleRequest{ConnectorId: -1, Duration: 600, ChargingRateUnit: types.ChargingRateUnitWatts}, false},
 		{smartcharging.GetCompositeScheduleRequest{ConnectorId: 1, Duration: -1, ChargingRateUnit: types.ChargingRateUnitWatts}, false},
@@ -28,10 +30,11 @@ func (suite *OcppV16TestSuite) TestGetCompositeScheduleRequestValidation() {
 func (suite *OcppV16TestSuite) TestGetCompositeScheduleConfirmationValidation() {
 	t := suite.T()
 	chargingSchedule := types.NewChargingSchedule(types.ChargingRateUnitWatts, types.NewChargingSchedulePeriod(0, 10.0))
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{smartcharging.GetCompositeScheduleConfirmation{Status: smartcharging.GetCompositeScheduleStatusAccepted, ConnectorId: newInt(1), ScheduleStart: types.NewDateTime(time.Now()), ChargingSchedule: chargingSchedule}, true},
 		{smartcharging.GetCompositeScheduleConfirmation{Status: smartcharging.GetCompositeScheduleStatusAccepted, ConnectorId: newInt(1), ScheduleStart: types.NewDateTime(time.Now())}, true},
 		{smartcharging.GetCompositeScheduleConfirmation{Status: smartcharging.GetCompositeScheduleStatusAccepted, ConnectorId: newInt(1)}, true},
+		{smartcharging.GetCompositeScheduleConfirmation{Status: smartcharging.GetCompositeScheduleStatusAccepted, ConnectorId: newInt(0)}, true},
 		{smartcharging.GetCompositeScheduleConfirmation{Status: smartcharging.GetCompositeScheduleStatusAccepted}, true},
 		{smartcharging.GetCompositeScheduleConfirmation{}, false},
 		{smartcharging.GetCompositeScheduleConfirmation{Status: "invalidGetCompositeScheduleStatus"}, false},
@@ -64,7 +67,7 @@ func (suite *OcppV16TestSuite) TestGetCompositeScheduleE2EMocked() {
 	getCompositeScheduleConfirmation.ConnectorId = &connectorId
 	channel := NewMockWebSocket(wsId)
 
-	smartChargingListener := MockChargePointSmartChargingListener{}
+	smartChargingListener := &MockChargePointSmartChargingListener{}
 	smartChargingListener.On("OnGetCompositeSchedule", mock.Anything).Return(getCompositeScheduleConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(0).(*smartcharging.GetCompositeScheduleRequest)
 		require.True(t, ok)

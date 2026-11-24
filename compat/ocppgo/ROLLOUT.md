@@ -1,7 +1,7 @@
 # Staged rollout: switching an ocpp-go server to the gocpp runtime
 
 This is the plan for an application that runs a central system on
-`github.com/lorenzodonini/ocpp-go` (the `v0.17.2-fix.x` API line) and wants the
+`github.com/lorenzodonini/ocpp-go` (upstream, API line `v0.19`) and wants the
 gocpp runtime under it without changing its code. The client side of ocpp-go is
 unchanged by this module and is not part of the rollout.
 
@@ -10,7 +10,7 @@ unchanged by this module and is not part of the rollout.
 - One line in `go.mod`; no source change:
 
   ```
-  replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.17.2-gocpp.N
+  replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.N
   ```
 
   Pick `N` from the releases of this module. The replacement requires gocpp
@@ -21,7 +21,7 @@ unchanged by this module and is not part of the rollout.
   `ServerDispatcher` keeps ocpp-go's original code (see README, "Choosing the runtime").
 - Behaviour differences are listed in the README ("Known differences"). The ones a
   rollout can notice: a panicking handler is answered with `InternalError` and the
-  process survives (ocpp-go exits); outbound requests are ordered per charger, not
+  process survives (upstream ocpp-go crashes the process); outbound requests are ordered per charger, not
   globally; idle connections get a close frame 1000 instead of a TCP drop; upgrades
   during shutdown get HTTP 503.
 
@@ -39,7 +39,7 @@ unchanged by this module and is not part of the rollout.
    metrics, readiness, drain on shutdown.
 4. Load test with the application's own simulator at the production fleet size:
    a connect storm, a mass call timeout (mute chargers) and a restart. The
-   expectations from the module's own runs are in `interop/loadtest/results/compat-*`:
+   expectations from the module's own runs are in `interop/loadtest/results/compat-*` of the gocpp repository:
    no freeze, memory in line with gocpp's own server.
 
 ## 2. Canary
@@ -107,5 +107,5 @@ the metrics of the window and open an issue with the module version.
 
 100 % on the new build for one full cycle without a rollback, the old build
 retired, `OCPPGO_COMPAT_RUNTIME` not set anywhere. From then on, upgrades of this
-module follow the same canary, shortened: the API line (`v0.17.2`) does not move,
+module follow the same canary, shortened: the API line (`v0.19.0`) does not move,
 only `-gocpp.N`.

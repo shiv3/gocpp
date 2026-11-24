@@ -14,7 +14,7 @@ import (
 // Test
 func (suite *OcppV16TestSuite) TestGetDiagnosticsRequestValidation() {
 	t := suite.T()
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{firmware.GetDiagnosticsRequest{Location: "ftp:some/path", Retries: newInt(10), RetryInterval: newInt(10), StartTime: types.NewDateTime(time.Now()), StopTime: types.NewDateTime(time.Now())}, true},
 		{firmware.GetDiagnosticsRequest{Location: "ftp:some/path", Retries: newInt(10), RetryInterval: newInt(10), StartTime: types.NewDateTime(time.Now())}, true},
 		{firmware.GetDiagnosticsRequest{Location: "ftp:some/path", Retries: newInt(10), RetryInterval: newInt(10)}, true},
@@ -30,7 +30,7 @@ func (suite *OcppV16TestSuite) TestGetDiagnosticsRequestValidation() {
 
 func (suite *OcppV16TestSuite) TestGetDiagnosticsConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{firmware.GetDiagnosticsConfirmation{FileName: "someFileName"}, true},
 		{firmware.GetDiagnosticsConfirmation{FileName: ""}, true},
 		{firmware.GetDiagnosticsConfirmation{}, true},
@@ -57,7 +57,7 @@ func (suite *OcppV16TestSuite) TestGetDiagnosticsE2EMocked() {
 	getDiagnosticsConfirmation.FileName = fileName
 	channel := NewMockWebSocket(wsId)
 
-	firmwareListener := MockChargePointFirmwareManagementListener{}
+	firmwareListener := &MockChargePointFirmwareManagementListener{}
 	firmwareListener.On("OnGetDiagnostics", mock.Anything).Return(getDiagnosticsConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(0).(*firmware.GetDiagnosticsRequest)
 		require.NotNil(t, request)

@@ -13,7 +13,7 @@ Upstream
 A large part of this directory is a copy of ocpp-go, which is
 Copyright (c) the ocpp-go authors and licensed under the MIT License (see
 LICENSE, the upstream text, unchanged). The pinned source is recorded in
-UPSTREAM (tag and commit). That source is the fork line v0.17.2-fix.x of
+UPSTREAM (tag and commit). That source is upstream v0.19.0 of
 https://github.com/lorenzodonini/ocpp-go.
 
 What is changed

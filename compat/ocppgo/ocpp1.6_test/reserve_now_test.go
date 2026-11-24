@@ -2,18 +2,19 @@ package ocpp16_test
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/reservation"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"time"
 )
 
 // Test
 func (suite *OcppV16TestSuite) TestReserveNowRequestValidation() {
 	t := suite.T()
-	var requestTable = []GenericTestEntry{
+	requestTable := []GenericTestEntry{
 		{reservation.ReserveNowRequest{ConnectorId: 1, ExpiryDate: types.NewDateTime(time.Now()), IdTag: "12345", ReservationId: 42, ParentIdTag: "9999"}, true},
 		{reservation.ReserveNowRequest{ConnectorId: 1, ExpiryDate: types.NewDateTime(time.Now()), IdTag: "12345", ReservationId: 42}, true},
 		{reservation.ReserveNowRequest{ExpiryDate: types.NewDateTime(time.Now()), IdTag: "12345", ReservationId: 42}, true},
@@ -30,7 +31,7 @@ func (suite *OcppV16TestSuite) TestReserveNowRequestValidation() {
 
 func (suite *OcppV16TestSuite) TestReserveNowConfirmationValidation() {
 	t := suite.T()
-	var confirmationTable = []GenericTestEntry{
+	confirmationTable := []GenericTestEntry{
 		{reservation.ReserveNowConfirmation{Status: reservation.ReservationStatusAccepted}, true},
 		{reservation.ReserveNowConfirmation{Status: "invalidReserveNowStatus"}, false},
 		{reservation.ReserveNowConfirmation{}, false},
@@ -55,7 +56,7 @@ func (suite *OcppV16TestSuite) TestReserveNowE2EMocked() {
 	ReserveNowConfirmation := reservation.NewReserveNowConfirmation(status)
 	channel := NewMockWebSocket(wsId)
 
-	reservationListener := MockChargePointReservationListener{}
+	reservationListener := &MockChargePointReservationListener{}
 	reservationListener.On("OnReserveNow", mock.Anything).Return(ReserveNowConfirmation, nil).Run(func(args mock.Arguments) {
 		request, ok := args.Get(0).(*reservation.ReserveNowRequest)
 		require.True(t, ok)

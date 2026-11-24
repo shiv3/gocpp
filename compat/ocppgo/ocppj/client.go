@@ -54,14 +54,29 @@ func NewClient(id string, wsClient ws.WsClient, dispatcher ClientDispatcher, sta
 	return &Client{Endpoint: endpoint, client: wsClient, Id: id, dispatcher: dispatcher, RequestState: stateHandler}
 }
 
+// Return incoming requests handler.
+func (c *Client) GetRequestHandler() func(request ocpp.Request, requestId string, action string) {
+	return c.requestHandler
+}
+
 // Registers a handler for incoming requests.
 func (c *Client) SetRequestHandler(handler func(request ocpp.Request, requestId string, action string)) {
 	c.requestHandler = handler
 }
 
+// Return incoming responses handler.
+func (c *Client) GetResponseHandler() func(response ocpp.Response, requestId string) {
+	return c.responseHandler
+}
+
 // Registers a handler for incoming responses.
 func (c *Client) SetResponseHandler(handler func(response ocpp.Response, requestId string)) {
 	c.responseHandler = handler
+}
+
+// Return incoming error messages handler.
+func (c *Client) GetErrorHandler() func(err *ocpp.Error, details interface{}) {
+	return c.errorHandler
 }
 
 // Registers a handler for incoming error messages.
@@ -121,6 +136,17 @@ func (c *Client) Start(serverURL string) error {
 		c.dispatcher.Start()
 	}
 	return err
+}
+
+func (c *Client) StartWithRetries(serverURL string) {
+	// Set internal message handler
+	c.client.SetMessageHandler(c.ocppMessageHandler)
+	c.client.SetDisconnectedHandler(c.onDisconnected)
+	c.client.SetReconnectedHandler(c.onReconnected)
+	// Connect & run
+	fullUrl := fmt.Sprintf("%v/%v", serverURL, c.Id)
+	c.client.StartWithRetries(fullUrl)
+	c.dispatcher.Start()
 }
 
 // Stops the client.

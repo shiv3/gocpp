@@ -45,7 +45,7 @@ public API of ocpp-go v0.19.0 (checked with `apidiff` in CI) and runs ocpp-go's 
 test suites on gocpp. Add one `replace` line to your `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1
 ```
 
 Then `go mod tidy` and build as before. What changes at runtime (server side):
@@ -59,7 +59,7 @@ Then `go mod tidy` and build as before. What changes at runtime (server side):
 
 `OCPPGO_COMPAT_RUNTIME=legacy` switches back to ocpp-go's original code path without
 a rebuild. The client side stays ocpp-go's own implementation. Details and known
-differences: [compat/ocppgo-v019/README.md](compat/ocppgo-v019/README.md). To migrate to the native
+differences: [compat/ocppgo/README.md](compat/ocppgo/README.md). To migrate to the native
 gocpp API instead, see [docs/migration-from-ocpp-go.md](docs/migration-from-ocpp-go.md).
 
 ## Quick start
@@ -244,7 +244,7 @@ The `internal/conformance` suite ports lorenzodonini/ocpp-go's per-message test 
 - [docs/usage.md](docs/usage.md) — usage guide
 - [docs/architecture.md](docs/architecture.md) — design & concurrency model
 - [docs/migration-from-ocpp-go.md](docs/migration-from-ocpp-go.md) — moving from ocpp-go (native API or drop-in)
-- [compat/ocppgo-v019/README.md](compat/ocppgo-v019/README.md) — the ocpp-go drop-in module
+- [compat/ocppgo/README.md](compat/ocppgo/README.md) — the ocpp-go drop-in module
 
 ## License
 
