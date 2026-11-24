@@ -25,3 +25,21 @@ github.com/lorenzodonini/ocpp-go/ocpp2.0.1/smartcharging|- GetCompositeScheduleR
 
 # schema ChargingSchedulePeriodType.phaseToUse, omitted upstream (upstream PR #418).
 github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types|- ChargingSchedulePeriod.PhaseToUse: added
+
+# GetCertificateStatusResponse.status is GetCertificateStatusEnumType (Accepted, Failed), not
+# GenericStatus (Accepted, Rejected). Upstream issue #429, PR #381. The existing type
+# types.Certificate15118EVStatus has exactly these values.
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/iso15118|- GetCertificateStatusResponse.Status: changed from github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types.GenericStatus to github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types.Certificate15118EVStatus
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/iso15118|- NewGetCertificateStatusResponse: changed from func(github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types.GenericStatus) *GetCertificateStatusResponse to func(github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types.Certificate15118EVStatus) *GetCertificateStatusResponse
+
+# schema IdTokenInfoType.evseId (array of integer, minItems 1), omitted upstream (PR #418).
+# A slice field makes the struct non-comparable; the schema type is an array.
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types|- IdTokenInfo.EvseID: added
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types|- IdTokenInfo: old is comparable, new is not
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/authorization|- AuthorizeResponse: old is comparable, new is not
+
+# schema GetVariableResultType.attributeStatusInfo, omitted upstream (PR #418).
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/provisioning|- GetVariableResult.AttributeStatusInfo: added
+
+# schema UploadLogStatusEnumType includes AcceptedCanceled. Upstream issue #426, PR #428.
+github.com/lorenzodonini/ocpp-go/ocpp2.0.1/diagnostics|- UploadLogStatusAcceptedCanceled: added

@@ -1,0 +1,20 @@
+--- a/ocpp2.0.1/provisioning/get_variables.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/provisioning/get_variables.go	2026-11-24 00:00:00 +0900
+@@ -39,11 +39,12 @@
+ }
+ 
+ type GetVariableResult struct {
+-	AttributeStatus GetVariableStatus `json:"attributeStatus" validate:"required,getVariableStatus"`
+-	AttributeType   types.Attribute   `json:"attributeType,omitempty" validate:"omitempty,attribute"`
+-	AttributeValue  string            `json:"attributeValue,omitempty" validate:"omitempty,max=1000"`
+-	Component       types.Component   `json:"component" validate:"required"`
+-	Variable        types.Variable    `json:"variable" validate:"required"`
++	AttributeStatus     GetVariableStatus `json:"attributeStatus" validate:"required,getVariableStatus"`
++	AttributeType       types.Attribute   `json:"attributeType,omitempty" validate:"omitempty,attribute"`
++	AttributeValue      string            `json:"attributeValue,omitempty" validate:"omitempty,max=2500"`
++	Component           types.Component   `json:"component" validate:"required"`
++	Variable            types.Variable    `json:"variable" validate:"required"`
++	AttributeStatusInfo *types.StatusInfo `json:"attributeStatusInfo,omitempty" validate:"omitempty"`
+ }
+ 
+ // The field definition of the GetVariables request payload sent by the CSMS to the Charging Station.

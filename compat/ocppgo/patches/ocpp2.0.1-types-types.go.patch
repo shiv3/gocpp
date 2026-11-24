@@ -1,6 +1,23 @@
 --- a/ocpp2.0.1/types/types.go	2026-11-24 00:00:00 +0900
 +++ b/ocpp2.0.1/types/types.go	2026-11-24 00:00:00 +0900
-@@ -500,6 +500,7 @@
+@@ -155,7 +155,7 @@
+ 	IssuerNameHash string            `json:"issuerNameHash" validate:"required,max=128"`
+ 	IssuerKeyHash  string            `json:"issuerKeyHash" validate:"required,max=128"`
+ 	SerialNumber   string            `json:"serialNumber" validate:"required,max=40"`
+-	ResponderURL   string            `json:"responderURL,omitempty" validate:"max=512"`
++	ResponderURL   string            `json:"responderURL" validate:"required,max=512"`
+ }
+ 
+ // CertificateHashDataType
+@@ -285,6 +285,7 @@
+ 	Language2           string              `json:"language2,omitempty" validate:"max=8"`
+ 	GroupIdToken        *GroupIdToken       `json:"groupIdToken,omitempty"`
+ 	PersonalMessage     *MessageContent     `json:"personalMessage,omitempty"`
++	EvseID              []int               `json:"evseId,omitempty" validate:"omitempty,min=1"` // Only valid for these EVSEs, not the whole Charging Station.
+ }
+ 
+ // NewIdTokenInfo creates an IdTokenInfo. Optional parameters may be set afterwards on the initialized struct.
+@@ -500,6 +501,7 @@
  	StartPeriod  int     `json:"startPeriod" validate:"gte=0"`
  	Limit        float64 `json:"limit" validate:"gte=0"`
  	NumberPhases *int    `json:"numberPhases,omitempty" validate:"omitempty,gte=0"`

@@ -22,12 +22,13 @@ const (
 	UploadLogStatusUploaded         UploadLogStatus = "Uploaded"              // File has been uploaded successfully.
 	UploadLogStatusUploadFailure    UploadLogStatus = "UploadFailure"         // Failed to upload the requested file.
 	UploadLogStatusUploading        UploadLogStatus = "Uploading"             // File is being uploaded.
+	UploadLogStatusAcceptedCanceled UploadLogStatus = "AcceptedCanceled"      // A previous upload was cancelled and the new request accepted.
 )
 
 func isValidUploadLogStatus(fl validator.FieldLevel) bool {
 	status := UploadLogStatus(fl.Field().String())
 	switch status {
-	case UploadLogStatusBadMessage, UploadLogStatusIdle, UploadLogStatusNotSupportedOp, UploadLogStatusPermissionDenied, UploadLogStatusUploaded, UploadLogStatusUploadFailure, UploadLogStatusUploading:
+	case UploadLogStatusBadMessage, UploadLogStatusIdle, UploadLogStatusNotSupportedOp, UploadLogStatusPermissionDenied, UploadLogStatusUploaded, UploadLogStatusUploadFailure, UploadLogStatusUploading, UploadLogStatusAcceptedCanceled:
 		return true
 	default:
 		return false

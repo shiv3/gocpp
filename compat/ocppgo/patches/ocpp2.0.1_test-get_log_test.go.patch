@@ -1,0 +1,12 @@
+--- a/ocpp2.0.1_test/get_log_test.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1_test/get_log_test.go	2026-11-24 00:00:00 +0900
+@@ -46,7 +46,8 @@
+ 		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAcceptedCanceled}, true},
+ 		{diagnostics.GetLogResponse{}, false},
+ 		{diagnostics.GetLogResponse{Status: "invalidLogStatus"}, false},
+-		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAccepted, Filename: ">256............................................................................................................................................................................................................................................................."}, false},
++		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAccepted, Filename: newLongString(256)}, false},
++		{diagnostics.GetLogResponse{Status: diagnostics.LogStatusAccepted, Filename: newLongString(255)}, true},
+ 	}
+ 	ExecuteGenericTestTable(t, confirmationTable)
+ }
