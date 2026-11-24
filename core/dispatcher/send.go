@@ -58,13 +58,14 @@ func (c *Conn) send(ctx context.Context, payload []byte) error {
 	return err
 }
 
-func (c *Conn) sendCallResult(msgID string, payload []byte) {
+// sendCallResult writes the CALLRESULT and reports whether it was written.
+func (c *Conn) sendCallResult(msgID string, payload []byte) bool {
 	raw, err := ocppj.EncodeCallResult(msgID, payload)
 	if err != nil {
 		c.cfg.Logger.ErrorContext(c.ctx, "encode call result", "err", err)
-		return
+		return false
 	}
-	_ = c.send(c.ctx, raw)
+	return c.send(c.ctx, raw) == nil
 }
 
 // write performs one socket write under WriteTimeout. The write ctx is never

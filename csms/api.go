@@ -163,3 +163,15 @@ func CallAsync[Req, Resp any](ctx context.Context, c *Conn, m ocppj.Message[Req,
 func CallRawAsync(ctx context.Context, c *Conn, action string, payload []byte, cb func([]byte, error)) error {
 	return doCallAsync(ctx, c, action, payload, cb)
 }
+
+// AfterReply schedules fn to run once the CALLRESULT of the CALL handled by ctx
+// has been written to the charge point, so follow-up work is ordered after the
+// reply: the standard case is sending GetConfiguration after answering
+// BootNotification. Call it from inside the handler, before it returns. fn runs
+// on its own goroutine (it may block on Call) with the connection context, only
+// if the CALLRESULT was written; it returns false, and fn never runs, outside a
+// handler of a directly connected charge point (handlers served for a gateway
+// are not supported). See dispatcher.AfterReply and docs/ordering.md.
+func AfterReply(ctx context.Context, fn func(ctx context.Context)) bool {
+	return dispatcher.AfterReply(ctx, fn)
+}
