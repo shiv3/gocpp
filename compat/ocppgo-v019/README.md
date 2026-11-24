@@ -5,7 +5,7 @@
 gocpp runtime. An application switches to it with one line in its `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.N
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1
 ```
 
 Which line: the two lines are API-incompatible (`ws.ServerTimeoutConfig.MaxMessageSize`,

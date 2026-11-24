@@ -1,5 +1,13 @@
 # Staged migration from ocpp-go: `WithOCPPGoCompat`
 
+> **No code changes needed?** If you want gocpp's runtime but keep your ocpp-go code,
+> use the drop-in modules instead: one `replace` line in `go.mod`
+> (`github.com/shiv3/gocpp/compat/ocppgo v0.17.2-gocpp.1` for ocpp-go v0.17.x,
+> `github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1` for v0.19.0).
+> See [the README](../README.md#drop-in-replacement-for-ocpp-go) and
+> [compat/ocppgo/ROLLOUT.md](../compat/ocppgo/ROLLOUT.md). This page is for moving to
+> the native gocpp API.
+
 [migration-from-lorenzodonini.md](migration-from-lorenzodonini.md) maps the API.
 This page is about what **chargers see**. A differential test sent the same
 charger traffic (OCPP 1.6) to a gocpp CSMS and to an ocpp-go CSMS; the replies

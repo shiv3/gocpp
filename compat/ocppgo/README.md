@@ -5,10 +5,11 @@
 gocpp runtime. An application switches to it with one line in its `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.17.2-gocpp.N
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.17.2-gocpp.1
 ```
 
-Status: Phase 1 (server side). See `NOTICE` for what is upstream code and what is
+Status: released (`v0.17.2-gocpp.1`, on gocpp v0.3.2). The server side runs on gocpp;
+the client side is ocpp-go's own code. Rollout guide: [ROLLOUT.md](ROLLOUT.md). See `NOTICE` for what is upstream code and what is
 new, and `UPSTREAM` for the pinned source.
 
 ## What runs on gocpp
