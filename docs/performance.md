@@ -49,7 +49,7 @@ with your own handlers before enabling it; it is off by default.
 
 ## Runtime settings for a long-lived-connection CSMS
 
-All numbers below are from the final acceptance run (`interop/loadtest/results/2026-11-21-final/report.md` on branch `test/loadtest-4k`): 4,000 chargers, server pinned to 4 cores, 30k and 60k messages/s (Heartbeat-heavy mix, lenient schema), Go 1.26, one run per row.
+All numbers below are from the final acceptance run (2026-11-21): 4,000 chargers, server pinned to 4 cores, 30k and 60k messages/s (Heartbeat-heavy mix, lenient schema), Go 1.26, one run per row.
 
 ### GOMAXPROCS
 
@@ -70,7 +70,7 @@ Go's default of 100 is fine below roughly 10k requests/s. Above that, a larger v
 | 100 | 60k | 4.7 | 5.2% | 7.4 ms | 151 MB | 2.11 cores |
 | 300 | 60k | 1.4 | 1.7% | 4.2 ms | 270 MB | 2.01 cores |
 
-Rule of thumb: in-mark share is about `alloc MB/s x 0.3 ms / (GOGC/100)` per second; keep it under 1%. Here 104 MB/s at 30k gives 3% at GOGC=100 (measured 2.3%) and 1% at GOGC=300 (measured 0.8%). Never use `GOGC=off` without `GOMEMLIMIT`, and do not use a heap ballast (it only makes RSS larger than the live data). The ocpp-go fork behaves the same way (p99 2.4 -> 0.9 ms at 30k with GOGC=300, RSS 211 -> 364 MB), so a comparison between libraries should use the same GOGC.
+Rule of thumb: in-mark share is about `alloc MB/s x 0.3 ms / (GOGC/100)` per second; keep it under 1%. Here 104 MB/s at 30k gives 3% at GOGC=100 (measured 2.3%) and 1% at GOGC=300 (measured 0.8%). Never use `GOGC=off` without `GOMEMLIMIT`, and do not use a heap ballast (it only makes RSS larger than the live data). A comparison between libraries should use the same GOGC.
 
 ### What to export
 
@@ -84,16 +84,18 @@ Compression with context takeover costs far more per connection than everything 
 
 Measured with `BenchmarkIdleFootprint` (2,000 connections) and the 10,000-connection idle run:
 
-| | before the footprint work | now | ocpp-go fork |
+| | before the footprint work | now | ocpp-go v0.19.0 |
 |---|---|---|---|
-| resident goroutines per idle connection | 8 | 1 | 2 |
-| heap + stack per idle connection | 34 + 27 KB | 7.8 + 4.1 KB | 12.4 KB heap (stack not measured) |
-| RSS per idle connection | 61 KB | 13.6 KB | 22.7 KB |
-| 10,000 idle connections, RSS | about 610 MB | 151 MB | 240 MB |
-| 4,000-charger soak (40% mute, 50 calls/s), max RSS / goroutines | 501 MB / 33,326 | 154 MB / 5,323 | 212 MB / 9,972 |
-| allocation per request at 30k msg/s, lenient / schema off | 7.6 / 3.3 KB | 3.5 / 1.4 KB | 2.9 KB |
+| resident goroutines per idle connection | 8 | 1 | 2 (2.0 per connected charger in the capacity ramp) |
+| heap + stack per idle connection | 34 + 27 KB | 7.8 + 4.1 KB | not measured |
+| RSS per idle connection | 61 KB | 13.6 KB | not measured (35 to 38 KB per connected charger with traffic, capacity ramp) |
+| 10,000 idle connections, RSS | about 610 MB | 151 MB | not measured |
+| 4,000-charger soak (40% mute, 50 calls/s), max RSS / goroutines | 501 MB / 33,326 | 154 MB / 5,323 | 501 MB / 22,622 (the server froze after every start; see below) |
+| allocation per request at 30k msg/s, lenient / schema off | 7.6 / 3.3 KB | 3.5 / 1.4 KB | 2.9 KB (no CSMS calls) |
 
 The 1.0-1.5 goroutine ratio under load comes from handlers and outbound-call timers in flight. The socket buffers are 1 KB + 1 KB of that (`WithIOBufferSizes`).
+
+About the ocpp-go v0.19.0 column. In the 4,000-charger soak the upstream server stopped answering after every start (6 freezes in 6 starts, 52 to 95 s after each start), so its RSS and goroutine counts describe a frozen process that keeps accepting sockets, not a steady state. In a run without CSMS calls (4,000 chargers, 30k and then 60k msg/s) it did not freeze: 2.9 KB allocated per request (gocpp v0.3.0: 3.6 KB), max RSS 167 MB (gocpp: 124 MB), Heartbeat p99 1.4 ms at 30k and 5.3 ms at 60k msg/s (gocpp: the same), server CPU 1.01 and 1.88 cores (gocpp: 0.98 and 1.85); same harness, 2026-11-22. The cause of the freeze is described in [ocpp-go-structural-issues.md](ocpp-go-structural-issues.md).
 
 ## RSS versus live memory
 

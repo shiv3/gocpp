@@ -13,7 +13,7 @@ charger traffic (OCPP 1.6) to a gocpp CSMS and to a CSMS on upstream ocpp-go
 v0.19.0; the replies differ in a handful of places. Where ocpp-go follows the spec, gocpp does too, and
 the rows below are only differences. Where chargers in the field were tuned
 against ocpp-go's behaviour, `csms.WithOCPPGoCompat()` reproduces it (the
-behaviour of **upstream v0.19.0**, not of any fork), so the
+behaviour of **upstream v0.19.0**), so the
 migration can be done in two steps: swap the library with the preset on, then
 turn the individual behaviours off one at a time.
 

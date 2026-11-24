@@ -68,9 +68,8 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 
 ## Lenient validation for real chargers
 
-Upstream ocpp-go v0.19.0 rejects some messages that real chargers send, and
-forks of ocpp-go commonly relax exactly these. The default of this module is
-upstream's behaviour; leniency is opt-in, per `*ocppj.Server`, through the
+Upstream ocpp-go v0.19.0 rejects some messages that real chargers send. The default
+of this module is upstream's behaviour; leniency is opt-in, per `*ocppj.Server`, through the
 `compat` package (no package global, ocpp-go's `ocppj.Validate` is untouched):
 
 ```go
@@ -133,8 +132,10 @@ constraint). Leniency covers requests received and answers received by the serve
   fleet that pings (ocpp-go's own client pings every 54 s). Raise `PingWait`
   (`srv.SetTimeoutConfig`) to match the longest silence your chargers keep.
 - Upgrades arriving while `Stop` runs get HTTP 503; ocpp-go closes its listener, so they are refused at TCP level (a request already accepted is the only difference).
-- ocpp-go's package level state (`ocppj.FormationViolation`, loggers, ...) is
-  unchanged, including its data races when several endpoints start at once.
+- ocpp-go's package level state (`ocppj.Validate`, `ocppj.SetMessageValidation`,
+  loggers, ...) is unchanged, including that it is not synchronised: changing it
+  while another endpoint serves is a data race under `-race`
+  ([ocpp-go-structural-issues.md](../../docs/ocpp-go-structural-issues.md), section 10).
 
 ## Maintenance
 
