@@ -89,6 +89,10 @@ func New(mp metric.MeterProvider) (observability.Metrics, error) {
 
 	badFrames, err := m.Int64Counter("gocpp.bad_frames",
 		metric.WithDescription("inbound frames that were malformed or rejected for their content, by reason"))
+	if err != nil {
+		return nil, err
+	}
+
 	rateLimited, err := m.Int64Counter("gocpp.inbound_rate_limited",
 		metric.WithDescription("inbound CALLs and SENDs refused by the per-connection rate limit, by outcome"))
 	if err != nil {
