@@ -53,6 +53,7 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 | Paced drain for deploys (close code 1012, idle connections first, upgrades refused meanwhile) | `compat.Drain(ctx, srv, compat.DrainOptions{Window, Rate, IdleGrace, RetryAfter, OnProgress})`, then `srv.Stop()`; `compat.Undrain`, `compat.Draining`, `compat.Connections` |
 | Metrics (connections, calls per action and direction, pending calls; with `observability.SessionMetrics` also upgrade results and close code/cause), OpenTelemetry tracing, raw frame observer | `compat.SetObservability(endpoint, metrics, tracerProvider, frameObserver)` before `Start`; the Prometheus and OpenTelemetry metrics of gocpp (`core/observability/metrics/...`) fit |
 | Call timeout without injecting a dispatcher | `compat.SetCallTimeout` |
+| Duplicate charge point id: last wins (default) or first wins as upstream | `compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins)` |
 
 `SetObservability` needs the `*ocppj.Server`: build it yourself
 (`ocppj.NewServer(srv, nil, nil, profiles...)`, then `ocpp16.NewCentralSystem(endpoint, srv)`).
@@ -69,6 +70,11 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
   envelope errors (wrong array length, unknown message type), and the envelope
   error texts are ocpp-go's own.
 - There is no `ServerTimeoutConfig.MaxMessageSize`: the server reads without a size limit, as upstream v0.19 does.
+- A second connection for the id of a connected charge point takes the id over and the
+  old one is closed with 1008 (last wins); upstream v0.19.0 keeps the old one and closes
+  the new one with 1008 (first wins), which locks out a charge point that reconnects
+  after a half-open drop. `compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins)`
+  selects upstream's behaviour.
 - Idle connections are closed with a close frame (1000) on the gocpp runtime.
 - New upgrades are refused with HTTP 503 once `Stop` has begun.
 - ocpp-go's package level state (`ocppj.FormationViolation`, loggers, ...) is
