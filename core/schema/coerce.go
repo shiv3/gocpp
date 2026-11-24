@@ -14,6 +14,13 @@ type LenientOptions struct {
 	// TimeLocation interprets date-times that carry no zone designator. Nil
 	// means UTC.
 	TimeLocation *time.Location
+	// OCPPGo selects the validation policy of upstream ocpp-go v0.19.0: no
+	// repairs except the ones its parser accepts too (a zone-less date-time, and
+	// structured JSON in a "data" property), no enum case folding, and extra
+	// properties are the only tolerated schema violation. Everything else is a
+	// hard violation. ocpp-go validates with struct tags, not this schema, so the
+	// match is the closest achievable one (see docs/migration-from-ocpp-go.md).
+	OCPPGo bool
 }
 
 // coerceInstance walks inst guided by the schema doc and repairs values that a
@@ -199,6 +206,14 @@ func (c *coercer) softText(node map[string]any, inst any, key string, parent any
 }
 
 func (c *coercer) coercePrimitive(typ, format string, v any) (any, string, bool) {
+	if c.opts.OCPPGo {
+		if s, ok := v.(string); ok && typ == "string" && format == "date-time" && zonelessDateTime.MatchString(s) {
+			if out, ok := normalizeDateTime(s, c.opts.TimeLocation); ok {
+				return out, "format", true
+			}
+		}
+		return nil, "", false
+	}
 	switch typ {
 	case "string":
 		switch x := v.(type) {
@@ -248,6 +263,9 @@ func isJSONNumber(s string) bool {
 	}
 	return n.String() == s
 }
+
+// zonelessDateTime is the only malformed date-time ocpp-go's parser accepts.
+var zonelessDateTime = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$`)
 
 var looseDateTime = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})[Tt ](\d{2}:\d{2}:\d{2})(?:[.,](\d+))?\s*([Zz]|[+-]\d{2}(?::?\d{2})?)?$`)
 

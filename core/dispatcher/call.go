@@ -97,7 +97,7 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 		}
 		respPayload, herr := c.pipe.ValidateInbound(ctx, action, "response", res.payload)
 		if herr != nil {
-			c.maybeSendResultError(msgID, herr)
+			c.maybeSendResultError(msgID, action, herr)
 			return nil, herr
 		}
 		return respPayload, nil
@@ -111,8 +111,14 @@ func (c *Conn) call(ctx context.Context, action string, reqPayload []byte, acqui
 // maybeSendResultError notifies the peer that the CALLRESULT it sent could not
 // be processed, by emitting a CALLRESULTERROR (OCPP 2.1 only). On older versions
 // there is no such message type, so the failure stays local.
-func (c *Conn) maybeSendResultError(msgID string, cause error) {
+func (c *Conn) maybeSendResultError(msgID, action string, cause error) {
 	if c.version != ocppj.V21 {
+		if c.cfg.AnswerInvalidResponse {
+			def := ocppj.NewCallError(SchemaErrorCode(cause), cause.Error(), nil)
+			if wire, reply := c.pipe.MapBuiltinError(ErrorSourceSchema, action, cause, def, true); reply {
+				c.trySendCallErrorWire(msgID, wire, def.Description)
+			}
+		}
 		return
 	}
 	c.sendCallResultError(msgID, ocppj.WrapCallError(ocppj.ErrorCodeFormatViolation, cause, nil))

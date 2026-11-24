@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed (behaviour change in compat mode)
 
+- `csms.WithOCPPGoCompat()` / `cp.WithOCPPGoCompat()` validate like ocpp-go
+  (`WithOCPPGoValidation()` instead of `WithLenientSchema()`: wrong types, enum case,
+  out-of-range values and malformed timestamps are rejected, a zone-less timestamp,
+  unknown properties and structured `data` are accepted); `csms` also sets
+  `WithKeepAcceptingAfterShutdown()` (`Shutdown` closes the current connections,
+  upgrades stay accepted). `WithLenientSchema()` / `WithRefuseUpgradesAfterShutdown()`
+  after the preset restore the previous behaviour.
 - `csms.WithOCPPGoCompat()` now also sets `WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade)`
   (first wins), `WithUnlimitedMessageSize()` and the new `WithAbruptIdleClose()` (an
   idle connection is dropped without a close frame, as ocpp-go); `cp.WithOCPPGoCompat()`
@@ -23,6 +30,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `dispatcher.Config.AnswerInvalidResponse`, `csms.WithAnswerInvalidResponses` / `cp.WithAnswerInvalidResponses` (in the compat presets: an invalid CALLRESULT is answered with a CALLERROR, as ocpp-go).
+- `schema.LenientOptions.OCPPGo`, `csms.WithOCPPGoValidation()` / `cp.WithOCPPGoValidation()`, `csms.WithKeepAcceptingAfterShutdown()`.
 - `dispatcher.Config.AbortOnReadIdle`, `csms.WithAbruptIdleClose()` / `WithGracefulIdleClose()`.
 
 - `csms.DuplicatePolicyRejectNewAfterUpgrade`: first connection wins and the

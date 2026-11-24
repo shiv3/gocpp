@@ -115,7 +115,7 @@ func NewServer(opts ...Option) *Server {
 				if !ok {
 					return payload, nil, nil
 				}
-				return v.ValidateLenientWith(payload, schema.LenientOptions{TimeLocation: cfg.lenientTimeLocation})
+				return v.ValidateLenientWith(payload, schema.LenientOptions{TimeLocation: cfg.lenientTimeLocation, OCPPGo: cfg.ocppGoValidation})
 			}
 		} else {
 			cfg.dispatcher.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {
@@ -843,7 +843,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.waitSplit()
 		return err
 	}
-	s.stopping.Store(true)
+	keep := s.cfg.keepAcceptingAfterShutdown
+	if !keep {
+		s.stopping.Store(true)
+	}
 	s.mu.RLock()
 	conns := make([]*Conn, 0, len(s.conns))
 	for _, c := range s.conns {
@@ -861,14 +864,26 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	for {
 		s.mu.RLock()
 		n := len(s.conns)
+		if keep { // only the connections that existed when Shutdown began
+			n = 0
+			for _, c := range conns {
+				if s.conns[c.ID()] == c {
+					n++
+				}
+			}
+		}
 		s.mu.RUnlock()
 		if n == 0 {
-			s.cancel()
+			if !keep {
+				s.cancel()
+			}
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			s.cancel()
+			if !keep {
+				s.cancel()
+			}
 			return ctx.Err()
 		case <-ticker.C:
 		}

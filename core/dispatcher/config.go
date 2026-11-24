@@ -107,6 +107,12 @@ type Config struct {
 	// as ocpp-go does, instead of the default close frame 1000. It needs a
 	// transport that implements transport.Aborter and has no effect otherwise.
 	AbortOnReadIdle bool
+	// AnswerInvalidResponse sends the peer a CALLERROR with the request's message
+	// id when its CALLRESULT fails validation (OCPP 1.6 / 2.0.1, which have no
+	// CALLRESULTERROR), as ocpp-go does. The code is chosen like that of an
+	// invalid request (ErrorCodeMapper applies). The call still fails locally at
+	// once. Off by default: the failure stays local.
+	AnswerInvalidResponse bool
 	// SerializeOutboundCalls allows at most one outstanding outbound CALL per
 	// connection, as OCPP 1.6J §4.1.1 and 2.0.1 Part 4 §4.1 require. It is on in
 	// DefaultConfig; turning it off is non-compliant and only meant for peers or

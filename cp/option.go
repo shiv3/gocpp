@@ -16,7 +16,9 @@ import (
 type clientConfig struct {
 	// lenientTimeLocation interprets zone-less date-times in lenient mode (nil = UTC).
 	lenientTimeLocation *time.Location
-	dispatcher          dispatcher.Config
+	// ocppGoValidation selects ocpp-go's validation policy within lenient mode.
+	ocppGoValidation bool
+	dispatcher       dispatcher.Config
 	// timeEncoding rewrites outbound date-times (zero = untouched).
 	timeEncoding         schema.TimeEncoding
 	subProtocols         []string
@@ -313,6 +315,21 @@ func WithOutboundValidation(on bool) Option {
 func WithLenientSchema() Option {
 	return optionFunc(func(c *clientConfig) {
 		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+		c.ocppGoValidation = false
+	})
+}
+
+// WithOCPPGoValidation validates inbound messages the way upstream ocpp-go
+// v0.19.0 effectively does, which is the validation of WithOCPPGoCompat: schema
+// violations reject the message (wrong types, enum values including their case,
+// out of range or over-long values, missing properties) except for what ocpp-go
+// accepts too: unknown properties, a null payload, a zone-less date-time and
+// structured JSON in a DataTransfer "data" property. WithLenientSchema, listed
+// afterwards, brings back gocpp's broader repairs. Needs WithSchemaRegistry.
+func WithOCPPGoValidation() Option {
+	return optionFunc(func(c *clientConfig) {
+		c.dispatcher.SchemaMode = dispatcher.SchemaModeLenient
+		c.ocppGoValidation = true
 	})
 }
 
@@ -323,6 +340,15 @@ func WithLenientSchema() Option {
 // panics are recovered. See observability.SlogFrameObserver.
 func WithFrameObserver(fn observability.FrameObserver) Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.FrameObserver = fn })
+}
+
+// WithAnswerInvalidResponses makes the client answer a CALLRESULT that fails
+// validation with a CALLERROR carrying the request's message id (OCPP 1.6 and
+// 2.0.1), as ocpp-go does; the caller's request still fails at once. Part of
+// WithOCPPGoCompat. Off by default: the failure stays local and the peer hears
+// nothing. WithAnswerInvalidResponses(false) turns it off again.
+func WithAnswerInvalidResponses(on bool) Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.AnswerInvalidResponse = on })
 }
 
 // WithLenientTimeLocation sets the location in which lenient mode interprets
@@ -363,7 +389,8 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 // upstream ocpp-go v0.19.0 where gocpp differs, for simulators and test rigs that
 // were written against it. It is shorthand for, in order:
 //
-//   - WithLenientSchema()
+//   - WithOCPPGoValidation(): ocpp-go's validation instead of WithLenientSchema()
+//   - WithAnswerInvalidResponses(true): an invalid CALLRESULT is answered with a CALLERROR
 //   - WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper())
 //   - WithMessageIDPolicy(dispatcher.MessageIDDrop)
 //   - WithTimeEncoding(UTC, whole seconds)
@@ -375,7 +402,8 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 func WithOCPPGoCompat() Option {
 	return optionFunc(func(c *clientConfig) {
 		for _, o := range []Option{
-			WithLenientSchema(),
+			WithOCPPGoValidation(),
+			WithAnswerInvalidResponses(true),
 			WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper()),
 			WithMessageIDPolicy(dispatcher.MessageIDDrop),
 			WithTimeEncoding(schema.TimeEncoding{UTC: true, Precision: schema.TimePrecisionSeconds}),
