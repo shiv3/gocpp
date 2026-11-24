@@ -45,7 +45,7 @@ public API of ocpp-go v0.19.0 (checked with `apidiff` in CI) and runs ocpp-go's 
 test suites on gocpp. Add one `replace` line to your `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2
 ```
 
 Then `go mod tidy` and build as before. What changes at runtime (server side):

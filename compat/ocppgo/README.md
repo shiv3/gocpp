@@ -5,7 +5,7 @@
 gocpp runtime. An application switches to it with one line in its `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2
 ```
 
 See `MAINTAINING.md` for CI checks, the upstream pin and releasing, and `ROLLOUT.md` for a staged rollout.

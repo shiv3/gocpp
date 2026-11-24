@@ -27,7 +27,7 @@ DOCS = REPO + "/blob/main/docs/"
 LT = REPO + "/blob/test/loadtest-4k/interop/"
 PKG = "https://pkg.go.dev/github.com/shiv3/gocpp"
 COMPAT = REPO + "/blob/main/compat/"
-REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.1"
+REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2"
 
 
 def esc(s):
@@ -531,7 +531,7 @@ def build():
 <h3>One line in <code>go.mod</code></h3>
 <p>If your code compiles against ocpp-go v0.19.0, add this line to <code>go.mod</code>, then run <code>go mod tidy</code> and build as before. The import paths in your code stay <code>github.com/lorenzodonini/ocpp-go/...</code>.</p>
 """ + codeline("go.mod, for ocpp-go v0.19.0", REPLACE_019) + """
-<p class="src">Module <a href="%(c)socppgo/README.md">compat/ocppgo</a>, tag <code>v0.19.0-gocpp.1</code>, built on gocpp v0.3.2. <code>go mod tidy</code> adds gocpp and may raise some <code>golang.org/x</code> versions; the minimum Go version is the module's.</p>
+<p class="src">Module <a href="%(c)socppgo/README.md">compat/ocppgo</a>, tag <code>v0.19.0-gocpp.2</code>, built on gocpp v0.3.3. <code>go mod tidy</code> adds gocpp and may raise some <code>golang.org/x</code> versions; the minimum Go version is the module's.</p>
 <div class="grid2">
 <div class="card"><h4>What changes (server side)</h4><ul>
 <li>Each connection is served by gocpp's per-connection dispatcher. There is no dispatcher goroutine or lock shared by all charge points, so a stalled or silent charger does not hold up the others.</li>
