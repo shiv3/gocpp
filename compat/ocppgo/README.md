@@ -111,6 +111,14 @@ constraint). Leniency covers requests received and answers received by the serve
   a dropped (1006) idle connection. gocpp's safer variants are options
   (`compat.SetMaxMessageSize`, `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)`,
   `compat.SetIdleClose(srv, compat.IdleCloseFrame)`); see "Operating a server".
+- Idle timeout: like ocpp-go's server, this one never pings. A connection that has
+  received no frame (message, ping or pong) for `ws.ServerTimeoutConfig.PingWait`
+  (60 s by default) is dropped. A charger that neither pings nor sends anything for
+  that long, for example one with a Heartbeat interval above 60 s and no WebSocket
+  ping, reconnects every minute; at 80,000 such chargers that is about 1,250
+  reconnects per second, several times the CPU and the allocation rate of the same
+  fleet that pings (ocpp-go's own client pings every 54 s). Raise `PingWait`
+  (`srv.SetTimeoutConfig`) to match the longest silence your chargers keep.
 - Upgrades arriving while `Stop` runs get HTTP 503; ocpp-go closes its listener, so they are refused at TCP level (a request already accepted is the only difference).
 - ocpp-go's package level state (`ocppj.FormationViolation`, loggers, ...) is
   unchanged, including its data races when several endpoints start at once.
