@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `cp.OnAny`: a catch-all handler for CSMS-to-charge-point CALLs with the raw payload, the counterpart of `csms.OnAny`, for simulators and interoperability harnesses.
 - `interop/loadtest` and `interop/parity`: the large-fleet load and soak harness (separate Go modules, not part of the root module) and the three parity CSMS binaries it drives (gocpp, the `compat/ocppgo` drop-in and upstream ocpp-go v0.19.0). See `interop/loadtest/README.md`.
 - `cmd/gocpp-csms`: a standalone test CSMS for OCPP 1.6, 2.0.1 and 2.1 in the root
   module (`go install github.com/shiv3/gocpp/cmd/gocpp-csms@latest`), ported from the
