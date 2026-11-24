@@ -26,8 +26,10 @@ type admissionState struct {
 	cfg       atomic.Pointer[compatrt.Admission]
 	bucket    atomic.Pointer[tokenBucket]
 	softMax   atomic.Int64
-	firstWins atomic.Bool // duplicate id: keep the old connection, close the new one (1008)
-	reserved  int         // upgrades admitted under MaxConnections, not yet registered; guarded by Server.connMutex
+	firstWins atomic.Bool  // duplicate id: keep the old connection, close the new one (1008)
+	idleFrame atomic.Bool  // idle connections get a close frame (1000) instead of being dropped
+	maxMsg    atomic.Int64 // inbound message size limit, 0 = none
+	reserved  int          // upgrades admitted under MaxConnections, not yet registered; guarded by Server.connMutex
 
 	draining   atomic.Bool
 	retryAfter atomic.Int64 // ns
@@ -55,6 +57,10 @@ func (n native) SetAdmission(a compatrt.Admission) {
 }
 
 func (n native) SetFirstWins(on bool) { n.s.adm.firstWins.Store(on) }
+
+func (n native) SetIdleCloseFrame(on bool) { n.s.adm.idleFrame.Store(on) }
+
+func (n native) SetMaxMessageSize(v int64) { n.s.adm.maxMsg.Store(max(v, 0)) }
 
 func (n native) SetSoftMax(v int) { n.s.adm.softMax.Store(int64(v)) }
 

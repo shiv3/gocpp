@@ -154,7 +154,7 @@ func WithMaxMessageSize(n int64) Option {
 }
 
 // WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
-// as upstream ocpp-go v0.19.0 has none. Not part of WithOCPPGoCompat and not
+// as upstream ocpp-go v0.19.0 has none. Part of WithOCPPGoCompat and not
 // recommended on an internet-facing endpoint: a peer can then make this process
 // buffer a message of any size. Prefer a larger WithMaxMessageSize.
 func WithUnlimitedMessageSize() Option {
@@ -367,8 +367,9 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 //   - WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper())
 //   - WithMessageIDPolicy(dispatcher.MessageIDDrop)
 //   - WithTimeEncoding(UTC, whole seconds)
+//   - WithUnlimitedMessageSize(): ocpp-go reads without a size limit
 //
-// The WebSocket keepalive is not changed: ocpp-go's client pings every 54s and
+// WithMaxMessageSize(n) puts a limit back. The WebSocket keepalive is not changed: ocpp-go's client pings every 54s and
 // waits 60s, the same as gocpp's defaults. Options listed after it win. The
 // lenient schema mode and the time encoding need WithSchemaRegistry.
 func WithOCPPGoCompat() Option {
@@ -378,6 +379,7 @@ func WithOCPPGoCompat() Option {
 			WithErrorCodeMapper(dispatcher.OCPPGoErrorCodeMapper()),
 			WithMessageIDPolicy(dispatcher.MessageIDDrop),
 			WithTimeEncoding(schema.TimeEncoding{UTC: true, Precision: schema.TimePrecisionSeconds}),
+			WithUnlimitedMessageSize(),
 		} {
 			o.apply(c)
 		}

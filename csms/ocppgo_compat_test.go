@@ -291,3 +291,83 @@ func TestMaxMessageSizeUnlimited(t *testing.T) {
 	require.Equal(t, "closed:StatusMessageTooBig", run(t, csms.WithMaxMessageSize(0)))
 	require.Equal(t, `[3,"big",{"status":"Accepted"}]`, run(t, csms.WithUnlimitedMessageSize()))
 }
+
+// The preset reproduces ocpp-go's first-wins duplicate handling, unlimited message
+// size and abrupt idle close; options after it put gocpp's behaviour back.
+func TestOCPPGoCompat_ConnectionDefaults(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	dial := func(url string) *websocket.Conn {
+		c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = c.CloseNow() })
+		return c
+	}
+	start := func(opts ...csms.Option) (string, func()) {
+		srv := csms.NewServer(append([]csms.Option{csms.WithSubProtocols("ocpp1.6"), csms.WithOCPPGoCompat()}, opts...)...)
+		ts := httptest.NewServer(srv.Handler())
+		return "ws" + ts.URL[len("http"):] + "/ocpp/dup", ts.Close
+	}
+	// duplicate: first wins in the preset, last wins when put back.
+	for _, tc := range []struct {
+		name  string
+		opt   csms.Option
+		want  websocket.StatusCode // close code of the connection that loses
+		loser int                  // 0 = first, 1 = second
+	}{
+		{"preset", nil, websocket.StatusPolicyViolation, 1},
+		{"put back", csms.WithDuplicatePolicy(csms.DuplicatePolicyCloseExisting), websocket.StatusPolicyViolation, 0},
+	} {
+		t.Run("duplicate "+tc.name, func(t *testing.T) {
+			var opts []csms.Option
+			if tc.opt != nil {
+				opts = append(opts, tc.opt)
+			}
+			url, closeTS := start(opts...)
+			defer closeTS()
+			a := dial(url)
+			time.Sleep(100 * time.Millisecond)
+			b := dial(url)
+			c := []*websocket.Conn{a, b}[tc.loser]
+			_, _, err := c.Read(ctx)
+			require.Equal(t, tc.want, websocket.CloseStatus(err))
+		})
+	}
+	// idle: the preset drops the connection, GracefulIdleClose sends 1000.
+	for _, tc := range []struct {
+		name string
+		opt  csms.Option
+		want websocket.StatusCode
+	}{
+		{"preset", nil, -1},
+		{"graceful", csms.WithGracefulIdleClose(), websocket.StatusNormalClosure},
+	} {
+		t.Run("idle "+tc.name, func(t *testing.T) {
+			opts := []csms.Option{csms.WithWebSocketReadTimeout(300 * time.Millisecond)}
+			if tc.opt != nil {
+				opts = append(opts, tc.opt)
+			}
+			url, closeTS := start(opts...)
+			defer closeTS()
+			a := dial(url)
+			_, _, err := a.Read(ctx)
+			require.Equal(t, tc.want, websocket.CloseStatus(err), "%v", err)
+		})
+	}
+	// size: unlimited in the preset, limit when put back.
+	big := `[2,"big","DataTransfer",{"vendorId":"v","data":"` + strings.Repeat("a", 1<<20+100) + `"}]`
+	run := func(opt csms.Option) string {
+		rig := newRigFor(t, "ocpp1.6", reg16(t), csms.WithOCPPGoCompat(), opt)
+		require.NoError(t, csms.On(rig.srv, profiles.DataTransfer, func(context.Context, *csms.Conn, messages.DataTransferRequest) (messages.DataTransferResponse, error) {
+			return messages.DataTransferResponse{Status: "Accepted"}, nil
+		}))
+		require.NoError(t, rig.ws.Write(rig.ctx, websocket.MessageText, []byte(big)))
+		_, data, err := rig.ws.Read(rig.ctx)
+		if err != nil {
+			return "closed:" + websocket.CloseStatus(err).String()
+		}
+		return string(data)
+	}
+	require.Equal(t, `[3,"big",{"status":"Accepted"}]`, run(csms.WithWebSocketReadTimeout(60*time.Second)))
+	require.Equal(t, "closed:StatusMessageTooBig", run(csms.WithMaxMessageSize(1<<20)))
+}

@@ -107,7 +107,7 @@ func (n native) SetRuntime(rt compatrt.Runtime) {
 
 func (n native) Settings() compatrt.ServerSettings {
 	c := n.s.timeoutConfig
-	return compatrt.ServerSettings{WriteWait: c.WriteWait, PingWait: c.PingWait, MaxMessageSize: serverMaxMessageSize(c)}
+	return compatrt.ServerSettings{WriteWait: c.WriteWait, PingWait: c.PingWait, MaxMessageSize: n.s.adm.maxMsg.Load(), IdleCloseFrame: n.s.adm.idleFrame.Load()}
 }
 
 func newServer() *Server {
@@ -117,6 +117,7 @@ func newServer() *Server {
 		httpHandler:   mux.NewRouter(),
 		stopped:       make(chan struct{}),
 	}
+	s.adm.firstWins.Store(true) // ocpp-go v0.19.0's duplicate id handling is the default
 	compatrt.Set(s, compatrt.KindNative, native{s})
 	return s
 }
@@ -511,7 +512,7 @@ out:
 		server.error(fmt.Errorf("upgrade failed: %w", err))
 		return
 	}
-	limit := serverMaxMessageSize(server.timeoutConfig)
+	limit := server.adm.maxMsg.Load()
 	if limit <= 0 {
 		limit = math.MaxInt64 >> 1
 	}
@@ -754,7 +755,3 @@ func (sc *serverConn) finish(ws *WebSocket) {
 		}
 	})
 }
-
-// serverMaxMessageSize is the inbound message size limit of a ServerTimeoutConfig.
-// ocpp-go v0.19 has no such setting (as gorilla/websocket, it reads without a limit).
-func serverMaxMessageSize(ServerTimeoutConfig) int64 { return 0 }

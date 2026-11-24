@@ -99,6 +99,7 @@ func readyStatus(t *testing.T, c *central) int {
 func TestAdmissionMaxConnectionsAndSoftCap(t *testing.T) {
 	m := newRecMetrics()
 	c, srv := startOps(t, compat.Admission{MaxConnections: 2, SoftMaxConnections: 1}, m)
+	compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins) // the replacement below needs it
 	a, _, err := dialCP(c, "A")
 	if err != nil {
 		t.Fatal(err)
@@ -269,9 +270,9 @@ func TestDrainAndMetrics(t *testing.T) {
 	again.Close()
 }
 
-// A second connection for a connected id: last wins by default (the old one is
-// closed with 1008); with compat.DuplicateFirstWins, as ocpp-go v0.19.0, the old
-// one stays and the new one is closed with 1008 after the upgrade.
+// A second connection for a connected id: first wins by default, as ocpp-go
+// v0.19.0 (the old one stays and the new one is closed with 1008 after the
+// upgrade); with compat.DuplicateLastWins the old one is closed with 1008.
 func TestDuplicatePolicy(t *testing.T) {
 	closeCode := func(t *testing.T, c *websocket.Conn) int {
 		t.Helper()
@@ -290,8 +291,11 @@ func TestDuplicatePolicy(t *testing.T) {
 		_, closed := err.(*websocket.CloseError)
 		return !closed
 	}
-	t.Run("last wins by default", func(t *testing.T) {
-		c, _ := startOps(t, compat.Admission{}, nil)
+	t.Run("last wins when asked", func(t *testing.T) {
+		c, srv := startOps(t, compat.Admission{}, nil)
+		if !compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins) {
+			t.Fatal("SetDuplicatePolicy failed")
+		}
 		first, _, err := dialCP(c, "dup")
 		if err != nil {
 			t.Fatal(err)
@@ -309,11 +313,8 @@ func TestDuplicatePolicy(t *testing.T) {
 			t.Fatal("new connection was closed")
 		}
 	})
-	t.Run("first wins when asked", func(t *testing.T) {
-		c, srv := startOps(t, compat.Admission{}, nil)
-		if !compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins) {
-			t.Fatal("SetDuplicatePolicy failed")
-		}
+	t.Run("first wins by default", func(t *testing.T) {
+		c, _ := startOps(t, compat.Admission{}, nil)
 		first, _, err := dialCP(c, "dup")
 		if err != nil {
 			t.Fatal(err)

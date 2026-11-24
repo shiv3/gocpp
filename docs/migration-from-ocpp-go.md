@@ -46,6 +46,9 @@ Each one works on its own.
 | `WithTimeEncoding(schema.TimeEncoding{UTC: true, Precision: schema.TimePrecisionSeconds})` | UTC, whole seconds | row 13 |
 | `WithWebSocketPingInterval(0)` | no server pings | row 14 |
 | `WithWebSocketReadTimeout(60 * time.Second)` | 60 s idle close | row 14 |
+| `WithAbruptIdleClose()` | idle connection dropped without a close frame | row 14 |
+| `WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade)` | first connection wins | row 15 |
+| `WithUnlimitedMessageSize()` | no inbound size limit | row 16 |
 
 ## Differences
 
@@ -70,22 +73,26 @@ row by row except where stated.
 | 11b | CALL with 3 or 5+ elements, or a non-string action | FormationViolation (id echoed) | FormationViolation (id echoed) | FormationViolation (id echoed) | OCPP-J 1.6 §4.2.3 |
 | 12 | Message id empty or longer than 36 characters | strict: over-long id answered with FormationViolation (id echoed), empty id dropped; lenient/tolerant: accepted and logged | dropped silently | dropped silently | OCPP-J: `messageId` is at most 36 characters |
 | 13 | Outbound date-time | as `encoding/json` writes `time.Time`: RFC 3339, original offset, fractional seconds when present | UTC (`Z`), whole seconds | UTC, whole seconds (`time.RFC3339`) | RFC 3339 |
-| 14 | Idle connection | server pings every 54 s (the charger's pong keeps the link alive); closes after 60 s with no frame, ping or pong | no server pings; closes after 60 s without any inbound frame, so the charger must send traffic or pings | no server pings; read deadline 60 s, reset by any frame or ping | RFC 6455 §5.5 allows either side to ping |
-| 15 | Second connection with the id of a connected charger | last wins: the old socket is closed (1008), the new one is served | same (**not** changed by the preset; opt in with `DuplicatePolicyRejectNewAfterUpgrade`) | first wins: the new socket is upgraded, then closed with 1008 "a connection with this ID already exists" | OCPP-J 1.6 §3.1 is silent; a charger that reconnects after a half-open drop is locked out under first-wins |
-| 16 | Inbound frame larger than 1 MiB | connection closed with 1009 | same (**not** changed by the preset; opt in with `WithUnlimitedMessageSize()`, or raise `WithMaxMessageSize`) | no limit | unspecified; an unlimited read lets any peer exhaust memory |
+| 14 | Idle connection | server pings every 54 s (the charger's pong keeps the link alive); closes after 60 s with no frame, ping or pong, with a close frame (1000) | no server pings; closes after 60 s without any inbound frame, dropping the TCP connection without a close frame (charger sees 1006); `WithGracefulIdleClose()` sends 1000 | no server pings; read deadline 60 s, reset by any frame or ping; the connection is dropped (1006) | RFC 6455 §5.5 allows either side to ping |
+| 15 | Second connection with the id of a connected charger | last wins: the old socket is closed (1008), the new one is served | first wins: the new socket is upgraded, then closed with 1008 "a connection with this ID already exists"; `WithDuplicatePolicy(DuplicatePolicyCloseExisting)` after the preset puts last wins back | first wins: the new socket is upgraded, then closed with 1008 "a connection with this ID already exists" | OCPP-J 1.6 §3.1 is silent; a charger that reconnects after a half-open drop is locked out under first-wins |
+| 16 | Inbound frame larger than 1 MiB | connection closed with 1009 | no limit; `WithMaxMessageSize(n)` after the preset sets one | no limit | unspecified; an unlimited read lets any peer exhaust memory |
 | 17 | Application handler panics | recovered, `InternalError`, connection and process survive | same | process crashes | |
 | 18 | Upgrade after `Shutdown` | HTTP 503 | same | accepted | |
 
-## What the preset deliberately leaves out
+## Risky parts of the preset, and how to put gocpp's behaviour back
 
-Reproducing these would be harmful or a known bug of ocpp-go, so they are
-explicit options, off in the default and in the preset (rows 15 and 16):
+The preset reproduces ocpp-go's charger-visible behaviour, including three
+choices that are less safe than gocpp's defaults (rows 14 to 16). Each can be
+reverted by an option listed after `WithOCPPGoCompat()`:
 
-| Option | Reproduces | Why it is not in the preset |
+| Preset behaviour | Risk | Put gocpp's behaviour back |
 |---|---|---|
-| `WithDuplicatePolicy(csms.DuplicatePolicyRejectNewAfterUpgrade)` | first connection wins; the newcomer is upgraded and closed with 1008 | a charger that lost its connection without a FIN is refused until the server notices (up to the read timeout) and, with ocpp-go's own client, keeps retrying; `DuplicatePolicyRejectNew` is the same policy with an HTTP 409 instead of an upgrade |
-| `WithUnlimitedMessageSize()` (`cp.` too) | no inbound size limit | an unauthenticated peer can make the process buffer any amount of memory; prefer a bigger `WithMaxMessageSize` |
-| (no option) | a panicking handler kills the process; upgrades accepted while shutting down | known defects, kept fixed |
+| first connection wins (`DuplicatePolicyRejectNewAfterUpgrade`) | a charger that lost its connection without a FIN is refused until the server notices (up to the read timeout) and, with ocpp-go's own client, keeps retrying | `WithDuplicatePolicy(csms.DuplicatePolicyCloseExisting)`; `DuplicatePolicyRejectNew` is first-wins with an HTTP 409 instead of an upgrade |
+| no inbound size limit (`WithUnlimitedMessageSize()`, `cp.` too) | an unauthenticated peer can make the process buffer any amount of memory | `WithMaxMessageSize(n)` (1 MiB is gocpp's default) |
+| idle connection dropped without a close frame | the charger cannot tell an idle close from a network failure | `WithGracefulIdleClose()` |
+
+Not reproduced, on purpose: a panicking handler kills the ocpp-go process;
+gocpp contains it (row 17).
 
 Replies that stay different on purpose, with or without the preset:
 
@@ -103,8 +110,9 @@ Replies that stay different on purpose, with or without the preset:
 | `WithErrorCodeMapper(func(dispatcher.ErrorContext) (wireCode string, reply bool))` | Changes the code, or silences the reply, of errors gocpp generates itself (unknown action, schema rejection, undecodable payload, malformed frame, unsupported message type, bad message id). Never touches an error a handler returns. The returned code is sent exactly as given. `dispatcher.OCPPGoErrorCodeMapper()` implements rows 6-11b. |
 | `WithMessageIDPolicy(p)` | `MessageIDAuto` (default: reject when strict, accept and log otherwise), `MessageIDAccept`, `MessageIDReject`, `MessageIDDrop`. |
 | `WithTimeEncoding(schema.TimeEncoding{UTC, Precision})` | Rewrites every `"format": "date-time"` field of every outbound CALL, CALLRESULT and SEND. `Precision` is `TimePrecisionAuto` (default), `Seconds`, `Millis`, `Micros` or `Nanos`; fixed width, fractions truncated, never rounded. Works through the schema registry (`WithSchemaRegistry`), on 1.6, 2.0.1 and 2.1, with no global state. |
-| `WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade)` | New. First connection wins, the newcomer is closed with 1008 after the upgrade (ocpp-go v0.19.0). Not in the preset. |
-| `WithUnlimitedMessageSize()` | New (server and client). No inbound size limit (ocpp-go v0.19.0). Not in the preset. |
+| `WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade)` | First connection wins, the newcomer is closed with 1008 after the upgrade (ocpp-go v0.19.0). In the server preset. |
+| `WithUnlimitedMessageSize()` | Server and client. No inbound size limit (ocpp-go v0.19.0). In both presets. |
+| `WithAbruptIdleClose()` / `WithGracefulIdleClose()` | Server. How the read idle timeout ends a connection: TCP dropped (ocpp-go, close code 1006, in the preset) or close frame 1000 (default). |
 | `WithWebSocketPingInterval` / `WithWebSocketPongWait` / `WithWebSocketReadTimeout` | Existing keepalive knobs; `0` disables pings or the idle check. |
 
 ## Verification
@@ -121,7 +129,10 @@ What remains different with the preset is deliberate:
 - a handler that echoes structured DataTransfer `data` sends it as a JSON string
   (the 1.6 type), ocpp-go as an object;
 - the timestamp a handler records keeps the offset and fraction the charger sent;
-- the panic, shutdown and idle-close rows (17, 18, 14): gocpp closes an idle
-  connection with a normal close frame (1000), ocpp-go drops the TCP connection
-  (1006);
-- duplicate id and frame size (15, 16), unless opted in.
+- the panic row (17): a handler panic is contained;
+- row 18: after `Shutdown` / `Close` gocpp answers upgrades with 503. ocpp-go
+  gets the same effect by closing its listener (the embedder's job when it
+  mounts `csms.Handler`); only a request already past `accept` differs.
+
+Idle close, duplicate id and frame size (rows 14 to 16) are the same as ocpp-go
+in the preset.

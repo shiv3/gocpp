@@ -102,6 +102,11 @@ type Config struct {
 	// ReadTimeout cancels the connection if no inbound frame (data, ping, or
 	// pong) arrives within this duration. 0 disables the read idle watchdog.
 	ReadTimeout time.Duration
+	// AbortOnReadIdle makes a connection closed by the read idle watchdog drop
+	// the TCP connection without a close frame (the peer sees close code 1006),
+	// as ocpp-go does, instead of the default close frame 1000. It needs a
+	// transport that implements transport.Aborter and has no effect otherwise.
+	AbortOnReadIdle bool
 	// SerializeOutboundCalls allows at most one outstanding outbound CALL per
 	// connection, as OCPP 1.6J §4.1.1 and 2.0.1 Part 4 §4.1 require. It is on in
 	// DefaultConfig; turning it off is non-compliant and only meant for peers or

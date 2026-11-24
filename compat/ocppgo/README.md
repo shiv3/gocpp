@@ -54,7 +54,9 @@ ocpp-go). All of them need the gocpp runtime and the module's `ws.Server`.
 | Metrics (connections, calls per action and direction, pending calls; with `observability.SessionMetrics` also upgrade results and close code/cause), OpenTelemetry tracing, raw frame observer | `compat.SetObservability(endpoint, metrics, tracerProvider, frameObserver)` before `Start`; the Prometheus and OpenTelemetry metrics of gocpp (`core/observability/metrics/...`) fit |
 | Call timeout without injecting a dispatcher | `compat.SetCallTimeout` |
 | Accept the validation quirks of real chargers (empty vendor, long configuration values, empty sampledValue, 1.6 error spelling) | `compat.SetValidationLeniency`, `compat.SetValidationErrorFilter`, see below |
-| Duplicate charge point id: last wins (default) or first wins as upstream | `compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins)` |
+| Duplicate charge point id: first wins as upstream (default) or last wins | `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)` |
+| Idle connection: dropped without a close frame as upstream (default) or closed with a frame (1000) | `compat.SetIdleClose(srv, compat.IdleCloseFrame)` before `Start` |
+| Inbound message size: no limit as upstream (default) or a limit (close code 1009) | `compat.SetMaxMessageSize(srv, n)` |
 
 `SetObservability` needs the `*ocppj.Server`: build it yourself
 (`ocppj.NewServer(srv, nil, nil, profiles...)`, then `ocpp16.NewCentralSystem(endpoint, srv)`).
@@ -105,14 +107,11 @@ constraint). Leniency covers requests received and answers received by the serve
 - `InvalidMessageHook` is called for every frame ocpp-go calls it for, including
   envelope errors (wrong array length, unknown message type), and the envelope
   error texts are ocpp-go's own.
-- There is no `ServerTimeoutConfig.MaxMessageSize`: the server reads without a size limit, as upstream v0.19 does.
-- A second connection for the id of a connected charge point takes the id over and the
-  old one is closed with 1008 (last wins); upstream v0.19.0 keeps the old one and closes
-  the new one with 1008 (first wins), which locks out a charge point that reconnects
-  after a half-open drop. `compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins)`
-  selects upstream's behaviour.
-- Idle connections are closed with a close frame (1000) on the gocpp runtime.
-- New upgrades are refused with HTTP 503 once `Stop` has begun.
+- Defaults follow ocpp-go v0.19.0: no inbound size limit, first-wins duplicate ids and
+  a dropped (1006) idle connection. gocpp's safer variants are options
+  (`compat.SetMaxMessageSize`, `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)`,
+  `compat.SetIdleClose(srv, compat.IdleCloseFrame)`); see "Operating a server".
+- Upgrades arriving while `Stop` runs get HTTP 503; ocpp-go closes its listener, so they are refused at TCP level (a request already accepted is the only difference).
 - ocpp-go's package level state (`ocppj.FormationViolation`, loggers, ...) is
   unchanged, including its data races when several endpoints start at once.
 

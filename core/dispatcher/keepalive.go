@@ -52,7 +52,7 @@ func (c *Conn) startReadWatchdog() {
 		}
 		idle := time.Since(c.monoBase) - time.Duration(c.recvMono.Load())
 		if idle >= rt {
-			c.cancel(fmt.Errorf("read idle timeout after %s", rt))
+			c.cancel(fmt.Errorf("%w after %s", errReadIdle, rt))
 			return
 		}
 		c.wdTimer.Reset(rt - idle)

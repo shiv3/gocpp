@@ -126,10 +126,10 @@ const (
 	// DuplicatePolicyRejectNew, the charger sees an open-then-closed socket rather
 	// than a refused upgrade (HTTP 409).
 	//
-	// Not part of WithOCPPGoCompat: a charger that reconnects after a half-open
-	// drop is refused for as long as the server has not noticed the old socket is
-	// dead (up to the read timeout), and keeps retrying. Choose it only to
-	// reproduce ocpp-go's behaviour for chargers tuned against it.
+	// Part of WithOCPPGoCompat. Be aware that a charger that reconnects after a
+	// half-open drop is refused for as long as the server has not noticed the old
+	// socket is dead (up to the read timeout), and keeps retrying; put
+	// DuplicatePolicyCloseExisting back after WithOCPPGoCompat to avoid that.
 	DuplicatePolicyRejectNewAfterUpgrade
 )
 
@@ -273,11 +273,26 @@ func WithMaxMessageSize(n int64) Option {
 }
 
 // WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
-// as upstream ocpp-go v0.19.0 has none. Not part of WithOCPPGoCompat and not
+// as upstream ocpp-go v0.19.0 has none. Part of WithOCPPGoCompat; not
 // recommended on an internet-facing endpoint: a peer can then make this process
-// buffer a message of any size. Prefer a larger WithMaxMessageSize.
+// buffer a message of any size. After WithOCPPGoCompat, WithMaxMessageSize(n)
+// puts a limit back.
 func WithUnlimitedMessageSize() Option {
 	return optionFunc(func(c *serverConfig) { c.dispatcher.MaxMessageSize = -1 })
+}
+
+// WithAbruptIdleClose makes a connection ended by the read idle timeout
+// (WithWebSocketReadTimeout) drop the TCP connection without a close frame, so
+// the charger sees close code 1006 as with ocpp-go. Part of WithOCPPGoCompat.
+// WithGracefulIdleClose, the default, sends a close frame with 1000 instead.
+func WithAbruptIdleClose() Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.AbortOnReadIdle = true })
+}
+
+// WithGracefulIdleClose closes an idle connection with a close frame (1000), the
+// default; it puts that back after WithOCPPGoCompat.
+func WithGracefulIdleClose() Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.AbortOnReadIdle = false })
 }
 
 // WithMaxConnections caps the number of simultaneously connected charge points
@@ -593,10 +608,15 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 //   - WithTimeEncoding(UTC, whole seconds)
 //   - WithWebSocketPingInterval(0): ocpp-go servers never ping
 //   - WithWebSocketReadTimeout(60s): ocpp-go's server ping wait
+//   - WithAbruptIdleClose(): an idle connection is dropped without a close frame
+//   - WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade): first wins
+//   - WithUnlimitedMessageSize(): no inbound size limit
 //
-// Not included, because reproducing them would be harmful: first-wins duplicate
-// ids (DuplicatePolicyRejectNewAfterUpgrade) and no inbound size limit
-// (WithUnlimitedMessageSize); add them explicitly if wanted.
+// The last two are risky on an exposed endpoint (a charger reconnecting after a
+// half-open drop is refused until the old socket times out; a peer can make the
+// process buffer any message size); put gocpp's behaviour back with
+// WithDuplicatePolicy(DuplicatePolicyCloseExisting) and WithMaxMessageSize(n).
+// Handler panics stay contained (InternalError) and are not reproduced.
 //
 // Options listed after it win, so any single behaviour can be put back, e.g.
 // csms.WithOCPPGoCompat(), csms.WithWebSocketPingInterval(54*time.Second). The
@@ -611,6 +631,9 @@ func WithOCPPGoCompat() Option {
 			WithTimeEncoding(schema.TimeEncoding{UTC: true, Precision: schema.TimePrecisionSeconds}),
 			WithWebSocketPingInterval(0),
 			WithWebSocketReadTimeout(60 * time.Second),
+			WithAbruptIdleClose(),
+			WithDuplicatePolicy(DuplicatePolicyRejectNewAfterUpgrade),
+			WithUnlimitedMessageSize(),
 		} {
 			o.apply(c)
 		}
