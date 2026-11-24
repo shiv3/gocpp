@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - CI job `test-32bit`: `go vet` and the test suite of the root module under `GOARCH=386`, and a `GOARCH=arm` build, so 32-bit overflows and 64-bit atomic alignment faults are caught.
+- Weekly `schema updates` workflow and `scripts/check-schema-updates.sh`: compares the vendored OCA schemas with the published ones (JSON-normalised) and, on a difference, fails and opens or updates an issue. It never commits. Needs the repository variables `V16_SCHEMA_URL`, `V201_SCHEMA_URL`, `V21_SCHEMA_URL`.
 
 - `cp.OnAny`: a catch-all handler for CSMS-to-charge-point CALLs with the raw payload, the counterpart of `csms.OnAny`, for simulators and interoperability harnesses.
 - Fuzz targets beyond the parser equivalence checks: `FuzzParseRoundTrip` (what `Parse` accepts survives encode and parse), `FuzzValidatorInvariants` (strict/lenient consistency and idempotence), `FuzzTypedDecode` (schema-valid payloads decode into the generated types and re-encode to schema-valid JSON) and `FuzzConnInbound` (arbitrary inbound frames never wedge a connection). A weekly `fuzz` workflow runs them; `make fuzz` runs them locally.
