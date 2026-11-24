@@ -94,9 +94,9 @@ func (c *Client) connect(ctx context.Context, reconnected, watch bool) error {
 			dconn.NoteActivity()
 		}
 	}
-	wsConn, _, err := websocket.Dial(ctx, c.url, opts)
+	wsConn, resp, err := websocket.Dial(ctx, c.url, opts)
 	if err != nil {
-		return err
+		return newHandshakeError(resp, err)
 	}
 	if wsConn.Subprotocol() == "" {
 		_ = wsConn.Close(websocket.StatusProtocolError, "no common subprotocol")

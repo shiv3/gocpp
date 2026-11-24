@@ -79,6 +79,23 @@ All notable changes to this project are documented here. The format is based on
   new optional `observability.RateLimitMetrics` (Prometheus
   `gocpp_inbound_rate_limited_total{version,outcome}`, OTel `gocpp.inbound_rate_limited`).
   Off by default.
+- `ocppj.ErrorCodes(v)` / `ocppj.ValidErrorCode(v, wire)`: the CALLERROR codes each OCPP
+  version defines (1.6 `FormationViolation` / `OccurenceConstraintViolation`; 2.x
+  `FormatViolation` / `OccurrenceConstraintViolation`, `MessageTypeNotSupported`,
+  `RpcFrameworkError`). Opt-in `csms.WithValidateErrorCodes()` / `cp.WithValidateErrorCodes()`
+  (`dispatcher.Config.ValidateErrorCodes`): a handler CALLERROR with a code the version does not
+  define goes out as `GenericError` (original code kept in the description); an undefined code
+  in a received CALLERROR is logged and delivered unchanged. Off by default.
+- `csms.WithMaxCPIDLength(n)`, `csms.WithCPIDPattern(re)` and `csms.IdentifierStringPattern`
+  (OCPP 2.x identifierString, up to 48 characters): opt-in limits on the charge point id; a
+  violating upgrade is refused with HTTP 400 before authentication. Default: any non-empty id
+  without "/".
+- `cp.HandshakeError` (`cp.AsHandshakeError`): `Connect` now returns it, wrapping the dial
+  error with the same message, when the CSMS answered the upgrade with an HTTP status
+  (`StatusCode`, `Header` such as Retry-After, `Temporary()`).
+- `transport.CloseError` and `transport.AsCloseError(err)`: read the WebSocket close code and
+  reason out of the error a connection ends with (for example in `WithOnDisconnect`), with
+  `Normal()` (1000, 1001, 1005). `dispatcher.CloseStatus` gains `CloseCode()`.
 
 ### Changed
 

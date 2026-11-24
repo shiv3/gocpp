@@ -369,6 +369,9 @@ type CloseStatus struct {
 	Reason string
 }
 
+// CloseCode returns the close code and reason (see transport.AsCloseError).
+func (e *CloseStatus) CloseCode() (transport.StatusCode, string) { return e.Code, e.Reason }
+
 func (e *CloseStatus) Error() string {
 	return fmt.Sprintf("ocpp: connection closed by the server (status %d %q)", int(e.Code), e.Reason)
 }
@@ -747,6 +750,10 @@ func (c *Conn) routeInbound(frame ocppj.Frame) bool {
 	case ocppj.CallResult:
 		c.pending.resolve(frame.MsgID, rawResult{payload: frame.Payload})
 	case ocppj.MessageTypeCallError:
+		if c.cfg.ValidateErrorCodes && !ocppj.ValidErrorCode(c.version, frame.ErrCode) {
+			c.cfg.Logger.WarnContext(c.ctx, "peer sent a CALLERROR code the OCPP version does not define",
+				"cp_id", c.id, "code", frame.ErrCode)
+		}
 		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, RawDetails: cloneRaw(frame.ErrData)}
 		c.pending.resolve(frame.MsgID, rawResult{err: ce})
 	case ocppj.MessageTypeCallResultError:

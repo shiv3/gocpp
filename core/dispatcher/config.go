@@ -252,6 +252,14 @@ type Config struct {
 	// InboundRateAction chooses between answering and closing; the default is
 	// RateLimitReject.
 	InboundRateAction RateLimitAction
+	// ValidateErrorCodes checks CALLERROR codes against the set the negotiated
+	// version defines (ocppj.ValidErrorCode). A CALLERROR this side would send for
+	// a handler (a code the handler chose, or a RawCallError wire code) that is
+	// not in the set goes out as GenericError instead, with the original code
+	// in the description's suffix; an inbound CALLERROR with a code outside the
+	// set is logged at warn level and delivered unchanged. Off by default: codes
+	// go out exactly as the handler returned them.
+	ValidateErrorCodes bool
 
 	// Signer, when non-nil, signs outbound CALL/SEND messages as OCPP 2.1 Signed
 	// Messages (Part 4 Ch 7).

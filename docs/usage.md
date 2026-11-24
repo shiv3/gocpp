@@ -234,6 +234,17 @@ v16client.NewCSMS(conn).GetConfigurationAsync(ctx, req, func(resp v16msg.GetConf
   `gocpp_inbound_rate_limited_total{version,outcome}`. Unlike a delaying limiter this never blocks
   the reader, so pings and responses keep flowing. A charger sends well under 1 message/s in
   steady state; `WithInboundRateLimit(20, 40)` is a generous protective ceiling.
+- `WithValidateErrorCodes()` (CSMS and CP, opt-in) keeps the CALLERROR codes on the wire inside
+  the set the negotiated version defines (`ocppj.ValidErrorCode`): an undefined code a handler
+  returns is sent as `GenericError`; an undefined code received is logged and delivered unchanged.
+- `csms.WithMaxCPIDLength(n)` and `csms.WithCPIDPattern(re)` (opt-in) refuse an upgrade with HTTP 400
+  when the charge point id is too long or does not match; `csms.IdentifierStringPattern` is the
+  OCPP 2.x identifierString (48 characters) for 2.x-only deployments. Origin checking is
+  `WithOriginPatterns` / `WithCheckOrigin`; permessage-deflate is `WithCompression` on both sides
+  (on by default, per message, `transport.CompressionDisabled` to turn off).
+- Errors: `cp.AsHandshakeError(err)` gives the HTTP status and headers when the CSMS refused the
+  upgrade (`Temporary()` tells retryable 429/5xx from 401/403/404); `transport.AsCloseError(err)` gives
+  the close code and reason of a finished connection (`Normal()`).
 - `csms.WithMaxConnections(n)` caps simultaneous charge points (0 = unlimited). Over the
   cap the upgrade is refused with HTTP 503 + `Retry-After` before the handshake. A charge
   point reconnecting under an id that is already connected replaces its old connection and
