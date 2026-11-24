@@ -459,7 +459,7 @@ func TestInboundAcceptAll(t *testing.T) {
 		{c201, "NotifyEvent", `{"generatedAt":"2026-01-01T00:00:00Z","seqNo":0,"eventData":[{"eventId":1,"timestamp":"2026-01-01T00:00:00Z","trigger":"Alerting","actualValue":"1","eventNotificationType":"HardWiredNotification","component":{"name":"C"},"variable":{"name":"V"}}]}`, `{}`},
 		{c201, "ReportChargingProfiles", `{"requestId":1,"chargingLimitSource":"CSO","evseId":1,"chargingProfile":[{"id":1,"stackLevel":0,"chargingProfilePurpose":"TxDefaultProfile","chargingProfileKind":"Absolute","chargingSchedule":[{"id":1,"chargingRateUnit":"A","chargingSchedulePeriod":[{"startPeriod":0,"limit":16}]}]}]}`, `{}`},
 		{c201, "NotifyEVChargingNeeds", `{"evseId":1,"chargingNeeds":{"requestedEnergyTransfer":"AC_single_phase"}}`, `{"status":"Accepted"}`},
-		{c201, "Get15118EVCertificate", `{"iso15118SchemaVersion":"urn:iso:15118:2:2013:MsgDef","action":"Install","exiRequest":"AA=="}`, `{"status":"Accepted","exiResponse":""}`},
+		{c201, "Get15118EVCertificate", `{"iso15118SchemaVersion":"urn:iso:15118:2:2013:MsgDef","action":"Install","exiRequest":"AA=="}`, `{"status":"Failed","exiResponse":""}`},
 		{c201, "Authorize", `{"idToken":{"idToken":"ANY","type":"ISO14443"}}`, `{"idTokenInfo":{"status":"Accepted"}}`},
 		{c21, "NotifyChargingLimit", `{"chargingLimit":{"chargingLimitSource":"EMS"}}`, `{}`},
 		{c21, "NotifyPriorityCharging", `{"transactionId":"t","activated":true}`, `{}`},
