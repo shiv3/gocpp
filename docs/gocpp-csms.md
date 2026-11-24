@@ -247,8 +247,8 @@ answer that accepts it; nothing is answered NotSupported:
 - Authorize: `Accepted` (`idTagInfo` in 1.6, `idTokenInfo` in 2.x).
 - DataTransfer, SignCertificate, GetCertificateStatus, NotifyEVChargingNeeds,
   NotifyEVChargingSchedule, RequestBatterySwap, PullDynamicScheduleUpdate:
-  `{"status":"Accepted"}`. Get15118EVCertificate: `Accepted` with an empty
-  `exiResponse`. VatNumberValidation (2.1): `Accepted`, echoing `vatNumber`.
+  `{"status":"Accepted"}`. Get15118EVCertificate: `Failed` (an EXI installation
+  response cannot be produced). VatNumberValidation (2.1): `Accepted`, echoing `vatNumber`.
   GetCertificateChainStatus (2.1): every requested certificate `Good`, next update in
   24 h.
 - Everything else (StatusNotification, MeterValues, firmware, diagnostics and log
@@ -304,6 +304,139 @@ SIGTERM or SIGINT starts a drain: new upgrades are refused with 503 and `Retry-A
 spread over `--drain-timeout`; then both listeners stop, stdout is flushed and the
 process exits 0.
 
+## Controller profile
+
+The controller profile lets serve mode drive a charge point the way a home or fleet
+energy-management controller does, over OCPP 1.6 and 2.0.1/2.1: it keeps a state model
+of every charge point and connector, configures the charge point after boot, sets
+charging limits and can start transactions. It is specified from the OCPP behaviour
+only and is opt-in: without any of the flags below, nothing is registered and the
+answers on the wire are those of plain serve mode. Any of `--controller`,
+`--controller-setup`, `--controller-watchdog`, `--controller-remote-start-idtag`,
+`--controller-boot-policy`, `--controller-faults` or `--controller-trigger-boot-after`
+enables the state model and the REST endpoints.
+
+### State model
+
+Fed by every handled CALL (the inbound observer), per charge point:
+
+- Boot data (vendor, model, serial number, firmware, reason, the answer status). A
+  BootNotification is a reboot: the running transactions end (`Reboot`) and the
+  connectors' status clocks restart.
+- Per connector (1.6 connector id, 2.x EVSE id; 0 = the charge point): status and
+  error code with their timestamp. A status older than the stored one is ignored; a
+  report without a timestamp counts as received now. `Available` clears a stale
+  transaction.
+- Last measurements per measurand and phase, scaled to the base unit (`kWh` -> `Wh`,
+  `kW` -> `W`, `mA` -> `A`; 2.x `unitOfMeasure.multiplier` applied). Values with an
+  older timestamp than the stored one are dropped.
+- The running transaction: from StartTransaction (1.6) or TransactionEvent (2.x);
+  recovered from the `transactionId` of 1.6 MeterValues when unknown; cleared by
+  StopTransaction, `Ended` and a reboot.
+- Last seen, capabilities learned by the setup (rate unit, maximum stack level, phase
+  switching, accepted measurands), the configuration read, the limits applied through
+  the helper and the setup report.
+
+| Endpoint | |
+| --- | --- |
+| `GET /chargepoints` | every charge point seen or connected |
+| `GET /chargepoints/{id}` | one charge point; 404 when unknown |
+
+### Setup after boot (`--controller-setup`)
+
+After an Accepted BootNotification (and once its answer was sent), in a background
+task; a failed step is recorded in the setup report (`setup` of the station) and does
+not stop the sequence.
+
+1.6: ChangeAvailability(0, Operative) (skip with `--controller-setup-skip-availability`);
+GetConfiguration for all keys, falling back to an explicit key list when that fails;
+capabilities from `ChargeProfileMaxStackLevel`,
+`ChargingScheduleAllowedChargingRateUnit` (`Power`/`W` only = watts, otherwise amps),
+`ConnectorSwitch3to1PhaseSupported` / `ACPhaseSwitchingSupported`,
+`SupportedFeatureProfiles`; measurand detection by ChangeConfiguration of
+`MeterValuesSampledData` with one candidate at a time (`--controller-measurands`, a
+comma separated list or `-name` to drop one from the default
+`Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,Current.Offered,Power.Offered,SoC`),
+the accepted ones cut to `MeterValuesSampledDataMaxLength` and set as one list (not
+when the key is read-only); `MeterValueSampleInterval` (`--controller-meter-interval`),
+`WebSocketPingInterval` (`--controller-ping-interval`, 0 = leave); TriggerMessage
+StatusNotification and MeterValues for every connector (`NumberOfConnectors`) unless
+the feature profiles lack RemoteTrigger.
+
+2.x: ChangeAvailability (whole station); GetVariables of the SampledDataCtrlr,
+OCPPCommCtrlr and SmartChargingCtrlr variables the helper needs (`RateUnit`,
+`ProfileStackLevel`, `ACPhaseSwitchingSupported`); measurand detection with
+SetVariables of `SampledDataCtrlr.TxUpdatedMeasurands`; `TxUpdatedInterval`,
+`OCPPCommCtrlr.WebSocketPingInterval`; TriggerMessage StatusNotification and
+MeterValues.
+
+`--controller-trigger-boot-after D` sends TriggerMessage(BootNotification) to a charge
+point that has not booted D after connecting. The meter watchdog
+(`--controller-watchdog N`) sends TriggerMessage(MeterValues) for a connector with a
+running transaction that sent no meter values for N meter intervals, then waits another
+N intervals.
+
+### Charging limits
+
+`POST /chargepoints/{id}/limit`
+
+```json
+{"connectorId": 1, "amps": 16, "phases": 3, "purpose": "default", "stackLevel": 2, "relative": false, "profileId": 1}
+```
+
+Exactly one of `amps` and `watts` (0 pauses charging). It becomes a single-period
+SetChargingProfile (period start 0), in the charge point's unit: a limit given in the
+other unit is converted with `--controller-nominal-voltage` (default 230) and `phases`
+(default 3; `phases` is also sent as `numberPhases`, which is how 1p/3p switching is
+done). Values are truncated to 0.1. `purpose`: `default` (TxDefaultProfile, the
+default), `tx` (TxProfile with the connector's running transaction; 409 without one)
+or `max` (ChargePointMaxProfile in 1.6, ChargingStationMaxProfile in 2.x). The
+profile is Absolute with a schedule starting one minute ago, or Relative with
+`relative`. `stackLevel` defaults to the charge point's maximum when known, else 0;
+the profile id to `--controller-profile-id` (default 1), so a new limit replaces the
+previous one. 1.6 sends `connectorId` + `csChargingProfiles`, 2.x `evseId` +
+`chargingProfile` (with `chargingSchedule` as an array). The answer is
+`{"ok":true,"result":{"limit":...,"request":...,"response":...}}`; a charge point
+answer other than `Accepted` gives `ok:false`.
+
+`DELETE /chargepoints/{id}/limit[?connectorId=&purpose=&stackLevel=]` sends
+ClearChargingProfile for those criteria (without any: the helper's profile id).
+`GET /chargepoints/{id}/schedule[?connectorId=&duration=60&unit=A|W]` sends
+GetCompositeSchedule and returns the charge point's answer.
+
+### Policies
+
+- Remote start (`--controller-remote-start-idtag TAG`): when a connector turns
+  `Preparing` (1.6) or `Occupied` (2.x) and has no transaction, send
+  RemoteStartTransaction / RequestStartTransaction with that id tag. Never stops a
+  transaction.
+- Boot policy (`--controller-boot-policy`): answer BootNotification `Pending` (interval
+  `--controller-boot-pending-interval`, default 30 s) for every charge point not in
+  `--controller-known-cps` (comma separated). Known ones get the normal answer.
+- Lenient parsing: `--lenient-empty-numbers`, `--lenient-missing-charging-rate-unit`,
+  `--lenient-vendor-measurands` and `--lenient-time-location ZONE` map to the library's
+  lenient options and switch the schema mode to lenient (they win over `--schema`);
+  `--compat-preset` applies the library's drop-in compatibility preset first.
+
+### Fault injection (`--controller-faults`)
+
+Faults are changes to the answers the CSMS gives to charge point CALLs, set at runtime:
+
+```sh
+curl -X PUT localhost:8081/faults -d '{"rules":[
+  {"action":"Heartbeat","kind":"latency","delay":"2s"},
+  {"action":"Authorize","cpId":"CP1","kind":"error","errorCode":"InternalError","description":"boom","count":3},
+  {"action":"DataTransfer","kind":"ignore"}]}'
+```
+
+`PUT` replaces all rules, `GET /faults` lists them, `DELETE /faults` removes them. A rule
+matches an `action` (empty or `*` = any) and optionally a `cpId`; the first match
+applies; `count` limits it to that many CALLs. Kinds: `latency` (answer after `delay`),
+`error` (CALLERROR with `errorCode`), `ignore` (never answered: the CALL is held until
+the connection ends, at most ten minutes; the state model does not see it). Duplicate
+responses are not supported: the library has no way to write a frame twice, and a
+`duplicate` rule is refused with 400.
+
 ## Architecture
 
 ```
@@ -335,6 +468,7 @@ without editing them, through these extension points:
   `serveExtensions`. Its flags are declared through the Binder (env defaults follow
   the same rule) and should default to "off".
 - **`server.Hooks`** (during `Setup`):
+  - `Inbound.Use(middleware)` wraps every answer (fault injection);
   - `Inbound.Override(version, action, responder)` replaces one answer
     (`Inbound.Default` gives the built-in one to wrap); `Inbound.Observe(fn)` sees every
     handled CALL with its answer.

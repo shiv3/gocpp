@@ -73,7 +73,13 @@ type Handler struct {
 	mu        sync.RWMutex
 	overrides map[string]Responder // version|action
 	observers []Observer
+	wrappers  []Middleware
 }
+
+// Middleware wraps the answer of every action (an override or the default):
+// it may delay, replace or fail the answer. Wrappers run in registration
+// order, the first registered outermost.
+type Middleware func(next Responder) Responder
 
 // New returns a Handler.
 func New(opts Options) *Handler {
@@ -94,6 +100,13 @@ func (h *Handler) Override(v ocppj.Version, action string, r Responder) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.overrides[string(v)+"|"+action] = r
+}
+
+// Use registers a Middleware around every answer.
+func (h *Handler) Use(m Middleware) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.wrappers = append(h.wrappers, m)
 }
 
 // Observe registers an observer.
@@ -138,17 +151,20 @@ func (h *Handler) Handle(ctx context.Context, call Call) (json.RawMessage, error
 	h.mu.RLock()
 	r := h.overrides[string(call.Version)+"|"+call.Action]
 	observers := h.observers
+	wrappers := h.wrappers
 	h.mu.RUnlock()
 
 	var (
 		resp json.RawMessage
 		err  error
 	)
-	if r != nil {
-		resp, err = r(ctx, call)
-	} else {
-		resp, err = h.Default(ctx, call)
+	if r == nil {
+		r = h.Default
 	}
+	for i := len(wrappers) - 1; i >= 0; i-- {
+		r = wrappers[i](r)
+	}
+	resp, err = r(ctx, call)
 	if call.Send {
 		resp = nil
 	}
@@ -173,7 +189,10 @@ func (h *Handler) Default(ctx context.Context, call Call) (json.RawMessage, erro
 		"NotifyEVChargingSchedule", "RequestBatterySwap", "PullDynamicScheduleUpdate":
 		return json.RawMessage(`{"status":"Accepted"}`), nil
 	case "Get15118EVCertificate":
-		return json.RawMessage(`{"status":"Accepted","exiResponse":""}`), nil
+		// No EXI certificate installation response can be produced here, so
+		// the request is answered as failed rather than accepted with an
+		// empty response.
+		return json.RawMessage(`{"status":"Failed","exiResponse":""}`), nil
 	case "Authorize":
 		if call.Version == ocppj.V16 {
 			return json.RawMessage(`{"idTagInfo":{"status":"Accepted"}}`), nil

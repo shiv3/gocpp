@@ -35,6 +35,20 @@ All notable changes to this project are documented here. The format is based on
   connected charge points. `--record` writes the legacy NDJSON frame lines on stdout.
   The binary is split into internal packages with documented extension points for
   later features (see "Architecture" in `docs/gocpp-csms.md`).
+- `gocpp-csms serve`: the opt-in controller profile (`--controller*` flags): a state
+  model of charge points and connectors (boot data, status and error code with timestamp
+  ordering, last measurements per measurand and phase, running transaction, reboot
+  handling) for OCPP 1.6 and 2.x on `GET /chargepoints[/{id}]`; a setup sequence after
+  an Accepted boot (availability, configuration read, measurand detection, intervals,
+  TriggerMessage) and a meter watchdog; `POST/DELETE /chargepoints/{id}/limit` and
+  `GET /chargepoints/{id}/schedule` for single-period charging profiles; a remote-start
+  policy, a boot policy, lenient-parsing toggles and runtime fault injection
+  (`PUT /faults`: latency, CALLERROR, ignore). See `docs/gocpp-csms.md`.
+
+### Changed
+
+- `gocpp-csms serve` answers Get15118EVCertificate with `Failed` instead of `Accepted`
+  with an empty `exiResponse`.
 
 ## [0.4.0] - 2026-11-25
 
