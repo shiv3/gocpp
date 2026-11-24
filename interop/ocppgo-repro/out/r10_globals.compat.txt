@@ -1,9 +1,9 @@
-$ ./run.sh r10 compat    (2026-11-24T09:31:40Z, go1.27.3 linux/amd64)
+$ ./run.sh r10 compat    (2026-11-24T15:31:23Z, go1.27.3 linux/amd64)
 library: gocpp drop-in (compat/ocppgo, same source, one replace line)
-two central systems in one process: A on :37163, B on :40803
+two central systems in one process: A on :40037, B on :40983
 1. A sends an invalid RemoteStartTransaction (empty idTag): Key: 'Call.Payload.IdTag' Error:Field validation for 'IdTag' failed on the 'required' tag
 2. operator of B calls ocppj.SetMessageValidation(false)  // meant for B's fleet
-   charge point of A received: [2,"2705953367","RemoteStartTransaction",{"idTag":""}]
+   charge point of A received: [2,"3773922134","RemoteStartTransaction",{"idTag":""}]
 3. A sends the same invalid request again: error = <nil>
 4. B's charge point sends BootNotification with an empty vendor (the quirk B wanted to tolerate); reply: [4,"b1","OccurrenceConstraintViolation","Field Call.Payload.ChargePointVendor required but not found for feature BootNotification",{}]
 
@@ -16,7 +16,5 @@ RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: REPRODUCE
 go test exit status: 0; data races reported: 0
 
 --- go test -race -run TestSecondServerSetupWhileFirstServes ---
-go test exit status: 1; data races reported: 1
-      1 github.com/lorenzodonini/ocpp-go/ocppj.SetLogger()
-      1 github.com/lorenzodonini/ocpp-go/ocppj.(*gocppRuntime).reply()
+go test exit status: 0; data races reported: 0
 exit status: 0

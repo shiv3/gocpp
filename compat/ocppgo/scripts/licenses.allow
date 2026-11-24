@@ -62,6 +62,7 @@ google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/rpc
 google.golang.org/grpc
 google.golang.org/protobuf
+gopkg.in/check.v1
 gopkg.in/go-playground/assert.v1
 gopkg.in/go-playground/validator.v9
 gopkg.in/yaml.v3

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lorenzodonini/ocpp-go/internal/synclog"
 	"github.com/lorenzodonini/ocpp-go/logging"
 )
 
@@ -48,8 +49,11 @@ const (
 	defaultRetryBackOffWaitMinimum = 10 * time.Second
 )
 
-// The internal verbose logger
-var log logging.Logger
+// The internal verbose logger. SetLogger may be called at any time.
+var (
+	logTarget                = synclog.New()
+	log       logging.Logger = logTarget
+)
 
 // Sets a custom Logger implementation, allowing the package to log events.
 // By default, a VoidLogger is used, so no logs will be sent to any output.
@@ -59,7 +63,7 @@ func SetLogger(logger logging.Logger) {
 	if logger == nil {
 		panic("cannot set a nil logger")
 	}
-	log = logger
+	logTarget.Set(logger)
 }
 
 // Config contains optional configuration parameters for a websocket server.
@@ -832,8 +836,4 @@ func (client *Client) Errors() <-chan error {
 		client.errC = make(chan error, 1)
 	}
 	return client.errC
-}
-
-func init() {
-	log = &logging.VoidLogger{}
 }
