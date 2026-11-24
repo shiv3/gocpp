@@ -298,6 +298,28 @@ func WithMaxBadFrames(n int, window time.Duration) Option {
 	})
 }
 
+// WithInboundRateLimit limits the CALLs and SENDs one peer may send on a
+// connection to perSecond, with a burst allowance (burst < 1 means
+// max(1, ceil(perSecond))). Over the limit the CALL is answered with a
+// GenericError CALLERROR "rate limit exceeded" and its handler does not run (a
+// SEND is dropped); see WithInboundRateLimitAction for closing instead.
+// Responses are never limited. perSecond <= 0, the default, is unlimited.
+// Refusals are counted by observability.RateLimitMetrics
+// (gocpp_inbound_rate_limited_total).
+func WithInboundRateLimit(perSecond float64, burst int) Option {
+	return optionFunc(func(c *serverConfig) {
+		c.dispatcher.InboundRate = perSecond
+		c.dispatcher.InboundBurst = burst
+	})
+}
+
+// WithInboundRateLimitAction chooses what happens over the WithInboundRateLimit:
+// dispatcher.RateLimitReject (default) answers the CALL with a CALLERROR,
+// dispatcher.RateLimitClose closes the connection with 1008 (policy violation).
+func WithInboundRateLimitAction(a dispatcher.RateLimitAction) Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.InboundRateAction = a })
+}
+
 // WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
 // as upstream ocpp-go v0.19.0 has none. Part of WithOCPPGoCompat; not
 // recommended on an internet-facing endpoint: a peer can then make this process

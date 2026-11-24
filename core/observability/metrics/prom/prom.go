@@ -25,6 +25,7 @@ type metrics struct {
 	tenantInfl  *prometheus.GaugeVec
 	edgeResp    *prometheus.CounterVec
 	badFrames   *prometheus.CounterVec
+	rateLimited *prometheus.CounterVec
 }
 
 // New creates a Prometheus-backed Metrics and registers collectors with reg.
@@ -46,8 +47,9 @@ func New(reg prometheus.Registerer) observability.Metrics {
 		tenantRej:   prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_tenant_rejected_total", Help: "upgrades and messages refused (kind sessions, messages or inflight) by a per-tenant limit"}, []string{"tenant", "kind"}),
 		edgeResp:    prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_edge_responses_total", Help: "CALLs answered at the gateway without a backend hop"}, []string{"version", "action"}),
 		badFrames:   prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_bad_frames_total", Help: "inbound frames that were malformed or rejected for their content, by reason"}, []string{"version", "reason"}),
+		rateLimited: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "gocpp_inbound_rate_limited_total", Help: "inbound CALLs and SENDs refused by the per-connection rate limit, by outcome"}, []string{"version", "outcome"}),
 	}
-	reg.MustRegister(m.badFrames, m.tenantInfl, m.tenantSess, m.tenantRej, m.edgeResp, m.connections, m.pending, m.calls, m.callDur, m.schemaFails, m.queueDepth, m.pingLatency, m.softViol, m.sessDur, m.closes, m.accepts)
+	reg.MustRegister(m.rateLimited, m.badFrames, m.tenantInfl, m.tenantSess, m.tenantRej, m.edgeResp, m.connections, m.pending, m.calls, m.callDur, m.schemaFails, m.queueDepth, m.pingLatency, m.softViol, m.sessDur, m.closes, m.accepts)
 	return m
 }
 
@@ -97,4 +99,8 @@ func (m *metrics) EdgeResponse(version, action string) {
 
 func (m *metrics) BadFrame(version, reason string) {
 	m.badFrames.WithLabelValues(version, reason).Inc()
+}
+
+func (m *metrics) InboundRateLimited(version, outcome string) {
+	m.rateLimited.WithLabelValues(version, outcome).Inc()
 }

@@ -79,3 +79,9 @@ func (b *metricsBridge) BadFrame(version, reason string) {
 		m.BadFrame(version, reason)
 	}
 }
+
+func (b *metricsBridge) InboundRateLimited(version, outcome string) {
+	if m, ok := b.m.(observability.RateLimitMetrics); ok {
+		m.InboundRateLimited(version, outcome)
+	}
+}

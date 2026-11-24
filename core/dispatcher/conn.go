@@ -80,8 +80,10 @@ type Conn struct {
 	badMu    sync.Mutex
 	badCount int
 	badStart time.Time
-	done     chan struct{}
-	wg       sync.WaitGroup
+
+	rate rateBucket
+	done chan struct{}
+	wg   sync.WaitGroup
 
 	// Transient background goroutines (async calls and their callbacks, the
 	// OCPP keepalive loop, ping callbacks). bgWG tracks them; bgClosed (under
@@ -751,6 +753,10 @@ func (c *Conn) routeInbound(frame ocppj.Frame) bool {
 		ce := &ocppj.CallError{Code: ocppj.ErrorCode(frame.ErrCode), Description: frame.ErrDesc, RawDetails: cloneRaw(frame.ErrData), IsResultError: true}
 		c.pending.resolve(frame.MsgID, rawResult{err: ce})
 	case ocppj.Call, ocppj.Send:
+		if c.cfg.InboundRate > 0 && !c.rate.allow(c.cfg.InboundRate, c.cfg.InboundBurst, time.Now()) {
+			c.inboundRateLimited(frame)
+			return true
+		}
 		if g := c.inboundGate; g != nil {
 			if ce := g(frame); ce != nil {
 				if frame.Type == ocppj.Call && frame.MsgID != "" {

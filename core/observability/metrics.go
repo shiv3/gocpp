@@ -93,3 +93,11 @@ type ConnectionMetrics interface {
 type BadFrameMetrics interface {
 	BadFrame(version, reason string)
 }
+
+// RateLimitMetrics is an optional extension of Metrics. A Metrics value that
+// also implements it is told about each inbound CALL or SEND refused by
+// dispatcher.Config.InboundRate; outcome is "rejected" (answered with a
+// CALLERROR, or dropped for a SEND) or "closed" (the connection was closed).
+type RateLimitMetrics interface {
+	InboundRateLimited(version, outcome string)
+}
