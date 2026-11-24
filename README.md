@@ -7,7 +7,8 @@ supporting **OCPP 1.6, 2.0.1, and 2.1** from a single module.
 
 ## Why gocpp
 
-A from-scratch alternative to `lorenzodonini/ocpp-go` with:
+A from-scratch alternative to `lorenzodonini/ocpp-go` (and a
+[drop-in replacement](#drop-in-replacement-for-ocpp-go) for it) with:
 
 - **All three versions** (1.6 / 2.0.1 / 2.1) generated from the official OCA JSON
   schemas — no hand-written, drift-prone message structs.
@@ -35,6 +36,34 @@ The gateway tools `gocpp-gateway` and `gocppctl` are attached as binaries to eac
 [release](https://github.com/shiv3/gocpp/releases); to build from source, clone the
 repository and run `go build` in `cmd/gocpp-gateway` or `cmd/gocppctl` (their
 `go.mod` files build against the checkout, so `go install ...@version` is not supported).
+
+## Drop-in replacement for ocpp-go
+
+Already on `lorenzodonini/ocpp-go`? You can move a server to the gocpp runtime
+**without changing application code**: the compatibility modules have exactly the
+public API of ocpp-go (checked with `apidiff` in CI) and run ocpp-go's own test
+suites on gocpp. Add one `replace` line to your `go.mod`:
+
+| You use | Add to `go.mod` |
+|---|---|
+| ocpp-go `v0.17.x` (incl. the `v0.17.2-fix.x` line) | `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.17.2-gocpp.1` |
+| ocpp-go `v0.19.0` | `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo-v019 v0.19.0-gocpp.1` |
+
+Then `go mod tidy` and build as before. What changes at runtime (server side):
+
+- one reader goroutine per connection and no shared dispatcher lock, so a stalled
+  or silent charger cannot freeze the others;
+- a panicking handler is answered with `InternalError` instead of crashing the process;
+- close codes are sent as close frames; outbound calls are ordered per charge point;
+- optional admission control, paced drain, metrics and tracing via the extra
+  `github.com/lorenzodonini/ocpp-go/compat` package.
+
+`OCPPGO_COMPAT_RUNTIME=legacy` switches back to ocpp-go's original code path without
+a rebuild. The client side stays ocpp-go's own implementation. Details, known
+differences and a staged rollout plan: [compat/ocppgo/README.md](compat/ocppgo/README.md),
+[compat/ocppgo/ROLLOUT.md](compat/ocppgo/ROLLOUT.md),
+[compat/ocppgo-v019/README.md](compat/ocppgo-v019/README.md). To migrate to the native
+gocpp API instead, see [docs/migration-from-ocpp-go.md](docs/migration-from-ocpp-go.md).
 
 ## Quick start
 
@@ -217,6 +246,8 @@ The `internal/conformance` suite ports lorenzodonini/ocpp-go's per-message test 
 
 - [docs/usage.md](docs/usage.md) — usage guide
 - [docs/architecture.md](docs/architecture.md) — design & concurrency model
+- [docs/migration-from-ocpp-go.md](docs/migration-from-ocpp-go.md) — moving from ocpp-go (native API or drop-in)
+- [compat/ocppgo/README.md](compat/ocppgo/README.md) — the ocpp-go drop-in module
 
 ## License
 
