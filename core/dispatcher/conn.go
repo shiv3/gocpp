@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -126,6 +127,10 @@ type ConnMetadata struct {
 	RemoteAddr    string
 	RequestHeader http.Header
 	TLS           *tls.ConnectionState
+	// ClientIP is the client address resolved by the creator of the connection
+	// (behind trusted reverse proxies it differs from RemoteAddr). Empty means
+	// the host of RemoteAddr.
+	ClientIP string
 }
 
 // NewConn creates a connection. Call Start to launch its goroutines.
@@ -205,6 +210,18 @@ func (c *Conn) Owner() any { return c.meta.Owner }
 // available.
 func (c *Conn) RemoteAddr() string { return c.meta.RemoteAddr }
 
+// ClientIP returns the client address resolved at upgrade time
+// (ConnMetadata.ClientIP), by default the host of RemoteAddr.
+func (c *Conn) ClientIP() string {
+	if c.meta.ClientIP != "" {
+		return c.meta.ClientIP
+	}
+	if host, _, err := net.SplitHostPort(c.meta.RemoteAddr); err == nil {
+		return host
+	}
+	return c.meta.RemoteAddr
+}
+
 // RequestHeader returns a copy of the HTTP upgrade request headers.
 func (c *Conn) RequestHeader() http.Header { return c.meta.RequestHeader.Clone() }
 
@@ -271,6 +288,7 @@ func cloneConnMetadata(meta ConnMetadata) ConnMetadata {
 		Owner:         meta.Owner,
 		RemoteAddr:    meta.RemoteAddr,
 		RequestHeader: meta.RequestHeader.Clone(),
+		ClientIP:      meta.ClientIP,
 	}
 	if meta.TLS != nil {
 		state := *meta.TLS

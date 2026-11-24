@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `csms.Conn.ClientIP()`, `csms.ClientIP()` and `csms.WithTrustedProxies(prefixes...)`:
+  the charge point's address behind reverse proxies, from the rightmost
+  `X-Forwarded-For` hop that is not a trusted proxy (or `X-Real-IP`). Without the option
+  `ClientIP()` is the host of `RemoteAddr` and the headers are never believed.
+
 ### Fixed
 
 - compat/ocppgo: the callbacks of requests pending at a disconnect are now failed
