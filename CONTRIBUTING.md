@@ -5,6 +5,7 @@
 - `make schemas-fetch` — download OCA JSON schemas
 - `make codegen` — regenerate message types from schemas
 - `make test` / `make test-race` — run tests
+- `make fuzz` — run each fuzz target briefly (`FUZZTIME=20s` per target)
 - `make lint` — run golangci-lint
 
 ## Generated code

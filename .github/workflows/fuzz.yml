@@ -1,0 +1,42 @@
+name: fuzz
+# Short native-fuzzing pass over the parser, validator, typed decoding and the
+# inbound connection path. Not part of every PR: the seed corpora (and any
+# committed testdata/fuzz entries) already run as ordinary tests in CI.
+on:
+  schedule:
+    - cron: "41 3 * * 2"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "Time per target (Go duration)"
+        default: "60s"
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {pkg: ./core/ocppj, name: FuzzParseEquivalence}
+          - {pkg: ./core/ocppj, name: FuzzParseRoundTrip}
+          - {pkg: ./core/ocppj, name: FuzzEncodeEquivalence}
+          - {pkg: ./core/schema, name: FuzzLenientEquivalence}
+          - {pkg: ./core/schema, name: FuzzDecodeEquivalence}
+          - {pkg: ./core/schema, name: FuzzValidatorInvariants}
+          - {pkg: ./core/schema, name: FuzzTypedDecode}
+          - {pkg: ./core/dispatcher, name: FuzzConnInbound}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: fuzz ${{ matrix.target.name }}
+        run: go test -run '^$' -fuzz '^${{ matrix.target.name }}$' -fuzztime '${{ inputs.fuzztime || '30s' }}' ${{ matrix.target.pkg }}
+      # A failing input is written under testdata/fuzz; keep it for a regression test.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-crashers-${{ matrix.target.name }}
+          path: "**/testdata/fuzz/${{ matrix.target.name }}/*"
+          if-no-files-found: ignore
