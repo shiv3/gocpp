@@ -174,11 +174,10 @@ stable (`late_orphan: true` in the plan, docs/rollout.md).
 
 ## 7. Measured: rollout under load
 
-The load-test harness (branch `test/loadtest-4k`, `interop/loadtest/rollout/run.sh`) ran
+The load-test harness (`interop/loadtest/rollout/run.sh`) ran
 the whole procedure on the split topology: 4,000 chargers (40% mute, 15% transactions),
 2 gateways, backend pools `default` x3 and `canary` x2, 50 CSMS calls/s, pinned to 6
-cores. Full report with per-phase tables:
-`interop/loadtest/results/rollout-2026-11-21/report.md`.
+cores. The per-phase tables of that run are not kept in the repository; `run.sh` reproduces them.
 
 | | result |
 |---|---|

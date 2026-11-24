@@ -1,0 +1,5 @@
+salt: rollout-lt
+rules:
+  - name: canary
+    pool: canary
+    match: {percent: 100}

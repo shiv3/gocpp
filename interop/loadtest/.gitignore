@@ -1,0 +1,5 @@
+# build outputs and run results
+/loadtest
+/results/
+*.pprof
+*.prof
