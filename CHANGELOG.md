@@ -80,6 +80,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Docs: README and usage.md state that wire schema validation is off by default (a registry alone validates
+  nothing) and recommend `WithLenientSchema()` for production, `WithTolerantSchema()` to observe a fleet.
 - `gocpp-csms serve` answers Get15118EVCertificate with `Failed` instead of `Accepted`
   with an empty `exiResponse`.
 
