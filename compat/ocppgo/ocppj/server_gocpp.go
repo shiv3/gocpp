@@ -59,6 +59,9 @@ type gocppRuntime struct {
 	// which case a bridge feeds the frames of its message handler to the dispatcher.
 	native      compatrt.Native
 	callTimeout time.Duration // set through the compat package; 0 = default
+	// invalidToCallback: an answer that fails validation completes the callback
+	// at once (compat.SetValidationErrorToCallback); false = at the call timeout, as ocpp-go.
+	invalidToCallback atomic.Bool
 
 	// Set through the compat package (before Start); nil = off.
 	metrics      observability.Metrics
@@ -558,6 +561,14 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 			sc.dc.SendCallError(e.MessageId, rt.wireCode(sc.dc, string(e.Code)), e.Description, nil)
 		}
 		log.Error(e)
+		if rt.invalidToCallback.Load() {
+			// Opt-in: the application hears the validation error now. The callback
+			// is first in line on this connection, so the order of callbacks holds.
+			if sc.dc.Context().Err() == nil {
+				cancel(ocpp.NewError(e.Code, e.Description, id))
+			}
+			return
+		}
 		// Wait out the timeout here, on the connection's callback worker, instead
 		// of on a timer. The worker runs the callbacks of one connection in
 		// submission order, so the answers of the requests sent meanwhile are
@@ -742,3 +753,6 @@ func useGocppRuntime(injected ServerDispatcher) bool {
 
 // SetCallTimeout sets the timeout of outbound calls (see compat.SetCallTimeout).
 func (rt *gocppRuntime) SetCallTimeout(d time.Duration) { rt.callTimeout = d }
+
+// SetValidationErrorToCallback: see compat.SetValidationErrorToCallback.
+func (rt *gocppRuntime) SetValidationErrorToCallback(on bool) { rt.invalidToCallback.Store(on) }

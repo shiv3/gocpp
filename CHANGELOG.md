@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- compat/ocppgo: the callbacks of requests pending at a disconnect are now failed
+  (`client disconnected, no response received from client`) even when the
+  application registered no disconnect handler. Before, the callback of a call
+  made before the drop received the first response after the charge point
+  reconnected (ocpp-go issues #67, #294, #306, #363, PR #406, #432).
+
+### Added
+
+- compat/ocppgo: `compat.SetValidationErrorToCallback(endpoint, true)` (opt-in): an
+  answer that fails parsing or validation completes the request's callback at
+  once instead of at the call timeout (ocpp-go issues #175, #234).
+
 ## [0.3.3] - 2026-11-24
 
 ### Changed (behaviour change in compat mode)

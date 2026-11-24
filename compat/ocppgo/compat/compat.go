@@ -50,6 +50,23 @@ func SetCallTimeout(s *ocppj.Server, d time.Duration) bool {
 	return true
 }
 
+// SetValidationErrorToCallback makes an answer from a charge point that fails
+// parsing or validation complete the request's callback at once, with the
+// validation error. By default (ocpp-go's behaviour) the charge point is sent a
+// CALLERROR, the application's callback is called with "Request timed out" only
+// when the call timeout expires, and the next request to that charge point waits
+// for it. Turning this on changes that timing (and the error the callback
+// receives); applications that rely on it should leave it off. Call it before
+// Start. It returns false when s runs on the legacy runtime.
+func SetValidationErrorToCallback(s *ocppj.Server, on bool) bool {
+	c, ok := control(s)
+	if !ok {
+		return false
+	}
+	c.SetValidationErrorToCallback(on)
+	return true
+}
+
 // SetObservability attaches metrics, tracing and a raw frame observer to the
 // connections of s. Pass nil for what is not wanted. Call it before Start. It
 // returns false when s runs on the legacy runtime (nothing is attached).

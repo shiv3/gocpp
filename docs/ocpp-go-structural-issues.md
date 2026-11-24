@@ -42,7 +42,7 @@ maintain it.
 |---|---|---|---|---|---|---|
 | 1 | One dispatcher goroutine and one lock for all charge points; blocking channel sends while the lock is held | r01, r02 | all charge points stop being served (r01: 10/10 runs; r02: 9/10 runs, the other run crashed) | blocking sends unchanged | not reproduced | no shared dispatcher |
 | 2 | WebSocket write: blocking send while the connection-table lock is held | r03 | one stalled reader stops all writes and new connections | unchanged | not reproduced | no write queue |
-| 3 | Responses are matched to callbacks by position, not by message id | r08 | misdelivered responses; process exit through the typed API | unchanged | race not reproduced; **reconnect case reproduced** | matched by message id |
+| 3 | Responses are matched to callbacks by position, not by message id | r08 | misdelivered responses; process exit through the typed API | unchanged | race not reproduced; reconnect case fixed by default (next release after `v0.19.0-gocpp.2`; `v0.19.0-gocpp.2` and earlier: reproduced) | matched by message id |
 | 4 | A panic in an application handler ends the process | r04 | process exits | unchanged | contained (`InternalError`) | contained (`InternalError`) |
 | 5 | No inbound frame size limit | r05 | 64 MiB frame accepted, RSS +349 MiB | unchanged | same by default; limit is opt-in | 1 MiB by default |
 | 6 | Duplicate id: the first connection wins | r06 | reconnecting charge point refused for 60 s | unchanged | same by default; last-wins is opt-in | last wins by default |
@@ -300,13 +300,20 @@ changes the glue between `ocppj` and the 1.6 / 2.0.1 packages.
 response type is fixed by the type parameters of `csms.Call[Req, Resp]`, so
 there is no assertion; a late answer to a call that already timed out is
 dropped. **Drop-in:** the 1.6 / 2.0.1 glue, including the callback FIFO, is
-still ocpp-go's code. B did not reproduce (0 of 300) and C2 does not end the
-process, but **C reproduces on the drop-in**
-([output](../interop/ocppgo-repro/out/r08_callback_fifo.compat.txt)): without
-a disconnect handler the stale callback receives the wrong response (and in C2
-the panic is contained, but the right callback is never called). Registering
-the disconnect handler is therefore required, see the
-[checklist](#if-you-use-the-drop-in).
+still ocpp-go's code, with one change by default: pending callbacks of a
+charge point are failed (`client disconnected, no response received from
+client`) when it disconnects, **whether or not the application registered a
+disconnect handler**. B did not reproduce (0 of 300) and C2 does not end the
+process. **C is fixed** in the release after `v0.19.0-gocpp.2`
+([output](../interop/ocppgo-repro/out/r08_callback_fifo.compat.txt), made with
+the module from this repository; on `v0.19.0-gocpp.2` and earlier C reproduces:
+the stale callback receives the wrong response). The FIFO itself stays: the
+gocpp runtime keeps the order of completions of one connection, so matching by
+position is correct as long as a disconnect clears the queue. A (a response
+that fails validation is reported as a timeout, and the next call waits) is also
+unchanged by default, because applications may rely on the timing;
+`compat.SetValidationErrorToCallback(endpoint, true)` makes the callback hear
+the validation error at once.
 
 ## 4. A handler panic ends the process
 
@@ -660,11 +667,11 @@ gocpp is one option among several.
 - **The drop-in replaces the server runtime only.** Payload decoding,
   validation, the callback FIFO of the 1.6 / 2.0.1 glue, the package-level
   configuration and the whole client side remain ocpp-go's code. On the
-  drop-in, r07, r08-C, r10, r11 and r13 reproduce exactly as on upstream, and
+  drop-in, r07, r10, r11 and r13 reproduce exactly as on upstream, and
   r09 is the same code.
-- **The drop-in still misdelivers a response after a reconnect when no
-  disconnect handler is registered** (r08-C). This is the most important item
-  of the checklist below.
+- **Up to and including `v0.19.0-gocpp.2` the drop-in misdelivered a response
+  after a reconnect when no disconnect handler was registered** (r08-C). Later
+  releases clear the callbacks of a disconnected charge point by default.
 - **The drop-in's defaults follow upstream**: first-wins duplicates, no frame
   size limit, idle connections dropped without a close frame. r05 and r06
   reproduce on it until the options are set.
@@ -715,14 +722,15 @@ gocpp is one option among several.
 ## If you use the drop-in
 
 The [drop-in module](../compat/ocppgo/README.md) removes sections 1, 2, 4 and
-the race of section 3 without code changes. To also cover what its
+the race of section 3 (and, from the release after `v0.19.0-gocpp.2`, its reconnect case) without code changes. To also cover what its
 upstream-compatible defaults leave open, do the following before `Start`:
 
-- [ ] **Always register the disconnect handler**
-      (`SetChargePointDisconnectedHandler` on 1.6,
+- [ ] On `v0.19.0-gocpp.2` and earlier: **always register the disconnect
+      handler** (`SetChargePointDisconnectedHandler` on 1.6,
       `SetChargingStationDisconnectedHandler` on 2.0.1), even if it does
       nothing. Without it, callbacks of requests pending at a disconnect are
       not cleared and receive the first response after the reconnect (r08-C).
+      Later releases do this by default.
 - [ ] `compat.SetDuplicatePolicy(srv, compat.DuplicateLastWins)` so that a
       charge point reconnecting after a half-open drop is served at once (r06).
 - [ ] `compat.SetMaxMessageSize(srv, 1<<20)`, or the largest frame you expect

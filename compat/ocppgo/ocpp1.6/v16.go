@@ -372,5 +372,8 @@ func NewCentralSystem(endpoint *ocppj.Server, server ws.WsServer) CentralSystem 
 	cs.server.SetCanceledRequestHandler(func(clientID string, requestID string, request ocpp.Request, err *ocpp.Error) {
 		cs.handleCanceledRequest(clientID, request, err)
 	})
+	// Default disconnect handling: pending callbacks are failed even if the
+	// application never registers a disconnect handler (see failPendingCallbacks).
+	cs.server.SetDisconnectedClientHandler(func(chargePoint ws.Channel) { cs.failPendingCallbacks(chargePoint.ID()) })
 	return &cs
 }
