@@ -1,0 +1,10 @@
+$ ./run.sh r04 compat    (2026-11-24T09:23:38Z, go1.27.3 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+server process pid 2284747
+good: Heartbeat -> [4,"g1","InternalError","x",{}]
+bad: Heartbeat (handler panics) -> "[4,\"b1\",\"InternalError\",\"internal error\",{}]" err=<nil>
+server process still running
+good: Heartbeat after the panic -> "[4,\"g2\",\"InternalError\",\"x\",{}]" err=<nil>
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: handler panic for one charge point; server process died=false
+exit status: 0

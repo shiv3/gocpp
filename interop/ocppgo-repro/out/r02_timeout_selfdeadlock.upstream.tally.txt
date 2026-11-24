@@ -1,0 +1,10 @@
+run 1: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 0/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 2: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 3/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 3: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 4/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 4: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 0/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 5: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 2/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 6: SERVER PROCESS CRASHED: panic: runtime error: invalid memory address or nil pointer dereference at ocppj/dispatcher.go:584
+run 7: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 0/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 8: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 0/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 9: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 0/300; healthy calls answered in the last 2 s: 0; canary 1/5
+run 10: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 1/300; healthy calls answered in the last 2 s: 0; canary 1/5

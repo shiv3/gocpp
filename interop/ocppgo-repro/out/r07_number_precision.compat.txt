@@ -1,0 +1,9 @@
+$ ./run.sh r07 compat    (2026-11-24T09:22:25Z, go1.27.3 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+wire transactionId 1234567              -> handler saw 1234567              same; reply [3,"m0",{}]
+wire transactionId 9007199254740993     -> handler saw 9007199254740992     CHANGED SILENTLY; reply [3,"m1",{}]
+wire transactionId 1152921504606846977  -> handler saw 1152921504606847000  CHANGED SILENTLY; reply [3,"m2",{}]
+wire transactionId 9223372036854775807  -> handler NOT called; reply [4,"m3","FormationViolation","json: cannot unmarshal number 9223372036854776000 into Go struct field .transactionId of type int",{}] (err <nil>)
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: REPRODUCED: 2 id(s) silently changed, 1 valid 64-bit id(s) rejected
+exit status: 0

@@ -1,0 +1,14 @@
+$ ./run.sh r13 upstream    (2026-11-24T09:32:30Z, go1.27.3 linux/amd64)
+library: ocpp-go v0.19.0 (upstream)
+- 1.6 ChangeConfiguration.req value "" (clear a setting; upstream issue #246, open)
+    schema: ChangeConfiguration.json: "value": {"type":"string","maxLength":500}, required
+    ocpp-go: REJECTED: Key: 'ChangeConfigurationRequest.Value' Error:Field validation for 'Value' failed on the 'required' tag
+- 2.0.1 CostUpdatedRequest totalCost 0 (free session)
+    schema: CostUpdatedRequest.json: "totalCost": {"type":"number"}, required
+    ocpp-go: REJECTED: Key: 'CostUpdatedRequest.TotalCost' Error:Field validation for 'TotalCost' failed on the 'required' tag
+- 2.0.1 ClearVariableMonitoringResponse result id 0
+    schema: ClearVariableMonitoringResponse.json: "id": {"type":"integer"}, required
+    ocpp-go: REJECTED: Key: 'ClearMonitoringResult.ID' Error:Field validation for 'ID' failed on the 'required' tag
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 3 of 3 schema-valid messages rejected by the struct tags
+exit status: 0

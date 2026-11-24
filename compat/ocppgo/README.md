@@ -10,6 +10,11 @@ replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo
 
 See `MAINTAINING.md` for CI checks, the upstream pin and releasing, and `ROLLOUT.md` for a staged rollout.
 
+Before going live, go through the checklist in
+[docs/ocpp-go-structural-issues.md](../../docs/ocpp-go-structural-issues.md#if-you-use-the-drop-in):
+it lists what this module changes compared with ocpp-go v0.19.0, what it leaves as it
+is, and the settings to turn on.
+
 Status: server side on the gocpp runtime; the client side is upstream's. See `NOTICE` for what is upstream code and what is
 new, and `UPSTREAM` for the pinned source.
 
@@ -102,6 +107,14 @@ constraint). Leniency covers requests received and answers received by the serve
 - A panic in an application handler or response callback is contained.
 - Requests pending at a disconnect are reported once (by the 1.6 / 2.0.1 glue's
   disconnect handler), as in ocpp-go.
+- **Always register the disconnect handler**
+  (`SetChargePointDisconnectedHandler` on 1.6,
+  `SetChargingStationDisconnectedHandler` on 2.0.1), even with an empty function.
+  As in ocpp-go, the code that clears the response callbacks of requests pending at
+  a disconnect lives in the wrapper that this method installs. Without it a stale
+  callback stays queued and is given the first response after the charge point
+  reconnects, which may belong to a different request (the callback queue is
+  ocpp-go's own code and matches by position, not by message id).
 - `SendResponse` / `SendError` return a hand-over error; write errors surface in
   the logs.
 - `InvalidMessageHook` is called for every frame ocpp-go calls it for, including

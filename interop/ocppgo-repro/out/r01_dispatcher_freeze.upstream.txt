@@ -1,0 +1,20 @@
+$ ./run.sh r01 upstream    (2026-11-24T09:31:19Z, go1.27.3 linux/amd64)
+library: ocpp-go v0.19.0 (upstream)
+healthy charge points: 200
+send loop STILL BLOCKED inside SendRequestAsync after 5 s: 21 of 200 calls sent
+canary Heartbeat 0: NO ANSWER within 3s (read tcp 127.0.0.1:43534->127.0.0.1:45543: i/o timeout) (calls sent 21, answered 0 of 200)
+canary Heartbeat 1: NO ANSWER within 3s (read tcp 127.0.0.1:36368->127.0.0.1:45543: i/o timeout) (calls sent 21, answered 0 of 200)
+canary Heartbeat 2: NO ANSWER within 3s (read tcp 127.0.0.1:36384->127.0.0.1:45543: i/o timeout) (calls sent 21, answered 0 of 200)
+canary Heartbeat 3: NO ANSWER within 3s (read tcp 127.0.0.1:36386->127.0.0.1:45543: i/o timeout) (calls sent 21, answered 0 of 200)
+
+goroutines by state and top frames (server and test clients share this process):
+     402  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+     205  select | ws.(*Server).writePump
+       5  sync.RWMutex.RLock | ocppj.(*DefaultServerDispatcher).IsRunning <- ocppj.(*DefaultServerDispatcher).CreateClient <- ocppj.(*Server).onClientConnected
+       4  sync.Mutex.Lock | ocppj.(*serverState).GetClientState <- ocppj.(*Server).ocppMessageHandler <- ws.(*Server).readPump
+       1  chan send | ocppj.(*DefaultServerDispatcher).SendRequest <- ocppj.(*Server).SendRequest <- ocpp1%2e6.(*centralSystem).SendRequestAsync.func1
+       1  running | pprof.writeGoroutineStacks <- pprof.writeGoroutine <- pprof.(*Profile).WriteTo
+       1  sync.RWMutex.Lock | ocppj.(*serverState).AddPendingRequest <- ocppj.(*DefaultServerDispatcher).dispatchNextRequest <- ocppj.(*DefaultServerDispatcher).messagePump
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+exit status: 0

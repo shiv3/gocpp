@@ -1,0 +1,23 @@
+$ ./run.sh r02 upstream   (a run in which the server stopped; the run of out/…crash-run.txt crashed instead)
+library: ocpp-go v0.19.0 (upstream)
+mute: 300, healthy: 8, call timeout: 2s
+healthy calls answered before the mute calls: 18103
+canary Heartbeat 0: answered in 360µs (healthy calls answered 101645, mute timeouts delivered 0/300)
+canary Heartbeat 1: NO ANSWER within 3s (read tcp 127.0.0.1:58594->127.0.0.1:37051: i/o timeout) (healthy calls answered 101645, mute timeouts delivered 0/300)
+canary Heartbeat 2: NO ANSWER within 3s (read tcp 127.0.0.1:58608->127.0.0.1:37051: i/o timeout) (healthy calls answered 101645, mute timeouts delivered 0/300)
+canary Heartbeat 3: NO ANSWER within 3s (read tcp 127.0.0.1:58618->127.0.0.1:37051: i/o timeout) (healthy calls answered 101645, mute timeouts delivered 0/300)
+canary Heartbeat 4: NO ANSWER within 3s (read tcp 127.0.0.1:53008->127.0.0.1:37051: i/o timeout) (healthy calls answered 101645, mute timeouts delivered 0/300)
+healthy calls answered in the last 2 s: 0
+
+goroutines by state and top frames (server and test clients share this process):
+     613  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+     313  select | ws.(*Server).writePump
+     289  chan send | ocppj.(*DefaultServerDispatcher).waitForTimeout
+       8  chan receive | main.main.func2
+       6  sync.RWMutex.RLock | ocppj.(*DefaultServerDispatcher).waitForTimeout
+       5  chan send | ocppj.(*DefaultServerDispatcher).CompleteRequest <- ocppj.(*Server).ocppMessageHandler <- ws.(*Server).readPump
+       4  sync.RWMutex.RLock | ocppj.(*DefaultServerDispatcher).IsRunning <- ocppj.(*DefaultServerDispatcher).CreateClient <- ocppj.(*Server).onClientConnected
+       3  sync.Mutex.Lock | ocppj.(*serverState).GetClientState <- ocppj.(*Server).ocppMessageHandler <- ws.(*Server).readPump
+       1  chan send | ocppj.(*DefaultServerDispatcher).CompleteRequest <- ocppj.(*DefaultServerDispatcher).messagePump
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: mute timeouts delivered 0/300; healthy calls answered in the last 2 s: 0; canary 1/5

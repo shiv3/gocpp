@@ -1,0 +1,10 @@
+run 1: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 2: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 3: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 4: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 5: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 6: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 37/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 7: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 8: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 9: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats
+run 10: RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: 21/200 calls sent, 0 answered; canary answered 0/4 Heartbeats

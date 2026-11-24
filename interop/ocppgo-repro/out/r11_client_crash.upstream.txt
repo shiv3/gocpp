@@ -1,0 +1,38 @@
+$ ./run.sh r11 upstream    (2026-11-24T09:26:31Z, go1.27.3 linux/amd64)
+library: ocpp-go v0.19.0 (upstream) (client code: ocpp-go's own in both variants)
+A. connected; calling Stop twice
+A. double Stop: process died=true (exit status 2)
+    | panic: close of closed channel
+    | 
+    | goroutine 1 [running]:
+    | github.com/lorenzodonini/ocpp-go/ws.(*Client).Stop(0x26fa188e2000)
+    | 	$GOMODCACHE/github.com/lorenzodonini/ocpp-go@v0.19.0/ws/websocket.go:1138 +0xe5
+    | github.com/lorenzodonini/ocpp-go/ocppj.(*Client).Stop(0x26fa187f65a0)
+    | 	$GOMODCACHE/github.com/lorenzodonini/ocpp-go@v0.19.0/ocppj/client.go:164 +0xc2
+    | github.com/lorenzodonini/ocpp-go/ocpp1%2e6.(*chargePoint).Stop(0x26fa18832b00)
+    | 	$GOMODCACHE/github.com/lorenzodonini/ocpp-go@v0.19.0/ocpp1.6/charge_point.go:428 +0x1b
+    | main.main()
+    | 	./r11_client_crash/main.go:95 +0x648
+
+B. 200 charge points sending Heartbeat every 2 ms; the server drops every connection every 300 ms
+B. t= 5s process alive; Heartbeats answered so far 173802 (+173802 in 5 s); charge points reporting IsConnected: 200/200
+B. t=10s process alive; Heartbeats answered so far 186974 (+13172 in 5 s); charge points reporting IsConnected: 200/200
+B. t=15s process alive; Heartbeats answered so far 187445 (+471 in 5 s); charge points reporting IsConnected: 200/200
+B. t=20s process alive; Heartbeats answered so far 187445 (+0 in 5 s); charge points reporting IsConnected: 200/200
+B. t=25s process alive; Heartbeats answered so far 187445 (+0 in 5 s); charge points reporting IsConnected: 200/200
+B. no Heartbeat answered for 10 s although the server is up; client goroutines:
+     401  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+     200  select | ocpp1%2e6.(*chargePoint).asyncCallbackHandler
+     200  select | ocppj.(*DefaultClientDispatcher).messagePump
+     200  select | ws.(*Client).writePump
+      85  sleep | time.Sleep <- main.main.func1
+      48  semacquire | fmt.init.func1 <- fmt.newPrinter <- fmt.Sprintf
+      22  semacquire | ocppj.(*Endpoint).CreateCall <- ocppj.(*Client).SendRequest <- ocpp1%2e6.(*chargePoint).SendRequestAsync.func1
+      15  semacquire | fmt.Sprintf <- ocppj.init.func1 <- ocppj.(*Endpoint).CreateCall
+B. t=30s process alive; Heartbeats answered so far 187445 (+0 in 5 s); charge points reporting IsConnected: 0/200
+B. t=35s process alive; Heartbeats answered so far 187445 (+0 in 5 s); charge points reporting IsConnected: 200/200
+B. process died=false after 40.0 s (<nil>)
+    (no crash within 40s; child stopped by the parent)
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: client process crashed: double Stop=true, sending while connections drop=false (see the B lines: the clients may stop exchanging messages without crashing)
+exit status: 0

@@ -25,6 +25,10 @@ For a staged migration where chargers in the field depend on ocpp-go's exact rep
 (error codes, null payloads, timestamp format, idle handling), see
 [migration-from-ocpp-go.md](migration-from-ocpp-go.md) and `csms.WithOCPPGoCompat()`.
 
+For the reasons to migrate, stated as reproducible behaviours of ocpp-go v0.19.0
+together with the limits of gocpp and of its drop-in module, see
+[ocpp-go-structural-issues.md](ocpp-go-structural-issues.md).
+
 ## Before / after
 
 A CSMS handling BootNotification + Heartbeat.

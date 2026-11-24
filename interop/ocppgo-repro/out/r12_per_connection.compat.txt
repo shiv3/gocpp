@@ -1,0 +1,9 @@
+$ ./run.sh r12 compat    (2026-11-24T09:25:27Z, go1.27.3 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+2000 idle connections (the raw test clients run no goroutines)
+goroutines: 2 before, 2002 now = 1.00 per connection
+    2001  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+       1  running | pprof.writeGoroutineStacks <- pprof.writeGoroutine <- pprof.(*Profile).WriteTo
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: 1.00 goroutines per idle connection
+exit status: 0

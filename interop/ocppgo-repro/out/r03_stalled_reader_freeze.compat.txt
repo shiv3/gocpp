@@ -1,0 +1,23 @@
+$ ./run.sh r03 compat    (2026-11-24T09:23:26Z, go1.27.3 linux/amd64)
+library: gocpp drop-in (compat/ocppgo, same source, one replace line)
+server write timeout: 3s, answer size: 16 MiB
+canary Heartbeat before: 250µs <nil>
+stalled charge point sent 3 DataTransfer requests and stopped reading
+t= 1.0s canary Heartbeat: answered in 220µs
+t= 2.0s canary Heartbeat: answered in 210µs
+t= 3.0s canary Heartbeat: answered in 190µs
+t= 4.0s canary Heartbeat: answered in 200µs
+t= 5.0s canary Heartbeat: answered in 390µs
+t= 6.0s canary Heartbeat: answered in 170µs
+t= 7.0s canary Heartbeat: answered in 270µs
+t= 8.0s canary Heartbeat: answered in 170µs
+t= 9.0s canary Heartbeat: answered in 180µs
+t=10.0s canary Heartbeat: answered in 190µs
+t=11.0s canary Heartbeat: answered in 180µs
+
+goroutines by state and top frames (server and test clients share this process):
+       2  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+       1  running | pprof.writeGoroutineStacks <- pprof.writeGoroutine <- pprof.(*Profile).WriteTo
+
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: canary answered 11/11 Heartbeats while one charge point was not reading
+exit status: 0

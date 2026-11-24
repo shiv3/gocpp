@@ -1,0 +1,18 @@
+$ ./run.sh r06 upstream    (2026-11-24T09:25:31Z, go1.27.3 linux/amd64)
+library: ocpp-go v0.19.0 (upstream)
+first connection: Heartbeat answered in 520µs (<nil>); the link now goes silent without a close
+t= 5.0s attempt 1: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=10.0s attempt 2: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=15.0s attempt 3: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=20.0s attempt 4: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=25.0s attempt 5: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=30.0s attempt 6: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=35.0s attempt 7: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=40.0s attempt 8: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=45.0s attempt 9: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=50.0s attempt 10: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=55.0s attempt 11: upgraded, then closed by the server: websocket: close 1008 (policy violation): a connection with this ID already exists
+t=60.0s attempt 12: served (Heartbeat answered)
+
+RESULT [ocpp-go v0.19.0 (upstream)]: REPRODUCED: reconnecting charge point refused 11 time(s); served again after 60 s
+exit status: 0

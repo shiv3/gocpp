@@ -1,0 +1,14 @@
+$ ./run.sh r09 upstream    (2026-11-24T09:31:02Z, go1.27.3 linux/amd64)
+goos: linux
+goarch: amd64
+pkg: github.com/shiv3/gocpp/interop/ocppgo-repro/r09_decode_bench
+cpu: 13th Gen Intel(R) Core(TM) i5-13600K
+BenchmarkOcppGoParse/Heartbeat         	 1000000	      2187 ns/op	     504 B/op	      20 allocs/op
+BenchmarkOcppGoParse/StatusNotification         	  318166	      6540 ns/op	    1392 B/op	      49 allocs/op
+BenchmarkOcppGoParse/MeterValues8               	   71360	     35676 ns/op	    9891 B/op	     238 allocs/op
+BenchmarkSingleTypedDecode/Heartbeat            	 1428579	      1726 ns/op	     344 B/op	      11 allocs/op
+BenchmarkSingleTypedDecode/StatusNotification   	  790327	      3405 ns/op	     608 B/op	      15 allocs/op
+BenchmarkSingleTypedDecode/MeterValues8         	  144188	     16304 ns/op	    4320 B/op	      86 allocs/op
+PASS
+ok  	github.com/shiv3/gocpp/interop/ocppgo-repro/r09_decode_bench	16.670s
+exit status: 0
