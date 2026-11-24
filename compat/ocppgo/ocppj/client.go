@@ -2,6 +2,7 @@ package ocppj
 
 import (
 	"fmt"
+	"time"
 
 	"gopkg.in/go-playground/validator.v9"
 
@@ -151,12 +152,17 @@ func (c *Client) StartWithRetries(serverURL string) {
 
 // Stops the client.
 // The underlying I/O loop is stopped and all pending requests are cleared.
+//
+// Stop may be called more than once, and before Start.
 func (c *Client) Stop() {
 	// Overwrite handler to intercept disconnected signal
 	cleanupC := make(chan struct{}, 1)
 	if c.IsConnected() {
 		c.client.SetDisconnectedHandler(func(err error) {
-			cleanupC <- struct{}{}
+			select {
+			case cleanupC <- struct{}{}:
+			default:
+			}
 		})
 	} else {
 		close(cleanupC)
@@ -165,8 +171,20 @@ func (c *Client) Stop() {
 	if c.dispatcher.IsRunning() {
 		c.dispatcher.Stop()
 	}
-	// Wait for websocket to be cleaned up
-	<-cleanupC
+	// Wait for websocket to be cleaned up. The connection may have dropped just
+	// before the handler above was installed, in which case nobody signals.
+	t := time.NewTicker(100 * time.Millisecond)
+	defer t.Stop()
+	for {
+		select {
+		case <-cleanupC:
+			return
+		case <-t.C:
+			if !c.client.IsConnected() {
+				return
+			}
+		}
+	}
 }
 
 func (c *Client) IsConnected() bool {
@@ -261,7 +279,15 @@ func (c *Client) SendError(requestId string, errorCode ocpp.ErrorCode, descripti
 	return nil
 }
 
-func (c *Client) ocppMessageHandler(data []byte) error {
+func (c *Client) ocppMessageHandler(data []byte) (retErr error) {
+	// A panic in an application handler (request, response, error or invalid
+	// message hook) must not take the process down through the read goroutine.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("recovered from a panic in a message handler: %v", r)
+			retErr = fmt.Errorf("panic in message handler: %v", r)
+		}
+	}()
 	parsedJson, err := ParseRawJsonMessage(data)
 	if err != nil {
 		log.Error(err)
@@ -348,13 +374,25 @@ func (c *Client) onDisconnected(err error) {
 	log.Error("disconnected from server", err)
 	c.dispatcher.Pause()
 	if c.onDisconnectedHandler != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("recovered from a panic in the disconnected handler: %v", r)
+			}
+		}()
 		c.onDisconnectedHandler(err)
 	}
 }
 
 func (c *Client) onReconnected() {
 	if c.onReconnectedHandler != nil {
-		c.onReconnectedHandler()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Errorf("recovered from a panic in the reconnected handler: %v", r)
+				}
+			}()
+			c.onReconnectedHandler()
+		}()
 	}
 	c.dispatcher.Resume()
 }

@@ -1,39 +1,28 @@
-$ ./run.sh r11 compat    (2026-11-24T09:31:48Z, go1.27.3 linux/amd64)
+$ ./run.sh r11 compat    (2026-11-24T15:11:21Z, go1.27.3 linux/amd64)
 library: gocpp drop-in (compat/ocppgo, same source, one replace line) (client code: ocpp-go's own in both variants)
 A. connected; calling Stop twice
-A. double Stop: process died=true (exit status 2)
-    | panic: close of closed channel
-    | 
-    | goroutine 1 [running]:
-    | github.com/lorenzodonini/ocpp-go/ws.(*Client).Stop(0x2a1d13bef00)
-    | 	$GOMODCACHE/github.com/shiv3/gocpp/compat/ocppgo@v0.19.0-gocpp.2/ws/websocket.go:719 +0xe5
-    | github.com/lorenzodonini/ocpp-go/ocppj.(*Client).Stop(0x2a1d16ea1b0)
-    | 	$GOMODCACHE/github.com/shiv3/gocpp/compat/ocppgo@v0.19.0-gocpp.2/ocppj/client.go:164 +0xc2
-    | github.com/lorenzodonini/ocpp-go/ocpp1%2e6.(*chargePoint).Stop(0x2a1d12c5100)
-    | 	$GOMODCACHE/github.com/shiv3/gocpp/compat/ocppgo@v0.19.0-gocpp.2/ocpp1.6/charge_point.go:428 +0x1b
-    | main.main()
-    | 	./r11_client_crash/main.go:95 +0x648
+A. second Stop returned
+A. double Stop: process crashed=false (<nil>)
 
 B. 200 charge points sending Heartbeat every 2 ms; the server drops every connection every 300 ms
-B. t= 5s process alive; Heartbeats answered so far 175535 (+175535 in 5 s); charge points reporting IsConnected: 199/200
-B. t=10s process alive; Heartbeats answered so far 197384 (+21849 in 5 s); charge points reporting IsConnected: 199/200
-B. t=15s process alive; Heartbeats answered so far 199425 (+2041 in 5 s); charge points reporting IsConnected: 95/200
-B. t=20s process alive; Heartbeats answered so far 199425 (+0 in 5 s); charge points reporting IsConnected: 199/200
-B. t=25s process alive; Heartbeats answered so far 199425 (+0 in 5 s); charge points reporting IsConnected: 199/200
+B. t= 5s process alive; Heartbeats answered so far 212840 (+212840 in 5 s); charge points reporting IsConnected: 200/200
+B. t=10s process alive; Heartbeats answered so far 273831 (+60991 in 5 s); charge points reporting IsConnected: 200/200
+B. t=15s process alive; Heartbeats answered so far 290640 (+16809 in 5 s); charge points reporting IsConnected: 58/200
+B. t=20s process alive; Heartbeats answered so far 295853 (+5213 in 5 s); charge points reporting IsConnected: 200/200
+B. t=25s process alive; Heartbeats answered so far 295895 (+42 in 5 s); charge points reporting IsConnected: 200/200
+B. t=30s process alive; Heartbeats answered so far 295895 (+0 in 5 s); charge points reporting IsConnected: 19/200
+B. t=35s process alive; Heartbeats answered so far 295895 (+0 in 5 s); charge points reporting IsConnected: 200/200
 B. no Heartbeat answered for 10 s although the server is up; client goroutines:
-     399  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
+     401  IO wait | poll.runtime_pollWait <- poll.(*pollDesc).wait <- poll.(*pollDesc).waitRead
      200  select | ocpp1%2e6.(*chargePoint).asyncCallbackHandler
-     199  select | ocppj.(*DefaultClientDispatcher).messagePump
-     199  select | ws.(*Client).writePump
-     141  runnable | time.Sleep <- main.main.func1
-      56  sleep | time.Sleep <- main.main.func1
+     200  select | ocppj.(*DefaultClientDispatcher).messagePump
+     200  select | ws.(*Client).writePump
+     157  sleep | time.Sleep <- main.main.func1
+      35  runnable | time.Sleep <- main.main.func1
+       4  runnable | ocpp1%2e6.(*chargePoint).SendRequestAsync <- main.main.func1
        1  chan receive | main.flappingServer.func2
-       1  chan receive | ocppj.(*DefaultClientDispatcher).Pause <- ocppj.(*Client).onDisconnected <- ws.(*Client).writePump.func1
-       1  sync.RWMutex.RLock | ocppj.(*DefaultClientDispatcher).messagePump.func1 <- ocppj.(*DefaultClientDispatcher).messagePump
-B. t=30s process alive; Heartbeats answered so far 199425 (+0 in 5 s); charge points reporting IsConnected: 0/200
-B. t=35s process alive; Heartbeats answered so far 199829 (+404 in 5 s); charge points reporting IsConnected: 200/200
 B. process died=false after 40.0 s (<nil>)
     (no crash within 40s; child stopped by the parent)
 
-RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: REPRODUCED: client process crashed: double Stop=true, sending while connections drop=false (see the B lines: the clients may stop exchanging messages without crashing)
+RESULT [gocpp drop-in (compat/ocppgo, same source, one replace line)]: NOT REPRODUCED: client process crashed: double Stop=false, sending while connections drop=false (see the B lines: the clients may stop exchanging messages without crashing)
 exit status: 0

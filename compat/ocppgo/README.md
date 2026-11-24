@@ -32,7 +32,7 @@ Before going live, go through the checklist in
 it lists what this module changes compared with ocpp-go v0.19.0, what it leaves as it
 is, and the settings to turn on.
 
-Status: server side on the gocpp runtime; the client side is upstream's. See `NOTICE` for what is upstream code and what is
+Status: server side on the gocpp runtime; the client side is upstream's code with panic and hang fixes (see below). See `NOTICE` for what is upstream code and what is
 new, and `UPSTREAM` for the pinned source.
 
 ## What runs on gocpp
@@ -46,8 +46,20 @@ new, and `UPSTREAM` for the pinned source.
   (gorilla types stay in the signatures, for example
   `StopConnection(id, websocket.CloseError)`). Close codes are sent as close
   frames; `Stop` closes with 1000.
-- The client side (`ws.Client`, `ocppj.Client`, `ocpp1.6.ChargePoint`, ...) is
-  ocpp-go's unchanged code.
+- The client side (`ws.Client`, `ocppj.Client`, `ocpp1.6.ChargePoint`,
+  `ocpp2.0.1.ChargingStation`, ...) is ocpp-go's code, still on ocpp-go's own
+  dispatcher, with hardening that is on by default because it fixes panics and
+  hangs: `Stop` is idempotent and works before `Start` and during a reconnect;
+  `SendRequest` during or after `Stop` returns an error; no `send on closed
+  channel` in `ws.Client.Write`; `DefaultClientDispatcher.Pause` cannot
+  deadlock; a panic in an application handler or callback is recovered (the
+  request is answered with `InternalError`, the panic is reported on `Errors()`);
+  inbound requests after `Stop` are ignored. Everything else about the client is
+  as in ocpp-go (for example a request lost in a connection drop is reported
+  after the call timeout). **For new simulators, load generators and test tools
+  use gocpp's native client (`github.com/shiv3/gocpp/cp`)**: it is built on
+  contexts, fails calls when the connection drops, and has no process-wide
+  settings.
 
 ## Wrapping `ws.WsServer` (bridge mode)
 

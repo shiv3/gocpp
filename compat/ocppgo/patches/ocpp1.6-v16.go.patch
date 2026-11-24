@@ -1,5 +1,18 @@
---- a/ocpp1.6/v16.go	2026-11-24 23:43:43.150291987 +0900
-+++ b/ocpp1.6/v16.go	2026-11-24 23:43:43.150291987 +0900
+--- a/ocpp1.6/v16.go	2026-11-25 00:08:59.028334496 +0900
++++ b/ocpp1.6/v16.go	2026-11-25 00:08:59.028334496 +0900
+@@ -198,10 +198,10 @@
+ 	endpoint.SetOnRequestCanceled(cp.onRequestTimeout)
+ 
+ 	cp.client.SetResponseHandler(func(confirmation ocpp.Response, requestId string) {
+-		cp.confirmationHandler <- confirmation
++		cp.pushResponse(confirmation)
+ 	})
+ 	cp.client.SetErrorHandler(func(err *ocpp.Error, details interface{}) {
+-		cp.errorHandler <- err
++		cp.pushError(err)
+ 	})
+ 	cp.client.SetRequestHandler(cp.handleIncomingRequest)
+ 	return &cp
 @@ -372,5 +372,8 @@
  	cs.server.SetCanceledRequestHandler(func(clientID string, requestID string, request ocpp.Request, err *ocpp.Error) {
  		cs.handleCanceledRequest(clientID, request, err)

@@ -231,10 +231,10 @@ func NewChargingStation(id string, endpoint *ocppj.Client, client ws.WsClient) C
 	endpoint.SetOnRequestCanceled(cs.onRequestTimeout)
 
 	cs.client.SetResponseHandler(func(confirmation ocpp.Response, requestId string) {
-		cs.responseHandler <- confirmation
+		cs.pushResponse(confirmation)
 	})
 	cs.client.SetErrorHandler(func(err *ocpp.Error, details interface{}) {
-		cs.errorHandler <- err
+		cs.pushError(err)
 	})
 	cs.client.SetRequestHandler(cs.handleIncomingRequest)
 	return &cs

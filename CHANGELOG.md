@@ -15,6 +15,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- compat/ocppgo client (ocpp-go's code, on by default because these are panic and hang
+  fixes; ocpp-go issues #143, #153, #205, PRs #91, and the evcc/grid-x/enesismail fork
+  fixes): `Stop` is idempotent and safe before `Start` and during a reconnect (no
+  `close of closed channel`, no connection left behind); `SendRequest` during or after
+  `Stop` returns an error instead of hanging or panicking; no `send on closed channel`
+  in `ws.Client.Write`; `DefaultClientDispatcher.Pause`/doorbell sends cannot deadlock;
+  panics in application handlers, callbacks and the `ocppj` message handlers are
+  recovered (the request is answered with `InternalError`, reported on `Errors()`);
+  inbound requests after `Stop` are ignored; 2.0.1 `ChargingStation.Stop` closes its
+  stop channel and drops pending callbacks; `ws.Client` handlers and error channel are
+  synchronised (`TestClientErrors` is race clean, the `-race` skip in CI is gone).
 - compat/ocppgo: the callbacks of requests pending at a disconnect are now failed
   (`client disconnected, no response received from client`) even when the
   application registered no disconnect handler. Before, the callback of a call
