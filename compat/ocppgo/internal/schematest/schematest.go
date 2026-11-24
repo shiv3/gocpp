@@ -1,3 +1,5 @@
+// Copyright (c) the gocpp authors. Licensed under the MIT License (LICENSE.gocpp).
+
 // Package schematest checks that Go message types of this module marshal to and
 // unmarshal from JSON that conforms to the OCA JSON schemas (the schemas/
 // directory of the gocpp repository). It is used by tests only.

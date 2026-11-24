@@ -1,3 +1,5 @@
+// Copyright (c) the gocpp authors. Licensed under the MIT License (LICENSE.gocpp).
+
 package ocpp2_test
 
 import (
