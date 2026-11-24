@@ -37,6 +37,7 @@ type CompositeSchedule struct {
 	Duration               int                            `json:"duration" validate:"gte=0"`
 	ScheduleStart          *types.DateTime                `json:"scheduleStart" validate:"required"`
 	ChargingRateUnit       types.ChargingRateUnitType     `json:"chargingRateUnit" validate:"required,chargingRateUnit201"`
+	CustomData             *types.CustomData              `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The field definition of the GetCompositeSchedule request payload sent by the CSMS to the Charging System.
@@ -44,6 +45,7 @@ type GetCompositeScheduleRequest struct {
 	Duration         int                        `json:"duration" validate:"gte=0"`
 	ChargingRateUnit types.ChargingRateUnitType `json:"chargingRateUnit,omitempty" validate:"omitempty,chargingRateUnit201"`
 	EvseID           int                        `json:"evseId" validate:"gte=0"`
+	CustomData       *types.CustomData          `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the GetCompositeSchedule response payload, sent by the Charging System to the CSMS in response to a GetCompositeScheduleRequest.
@@ -52,6 +54,7 @@ type GetCompositeScheduleResponse struct {
 	Status     GetCompositeScheduleStatus `json:"status" validate:"required,getCompositeScheduleStatus"`
 	StatusInfo *types.StatusInfo          `json:"statusInfo,omitempty" validate:"omitempty"`
 	Schedule   *CompositeSchedule         `json:"schedule,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData          `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS MAY request the Charging System to report the Composite Charging Schedule by sending a GetCompositeScheduleRequest.

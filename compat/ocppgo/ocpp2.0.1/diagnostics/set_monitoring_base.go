@@ -32,7 +32,8 @@ func isValidMonitoringBase(fl validator.FieldLevel) bool {
 
 // The field definition of the SetMonitoringBase request payload sent by the CSMS to the Charging Station.
 type SetMonitoringBaseRequest struct {
-	MonitoringBase MonitoringBase `json:"monitoringBase" validate:"required,monitoringBase"` // Specifies which monitoring base will be set.
+	MonitoringBase MonitoringBase    `json:"monitoringBase" validate:"required,monitoringBase"` // Specifies which monitoring base will be set.
+	CustomData     *types.CustomData `json:"customData,omitempty" validate:"omitempty"`         // vendor specific extension data (schema customData)
 }
 
 // This field definition of the SetMonitoringBase response payload, sent by the Charging Station to the CSMS in response to a SetMonitoringBaseRequest.
@@ -40,6 +41,7 @@ type SetMonitoringBaseRequest struct {
 type SetMonitoringBaseResponse struct {
 	Status     types.GenericDeviceModelStatus `json:"status" validate:"required,genericDeviceModelStatus"` // Indicates whether the Charging Station was able to accept the request.
 	StatusInfo *types.StatusInfo              `json:"statusInfo,omitempty" validate:"omitempty"`           // Detailed status information.
+	CustomData *types.CustomData              `json:"customData,omitempty" validate:"omitempty"`           // vendor specific extension data (schema customData)
 }
 
 // A CSMS has the ability to request the Charging Station to activate a set of preconfigured

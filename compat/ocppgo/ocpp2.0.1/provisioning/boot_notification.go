@@ -55,23 +55,26 @@ func isValidBootReason(fl validator.FieldLevel) bool {
 
 // Defines parameters required for initiating and maintaining wireless communication with other devices.
 type ModemType struct {
-	Iccid string `json:"iccid,omitempty" validate:"max=20"`
-	Imsi  string `json:"imsi,omitempty" validate:"max=20"`
+	Iccid      string            `json:"iccid,omitempty" validate:"max=20"`
+	Imsi       string            `json:"imsi,omitempty" validate:"max=20"`
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The physical system where an Electrical Vehicle (EV) can be charged.
 type ChargingStationType struct {
-	SerialNumber    string     `json:"serialNumber,omitempty" validate:"max=25"`
-	Model           string     `json:"model" validate:"required,max=20"`
-	VendorName      string     `json:"vendorName" validate:"required,max=50"`
-	FirmwareVersion string     `json:"firmwareVersion,omitempty" validate:"max=50"`
-	Modem           *ModemType `json:"modem,omitempty"`
+	SerialNumber    string            `json:"serialNumber,omitempty" validate:"max=25"`
+	Model           string            `json:"model" validate:"required,max=20"`
+	VendorName      string            `json:"vendorName" validate:"required,max=50"`
+	FirmwareVersion string            `json:"firmwareVersion,omitempty" validate:"max=50"`
+	Modem           *ModemType        `json:"modem,omitempty"`
+	CustomData      *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The field definition of the BootNotification request payload sent by the Charging Station to the CSMS.
 type BootNotificationRequest struct {
 	Reason          BootReason          `json:"reason" validate:"required,bootReason"`
 	ChargingStation ChargingStationType `json:"chargingStation" validate:"required,dive"`
+	CustomData      *types.CustomData   `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The field definition of the BootNotification response payload, sent by the CSMS to the Charging Station in response to a BootNotificationRequest.
@@ -81,6 +84,7 @@ type BootNotificationResponse struct {
 	Interval    int                `json:"interval" validate:"gte=0"`
 	Status      RegistrationStatus `json:"status" validate:"required,registrationStatus201"`
 	StatusInfo  *types.StatusInfo  `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData  *types.CustomData  `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // After each (re)boot, a Charging Station SHALL send a request to the CSMS with information about its configuration (e.g. version, vendor, etc.).

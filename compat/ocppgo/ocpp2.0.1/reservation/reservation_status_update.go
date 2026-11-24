@@ -33,11 +33,13 @@ func isValidReservationUpdateStatus(fl validator.FieldLevel) bool {
 type ReservationStatusUpdateRequest struct {
 	ReservationID int                     `json:"reservationId" validate:"gte=0"`
 	Status        ReservationUpdateStatus `json:"reservationUpdateStatus" validate:"required,reservationUpdateStatus"`
+	CustomData    *types.CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the ReservationStatusUpdate response payload, sent by the CSMS to the Charging Station in response to a ReservationStatusUpdateRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type ReservationStatusUpdateResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // A Charging Station shall cancel an existing reservation when:

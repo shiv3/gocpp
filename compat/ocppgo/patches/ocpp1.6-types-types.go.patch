@@ -1,0 +1,11 @@
+--- a/ocpp1.6/types/types.go	2026-11-24 00:00:00 +0900
++++ b/ocpp1.6/types/types.go	2026-11-24 00:00:00 +0900
+@@ -131,7 +131,7 @@
+ 
+ type ChargingProfile struct {
+ 	ChargingProfileId      int                        `json:"chargingProfileId"`
+-	TransactionId          int                        `json:"transactionId,omitempty"`
++	TransactionId          *int                       `json:"transactionId,omitempty"`
+ 	StackLevel             int                        `json:"stackLevel" validate:"gte=0"`
+ 	ChargingProfilePurpose ChargingProfilePurposeType `json:"chargingProfilePurpose" validate:"required,chargingProfilePurpose16"`
+ 	ChargingProfileKind    ChargingProfileKindType    `json:"chargingProfileKind" validate:"required,chargingProfileKind16"`

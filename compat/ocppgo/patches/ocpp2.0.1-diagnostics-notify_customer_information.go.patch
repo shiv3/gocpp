@@ -1,11 +1,26 @@
 --- a/ocpp2.0.1/diagnostics/notify_customer_information.go	2026-11-24 00:00:00 +0900
 +++ b/ocpp2.0.1/diagnostics/notify_customer_information.go	2026-11-24 00:00:00 +0900
-@@ -12,7 +12,7 @@
+@@ -12,16 +12,18 @@
  
  // The field definition of the NotifyCustomerInformation request payload sent by a Charging Station to the CSMS.
  type NotifyCustomerInformationRequest struct {
 -	Data        string         `json:"data" validate:"required,max=512"`   // (Part of) the requested data. No format specified in which the data is returned. Should be human readable.
-+	Data        string         `json:"data" validate:"max=512"`            // (Part of) the requested data. No format specified in which the data is returned. Should be human readable.
- 	Tbc         bool           `json:"tbc,omitempty" validate:"omitempty"` // “to be continued” indicator. Indicates whether another part of the monitoringData follows in an upcoming notifyMonitoringReportRequest message. Default value when omitted is false.
- 	SeqNo       int            `json:"seqNo" validate:"gte=0"`             // Sequence number of this message. First message starts at 0.
- 	GeneratedAt types.DateTime `json:"generatedAt" validate:"required"`    // Timestamp of the moment this message was generated at the Charging Station.
+-	Tbc         bool           `json:"tbc,omitempty" validate:"omitempty"` // “to be continued” indicator. Indicates whether another part of the monitoringData follows in an upcoming notifyMonitoringReportRequest message. Default value when omitted is false.
+-	SeqNo       int            `json:"seqNo" validate:"gte=0"`             // Sequence number of this message. First message starts at 0.
+-	GeneratedAt types.DateTime `json:"generatedAt" validate:"required"`    // Timestamp of the moment this message was generated at the Charging Station.
+-	RequestID   int            `json:"requestId" validate:"gte=0"`         // The Id of the request.
++	Data        string            `json:"data" validate:"max=512"`                   // (Part of) the requested data. No format specified in which the data is returned. Should be human readable.
++	Tbc         bool              `json:"tbc,omitempty" validate:"omitempty"`        // “to be continued” indicator. Indicates whether another part of the monitoringData follows in an upcoming notifyMonitoringReportRequest message. Default value when omitted is false.
++	SeqNo       int               `json:"seqNo" validate:"gte=0"`                    // Sequence number of this message. First message starts at 0.
++	GeneratedAt types.DateTime    `json:"generatedAt" validate:"required"`           // Timestamp of the moment this message was generated at the Charging Station.
++	RequestID   int               `json:"requestId" validate:"gte=0"`                // The Id of the request.
++	CustomData  *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the NotifyCustomerInformation response payload, sent by the CSMS to the Charging Station in response to a NotifyCustomerInformationRequest.
+ // In case the request was invalid, or couldn't be processed, an error will be sent instead.
+ type NotifyCustomerInformationResponse struct {
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // The CSMS may send a message to the Charging Station to retrieve raw customer information, for example to be compliant with local privacy laws.

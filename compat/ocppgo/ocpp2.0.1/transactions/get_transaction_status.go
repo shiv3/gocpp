@@ -2,6 +2,8 @@ package transactions
 
 import (
 	"reflect"
+
+	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types"
 )
 
 // -------------------- Clear Cache (CSMS -> CS) --------------------
@@ -10,14 +12,16 @@ const GetTransactionStatusFeatureName = "GetTransactionStatus"
 
 // The field definition of the GetTransactionStatus request payload sent by the CSMS to the Charging Station.
 type GetTransactionStatusRequest struct {
-	TransactionID string `json:"transactionId,omitempty" validate:"omitempty,max=36"`
+	TransactionID string            `json:"transactionId,omitempty" validate:"omitempty,max=36"`
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the GetTransactionStatus response payload, sent by the Charging Station to the CSMS in response to a GetTransactionStatusRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type GetTransactionStatusResponse struct {
-	OngoingIndicator *bool `json:"ongoingIndicator,omitempty" validate:"omitempty"`
-	MessagesInQueue  bool  `json:"messagesInQueue"`
+	OngoingIndicator *bool             `json:"ongoingIndicator,omitempty" validate:"omitempty"`
+	MessagesInQueue  bool              `json:"messagesInQueue"`
+	CustomData       *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // In some scenarios a CSMS needs to know whether there are still messages for a transaction that need to be delivered.

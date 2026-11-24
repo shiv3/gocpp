@@ -35,6 +35,7 @@ func isValidInstallCertificateStatus(fl validator.FieldLevel) bool {
 type InstallCertificateRequest struct {
 	CertificateType types.CertificateUse `json:"certificateType" validate:"required,certificateUse"` // Indicates the certificate type that is sent.
 	Certificate     string               `json:"certificate" validate:"required,max=5500"`           // A PEM encoded X.509 certificate.
+	CustomData      *types.CustomData    `json:"customData,omitempty" validate:"omitempty"`          // vendor specific extension data (schema customData)
 }
 
 // This field definition of the InstallCertificate response payload, sent by the Charging Station to the CSMS in response to a InstallCertificateRequest.
@@ -42,6 +43,7 @@ type InstallCertificateRequest struct {
 type InstallCertificateResponse struct {
 	Status     InstallCertificateStatus `json:"status" validate:"required,installCertificateStatus"`
 	StatusInfo *types.StatusInfo        `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData        `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS requests the Charging Station to install a new certificate by sending an InstallCertificateRequest.

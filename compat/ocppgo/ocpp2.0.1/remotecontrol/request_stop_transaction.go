@@ -12,7 +12,8 @@ const RequestStopTransactionFeatureName = "RequestStopTransaction"
 
 // The field definition of the RequestStopTransaction request payload sent by the CSMS to the Charging Station.
 type RequestStopTransactionRequest struct {
-	TransactionID string `json:"transactionId" validate:"required,max=36"`
+	TransactionID string            `json:"transactionId" validate:"required,max=36"`
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the RequestStopTransaction response payload, sent by the Charging Station to the CSMS in response to a RequestStopTransactionRequest.
@@ -20,6 +21,7 @@ type RequestStopTransactionRequest struct {
 type RequestStopTransactionResponse struct {
 	Status     RequestStartStopStatus `json:"status" validate:"required,requestStartStopStatus"`
 	StatusInfo *types.StatusInfo      `json:"statusInfo,omitempty"`
+	CustomData *types.CustomData      `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS may remotely stop an ongoing transaction for a user.

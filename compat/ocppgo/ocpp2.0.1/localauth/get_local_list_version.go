@@ -2,6 +2,8 @@ package localauth
 
 import (
 	"reflect"
+
+	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types"
 )
 
 // -------------------- Get Local List Version (CSMS -> CS) --------------------
@@ -10,12 +12,14 @@ const GetLocalListVersionFeatureName = "GetLocalListVersion"
 
 // The field definition of the GetLocalListVersion request payload sent by the CSMS to the Charging Station.
 type GetLocalListVersionRequest struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the GetLocalListVersion response payload, sent by the Charging Station to the CSMS in response to a GetLocalListVersionRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type GetLocalListVersionResponse struct {
-	VersionNumber int `json:"versionNumber" validate:"gte=0"`
+	VersionNumber int               `json:"versionNumber" validate:"gte=0"`
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS can request a Charging Station for the version number of the Local Authorization List by sending a GetLocalListVersionRequest.

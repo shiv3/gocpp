@@ -1,0 +1,18 @@
+--- a/ocpp2.0.1/iso15118/delete_certificate.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/iso15118/delete_certificate.go	2026-11-24 00:00:00 +0900
+@@ -34,6 +34,7 @@
+ // The field definition of the DeleteCertificate request payload sent by the CSMS to the Charging Station.
+ type DeleteCertificateRequest struct {
+ 	CertificateHashData types.CertificateHashData `json:"certificateHashData" validate:"required"`
++	CustomData          *types.CustomData         `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the DeleteCertificate response payload, sent by the Charging Station to the CSMS in response to a DeleteCertificateRequest.
+@@ -41,6 +42,7 @@
+ type DeleteCertificateResponse struct {
+ 	Status     DeleteCertificateStatus `json:"status" validate:"required,deleteCertificateStatus"`
+ 	StatusInfo *types.StatusInfo       `json:"statusInfo,omitempty" validate:"omitempty"`
++	CustomData *types.CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // The CSMS requests the Charging Station to delete a specific installed certificate by sending a DeleteCertificateRequest.

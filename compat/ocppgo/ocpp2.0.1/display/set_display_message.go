@@ -40,7 +40,8 @@ func isValidDisplayMessageStatus(fl validator.FieldLevel) bool {
 
 // The field definition of the SetDisplayMessage request payload sent by the CSMS to the Charging Station.
 type SetDisplayMessageRequest struct {
-	Message MessageInfo `json:"message" validate:"required"`
+	Message    MessageInfo       `json:"message" validate:"required"`
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the SetDisplayMessage response payload, sent by the Charging Station to the CSMS in response to a SetDisplayMessageRequest.
@@ -48,6 +49,7 @@ type SetDisplayMessageRequest struct {
 type SetDisplayMessageResponse struct {
 	Status     DisplayMessageStatus `json:"status" validate:"required,displayMessageStatus"`
 	StatusInfo *types.StatusInfo    `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData    `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS may send a SetDisplayMessageRequest message to a Charging Station, instructing it to display a new message,

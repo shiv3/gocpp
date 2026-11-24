@@ -32,7 +32,8 @@ func isValidClearMessageStatus(fl validator.FieldLevel) bool {
 
 // The field definition of the ClearDisplay request payload sent by the CSMS to the Charging Station.
 type ClearDisplayRequest struct {
-	ID int `json:"id"` // Id of the message that SHALL be removed from the Charging Station.
+	ID         int               `json:"id"`                                        // Id of the message that SHALL be removed from the Charging Station.
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the ClearDisplay response payload, sent by the Charging Station to the CSMS in response to a ClearDisplayRequest.
@@ -40,6 +41,7 @@ type ClearDisplayRequest struct {
 type ClearDisplayResponse struct {
 	Status     ClearMessageStatus `json:"status" validate:"required,clearMessageStatus"`
 	StatusInfo *types.StatusInfo  `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData  `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSMS asks the Charging Station to clear a display message that has been configured in the Charging Station to be cleared/removed.

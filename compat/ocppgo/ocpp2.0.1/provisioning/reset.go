@@ -52,8 +52,9 @@ func isValidResetStatus(fl validator.FieldLevel) bool {
 
 // The field definition of the Reset request payload sent by the CSMS to the Charging Station.
 type ResetRequest struct {
-	Type   ResetType `json:"type" validate:"resetType201"`
-	EvseID *int      `json:"evseId,omitempty" validate:"omitempty,gte=0"`
+	Type       ResetType         `json:"type" validate:"resetType201"`
+	EvseID     *int              `json:"evseId,omitempty" validate:"omitempty,gte=0"`
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the Reset response payload, sent by the Charging Station to the CSMS in response to a ResetRequest.
@@ -61,6 +62,7 @@ type ResetRequest struct {
 type ResetResponse struct {
 	Status     ResetStatus       `json:"status" validate:"required,resetStatus201"`
 	StatusInfo *types.StatusInfo `json:"statusInfo" validate:"omitempty"`
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSO may trigger the CSMS to request a Charging Station to reset itself or an EVSE.

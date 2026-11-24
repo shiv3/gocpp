@@ -14,6 +14,7 @@ const SignCertificateFeatureName = "SignCertificate"
 type SignCertificateRequest struct {
 	CSR             string                      `json:"csr" validate:"required,max=5500"`                                     // The Charging Station SHALL send the public key in form of a Certificate Signing Request (CSR) as described in RFC 2986 and then PEM encoded.
 	CertificateType types.CertificateSigningUse `json:"certificateType,omitempty" validate:"omitempty,certificateSigningUse"` // Indicates the type of certificate that is to be signed.
+	CustomData      *types.CustomData           `json:"customData,omitempty" validate:"omitempty"`                            // vendor specific extension data (schema customData)
 }
 
 // This field definition of the SignCertificate response payload, sent by the CSMS to the Charging Station in response to a SignCertificateRequest.
@@ -21,6 +22,7 @@ type SignCertificateRequest struct {
 type SignCertificateResponse struct {
 	Status     types.GenericStatus `json:"status" validate:"required,genericStatus"`  // Specifies whether the CSMS can process the request.
 	StatusInfo *types.StatusInfo   `json:"statusInfo,omitempty" validate:"omitempty"` // Detailed status information.
+	CustomData *types.CustomData   `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // If a Charging Station detected, that its certificate is due to expire, it will generate a new public/private key pair,

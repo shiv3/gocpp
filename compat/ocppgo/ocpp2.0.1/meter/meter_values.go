@@ -14,11 +14,13 @@ const MeterValuesFeatureName = "MeterValues"
 type MeterValuesRequest struct {
 	EvseID     int                `json:"evseId" validate:"gte=0"` // This contains a number (>0) designating an EVSE of the Charging Station. ‘0’ (zero) is used to designate the main power meter.
 	MeterValue []types.MeterValue `json:"meterValue" validate:"required,min=1,dive"`
+	CustomData *types.CustomData  `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the Authorize confirmation payload, sent by the Charge Point to the Central System in response to an AuthorizeRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type MeterValuesResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The message is used to sample the electrical meter or other sensor/transducer hardware to provide information about the Charging Stations' Meter Values, outside of a transaction.

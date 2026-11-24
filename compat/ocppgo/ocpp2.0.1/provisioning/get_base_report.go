@@ -33,8 +33,9 @@ func isValidReportBaseType(fl validator.FieldLevel) bool {
 
 // The field definition of the GetBaseReport request payload sent by the CSMS to the Charging Station.
 type GetBaseReportRequest struct {
-	RequestID  int            `json:"requestId"`
-	ReportBase ReportBaseType `json:"reportBase" validate:"required,reportBaseType"`
+	RequestID  int               `json:"requestId"`
+	ReportBase ReportBaseType    `json:"reportBase" validate:"required,reportBaseType"`
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the GetBaseReport response payload, sent by the Charging Station to the CSMS in response to a GetBaseReportRequest.
@@ -42,6 +43,7 @@ type GetBaseReportRequest struct {
 type GetBaseReportResponse struct {
 	Status     types.GenericDeviceModelStatus `json:"status" validate:"required,genericDeviceModelStatus"`
 	StatusInfo *types.StatusInfo              `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData              `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSO may trigger the CSMS to request a report from a Charging Station.

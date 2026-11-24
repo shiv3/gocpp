@@ -1,0 +1,35 @@
+--- a/ocpp2.0.1/display/get_display_messages.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/display/get_display_messages.go	2026-11-24 00:00:00 +0900
+@@ -2,6 +2,8 @@
+ 
+ import (
+ 	"reflect"
++
++	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types"
+ )
+ 
+ // -------------------- Get Display Messages (CSMS -> CS) --------------------
+@@ -10,16 +12,18 @@
+ 
+ // The field definition of the GetDisplayMessages request payload sent by the CSMS to the Charging Station.
+ type GetDisplayMessagesRequest struct {
+-	RequestID int             `json:"requestId" validate:"gte=0"`
+-	Priority  MessagePriority `json:"priority,omitempty" validate:"omitempty,messagePriority"`
+-	State     MessageState    `json:"state,omitempty" validate:"omitempty,messageState"`
+-	ID        []int           `json:"id,omitempty" validate:"omitempty,dive,gte=0"`
++	RequestID  int               `json:"requestId" validate:"gte=0"`
++	Priority   MessagePriority   `json:"priority,omitempty" validate:"omitempty,messagePriority"`
++	State      MessageState      `json:"state,omitempty" validate:"omitempty,messageState"`
++	ID         []int             `json:"id,omitempty" validate:"omitempty,dive,gte=0"`
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // This field definition of the GetDisplayMessages response payload, sent by the Charging Station to the CSMS in response to a GetDisplayMessagesRequest.
+ // In case the request was invalid, or couldn't be processed, an error will be sent instead.
+ type GetDisplayMessagesResponse struct {
+-	Status MessageStatus `json:"status" validate:"required,messageStatus"`
++	Status     MessageStatus     `json:"status" validate:"required,messageStatus"`
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // A Charging Station can remove messages when they are out-dated, or transactions have ended. It can be very useful for a CSO to be able to view to current list of messages, so the CSO knows which messages are (still) configured.

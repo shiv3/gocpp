@@ -78,12 +78,13 @@ func isValidConnectorType(fl validator.FieldLevel) bool {
 
 // The field definition of the ReserveNow request payload sent by the CSMS to the Charging Station.
 type ReserveNowRequest struct {
-	ID             int             `json:"id" validate:"gte=0"` // ID of reservation
-	ExpiryDateTime *types.DateTime `json:"expiryDateTime" validate:"required"`
-	ConnectorType  ConnectorType   `json:"connectorType,omitempty" validate:"omitempty,connectorType"`
-	EvseID         *int            `json:"evseId,omitempty" validate:"omitempty,gte=0"`
-	IdToken        types.IdToken   `json:"idToken" validate:"required,dive"`
-	GroupIdToken   *types.IdToken  `json:"groupIdToken,omitempty" validate:"omitempty,dive"`
+	ID             int               `json:"id" validate:"gte=0"` // ID of reservation
+	ExpiryDateTime *types.DateTime   `json:"expiryDateTime" validate:"required"`
+	ConnectorType  ConnectorType     `json:"connectorType,omitempty" validate:"omitempty,connectorType"`
+	EvseID         *int              `json:"evseId,omitempty" validate:"omitempty,gte=0"`
+	IdToken        types.IdToken     `json:"idToken" validate:"required,dive"`
+	GroupIdToken   *types.IdToken    `json:"groupIdToken,omitempty" validate:"omitempty,dive"`
+	CustomData     *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the ReserveNow response payload, sent by the Charging Station to the CSMS in response to a ReserveNowRequest.
@@ -91,6 +92,7 @@ type ReserveNowRequest struct {
 type ReserveNowResponse struct {
 	Status     ReserveNowStatus  `json:"status" validate:"required,reserveNowStatus"`
 	StatusInfo *types.StatusInfo `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // To ensure an EV drive can charge their EV at a charging station, the EV driver may make a reservation until

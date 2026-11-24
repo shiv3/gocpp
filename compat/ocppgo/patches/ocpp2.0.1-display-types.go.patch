@@ -1,0 +1,10 @@
+--- a/ocpp2.0.1/display/types.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/display/types.go	2026-11-24 00:00:00 +0900
+@@ -68,6 +68,7 @@
+ 	TransactionID string               `json:"transactionId,omitempty" validate:"omitempty,max=36"` // During which transaction shall this message be shown. Message SHALL be removed by the Charging Station after transaction has ended.
+ 	Message       types.MessageContent `json:"message" validate:"required"`                         // Contains message details for the message to be displayed on a Charging Station.
+ 	Display       *types.Component     `json:"display,omitempty" validate:"omitempty"`              // When a Charging Station has multiple Displays, this field can be used to define to which Display this message belongs.
++	CustomData    *types.CustomData    `json:"customData,omitempty" validate:"omitempty"`           // vendor specific extension data (schema customData)
+ }
+ 
+ func init() {

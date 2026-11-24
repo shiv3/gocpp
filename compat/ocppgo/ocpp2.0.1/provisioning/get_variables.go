@@ -33,9 +33,10 @@ func isValidGetVariableStatus(fl validator.FieldLevel) bool {
 }
 
 type GetVariableData struct {
-	AttributeType types.Attribute `json:"attributeType,omitempty" validate:"omitempty,attribute"`
-	Component     types.Component `json:"component" validate:"required"`
-	Variable      types.Variable  `json:"variable" validate:"required"`
+	AttributeType types.Attribute   `json:"attributeType,omitempty" validate:"omitempty,attribute"`
+	Component     types.Component   `json:"component" validate:"required"`
+	Variable      types.Variable    `json:"variable" validate:"required"`
+	CustomData    *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 type GetVariableResult struct {
@@ -45,17 +46,20 @@ type GetVariableResult struct {
 	Component           types.Component   `json:"component" validate:"required"`
 	Variable            types.Variable    `json:"variable" validate:"required"`
 	AttributeStatusInfo *types.StatusInfo `json:"attributeStatusInfo,omitempty" validate:"omitempty"`
+	CustomData          *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The field definition of the GetVariables request payload sent by the CSMS to the Charging Station.
 type GetVariablesRequest struct {
 	GetVariableData []GetVariableData `json:"getVariableData" validate:"required,min=1,dive"`
+	CustomData      *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the GetVariables response payload, sent by the Charging Station to the CSMS in response to a GetVariablesRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type GetVariablesResponse struct {
 	GetVariableResult []GetVariableResult `json:"getVariableResult" validate:"required,min=1,dive"`
+	CustomData        *types.CustomData   `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // The CSO may trigger the CSMS to request to request for a number of variables in a Charging Station.
@@ -87,12 +91,12 @@ func (c GetVariablesResponse) GetFeatureName() string {
 
 // Creates a new GetVariablesRequest, containing all required fields.  There are no optional fields for this message.
 func NewGetVariablesRequest(variableData []GetVariableData) *GetVariablesRequest {
-	return &GetVariablesRequest{variableData}
+	return &GetVariablesRequest{GetVariableData: variableData}
 }
 
 // Creates a new GetVariablesResponse, containing all required fields. There are no optional fields for this message.
 func NewGetVariablesResponse(result []GetVariableResult) *GetVariablesResponse {
-	return &GetVariablesResponse{result}
+	return &GetVariablesResponse{GetVariableResult: result}
 }
 
 func init() {

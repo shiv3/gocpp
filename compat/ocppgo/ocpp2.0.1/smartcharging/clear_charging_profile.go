@@ -24,6 +24,7 @@ type ClearChargingProfileType struct {
 	EvseID                 *int                             `json:"evseId,omitempty" validate:"omitempty,gte=0"`
 	ChargingProfilePurpose types.ChargingProfilePurposeType `json:"chargingProfilePurpose,omitempty" validate:"omitempty,chargingProfilePurpose201"`
 	StackLevel             *int                             `json:"stackLevel,omitempty" validate:"omitempty,gt=0"`
+	CustomData             *types.CustomData                `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 func isValidClearChargingProfileStatus(fl validator.FieldLevel) bool {
@@ -40,6 +41,7 @@ func isValidClearChargingProfileStatus(fl validator.FieldLevel) bool {
 type ClearChargingProfileRequest struct {
 	ChargingProfileID       *int                      `json:"chargingProfileId,omitempty" validate:"omitempty"`
 	ChargingProfileCriteria *ClearChargingProfileType `json:"chargingProfileCriteria,omitempty" validate:"omitempty"`
+	CustomData              *types.CustomData         `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the ClearChargingProfile response payload, sent by the Charging Station to the CSMS in response to a ClearChargingProfileRequest.
@@ -47,6 +49,7 @@ type ClearChargingProfileRequest struct {
 type ClearChargingProfileResponse struct {
 	Status     ClearChargingProfileStatus `json:"status" validate:"required,clearChargingProfileStatus201"`
 	StatusInfo *types.StatusInfo          `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData          `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // If the CSMS wishes to clear some or all of the charging profiles that were previously sent the Charging Station,

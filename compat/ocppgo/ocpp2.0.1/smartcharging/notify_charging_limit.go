@@ -14,6 +14,7 @@ const NotifyChargingLimitFeatureName = "NotifyChargingLimit"
 type ChargingLimit struct {
 	ChargingLimitSource types.ChargingLimitSourceType `json:"chargingLimitSource" validate:"required,chargingLimitSource"` // Represents the source of the charging limit.
 	IsGridCritical      *bool                         `json:"isGridCritical,omitempty" validate:"omitempty"`               // Indicates whether the charging limit is critical for the grid.
+	CustomData          *types.CustomData             `json:"customData,omitempty" validate:"omitempty"`                   // vendor specific extension data (schema customData)
 }
 
 // The field definition of the NotifyChargingLimit request payload sent by the Charging Station to the CSMS.
@@ -21,11 +22,13 @@ type NotifyChargingLimitRequest struct {
 	EvseID           *int                     `json:"evseId,omitempty" validate:"omitempty,gte=0"`
 	ChargingLimit    ChargingLimit            `json:"chargingLimit" validate:"required"`
 	ChargingSchedule []types.ChargingSchedule `json:"chargingSchedule,omitempty" validate:"omitempty,dive"`
+	CustomData       *types.CustomData        `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the NotifyChargingLimit response payload, sent by the CSMS to the Charging Station in response to a NotifyChargingLimitRequest.
 // In case the request was invalid, or couldn't be processed, an error will be sent instead.
 type NotifyChargingLimitResponse struct {
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // When an external control system sends a signal to release a previously imposed charging limit to a Charging Station,

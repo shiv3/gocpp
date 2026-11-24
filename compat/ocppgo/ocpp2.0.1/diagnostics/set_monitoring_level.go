@@ -36,7 +36,8 @@ type SetMonitoringLevelRequest struct {
 	// Indicates a regular operational event. May be used for reporting, measuring throughput, etc.
 	//  - 9 Debug:
 	// Indicates information useful to developers for debugging, not useful during operations.
-	Severity int `json:"severity" validate:"min=0,max=9"`
+	Severity   int               `json:"severity" validate:"min=0,max=9"`
+	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the SetMonitoringLevel response payload, sent by the Charging Station to the CSMS in response to a SetMonitoringLevelRequest.
@@ -44,6 +45,7 @@ type SetMonitoringLevelRequest struct {
 type SetMonitoringLevelResponse struct {
 	Status     types.GenericDeviceModelStatus `json:"status" validate:"required,genericDeviceModelStatus"` // Indicates whether the Charging Station was able to accept the request.
 	StatusInfo *types.StatusInfo              `json:"statusInfo,omitempty" validate:"omitempty"`           // Detailed status information.
+	CustomData *types.CustomData              `json:"customData,omitempty" validate:"omitempty"`           // vendor specific extension data (schema customData)
 }
 
 // It may be desirable to restrict the reporting of monitoring events, to only those monitors with a

@@ -183,6 +183,28 @@ against the schemas are in `ocpp2.0.1_test/schema_conformance_test.go` and
 | `diagnostics.GetLogResponse.Filename` (issue #424) | at most 255 characters (was 256) | none |
 | `iso15118.GetInstalledCertificateIdsRequest.CertificateTypes` (issue #427) | `certificateType` is omitted when the list is empty or nil (it was sent as `null`); omitted means all types | none |
 
+### customData (OCPP 2.0.1)
+
+Every OCPP 2.0.1 message and nested object may carry `customData` (schema `CustomDataType`:
+a mandatory `vendorId` plus arbitrary vendor properties). Upstream v0.19.0 drops it on
+receive and cannot send it (upstream issues #365, #384). Every request, response and
+nested struct of `ocpp2.0.1/...` now has `CustomData *types.CustomData` (`json:"customData,omitempty"`);
+`types.CustomData` has `VendorID string` and `Extra map[string]json.RawMessage`, which keeps
+the vendor's other properties byte for byte through a decode and re-encode. `vendorId` is
+required (`validate`) when `customData` is present.
+
+| Migrating |
+|---|
+| additive for keyed struct literals and field access; **unkeyed** struct literals (`smartcharging.Foo{a, b}`) of these types no longer compile, use field names |
+
+### OCPP 1.6
+
+| Type | Change | Migrating |
+|---|---|---|
+| `types.ChargingProfile.TransactionId` (upstream issue #350) | `*int` (was `int` with `omitempty`, which could not send transaction id 0 nor tell absent from 0) | `TransactionId: &id`; nil means absent |
+| `types.CertificateHashData.HashAlgorithm` (upstream PR from a fork: certificate hash validation panic) | validated by a `hashAlgorithm16` validator registered by the 1.6 types package; a program that imports only OCPP 1.6 packages no longer panics with "Undefined validation function 'hashAlgorithm'" | none |
+| `logging.GetLogResponse.Filename` (upstream issue #424) | at most 255 characters (was 256) | none |
+
 ## Known differences
 
 - Outbound requests are ordered per charge point, not globally.

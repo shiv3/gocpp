@@ -13,6 +13,7 @@ const GetCertificateStatusFeatureName = "GetCertificateStatus"
 // The field definition of the GetCertificateStatus request payload sent by the Charging Station to the CSMS.
 type GetCertificateStatusRequest struct {
 	OcspRequestData types.OCSPRequestDataType `json:"ocspRequestData" validate:"required"`
+	CustomData      *types.CustomData         `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the GetCertificateStatus response payload, sent by the CSMS to the Charging Station in response to a GetCertificateStatusRequest.
@@ -21,6 +22,7 @@ type GetCertificateStatusResponse struct {
 	Status     types.Certificate15118EVStatus `json:"status" validate:"required,15118EVCertificate"` // Accepted or Failed (schema GetCertificateStatusEnumType)
 	OcspResult string                         `json:"ocspResult,omitempty" validate:"omitempty,max=5500"`
 	StatusInfo *types.StatusInfo              `json:"statusInfo,omitempty" validate:"omitempty"`
+	CustomData *types.CustomData              `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // For 15118 certificate installation on EVs, the Charging Station requests the CSMS to provide the OCSP certificate

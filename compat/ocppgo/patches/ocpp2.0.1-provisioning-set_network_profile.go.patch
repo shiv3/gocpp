@@ -1,0 +1,68 @@
+--- a/ocpp2.0.1/provisioning/set_network_profile.go	2026-11-24 00:00:00 +0900
++++ b/ocpp2.0.1/provisioning/set_network_profile.go	2026-11-24 00:00:00 +0900
+@@ -129,12 +129,13 @@
+ 
+ // VPN Configuration settings.
+ type VPN struct {
+-	Server   string  `json:"server" validate:"required,max=512"`          // VPN Server Address.
+-	User     string  `json:"user" validate:"required,max=20"`             // VPN User.
+-	Group    string  `json:"group,omitempty" validate:"omitempty,max=20"` // VPN group.
+-	Password string  `json:"password" validate:"required,max=20"`         // VPN Password.
+-	Key      string  `json:"key" validate:"required,max=255"`             // VPN shared secret.
+-	Type     VPNType `json:"type" validate:"required,vpnType"`            // Type of VPN.
++	Server     string            `json:"server" validate:"required,max=512"`          // VPN Server Address.
++	User       string            `json:"user" validate:"required,max=20"`             // VPN User.
++	Group      string            `json:"group,omitempty" validate:"omitempty,max=20"` // VPN group.
++	Password   string            `json:"password" validate:"required,max=20"`         // VPN Password.
++	Key        string            `json:"key" validate:"required,max=255"`             // VPN shared secret.
++	Type       VPNType           `json:"type" validate:"required,vpnType"`            // Type of VPN.
++	CustomData *types.CustomData `json:"customData,omitempty" validate:"omitempty"`   // vendor specific extension data (schema customData)
+ }
+ 
+ type APN struct {
+@@ -145,24 +146,27 @@
+ 	PreferredNetwork        string            `json:"preferredNetwork,omitempty" validate:"omitempty,max=6"`   // Preferred network, written as MCC and MNC concatenated.
+ 	UseOnlyPreferredNetwork bool              `json:"useOnlyPreferredNetwork,omitempty"`                       // Use only the preferred Network, do not dial in when not available.
+ 	APNAuthentication       APNAuthentication `json:"apnAuthentication" validate:"required,apnAuthentication"` // Authentication method.
++	CustomData              *types.CustomData `json:"customData,omitempty" validate:"omitempty"`               // vendor specific extension data (schema customData)
+ }
+ 
+ // NetworkConnectionProfile defines the functional and technical parameters of a communication link.
+ type NetworkConnectionProfile struct {
+-	OCPPVersion     OCPPVersion   `json:"ocppVersion" validate:"required,ocppVersion"`     // The OCPP version used for this communication function.
+-	OCPPTransport   OCPPTransport `json:"ocppTransport" validate:"required,ocppTransport"` // Defines the transport protocol (only OCPP-J is supported by this library).
+-	CSMSUrl         string        `json:"ocppCsmsUrl" validate:"required,max=512"`         // URL of the CSMS(s) that this Charging Station communicates with.
+-	MessageTimeout  int           `json:"messageTimeout" validate:"gte=-1"`                // Duration in seconds before a message send by the Charging Station via this network connection times out.
+-	SecurityProfile int           `json:"securityProfile"`                                 // The security profile used when connecting to the CSMS with this NetworkConnectionProfile.
+-	OCPPInterface   OCPPInterface `json:"ocppInterface" validate:"required,ocppInterface"` // Applicable Network Interface.
+-	VPN             *VPN          `json:"vpn,omitempty" validate:"omitempty"`              // Settings to be used to set up the VPN connection.
+-	APN             *APN          `json:"apn,omitempty" validate:"omitempty"`              // Collection of configuration data needed to make a data-connection over a cellular network.
++	OCPPVersion     OCPPVersion       `json:"ocppVersion" validate:"required,ocppVersion"`     // The OCPP version used for this communication function.
++	OCPPTransport   OCPPTransport     `json:"ocppTransport" validate:"required,ocppTransport"` // Defines the transport protocol (only OCPP-J is supported by this library).
++	CSMSUrl         string            `json:"ocppCsmsUrl" validate:"required,max=512"`         // URL of the CSMS(s) that this Charging Station communicates with.
++	MessageTimeout  int               `json:"messageTimeout" validate:"gte=-1"`                // Duration in seconds before a message send by the Charging Station via this network connection times out.
++	SecurityProfile int               `json:"securityProfile"`                                 // The security profile used when connecting to the CSMS with this NetworkConnectionProfile.
++	OCPPInterface   OCPPInterface     `json:"ocppInterface" validate:"required,ocppInterface"` // Applicable Network Interface.
++	VPN             *VPN              `json:"vpn,omitempty" validate:"omitempty"`              // Settings to be used to set up the VPN connection.
++	APN             *APN              `json:"apn,omitempty" validate:"omitempty"`              // Collection of configuration data needed to make a data-connection over a cellular network.
++	CustomData      *types.CustomData `json:"customData,omitempty" validate:"omitempty"`       // vendor specific extension data (schema customData)
+ }
+ 
+ // The field definition of the SetNetworkProfile request payload sent by the CSMS to the Charging Station.
+ type SetNetworkProfileRequest struct {
+-	ConfigurationSlot int                      `json:"configurationSlot" validate:"gte=0"` // Slot in which the configuration should be stored.
+-	ConnectionData    NetworkConnectionProfile `json:"connectionData" validate:"required"` // Connection details.
++	ConfigurationSlot int                      `json:"configurationSlot" validate:"gte=0"`        // Slot in which the configuration should be stored.
++	ConnectionData    NetworkConnectionProfile `json:"connectionData" validate:"required"`        // Connection details.
++	CustomData        *types.CustomData        `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // Field definition of the SetNetworkProfile response payload, sent by the Charging Station to the CSMS in response to a SetNetworkProfileRequest.
+@@ -170,6 +174,7 @@
+ type SetNetworkProfileResponse struct {
+ 	Status     SetNetworkProfileStatus `json:"status" validate:"required,setNetworkProfileStatus"`
+ 	StatusInfo *types.StatusInfo       `json:"statusInfo" validate:"omitempty"`
++	CustomData *types.CustomData       `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
+ }
+ 
+ // The CSMS may update the connection details on the Charging Station.

@@ -51,22 +51,24 @@ func isValidEVChargingNeedsStatus(fl validator.FieldLevel) bool {
 
 // ACChargingParameters contains EV AC charging parameters. Used by ChargingNeeds.
 type ACChargingParameters struct {
-	EnergyAmount int `json:"energyAmount" validate:"gte=0"` // Amount of energy requested (in Wh). This includes energy required for preconditioning.
-	EVMinCurrent int `json:"evMinCurrent" validate:"gte=0"` // Minimum current (amps) supported by the electric vehicle (per phase).
-	EVMaxCurrent int `json:"evMaxCurrent" validate:"gte=0"` // Maximum current (amps) supported by the electric vehicle (per phase). Includes cable capacity.
-	EVMaxVoltage int `json:"evMaxVoltage" validate:"gte=0"` // Maximum voltage supported by the electric vehicle.
+	EnergyAmount int               `json:"energyAmount" validate:"gte=0"`             // Amount of energy requested (in Wh). This includes energy required for preconditioning.
+	EVMinCurrent int               `json:"evMinCurrent" validate:"gte=0"`             // Minimum current (amps) supported by the electric vehicle (per phase).
+	EVMaxCurrent int               `json:"evMaxCurrent" validate:"gte=0"`             // Maximum current (amps) supported by the electric vehicle (per phase). Includes cable capacity.
+	EVMaxVoltage int               `json:"evMaxVoltage" validate:"gte=0"`             // Maximum voltage supported by the electric vehicle.
+	CustomData   *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // DCChargingParameters contains EV DC charging parameters. Used by ChargingNeeds.
 type DCChargingParameters struct {
-	EVMaxCurrent     int  `json:"evMaxCurrent" validate:"gte=0"`                              // Maximum current (amps) supported by the electric vehicle (per phase). Includes cable capacity.
-	EVMaxVoltage     int  `json:"evMaxVoltage" validate:"gte=0"`                              // Maximum voltage supported by the electric vehicle.
-	EnergyAmount     *int `json:"energyAmount,omitempty" validate:"omitempty,gte=0"`          // Amount of energy requested (in Wh). This includes energy required for preconditioning.
-	EVMaxPower       *int `json:"evMaxPower,omitempty" validate:"omitempty,gte=0"`            // Maximum power (in W) supported by the electric vehicle. Required for DC charging.
-	StateOfCharge    *int `json:"stateOfCharge,omitempty" validate:"omitempty,gte=0,lte=100"` // Energy available in the battery (in percent of the battery capacity).
-	EVEnergyCapacity *int `json:"evEnergyCapacity,omitempty" validate:"omitempty,gte=0"`      // Capacity of the electric vehicle battery (in Wh)
-	FullSoC          *int `json:"fullSoC,omitempty" validate:"omitempty,gte=0,lte=100"`       // Percentage of SoC at which the EV considers the battery fully charged. (possible values: 0 - 100)
-	BulkSoC          *int `json:"bulkSoC,omitempty" validate:"omitempty,gte=0,lte=100"`       // Percentage of SoC at which the EV considers a fast charging process to end. (possible values: 0 - 100)
+	EVMaxCurrent     int               `json:"evMaxCurrent" validate:"gte=0"`                              // Maximum current (amps) supported by the electric vehicle (per phase). Includes cable capacity.
+	EVMaxVoltage     int               `json:"evMaxVoltage" validate:"gte=0"`                              // Maximum voltage supported by the electric vehicle.
+	EnergyAmount     *int              `json:"energyAmount,omitempty" validate:"omitempty,gte=0"`          // Amount of energy requested (in Wh). This includes energy required for preconditioning.
+	EVMaxPower       *int              `json:"evMaxPower,omitempty" validate:"omitempty,gte=0"`            // Maximum power (in W) supported by the electric vehicle. Required for DC charging.
+	StateOfCharge    *int              `json:"stateOfCharge,omitempty" validate:"omitempty,gte=0,lte=100"` // Energy available in the battery (in percent of the battery capacity).
+	EVEnergyCapacity *int              `json:"evEnergyCapacity,omitempty" validate:"omitempty,gte=0"`      // Capacity of the electric vehicle battery (in Wh)
+	FullSoC          *int              `json:"fullSoC,omitempty" validate:"omitempty,gte=0,lte=100"`       // Percentage of SoC at which the EV considers the battery fully charged. (possible values: 0 - 100)
+	BulkSoC          *int              `json:"bulkSoC,omitempty" validate:"omitempty,gte=0,lte=100"`       // Percentage of SoC at which the EV considers a fast charging process to end. (possible values: 0 - 100)
+	CustomData       *types.CustomData `json:"customData,omitempty" validate:"omitempty"`                  // vendor specific extension data (schema customData)
 }
 
 // ChargingNeeds contains the characteristics of the energy delivery required. Used by NotifyEVChargingNeedsRequest.
@@ -75,13 +77,15 @@ type ChargingNeeds struct {
 	DepartureTime           *types.DateTime       `json:"departureTime,omitempty" validate:"omitempty"`                   // Estimated departure time of the EV.
 	ACChargingParameters    *ACChargingParameters `json:"acChargingParameters,omitempty" validate:"omitempty,dive"`       // AC charging parameters.
 	DCChargingParameters    *DCChargingParameters `json:"dcChargingParameters,omitempty" validate:"omitempty,dive"`       // AC charging parameters.
+	CustomData              *types.CustomData     `json:"customData,omitempty" validate:"omitempty"`                      // vendor specific extension data (schema customData)
 }
 
 // The field definition of the NotifyEVChargingNeeds request payload sent by the Charging Station to the CSMS.
 type NotifyEVChargingNeedsRequest struct {
-	MaxScheduleTuples *int          `json:"maxScheduleTuples,omitempty" validate:"omitempty,gte=0"`
-	EvseID            int           `json:"evseId" validate:"gt=0"`
-	ChargingNeeds     ChargingNeeds `json:"chargingNeeds" validate:"required"`
+	MaxScheduleTuples *int              `json:"maxScheduleTuples,omitempty" validate:"omitempty,gte=0"`
+	EvseID            int               `json:"evseId" validate:"gt=0"`
+	ChargingNeeds     ChargingNeeds     `json:"chargingNeeds" validate:"required"`
+	CustomData        *types.CustomData `json:"customData,omitempty" validate:"omitempty"` // vendor specific extension data (schema customData)
 }
 
 // This field definition of the NotifyEVChargingNeeds response payload, sent by the CSMS to the Charging Station in response to a NotifyEVChargingNeedsRequest.
@@ -91,6 +95,7 @@ type NotifyEVChargingNeedsResponse struct {
 	// It does not imply that the evChargingNeeds can be met with the current charging profile.
 	Status     EVChargingNeedsStatus `json:"status" validate:"required,evChargingNeedsStatus"`
 	StatusInfo *types.StatusInfo     `json:"statusInfo,omitempty" validate:"omitempty,dive"` // Detailed status information.
+	CustomData *types.CustomData     `json:"customData,omitempty" validate:"omitempty"`      // vendor specific extension data (schema customData)
 }
 
 // When an EV sends a ChargeParameterDiscoveryReq with with charging needs parameters,
