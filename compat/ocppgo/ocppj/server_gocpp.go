@@ -535,6 +535,13 @@ func (rt *gocppRuntime) complete(sc *srvConn, id, action string, request ocpp.Re
 			rt.onCanceled(clientID, id, request, e)
 		}
 	}
+	// An answer that reaches its callback after the connection is gone (it was
+	// held back behind an earlier request's timeout, see below) is dropped: the
+	// disconnect already ended every pending request with its error.
+	var answered *gocppj.CallError
+	if sc.dc.Context().Err() != nil && (cerr == nil || errors.As(cerr, &answered)) {
+		return
+	}
 	// An answer that fails ocpp-go's parsing or validation is handled as ocpp-go
 	// does: InvalidMessageHook sees it, the peer is sent the error (as a
 	// CALLERROR carrying the request's id) and the request stays pending until its

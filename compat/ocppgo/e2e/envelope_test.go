@@ -332,3 +332,108 @@ func TestInvalidAnswerKeepsCallbackOrder(t *testing.T) {
 	default:
 	}
 }
+
+// TestInvalidAnswerThenDisconnect: an answer that was held back behind an invalid
+// answer's timeout is not delivered once the charger has disconnected; every
+// pending request hears about the disconnect exactly once and Errors() stays quiet.
+func TestInvalidAnswerThenDisconnect(t *testing.T) {
+	if os.Getenv("OCPPGO_COMPAT_RUNTIME") == "legacy" {
+		t.Skip("uses compat.SetCallTimeout, a feature of the gocpp runtime")
+	}
+	srv := ws.NewServer()
+	endpoint := ocppj.NewServer(srv, nil, nil, core.Profile)
+	compat.SetCallTimeout(endpoint, 5*time.Second)
+	c := &central{h: &csHandler{}, port: freePort(t), srv: srv}
+	c.cs = ocpp16.NewCentralSystem(endpoint, srv)
+	c.cs.SetCoreHandler(c.h)
+	c.cs.SetChargePointDisconnectedHandler(func(ocpp16.ChargePointConnection) {})
+	errs := make(chan error, 8)
+	go func() {
+		for err := range c.cs.Errors() {
+			errs <- err
+		}
+	}()
+	srv.AddHttpHandler("/healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	go c.cs.Start(c.port, "/{ws}")
+	waitFor(t, "listening", func() bool {
+		resp, err := healthGet(c.port)
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err == nil
+	})
+	t.Cleanup(srv.Stop)
+
+	conn, _, err := dialCP(c, "CP-GONE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	waitFor(t, "connected", func() bool { return compat.Connections(srv) == 1 })
+
+	got := make(chan string, 4)
+	send := func(name string, req ocpp.Request) {
+		if err := c.cs.SendRequestAsync("CP-GONE", req, func(r ocpp.Response, err error) {
+			if err == nil {
+				got <- name + ": answered"
+			} else {
+				got <- name + ": " + err.Error()
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send("A", core.NewRemoteStartTransactionRequest("TAG"))
+	send("B", core.NewResetRequest(core.ResetTypeSoft))
+
+	readFrame := func() []json.RawMessage {
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var arr []json.RawMessage
+		if err := json.Unmarshal(data, &arr); err != nil || len(arr) < 2 {
+			t.Fatalf("bad frame %s", data)
+		}
+		return arr
+	}
+	a := readFrame()
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(`[3,`+string(a[1])+`,{"status":"Bogus"}]`)); err != nil {
+		t.Fatal(err)
+	}
+	// Frames until B's call: the CALLERROR for A may come first.
+	var b []json.RawMessage
+	for b == nil {
+		if f := readFrame(); string(f[0]) == "2" {
+			b = f
+		}
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(`[3,`+string(b[1])+`,{"status":"Accepted"}]`)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond) // B's answer is in, held back behind A's timeout
+	conn.Close()
+
+	seen := map[string]int{}
+	for i := 0; i < 2; i++ {
+		select {
+		case s := <-got:
+			seen[s]++
+		case <-time.After(3 * time.Second):
+			t.Fatalf("callbacks so far: %v, want one per request", seen)
+		}
+	}
+	for s, n := range seen {
+		if n != 1 || s == "A: answered" || s == "B: answered" {
+			t.Fatalf("callbacks %v, want one disconnect error per request", seen)
+		}
+	}
+	select {
+	case s := <-got:
+		t.Fatalf("extra callback %q", s)
+	case err := <-errs:
+		t.Fatalf("unexpected error on Errors(): %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+}
