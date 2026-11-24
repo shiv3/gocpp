@@ -197,14 +197,17 @@ func HandlersFile(version string, messages []ir.Message) ([]byte, error) {
 		b.WriteString("}\n\n")
 	}
 
-	b.WriteString("// RegisterCSMS registers every CP->CSMS handler from h on the server.\n")
+	ver := map[string]string{"v16": "V16", "v201": "V201", "v21": "V21"}[version]
+	b.WriteString("// RegisterCSMS registers every CP->CSMS handler from h on the server, for\n")
+	b.WriteString("// charge points of this protocol version only. Handlers of several versions\n")
+	b.WriteString("// can be registered on one server (csms.OnVersion).\n")
 	b.WriteString("func RegisterCSMS(s *csms.Server, h CSMSHandler) error {\n")
 	for _, m := range csmsMsgs {
 		if m.IsSend {
-			fmt.Fprintf(&b, "\tif err := csms.OnSend(s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+			fmt.Fprintf(&b, "\tif err := csms.OnSendVersion(s, ocppj.%s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", ver, m.Action, m.Action)
 			continue
 		}
-		fmt.Fprintf(&b, "\tif err := csms.On(s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", m.Action, m.Action)
+		fmt.Fprintf(&b, "\tif err := csms.OnVersion(s, ocppj.%s, profiles.%s, h.On%s); err != nil {\n\t\treturn err\n\t}\n", ver, m.Action, m.Action)
 	}
 	b.WriteString("\treturn nil\n}\n")
 

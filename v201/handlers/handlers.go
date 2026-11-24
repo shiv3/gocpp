@@ -478,81 +478,83 @@ func (UnimplementedCSMSHandler) OnTransactionEvent(context.Context, *csms.Conn, 
 	return messages.TransactionEventResponse{}, ocppj.NewCallError(ocppj.ErrorCodeNotSupported, "TransactionEvent not implemented", nil)
 }
 
-// RegisterCSMS registers every CP->CSMS handler from h on the server.
+// RegisterCSMS registers every CP->CSMS handler from h on the server, for
+// charge points of this protocol version only. Handlers of several versions
+// can be registered on one server (csms.OnVersion).
 func RegisterCSMS(s *csms.Server, h CSMSHandler) error {
-	if err := csms.On(s, profiles.Authorize, h.OnAuthorize); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.Authorize, h.OnAuthorize); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.StatusNotification, h.OnStatusNotification); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.StatusNotification, h.OnStatusNotification); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.DataTransfer, h.OnDataTransfer); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.DataTransfer, h.OnDataTransfer); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyEvent, h.OnNotifyEvent); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyEvent, h.OnNotifyEvent); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyMonitoringReport, h.OnNotifyMonitoringReport); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyMonitoringReport, h.OnNotifyMonitoringReport); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.LogStatusNotification, h.OnLogStatusNotification); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.LogStatusNotification, h.OnLogStatusNotification); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyCustomerInformation, h.OnNotifyCustomerInformation); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyCustomerInformation, h.OnNotifyCustomerInformation); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyDisplayMessages, h.OnNotifyDisplayMessages); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyDisplayMessages, h.OnNotifyDisplayMessages); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.FirmwareStatusNotification, h.OnFirmwareStatusNotification); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.FirmwareStatusNotification, h.OnFirmwareStatusNotification); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.PublishFirmwareStatusNotification, h.OnPublishFirmwareStatusNotification); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.PublishFirmwareStatusNotification, h.OnPublishFirmwareStatusNotification); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.SignCertificate, h.OnSignCertificate); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.SignCertificate, h.OnSignCertificate); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.Get15118EVCertificate, h.OnGet15118EVCertificate); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.Get15118EVCertificate, h.OnGet15118EVCertificate); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.GetCertificateStatus, h.OnGetCertificateStatus); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.GetCertificateStatus, h.OnGetCertificateStatus); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.MeterValues, h.OnMeterValues); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.MeterValues, h.OnMeterValues); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.BootNotification, h.OnBootNotification); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.BootNotification, h.OnBootNotification); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.Heartbeat, h.OnHeartbeat); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.Heartbeat, h.OnHeartbeat); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyReport, h.OnNotifyReport); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyReport, h.OnNotifyReport); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.ReservationStatusUpdate, h.OnReservationStatusUpdate); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.ReservationStatusUpdate, h.OnReservationStatusUpdate); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.SecurityEventNotification, h.OnSecurityEventNotification); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.SecurityEventNotification, h.OnSecurityEventNotification); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyEVChargingNeeds, h.OnNotifyEVChargingNeeds); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyEVChargingNeeds, h.OnNotifyEVChargingNeeds); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyEVChargingSchedule, h.OnNotifyEVChargingSchedule); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyEVChargingSchedule, h.OnNotifyEVChargingSchedule); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.NotifyChargingLimit, h.OnNotifyChargingLimit); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.NotifyChargingLimit, h.OnNotifyChargingLimit); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.ClearedChargingLimit, h.OnClearedChargingLimit); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.ClearedChargingLimit, h.OnClearedChargingLimit); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.ReportChargingProfiles, h.OnReportChargingProfiles); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.ReportChargingProfiles, h.OnReportChargingProfiles); err != nil {
 		return err
 	}
-	if err := csms.On(s, profiles.TransactionEvent, h.OnTransactionEvent); err != nil {
+	if err := csms.OnVersion(s, ocppj.V201, profiles.TransactionEvent, h.OnTransactionEvent); err != nil {
 		return err
 	}
 	return nil
