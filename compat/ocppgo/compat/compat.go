@@ -126,6 +126,33 @@ func SetAdmission(s *ws.Server, a Admission) bool {
 	return true
 }
 
+// DuplicatePolicy says what a ws.Server does with a second connection for the id
+// of a connected charge point.
+type DuplicatePolicy int
+
+const (
+	// DuplicateLastWins (the default) lets the new connection take over the id and
+	// closes the old one with 1008. A charge point that lost its connection without
+	// the server noticing is never locked out.
+	DuplicateLastWins DuplicatePolicy = iota
+	// DuplicateFirstWins is what ocpp-go v0.19.0 does: the old connection stays and
+	// the new one is upgraded, then closed with 1008 ("a connection with this ID
+	// already exists"). Not the default: a charge point reconnecting after a
+	// half-open drop is refused until the server times the old socket out.
+	DuplicateFirstWins
+)
+
+// SetDuplicatePolicy selects the duplicate id policy of s. It returns false when s
+// is not the module's own server.
+func SetDuplicatePolicy(s *ws.Server, p DuplicatePolicy) bool {
+	n, ok := native(s)
+	if !ok {
+		return false
+	}
+	n.SetFirstWins(p == DuplicateFirstWins)
+	return true
+}
+
 // SetSoftMaxConnections changes the soft cap while the server runs (0 removes it).
 func SetSoftMaxConnections(s *ws.Server, n int) {
 	if nat, ok := native(s); ok {

@@ -268,3 +268,71 @@ func TestDrainAndMetrics(t *testing.T) {
 	}
 	again.Close()
 }
+
+// A second connection for a connected id: last wins by default (the old one is
+// closed with 1008); with compat.DuplicateFirstWins, as ocpp-go v0.19.0, the old
+// one stays and the new one is closed with 1008 after the upgrade.
+func TestDuplicatePolicy(t *testing.T) {
+	closeCode := func(t *testing.T, c *websocket.Conn) int {
+		t.Helper()
+		_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_, _, err := c.ReadMessage()
+		if ce, ok := err.(*websocket.CloseError); ok {
+			return ce.Code
+		}
+		t.Fatalf("expected a close frame, got %v", err)
+		return 0
+	}
+	alive := func(t *testing.T, c *websocket.Conn) bool {
+		t.Helper()
+		_ = c.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+		_, _, err := c.ReadMessage()
+		_, closed := err.(*websocket.CloseError)
+		return !closed
+	}
+	t.Run("last wins by default", func(t *testing.T) {
+		c, _ := startOps(t, compat.Admission{}, nil)
+		first, _, err := dialCP(c, "dup")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer first.Close()
+		second, _, err := dialCP(c, "dup")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer second.Close()
+		if code := closeCode(t, first); code != websocket.ClosePolicyViolation {
+			t.Fatalf("old connection closed with %d, want 1008", code)
+		}
+		if !alive(t, second) {
+			t.Fatal("new connection was closed")
+		}
+	})
+	t.Run("first wins when asked", func(t *testing.T) {
+		c, srv := startOps(t, compat.Admission{}, nil)
+		if !compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins) {
+			t.Fatal("SetDuplicatePolicy failed")
+		}
+		first, _, err := dialCP(c, "dup")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer first.Close()
+		waitFor(t, "first connected", func() bool { return c.connects.Load() == 1 })
+		second, _, err := dialCP(c, "dup")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer second.Close()
+		if code := closeCode(t, second); code != websocket.ClosePolicyViolation {
+			t.Fatalf("new connection closed with %d, want 1008", code)
+		}
+		if !alive(t, first) {
+			t.Fatal("old connection was closed")
+		}
+		if n := c.connects.Load(); n != 1 {
+			t.Fatalf("application saw %d connects, want 1", n)
+		}
+	})
+}

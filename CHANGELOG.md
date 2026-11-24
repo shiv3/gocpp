@@ -14,6 +14,9 @@ All notable changes to this project are documented here. The format is based on
   size limit, as ocpp-go v0.19.0. Both are opt-in and not part of
   `WithOCPPGoCompat`.
 
+- `compat/ocppgo`: `compat.SetDuplicatePolicy(srv, compat.DuplicateFirstWins)` reproduces
+  upstream ocpp-go v0.19.0's first-wins duplicate id handling; the default stays last wins.
+
 ### Changed
 
 - `WithOCPPGoCompat` (and `dispatcher.OCPPGoErrorCodeMapper`) now target upstream

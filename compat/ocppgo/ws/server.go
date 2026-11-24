@@ -531,6 +531,15 @@ out:
 		_ = conn.Close(websocket.StatusProtocolError, "invalid or unsupported subprotocol")
 		return
 	}
+	if server.adm.firstWins.Load() {
+		server.connMutex.RLock()
+		_, exists := server.connections[id]
+		server.connMutex.RUnlock()
+		if exists {
+			server.duplicateRejected(id, conn)
+			return
+		}
+	}
 	if rtBox != nil {
 		sc.dc = rtBox.rt.Open(compatrt.Conn{
 			Channel:     ws,
@@ -554,6 +563,18 @@ out:
 		server.connections = make(map[string]*WebSocket)
 	}
 	oldWs, exists := server.connections[id]
+	if exists && server.adm.firstWins.Load() {
+		// Two upgrades for one id raced past the check above: the first one
+		// registered wins.
+		server.connMutex.Unlock()
+		if sc.dc != nil {
+			sc.dc.AbortWithStatus(transport.StatusPolicyViolation, duplicateReason)
+			server.error(fmt.Errorf("client %s already exists, closing duplicate client", id))
+		} else {
+			server.duplicateRejected(id, conn)
+		}
+		return
+	}
 	server.connections[id] = ws
 	server.consumeSlotLocked(res)
 	server.connMutex.Unlock()
@@ -583,6 +604,16 @@ out:
 	}
 	go sc.writeLoop(ws)
 	go sc.readLoop(ws)
+}
+
+const duplicateReason = "a connection with this ID already exists"
+
+// duplicateRejected closes a new connection whose id is connected already (the
+// first-wins policy of ocpp-go v0.19.0), with 1008 after the upgrade.
+func (server *Server) duplicateRejected(id string, conn *websocket.Conn) {
+	server.upgradeResult("duplicate")
+	server.error(fmt.Errorf("client %s already exists, closing duplicate client", id))
+	_ = conn.Close(websocket.StatusPolicyViolation, duplicateReason)
 }
 
 func idleTimeout(d time.Duration) time.Duration {

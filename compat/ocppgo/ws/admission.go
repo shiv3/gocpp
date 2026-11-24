@@ -23,10 +23,11 @@ import (
 
 // admissionState is the part of Server that limits and drains connections.
 type admissionState struct {
-	cfg      atomic.Pointer[compatrt.Admission]
-	bucket   atomic.Pointer[tokenBucket]
-	softMax  atomic.Int64
-	reserved int // upgrades admitted under MaxConnections, not yet registered; guarded by Server.connMutex
+	cfg       atomic.Pointer[compatrt.Admission]
+	bucket    atomic.Pointer[tokenBucket]
+	softMax   atomic.Int64
+	firstWins atomic.Bool // duplicate id: keep the old connection, close the new one (1008)
+	reserved  int         // upgrades admitted under MaxConnections, not yet registered; guarded by Server.connMutex
 
 	draining   atomic.Bool
 	retryAfter atomic.Int64 // ns
@@ -52,6 +53,8 @@ func (n native) SetAdmission(a compatrt.Admission) {
 		s.adm.bucket.Store(nil)
 	}
 }
+
+func (n native) SetFirstWins(on bool) { n.s.adm.firstWins.Store(on) }
 
 func (n native) SetSoftMax(v int) { n.s.adm.softMax.Store(int64(v)) }
 

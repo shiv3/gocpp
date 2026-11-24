@@ -88,8 +88,12 @@ type Native interface {
 	Draining() bool
 	// SetUpgradeObserver receives the result of every upgrade attempt: "ok",
 	// "rate_limited", "draining", "shutting_down", "full", "auth_rejected",
-	// "bad_request" or "subprotocol".
+	// "bad_request" or "subprotocol" or "duplicate".
 	SetUpgradeObserver(fn func(result string))
+	// SetFirstWins selects the duplicate id policy: false (default) lets a new
+	// connection take over the id and closes the old one; true keeps the old
+	// connection and closes the new one with 1008, as ocpp-go v0.19.0 does.
+	SetFirstWins(on bool)
 }
 
 // Admission limits upgrades (zero values: no limit).
