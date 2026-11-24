@@ -40,21 +40,21 @@ jobs:
       - run: scripts/sync-upstream.sh --check
       # ocpp-go's own suites on the gocpp runtime (the suites inject a default
       # dispatcher, which OCPPGO_COMPAT_RUNTIME=gocpp also routes to gocpp).
-      - run: go test -vet=off -race -count=1 ./ocpp1.6_test/ ./ocpp2.0.1_test/
+      - run: go test -vet=off -race -count=1 -timeout 5m ./ocpp1.6_test/ ./ocpp2.0.1_test/
         env:
           OCPPGO_COMPAT_RUNTIME: gocpp
       # ... and on the original code path.
-      - run: go test -vet=off -count=1 ./ocpp1.6_test/ ./ocpp2.0.1_test/
+      - run: go test -vet=off -count=1 -timeout 5m ./ocpp1.6_test/ ./ocpp2.0.1_test/
         env:
           OCPPGO_COMPAT_RUNTIME: legacy
       # ocppj's own suite in default mode; two tests compare Go's JSON error text
       # and fail on the unmodified upstream tag as well.
-      - run: go test -vet=off -count=1 -skip 'TestMockOcppJ/(TestCentralSystemInvalidMessageHook|TestChargePointInvalidMessageHook)' ./ocppj/
+      - run: go test -vet=off -count=1 -timeout 5m -skip 'TestMockOcppJ/(TestCentralSystemInvalidMessageHook|TestChargePointInvalidMessageHook)' ./ocppj/
       # ws black-box suite (the toxiproxy network suite skips without a server).
       # (ocpp-go's unmodified client has a data race in TestClientErrors, hence the
       # skip under -race; the server side is race clean.)
-      - run: go test -race -count=1 -skip 'TestClientErrors|TestNetworkErrors' ./ws/
-      - run: go test -count=1 ./ws/
+      - run: go test -race -count=1 -timeout 4m -skip 'TestClientErrors|TestNetworkErrors' ./ws/
+      - run: go test -count=1 -timeout 4m ./ws/
       # Real WebSockets: ocpp-go's client against the compat central system.
       # One process per test: starting a central system writes the package level
       # ocppj.FormationViolation, which a previous test's client may still read (a
@@ -62,9 +62,9 @@ jobs:
       # test runs next).
       - run: |
           for t in $(go test -list '^Test' ./e2e/ | grep '^Test'); do
-            go test -race -count=1 -run "^$t\$" ./e2e/ || exit 1
+            go test -race -count=1 -timeout 5m -run "^$t\$" ./e2e/ || exit 1
           done
-      - run: go test -race -count=1 ./compat/
+      - run: go test -race -count=1 -timeout 5m ./compat/
       - run: go build ./example/...
 
   ocppgo-apidiff:
