@@ -28,6 +28,25 @@ func On[Req, Resp any](c *Client, m ocppj.Message[Req, Resp], h func(ctx context
 	return nil
 }
 
+// OnAny registers a catch-all handler for CALLs from the CSMS: it serves every
+// action that has no handler registered with On, and receives the action name
+// and the raw JSON payload. Pass nil to remove it. It is the charge-point
+// counterpart of csms.OnAny, for simulators and test harnesses that answer
+// untyped messages; typed handlers registered with On take precedence, and a
+// handler error is mapped like any other (return a *dispatcher.RawCallError to
+// choose the CALLERROR sent).
+//
+// Experimental: this API may change before v1.0.
+func OnAny(c *Client, h func(ctx context.Context, action string, payload []byte) ([]byte, error)) {
+	if h == nil {
+		c.reg.SetFallback(nil)
+		return
+	}
+	c.reg.SetFallback(func(ctx context.Context, _ *dispatcher.Conn, action string, payload []byte) ([]byte, error) {
+		return h(ctx, action, payload)
+	})
+}
+
 // CallRaw sends an action with a raw JSON payload and returns the raw response.
 // Used by tools like the simulator that operate on untyped messages.
 func CallRaw(ctx context.Context, c *Client, action string, payload []byte) ([]byte, error) {
