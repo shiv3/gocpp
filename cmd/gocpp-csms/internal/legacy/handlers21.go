@@ -1,9 +1,10 @@
-package main
+package legacy
 
 import (
 	"context"
 	"time"
 
+	"github.com/shiv3/gocpp/cmd/gocpp-csms/internal/recorder"
 	"github.com/shiv3/gocpp/csms"
 	v21h "github.com/shiv3/gocpp/v21/handlers"
 	v21msg "github.com/shiv3/gocpp/v21/messages"
@@ -12,11 +13,11 @@ import (
 type handler21 struct {
 	v21h.UnimplementedCSMSHandler
 
-	rec *Recorder
+	rec *recorder.Recorder
 	beh *Behavior
 }
 
-func register21(srv *csms.Server, rec *Recorder, beh *Behavior) error {
+func register21(srv *csms.Server, rec *recorder.Recorder, beh *Behavior) error {
 	return v21h.RegisterCSMS(srv, &handler21{rec: rec, beh: beh})
 }
 
@@ -51,7 +52,7 @@ func (h *handler21) OnAuthorize(_ context.Context, conn *csms.Conn, req v21msg.A
 		return v21msg.AuthorizeResponse{}, err
 	}
 	return v21msg.AuthorizeResponse{
-		IDTokenInfo: v21msg.IdTokenInfoType{Status: h.beh.Authorize(req.IDToken.IDToken, time.Now()).status2x()},
+		IDTokenInfo: v21msg.IdTokenInfoType{Status: h.beh.authorize(req.IDToken.IDToken, time.Now()).status2x()},
 	}, nil
 }
 
@@ -61,7 +62,7 @@ func (h *handler21) OnTransactionEvent(_ context.Context, conn *csms.Conn, req v
 	}
 	resp := v21msg.TransactionEventResponse{}
 	if req.IDToken != nil && h.beh.Policed() {
-		resp.IDTokenInfo = &v21msg.IdTokenInfoType{Status: h.beh.Authorize(req.IDToken.IDToken, time.Now()).status2x()}
+		resp.IDTokenInfo = &v21msg.IdTokenInfoType{Status: h.beh.authorize(req.IDToken.IDToken, time.Now()).status2x()}
 	}
 	return resp, nil
 }

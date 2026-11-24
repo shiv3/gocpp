@@ -1,10 +1,11 @@
-package main
+package legacy
 
 import (
 	"context"
 	"sync/atomic"
 	"time"
 
+	"github.com/shiv3/gocpp/cmd/gocpp-csms/internal/recorder"
 	"github.com/shiv3/gocpp/csms"
 	v16h "github.com/shiv3/gocpp/v16/handlers"
 	v16msg "github.com/shiv3/gocpp/v16/messages"
@@ -13,12 +14,12 @@ import (
 type handler16 struct {
 	v16h.UnimplementedCSMSHandler
 
-	rec    *Recorder
+	rec    *recorder.Recorder
 	beh    *Behavior
 	nextTx atomic.Int32
 }
 
-func register16(srv *csms.Server, rec *Recorder, beh *Behavior) error {
+func register16(srv *csms.Server, rec *recorder.Recorder, beh *Behavior) error {
 	return v16h.RegisterCSMS(srv, &handler16{rec: rec, beh: beh})
 }
 
@@ -91,5 +92,5 @@ func (h *handler16) OnDataTransfer(_ context.Context, conn *csms.Conn, req v16ms
 }
 
 func (h *handler16) idTagStatus(idTag string) v16msg.IDTagInfoStatus {
-	return v16msg.IDTagInfoStatus(h.beh.Authorize(idTag, time.Now()).status16())
+	return v16msg.IDTagInfoStatus(h.beh.authorize(idTag, time.Now()).status16())
 }

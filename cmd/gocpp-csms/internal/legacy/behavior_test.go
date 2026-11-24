@@ -1,4 +1,4 @@
-package main
+package legacy
 
 import (
 	"net/http"
@@ -41,7 +41,7 @@ func TestDefaultsAcceptEverything(t *testing.T) {
 	if s, iv := b.NextBoot("cp"); s != "Accepted" || iv != defaultBootInterval {
 		t.Fatalf("boot: %s %d", s, iv)
 	}
-	if v := b.Authorize("anyone", time.Now()); v != verdictAccepted {
+	if v := b.authorize("anyone", time.Now()); v != verdictAccepted {
 		t.Fatalf("authorize: %v", v)
 	}
 	if b.Policed() || b.Offline() {
@@ -53,14 +53,14 @@ func TestWhitelistAndBlacklist(t *testing.T) {
 	now := time.Now()
 	b := newBehavior()
 	_ = b.Apply(behaviorConfig{Mode: strp(modeWhitelist), IDTags: []string{"GOOD"}})
-	if b.Authorize("GOOD", now) != verdictAccepted || b.Authorize("OTHER", now) != verdictUnknown {
+	if b.authorize("GOOD", now) != verdictAccepted || b.authorize("OTHER", now) != verdictUnknown {
 		t.Fatal("whitelist: listed tag accepted, others unknown")
 	}
 	if verdictUnknown.status16() != "Invalid" || verdictUnknown.status2x() != "Unknown" {
 		t.Fatal("whitelist miss maps to Invalid (1.6) / Unknown (2.x)")
 	}
 	_ = b.Apply(behaviorConfig{Mode: strp(modeBlacklist), IDTags: []string{"BAD"}})
-	if b.Authorize("BAD", now) != verdictBlocked || b.Authorize("GOOD", now) != verdictAccepted {
+	if b.authorize("BAD", now) != verdictBlocked || b.authorize("GOOD", now) != verdictAccepted {
 		t.Fatal("blacklist: listed tag blocked, others accepted")
 	}
 }
@@ -72,17 +72,17 @@ func TestRateLimitSlidingWindowPerTag(t *testing.T) {
 	}
 	t0 := time.Unix(1000, 0)
 	for i := 0; i < 2; i++ {
-		if b.Authorize("A", t0) != verdictAccepted {
+		if b.authorize("A", t0) != verdictAccepted {
 			t.Fatalf("request %d within the limit", i)
 		}
 	}
-	if b.Authorize("A", t0.Add(500*time.Millisecond)) != verdictBlocked {
+	if b.authorize("A", t0.Add(500*time.Millisecond)) != verdictBlocked {
 		t.Fatal("third request in the window is blocked")
 	}
-	if b.Authorize("B", t0) != verdictAccepted {
+	if b.authorize("B", t0) != verdictAccepted {
 		t.Fatal("limit is per idTag")
 	}
-	if b.Authorize("A", t0.Add(1100*time.Millisecond)) != verdictAccepted {
+	if b.authorize("A", t0.Add(1100*time.Millisecond)) != verdictAccepted {
 		t.Fatal("window slid past the first requests")
 	}
 }
@@ -100,7 +100,7 @@ func TestApplyRejectsInvalidConfigWithoutChangingState(t *testing.T) {
 			t.Fatalf("expected an error for %+v", cfg)
 		}
 	}
-	if st := b.State(); st.Mode != modeAcceptAll || len(st.Boot) != 1 {
+	if st := b.state(); st.Mode != modeAcceptAll || len(st.Boot) != 1 {
 		t.Fatalf("state changed: %+v", st)
 	}
 }
@@ -153,7 +153,7 @@ func TestBehaviorEndpoint(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	b.handleBehavior(rec, httptest.NewRequest(http.MethodDelete, "/behavior", nil))
-	if rec.Code != http.StatusOK || b.State().Mode != modeAcceptAll {
-		t.Fatalf("DELETE restores defaults: %d %+v", rec.Code, b.State())
+	if rec.Code != http.StatusOK || b.state().Mode != modeAcceptAll {
+		t.Fatalf("DELETE restores defaults: %d %+v", rec.Code, b.state())
 	}
 }

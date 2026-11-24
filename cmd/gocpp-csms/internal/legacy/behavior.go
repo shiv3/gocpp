@@ -1,4 +1,4 @@
-package main
+package legacy
 
 import (
 	"encoding/json"
@@ -172,7 +172,7 @@ func (b *Behavior) Reset() {
 	b.mu.Unlock()
 }
 
-func (b *Behavior) State() behaviorState {
+func (b *Behavior) state() behaviorState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	tags := make([]string, 0, len(b.tags))
@@ -220,9 +220,9 @@ func (b *Behavior) NextBoot(cpID string) (status string, interval int32) {
 	return b.boot[i], b.bootEvery
 }
 
-// Authorize decides one authorization request (Authorize, or the idTag of a
+// authorize decides one authorization request (Authorize, or the idTag of a
 // StartTransaction / TransactionEvent) made at time now.
-func (b *Behavior) Authorize(idTag string, now time.Time) verdict {
+func (b *Behavior) authorize(idTag string, now time.Time) verdict {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	switch b.mode {
@@ -296,5 +296,5 @@ func (b *Behavior) handleBehavior(w http.ResponseWriter, r *http.Request) {
 		writeCommandError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeCommandJSON(w, http.StatusOK, commandResponse{OK: true, Result: b.State()})
+	writeCommandJSON(w, http.StatusOK, commandResponse{OK: true, Result: b.state()})
 }
