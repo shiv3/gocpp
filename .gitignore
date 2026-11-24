@@ -14,6 +14,8 @@
 # built binaries of the reference commands
 /cmd/gocpp-gateway/gocpp-gateway
 /cmd/gocppctl/gocppctl
+/cmd/gocpp-csms/gocpp-csms
+/gocpp-csms
 
 # site generator bytecode
 /scripts/site/__pycache__/

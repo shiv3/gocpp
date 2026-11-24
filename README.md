@@ -229,12 +229,17 @@ an untyped CSMS→CP operation, use `csms.CallRaw(ctx, conn, action, payloadJSON
 ```sh
 go install github.com/shiv3/gocpp/cmd/gocpp-validate@latest
 go install github.com/shiv3/gocpp/cmd/gocpp-sim@latest
+go install github.com/shiv3/gocpp/cmd/gocpp-csms@latest
 ```
 
 - `gocpp-validate --version 2.0.1 --action BootNotification msg.json` — validate a
   message against the official schema.
 - `gocpp-sim run -s scenario.yaml` — drive a simulated charge point through a YAML
   scenario against a CSMS.
+- `gocpp-csms --version 1.6` — a standalone test CSMS for charge points to dial into:
+  default answers, a frame recorder on stdout and an HTTP control API to send commands
+  and switch the answers. It is the CSMS of the ocpp-cp-simulator e2e suite. See
+  [docs/gocpp-csms.md](docs/gocpp-csms.md).
 
 ## Testing
 

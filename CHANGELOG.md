@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `cmd/gocpp-csms`: a standalone test CSMS for OCPP 1.6, 2.0.1 and 2.1 in the root
+  module (`go install github.com/shiv3/gocpp/cmd/gocpp-csms@latest`), ported from the
+  ocpp-cp-simulator e2e suite with its behaviour unchanged. `--version X` runs one
+  version on ephemeral loopback ports, announces them on stdout
+  (`E2E_CSMS_PORTS {"ocpp":N,"http":N}`), records every handled charge point CALL as an
+  NDJSON line, and serves `/healthz`, `/command`, `/behavior` and `/sequence` for
+  CSMS-initiated commands, boot sequences, authorization policies, offline simulation
+  and timed command sequences. A contract test pins the stdout format, the control
+  envelopes and the default answers. Shipped in the release archives. See
+  `docs/gocpp-csms.md`.
+
 ## [0.4.0] - 2026-11-25
 
 Compat module: the next drop-in tag is `compat/ocppgo/v0.19.0-gocpp.3`. It contains
