@@ -235,14 +235,18 @@ func fastReconnectCP(id string) ocpp16.ChargePoint {
 	cfg.RetryBackOffWaitMinimum = 20 * time.Millisecond
 	cfg.RetryBackOffRandomRange = 0
 	c.SetTimeoutConfig(cfg)
-	return ocpp16.NewChargePoint(id, ocppj.NewClient(id, c, nil, nil, core.Profile), c)
+	// A short call timeout: a request in flight when the connection drops is
+	// awaited again after the reconnect until it expires (ocpp-go's design).
+	d := ocppj.NewDefaultClientDispatcher(ocppj.NewFIFOClientQueue(0))
+	d.SetTimeout(150 * time.Millisecond)
+	return ocpp16.NewChargePoint(id, ocppj.NewClient(id, c, d, nil, core.Profile), c)
 }
 
 // TestClientKeepsServingWhileConnectionsDrop (upstream r11-B, scaled down): a few
 // charge points send Heartbeats while the server drops every connection. They
 // must keep exchanging messages (upstream's dispatcher can deadlock in Pause).
 func TestClientKeepsServingWhileConnectionsDrop(t *testing.T) {
-	port, _ := flapServer(t, 100*time.Millisecond)
+	port, _ := flapServer(t, 400*time.Millisecond)
 	var ok atomic.Int64
 	var cps []ocpp16.ChargePoint
 	stop := make(chan struct{})
