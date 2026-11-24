@@ -15,7 +15,6 @@ import (
 	"github.com/shiv3/gocpp/core/dispatcher"
 	"github.com/shiv3/gocpp/core/observability"
 	"github.com/shiv3/gocpp/core/ocppj"
-	"github.com/shiv3/gocpp/core/schema"
 	"github.com/shiv3/gocpp/core/storage"
 	"github.com/shiv3/gocpp/core/transport"
 	"github.com/shiv3/gocpp/gateway"
@@ -115,7 +114,7 @@ func NewServer(opts ...Option) *Server {
 				if !ok {
 					return payload, nil, nil
 				}
-				return v.ValidateLenientWith(payload, schema.LenientOptions{TimeLocation: cfg.lenientTimeLocation, OCPPGo: cfg.ocppGoValidation})
+				return v.ValidateLenientWith(payload, cfg.lenientOptions())
 			}
 		} else {
 			cfg.dispatcher.SchemaValidate = func(version ocppj.Version, action, kind string, payload []byte) error {

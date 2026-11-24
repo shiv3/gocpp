@@ -291,6 +291,18 @@ Two layers (spec §4.4):
      a number where a string is expected (its JSON text). Values such as `"1.5"` for an
      integer, `"abc"` or `"1e999"` are left as sent and rejected.
 
+   Further repairs are lossy or vendor specific, so each is **off by default** and
+   switched on separately on the server (`csms` options, lenient mode only, ignored
+   under `WithOCPPGoValidation()`):
+   - `WithLenientEmptyNumbers()`: `""` where an integer or number is expected is read
+     as `0` (keyword `type`);
+   - `WithLenientMissingChargingRateUnit()` / `WithLenientDefaultMissing(prop, value)`:
+     a required string property that is absent (for example `chargingRateUnit`) is
+     filled with a default, `"W"` for the charging rate unit (keyword `required`);
+   - `WithLenientVendorMeasurands()` / `WithLenientUnknownEnumValues(props...)`: a value
+     outside the enum of the named properties (vendor measurands such as
+     `Energy.Request.Target`) is passed unchanged (keyword `enum`).
+
    Strict, tolerant and off modes never rewrite payloads, and outbound encoding always
    stays RFC3339.
 2. **Struct tags** — generated `validate:"required,max=…,oneof=…"` tags for app-side
