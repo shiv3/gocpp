@@ -2,7 +2,7 @@
 
 > **No code changes needed?** If you want gocpp's runtime but keep your ocpp-go code,
 > use the drop-in module instead: one `replace` line in `go.mod`
-> (`github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2` for ocpp-go v0.19.0).
+> (`github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.3` for ocpp-go v0.19.0).
 > See [the README](../README.md#drop-in-replacement-for-ocpp-go) and
 > [compat/ocppgo/README.md](../compat/ocppgo/README.md). This page is for
 > moving to the native gocpp API.

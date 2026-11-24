@@ -44,12 +44,16 @@ repository and run `go build` in `cmd/gocpp-gateway` or `cmd/gocppctl` (their
 ## Drop-in replacement for ocpp-go
 
 Already on `lorenzodonini/ocpp-go`? You can move a server to the gocpp runtime
-**without changing application code**: the compatibility module has exactly the
+**without changing application code** in most cases: the compatibility module has the
 public API of ocpp-go v0.19.0 (checked with `apidiff` in CI) and runs ocpp-go's own
-test suites on gocpp. Add one `replace` line to your `go.mod`:
+test suites on gocpp. The only intentional API differences are OCPP 2.0.1 (and a few
+1.6) types corrected to the OCA schemas, e.g. `CompositeSchedule`; code that uses them
+may need small edits — see
+[Breaking changes vs upstream v0.19.0](compat/ocppgo/README.md#breaking-changes-vs-upstream-v0190-schema-conformance).
+Add one `replace` line to your `go.mod`:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.3
 ```
 
 Then `go mod tidy` and build as before. What changes at runtime (server side):

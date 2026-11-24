@@ -42,7 +42,7 @@ maintain it.
 |---|---|---|---|---|---|---|
 | 1 | One dispatcher goroutine and one lock for all charge points; blocking channel sends while the lock is held | r01, r02 | all charge points stop being served (r01: 10/10 runs; r02: 9/10 runs, the other run crashed) | blocking sends unchanged | not reproduced | no shared dispatcher |
 | 2 | WebSocket write: blocking send while the connection-table lock is held | r03 | one stalled reader stops all writes and new connections | unchanged | not reproduced | no write queue |
-| 3 | Responses are matched to callbacks by position, not by message id | r08 | misdelivered responses; process exit through the typed API | unchanged | race not reproduced; reconnect case fixed by default (next release after `v0.19.0-gocpp.2`; `v0.19.0-gocpp.2` and earlier: reproduced) | matched by message id |
+| 3 | Responses are matched to callbacks by position, not by message id | r08 | misdelivered responses; process exit through the typed API | unchanged | race not reproduced; reconnect case fixed by default (`v0.19.0-gocpp.3`; `v0.19.0-gocpp.2` and earlier: reproduced) | matched by message id |
 | 4 | A panic in an application handler ends the process | r04 | process exits | unchanged | contained (`InternalError`) | contained (`InternalError`) |
 | 5 | No inbound frame size limit | r05 | 64 MiB frame accepted, RSS +349 MiB | unchanged | same by default; limit is opt-in | 1 MiB by default |
 | 6 | Duplicate id: the first connection wins | r06 | reconnecting charge point refused for 60 s | unchanged | same by default; last-wins is opt-in | last wins by default |
@@ -52,7 +52,7 @@ maintain it.
 | 10 | Configuration is process-wide; `SetMessageValidation(false)` does not disable inbound validation | r10 | reproduced | unchanged | **reproduced** (same package variables; the `SetLogger` race is fixed after `v0.19.0-gocpp.2`) | per-server options |
 | 11 | No `context.Context` in handlers or calls | (API) | - | unchanged | unchanged (API compatibility) | `ctx` everywhere |
 | 12 | Two goroutines and four channels per connection | r12 | 2.00 goroutines per idle connection | unchanged | 1.00 | 1.00 |
-| 13 | Client: calling `Stop` twice panics | r11 | process exits | partly changed | fixed by default in the release after `v0.19.0-gocpp.2` (`v0.19.0-gocpp.2` and earlier: reproduced) | separate implementation |
+| 13 | Client: calling `Stop` twice panics | r11 | process exits | partly changed | fixed by default in `v0.19.0-gocpp.3` (`v0.19.0-gocpp.2` and earlier: reproduced) | separate implementation |
 
 ## 1. Server dispatcher: one goroutine, one lock, blocking sends
 
@@ -313,7 +313,7 @@ still ocpp-go's code, with one change by default: pending callbacks of a
 charge point are failed (`client disconnected, no response received from
 client`) when it disconnects, **whether or not the application registered a
 disconnect handler**. B did not reproduce (0 of 300) and C2 does not end the
-process. **C is fixed** in the release after `v0.19.0-gocpp.2`
+process. **C is fixed** in `v0.19.0-gocpp.3`
 ([output](../interop/ocppgo-repro/out/r08_callback_fifo.compat.txt), made with
 the module from this repository; on `v0.19.0-gocpp.2` and earlier C reproduces:
 the stale callback receives the wrong response). The FIFO itself stays: the
@@ -543,7 +543,7 @@ is open.
 (`csms.WithLenientSchema()`, `WithTimeEncoding(...)`, ...). **Drop-in: r10
 reproduces** as far as the settings being process-wide (and the inbound
 validation flag) goes: the package variables are part of ocpp-go's API and are
-kept. What changed, from the release after `v0.19.0-gocpp.2`: the setters
+kept. What changed, from `v0.19.0-gocpp.3`: the setters
 `ocppj.SetLogger`, `ws.SetLogger`, `ocppj.SetMessageValidation`,
 `ocppj.SetHTMLEscape` and `ocppj.SetMessageIdGenerator` are safe to call while
 servers and clients run (the race in the last bullet above is gone; the stored
@@ -691,7 +691,7 @@ the drop-in fixes that one (below).
 **Why it matters / gocpp.** This affects tools built on ocpp-go's client
 (simulators, load generators, tests), not a CSMS. It is a local bug, not a
 design issue. **Drop-in:** the client is ocpp-go's code, hardened from the
-release after `v0.19.0-gocpp.2` by default (these are panic and hang fixes):
+`v0.19.0-gocpp.3` by default (these are panic and hang fixes):
 `Stop` can be called any number of times and before `Start`, also while a
 reconnection is in progress (no connection is left behind); `SendRequest`
 during or after `Stop` returns an error instead of hanging or panicking
@@ -820,7 +820,7 @@ gocpp is one option among several.
 ## If you use the drop-in
 
 The [drop-in module](../compat/ocppgo/README.md) removes sections 1, 2, 4 and
-the race of section 3 (and, from the release after `v0.19.0-gocpp.2`, its reconnect case) without code changes. Use `compat/ocppgo` at
+the race of section 3 (and, from `v0.19.0-gocpp.3`, its reconnect case) without code changes. Use `compat/ocppgo` at
 `v0.19.0-gocpp.x`: that line tracks upstream v0.19.0
 ([versions](../compat/ocppgo/README.md#versions)). Older tags on the Go proxy,
 `compat/ocppgo/v0.17.2-gocpp.1` and `compat/ocppgo-v019/*`, are deprecated and

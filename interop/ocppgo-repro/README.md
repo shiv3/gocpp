@@ -63,6 +63,6 @@ record ten consecutive runs.
 
 - `go.mod`: `github.com/lorenzodonini/ocpp-go v0.19.0`.
 - `go.compat.mod`: the same, with
-  `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2`.
+  `replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.3`.
   Files tagged `//go:build compat` in `h/` use the extra `compat` package.
 - `native/go.mod`: `github.com/shiv3/gocpp v0.3.3`.

@@ -26,7 +26,7 @@ REPO = "https://github.com/shiv3/gocpp"
 DOCS = REPO + "/blob/main/docs/"
 PKG = "https://pkg.go.dev/github.com/shiv3/gocpp"
 COMPAT = REPO + "/blob/main/compat/"
-REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2"
+REPLACE_019 = "replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.3"
 
 
 def esc(s):
@@ -528,11 +528,11 @@ def build():
                 '<pre><code>%s</code></pre></div>' % (label, esc(label), esc(text)))
 
     body = """
-<p class="why"><b>Why.</b> Rewriting a working backend against a new API is a large step. The compatibility module takes a smaller one: it has exactly the public API of <a href="https://github.com/lorenzodonini/ocpp-go">ocpp-go</a> and serves connections on the gocpp runtime, so an existing application switches with one line in <code>go.mod</code> and no change to its code.</p>
+<p class="why"><b>Why.</b> Rewriting a working backend against a new API is a large step. The compatibility module takes a smaller one: it has the public API of <a href="https://github.com/lorenzodonini/ocpp-go">ocpp-go</a> v0.19.0 and serves connections on the gocpp runtime, so an existing application switches with one line in <code>go.mod</code>, usually with no change to its code. The exceptions are a few OCPP 2.0.1 (and 1.6) types corrected to the OCA schemas, such as <code>CompositeSchedule</code>; see the compat README.</p>
 <h3>One line in <code>go.mod</code></h3>
 <p>If your code compiles against ocpp-go v0.19.0, add this line to <code>go.mod</code>, then run <code>go mod tidy</code> and build as before. The import paths in your code stay <code>github.com/lorenzodonini/ocpp-go/...</code>.</p>
 """ + codeline("go.mod, for ocpp-go v0.19.0", REPLACE_019) + """
-<p class="src">Module <a href="%(c)socppgo/README.md">compat/ocppgo</a>, tag <code>v0.19.0-gocpp.2</code>, built on gocpp v0.3.3. <code>go mod tidy</code> adds gocpp and may raise some <code>golang.org/x</code> versions; the minimum Go version is the module's.</p>
+<p class="src">Module <a href="%(c)socppgo/README.md">compat/ocppgo</a>, tag <code>v0.19.0-gocpp.3</code>, built on gocpp v0.4.0. <code>go mod tidy</code> adds gocpp and may raise some <code>golang.org/x</code> versions; the minimum Go version is the module's.</p>
 <div class="grid2">
 <div class="card"><h4>What changes (server side)</h4><ul>
 <li>Each connection is served by gocpp's per-connection dispatcher. There is no dispatcher goroutine or lock shared by all charge points, so a stalled or silent charger does not hold up the others.</li>

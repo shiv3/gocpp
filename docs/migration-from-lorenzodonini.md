@@ -10,7 +10,7 @@ v0.19.0 and serves connections on the gocpp runtime, with one line in `go.mod`
 and no change to your code:
 
 ```
-replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.2
+replace github.com/lorenzodonini/ocpp-go => github.com/shiv3/gocpp/compat/ocppgo v0.19.0-gocpp.3
 ```
 
 The rest of this page is the API mapping for the native gocpp API.
