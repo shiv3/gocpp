@@ -119,6 +119,18 @@ const (
 	// DuplicatePolicyRejectNew rejects the incoming duplicate and keeps the
 	// existing connection.
 	DuplicatePolicyRejectNew
+	// DuplicatePolicyRejectNewAfterUpgrade keeps the existing connection and, for
+	// the incoming duplicate, completes the WebSocket upgrade and then closes it
+	// with status 1008 (policy violation, "a connection with this ID already
+	// exists"). This is what upstream ocpp-go v0.19.0 does ("first wins"); unlike
+	// DuplicatePolicyRejectNew, the charger sees an open-then-closed socket rather
+	// than a refused upgrade (HTTP 409).
+	//
+	// Not part of WithOCPPGoCompat: a charger that reconnects after a half-open
+	// drop is refused for as long as the server has not noticed the old socket is
+	// dead (up to the read timeout), and keeps retrying. Choose it only to
+	// reproduce ocpp-go's behaviour for chargers tuned against it.
+	DuplicatePolicyRejectNewAfterUpgrade
 )
 
 // ConnTimeouts are the timing parameters that can be overridden for a single
@@ -251,13 +263,21 @@ func WithHandlerTimeout(d time.Duration) Option {
 
 // WithMaxMessageSize sets the largest inbound WebSocket message accepted, in
 // bytes (default 1 MiB); a larger message closes the connection with status
-// 1009. n <= 0 keeps the default.
+// 1009. n <= 0 keeps the default; see WithUnlimitedMessageSize for no limit.
 func WithMaxMessageSize(n int64) Option {
 	return optionFunc(func(c *serverConfig) {
 		if n > 0 {
 			c.dispatcher.MaxMessageSize = n
 		}
 	})
+}
+
+// WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
+// as upstream ocpp-go v0.19.0 has none. Not part of WithOCPPGoCompat and not
+// recommended on an internet-facing endpoint: a peer can then make this process
+// buffer a message of any size. Prefer a larger WithMaxMessageSize.
+func WithUnlimitedMessageSize() Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.MaxMessageSize = -1 })
 }
 
 // WithMaxConnections caps the number of simultaneously connected charge points
@@ -564,7 +584,7 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 }
 
 // WithOCPPGoCompat makes the server reproduce the charger-visible behaviour of
-// the ocpp-go library where gocpp differs, so chargers tuned against ocpp-go keep
+// upstream ocpp-go v0.19.0 where gocpp differs, so chargers tuned against ocpp-go keep
 // working during a staged migration. It is shorthand for, in order:
 //
 //   - WithLenientSchema()
@@ -573,6 +593,10 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 //   - WithTimeEncoding(UTC, whole seconds)
 //   - WithWebSocketPingInterval(0): ocpp-go servers never ping
 //   - WithWebSocketReadTimeout(60s): ocpp-go's server ping wait
+//
+// Not included, because reproducing them would be harmful: first-wins duplicate
+// ids (DuplicatePolicyRejectNewAfterUpgrade) and no inbound size limit
+// (WithUnlimitedMessageSize); add them explicitly if wanted.
 //
 // Options listed after it win, so any single behaviour can be put back, e.g.
 // csms.WithOCPPGoCompat(), csms.WithWebSocketPingInterval(54*time.Second). The

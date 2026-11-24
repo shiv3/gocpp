@@ -144,13 +144,21 @@ func WithHandlerTimeout(d time.Duration) Option {
 
 // WithMaxMessageSize sets the largest inbound WebSocket message accepted, in
 // bytes (default 1 MiB); a larger message closes the connection with status
-// 1009. n <= 0 keeps the default.
+// 1009. n <= 0 keeps the default; see WithUnlimitedMessageSize for no limit.
 func WithMaxMessageSize(n int64) Option {
 	return optionFunc(func(c *clientConfig) {
 		if n > 0 {
 			c.dispatcher.MaxMessageSize = n
 		}
 	})
+}
+
+// WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
+// as upstream ocpp-go v0.19.0 has none. Not part of WithOCPPGoCompat and not
+// recommended on an internet-facing endpoint: a peer can then make this process
+// buffer a message of any size. Prefer a larger WithMaxMessageSize.
+func WithUnlimitedMessageSize() Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.MaxMessageSize = -1 })
 }
 
 // WithInboundQueueSize sets the depth of the per-connection queue between the
@@ -352,7 +360,7 @@ func WithMessageIDPolicy(p dispatcher.MessageIDPolicy) Option {
 }
 
 // WithOCPPGoCompat makes the client reproduce the charger-visible behaviour of
-// the ocpp-go library where gocpp differs, for simulators and test rigs that
+// upstream ocpp-go v0.19.0 where gocpp differs, for simulators and test rigs that
 // were written against it. It is shorthand for, in order:
 //
 //   - WithLenientSchema()

@@ -144,6 +144,11 @@ func TestRuntimeSafetyOptions(t *testing.T) {
 	require.EqualValues(t, 1<<20, c.cfg.dispatcher.MaxMessageSize)
 }
 
+func TestWithUnlimitedMessageSize(t *testing.T) {
+	c := NewClient("CP_1", "ws://example.invalid", WithUnlimitedMessageSize())
+	require.Negative(t, c.cfg.dispatcher.MaxMessageSize)
+}
+
 func TestConnDoneOutsideHandler(t *testing.T) {
 	require.Nil(t, ConnDone(context.Background()))
 }

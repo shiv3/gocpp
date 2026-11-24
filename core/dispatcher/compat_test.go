@@ -143,8 +143,9 @@ func TestOCPPGoErrorCodeMapper(t *testing.T) {
 		f := echoRig(t, "ocpp1.6", mut)
 		f.Inject([]byte(`[2,"a"]`)) // too short: ocpp-go stays silent
 		requireSilent(t, f)
-		f.Inject([]byte(`[2,"b",5,{}]`)) // action not a string: silent
-		requireSilent(t, f)
+		f.Inject([]byte(`[2,"b",5,{}]`)) // action not a string: answered, as upstream v0.19.0 does
+		arr := recvArr(t, f)
+		require.Equal(t, []any{float64(4), "b", "FormationViolation"}, arr[:3])
 		f.Inject([]byte(`[2,"c","Heartbeat"]`)) // 3 elements: answered
 		require.Equal(t, "FormationViolation", recvArr(t, f)[2])
 		f.Inject([]byte(`[2,"d","Heartbeat",{},1]`)) // 5 elements: answered

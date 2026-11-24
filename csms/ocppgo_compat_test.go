@@ -89,6 +89,13 @@ func TestOCPPGoCompat_ErrorCodesAndAcceptance(t *testing.T) {
 		require.NoError(t, rig.ws.Write(rig.ctx, websocket.MessageText, []byte(`[2,"`+strings.Repeat("x", 40)+`","Heartbeat",{}]`)))
 		require.Contains(t, rig.call(t, `[2,"after","Heartbeat",{}]`), `[3,"after"`)
 	})
+	t.Run("a non-string action is answered with FormationViolation (upstream v0.19.0)", func(t *testing.T) {
+		require.Contains(t, rig.call(t, `[2,"na",5,{}]`), `[4,"na","FormationViolation"`)
+	})
+	t.Run("a zone-less timestamp is accepted (upstream v0.19.0)", func(t *testing.T) {
+		require.Contains(t, rig.call(t, `[2,"ts","Heartbeat",{}]`), `[3,"ts"`)
+		require.Contains(t, rig.call(t, `[2,"ts2","StatusNotification",{"connectorId":1,"errorCode":"NoError","status":"Available","timestamp":"2026-01-01T00:00:00"}]`), `[3,"ts2"`)
+	})
 	t.Run("malformed short CALL is silent", func(t *testing.T) {
 		require.NoError(t, rig.ws.Write(rig.ctx, websocket.MessageText, []byte(`[2,"short"]`)))
 		require.Contains(t, rig.call(t, `[2,"after2","Heartbeat",{}]`), `[3,"after2"`)
@@ -227,4 +234,60 @@ func TestErrorCodeMapperOption(t *testing.T) {
 		return ctx.WireCode, ctx.Reply
 	}))
 	require.Contains(t, rig.call(t, `[2,"u","Foo",{}]`), `"GenericError"`)
+}
+
+// Upstream ocpp-go v0.19.0 keeps the first connection of a charge point id and
+// closes the newcomer with 1008 after the upgrade. Opt-in, not in the preset.
+func TestDuplicatePolicyRejectNewAfterUpgrade(t *testing.T) {
+	dial := func(t *testing.T, ctx context.Context, url string) *websocket.Conn {
+		c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"}})
+		require.NoError(t, err)
+		return c
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	srv := csms.NewServer(csms.WithSubProtocols("ocpp1.6"), csms.WithSchemaRegistry(reg16(t)),
+		csms.WithDuplicatePolicy(csms.DuplicatePolicyRejectNewAfterUpgrade))
+	require.NoError(t, csms.On(srv, profiles.Heartbeat, func(context.Context, *csms.Conn, messages.HeartbeatRequest) (messages.HeartbeatResponse, error) {
+		return messages.HeartbeatResponse{CurrentTime: time.Unix(0, 0)}, nil
+	}))
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	url := "ws" + ts.URL[len("http"):] + "/ocpp/dup"
+
+	first := dial(t, ctx, url)
+	defer func() { _ = first.Close(websocket.StatusNormalClosure, "") }()
+	require.NoError(t, first.Write(ctx, websocket.MessageText, []byte(`[2,"a","Heartbeat",{}]`)))
+	_, _, err := first.Read(ctx)
+	require.NoError(t, err)
+
+	second := dial(t, ctx, url) // the upgrade succeeds ...
+	_, _, err = second.Read(ctx)
+	require.Equal(t, websocket.StatusPolicyViolation, websocket.CloseStatus(err)) // ... and is closed with 1008
+
+	// the first connection is untouched
+	require.NoError(t, first.Write(ctx, websocket.MessageText, []byte(`[2,"b","Heartbeat",{}]`)))
+	_, data, err := first.Read(ctx)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `[3,"b"`)
+}
+
+// WithUnlimitedMessageSize removes the read limit (upstream ocpp-go v0.19.0 has none).
+func TestMaxMessageSizeUnlimited(t *testing.T) {
+	big := `[2,"big","DataTransfer",{"vendorId":"v","data":"` + strings.Repeat("a", 1<<20+100) + `"}]`
+	run := func(t *testing.T, opt csms.Option) string {
+		rig := newRigFor(t, "ocpp1.6", reg16(t), opt)
+		require.NoError(t, csms.On(rig.srv, profiles.DataTransfer, func(context.Context, *csms.Conn, messages.DataTransferRequest) (messages.DataTransferResponse, error) {
+			return messages.DataTransferResponse{Status: "Accepted"}, nil
+		}))
+		require.NoError(t, rig.ws.Write(rig.ctx, websocket.MessageText, []byte(big)))
+		_, data, err := rig.ws.Read(rig.ctx)
+		if err != nil {
+			return "closed:" + websocket.CloseStatus(err).String()
+		}
+		return string(data)
+	}
+	require.Equal(t, "closed:StatusMessageTooBig", run(t, csms.WithMaxMessageSize(0)))
+	require.Equal(t, `[3,"big",{"status":"Accepted"}]`, run(t, csms.WithUnlimitedMessageSize()))
 }

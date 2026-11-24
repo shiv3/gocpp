@@ -6,7 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `csms.DuplicatePolicyRejectNewAfterUpgrade`: first connection wins and the
+  newcomer is upgraded then closed with 1008, as upstream ocpp-go v0.19.0 does.
+  `csms.WithUnlimitedMessageSize()` / `cp.WithUnlimitedMessageSize()`: no inbound
+  size limit, as ocpp-go v0.19.0. Both are opt-in and not part of
+  `WithOCPPGoCompat`.
+
 ### Changed
+
+- `WithOCPPGoCompat` (and `dispatcher.OCPPGoErrorCodeMapper`) now target upstream
+  ocpp-go v0.19.0 rather than the v0.17 fork: a CALL whose action is not a string
+  is answered with FormationViolation instead of being dropped.
+  docs/migration-from-ocpp-go.md has the table of defaults, preset and ocpp-go.
 
 - The ocpp-go drop-in targets upstream ocpp-go v0.19.0 only. The module moved
   from `compat/ocppgo-v019` to `compat/ocppgo` (the `v0.17.2-fix.x` tree is

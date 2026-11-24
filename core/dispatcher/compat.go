@@ -8,7 +8,7 @@ import (
 )
 
 // OCPPGoErrorCodeMapper returns an ErrorCodeMapper that reproduces the CALLERROR
-// codes (and silences) of the ocpp-go library, for staged migrations where
+// codes (and silences) of upstream ocpp-go v0.19.0, for staged migrations where
 // chargers in the field have been tuned against it:
 //
 //   - unknown action: NotSupported (gocpp: NotImplemented);
@@ -20,7 +20,9 @@ import (
 //     the request type (wrong JSON type, bad date-time, not an object):
 //     FormationViolation (FormatViolation on 2.x);
 //   - an unsupported MessageTypeId: MessageTypeNotSupported, also on 1.6;
-//   - a CALL with fewer than three elements or a non-string action: no reply.
+//   - an array with fewer than three elements: no reply (ocpp-go cannot read an
+//     id from it); a CALL with three or five elements, or whose action is not a
+//     string: FormationViolation, with the message id echoed.
 //
 // It does not touch errors returned by application handlers.
 func OCPPGoErrorCodeMapper() ErrorCodeMapper {
@@ -38,7 +40,7 @@ func OCPPGoErrorCodeMapper() ErrorCodeMapper {
 			return formation, true
 		case ErrorSourceMalformedFrame:
 			var pe *ocppj.ProtocolError
-			if errors.As(ctx.Err, &pe) && (pe.Elements < 3 || pe.BadField == "action") {
+			if errors.As(ctx.Err, &pe) && pe.Elements < 3 {
 				return "", false
 			}
 			return formation, true

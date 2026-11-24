@@ -21,11 +21,15 @@ func NewCoderWS(c *websocket.Conn) WS {
 
 // NewCoderWSWithLimit is NewCoderWS with an explicit inbound message size limit
 // in bytes; a message larger than that closes the connection with status 1009.
-// limit <= 0 selects DefaultMaxMessageSize. OCPP-J messages can be large
+// limit == 0 selects DefaultMaxMessageSize; limit < 0 removes the limit (an
+// unauthenticated peer can then make the server buffer a message of any size). OCPP-J messages can be large
 // (firmware, certificates), so the default is above coder's own 32 KiB.
 func NewCoderWSWithLimit(c *websocket.Conn, limit int64) WS {
-	if limit <= 0 {
+	switch {
+	case limit == 0:
 		limit = DefaultMaxMessageSize
+	case limit < 0:
+		limit = -1 // coder: no limit
 	}
 	c.SetReadLimit(limit)
 	return &coderWS{c: c}

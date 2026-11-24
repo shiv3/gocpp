@@ -374,6 +374,11 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		_ = c.Close(websocket.StatusProtocolError, "no common subprotocol")
 		return
 	}
+	if s.cfg.duplicatePolicy == DuplicatePolicyRejectNewAfterUpgrade && s.hasConn(cpID) {
+		s.upgradeResult("duplicate")
+		_ = c.Close(websocket.StatusPolicyViolation, duplicateCloseReason)
+		return
+	}
 	if s.sessions != nil && !preClaim {
 		sess, prevSess, claimed = s.claimSession(r, cpID, attrs)
 		defer abandon()
@@ -442,6 +447,9 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	// a half-initialized Conn (data race on c.ctx).
 	dconn.Start(s.ctx)
 	if !s.addConn(cpID, conn, res) {
+		if s.cfg.duplicatePolicy == DuplicatePolicyRejectNewAfterUpgrade {
+			dconn.AbortWithStatus(transport.StatusPolicyViolation, duplicateCloseReason)
+		}
 		_ = dconn.Close(nil)
 		return
 	}
@@ -632,6 +640,8 @@ func (s *Server) reserveSlot(id string) (res *slotReservation, release func(), o
 	return res, release, true
 }
 
+const duplicateCloseReason = "a connection with this ID already exists"
+
 // addConn registers c. res is the admission reservation (nil in unit tests).
 func (s *Server) addConn(id string, c *Conn, res ...*slotReservation) bool {
 	var held *slotReservation
@@ -639,12 +649,14 @@ func (s *Server) addConn(id string, c *Conn, res ...*slotReservation) bool {
 		held = res[0]
 	}
 	policy := s.cfg.duplicatePolicy
-	if policy != DuplicatePolicyRejectNew && policy != DuplicatePolicyCloseExisting {
+	if policy != DuplicatePolicyRejectNew && policy != DuplicatePolicyRejectNewAfterUpgrade &&
+		policy != DuplicatePolicyCloseExisting {
 		policy = DuplicatePolicyCloseExisting
 	}
+	reject := policy == DuplicatePolicyRejectNew || policy == DuplicatePolicyRejectNewAfterUpgrade
 	s.mu.Lock()
 	old, ok := s.conns[id]
-	if ok && policy == DuplicatePolicyRejectNew {
+	if ok && reject {
 		s.mu.Unlock()
 		return false
 	}
