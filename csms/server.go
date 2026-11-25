@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 	"github.com/shiv3/gocpp/core/dispatcher"
@@ -254,7 +255,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 			cpID = id.CPID
 		}
 	}
-	if !validCPID(cpID) {
+	if !s.cpIDAllowed(cpID) {
 		s.upgradeResult("bad_request")
 		http.Error(w, "invalid charge point id", http.StatusBadRequest)
 		return
@@ -526,13 +527,13 @@ func (s *Server) versionConfig(sub string) *dispatcher.Config {
 func (s *Server) extractCPID(r *http.Request) (string, bool) {
 	if s.cfg.cpIDExtractor != nil {
 		cpID, ok := s.cfg.cpIDExtractor(r)
-		return cpID, ok && validCPID(cpID)
+		return cpID, ok && s.cpIDAllowed(cpID)
 	}
 	cpID := strings.TrimPrefix(r.URL.Path, s.cfg.path)
 	if cpID == r.URL.Path {
 		return "", false
 	}
-	return cpID, validCPID(cpID)
+	return cpID, s.cpIDAllowed(cpID)
 }
 
 // upgradeWillSucceed is a cheap pre-check, run before a session is claimed, that
@@ -581,6 +582,21 @@ func headerHasToken(h http.Header, name, token string) bool {
 
 func validCPID(cpID string) bool {
 	return cpID != "" && !strings.Contains(cpID, "/")
+}
+
+// cpIDAllowed applies the built-in rule and the WithMaxCPIDLength /
+// WithCPIDPattern policy.
+func (s *Server) cpIDAllowed(cpID string) bool {
+	if !validCPID(cpID) {
+		return false
+	}
+	if n := s.cfg.cpIDMaxLen; n > 0 && utf8.RuneCountInString(cpID) > n {
+		return false
+	}
+	if re := s.cfg.cpIDPattern; re != nil && !re.MatchString(cpID) {
+		return false
+	}
+	return true
 }
 
 func (s *Server) hasConn(id string) bool {

@@ -70,6 +70,16 @@ type InboundOutcome struct {
 // the handler for frame.Action or nil when there is none.
 func (p *Pipeline) RunCall(ctx context.Context, frame *ocppj.Frame, h func(ctx context.Context, payload []byte) ([]byte, error)) (out InboundOutcome) {
 	out.Status = "ok"
+	if p.cfg.ValidateErrorCodes {
+		defer func() {
+			if out.Err != nil && !out.NoReply && !ocppj.ValidErrorCode(p.version, out.Wire) {
+				p.cfg.Logger.WarnContext(ctx, "handler CALLERROR code is not defined by the OCPP version; sending GenericError",
+					"cp_id", p.cpID, "action", frame.Action, "code", out.Wire)
+				out.Err = ocppj.NewCallError(ocppj.ErrorCodeGenericError, out.Err.Description+" (original code "+out.Wire+")", out.Err.Details)
+				out.Wire = string(ocppj.ErrorCodeGenericError)
+			}
+		}()
+	}
 	// A panic in a user handler must not crash the whole peer/process: recover,
 	// log, and answer with an InternalError CallError so the connection survives.
 	defer func() {

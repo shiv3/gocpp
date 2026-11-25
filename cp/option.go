@@ -192,6 +192,15 @@ func WithInboundRateLimitAction(a dispatcher.RateLimitAction) Option {
 	return optionFunc(func(c *clientConfig) { c.dispatcher.InboundRateAction = a })
 }
 
+// WithValidateErrorCodes checks CALLERROR codes against the set the connection's
+// OCPP version defines (ocppj.ValidErrorCode). A code a handler returns that the
+// version does not define (a 2.x-only code on 1.6, a typo) is sent as
+// GenericError, the original code kept in the description; a CALLERROR received
+// with an undefined code is logged and delivered unchanged. Off by default.
+func WithValidateErrorCodes() Option {
+	return optionFunc(func(c *clientConfig) { c.dispatcher.ValidateErrorCodes = true })
+}
+
 // WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
 // as upstream ocpp-go v0.19.0 has none. Part of WithOCPPGoCompat and not
 // recommended on an internet-facing endpoint: a peer can then make this process

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"regexp"
 	"time"
 
 	"github.com/shiv3/gocpp/core/auth"
@@ -39,6 +40,8 @@ type serverConfig struct {
 	compressionMode transport.CompressionMode
 	path            string
 	cpIDExtractor   CPIDExtractor
+	cpIDMaxLen      int
+	cpIDPattern     *regexp.Regexp
 	instanceID      string
 	sessionReg      storage.SessionRegistry
 	sessionAttrs    func(r *http.Request, cpID string) map[string]string
@@ -320,6 +323,15 @@ func WithInboundRateLimitAction(a dispatcher.RateLimitAction) Option {
 	return optionFunc(func(c *serverConfig) { c.dispatcher.InboundRateAction = a })
 }
 
+// WithValidateErrorCodes checks CALLERROR codes against the set the connection's
+// OCPP version defines (ocppj.ValidErrorCode). A code a handler returns that the
+// version does not define (a 2.x-only code on 1.6, a typo) is sent as
+// GenericError, the original code kept in the description; a CALLERROR received
+// with an undefined code is logged and delivered unchanged. Off by default.
+func WithValidateErrorCodes() Option {
+	return optionFunc(func(c *serverConfig) { c.dispatcher.ValidateErrorCodes = true })
+}
+
 // WithUnlimitedMessageSize removes the inbound WebSocket message size limit,
 // as upstream ocpp-go v0.19.0 has none. Part of WithOCPPGoCompat; not
 // recommended on an internet-facing endpoint: a peer can then make this process
@@ -467,6 +479,26 @@ func WithDuplicatePolicy(p DuplicatePolicy) Option {
 // disables the global cap (the default), leaving only per-connection limits.
 func WithGlobalConcurrencyLimit(n int) Option {
 	return optionFunc(func(c *serverConfig) { c.globalConcurrencyLimit = n })
+}
+
+// IdentifierStringPattern matches the OCPP 2.0.1 / 2.1 identifierString type
+// (letters, digits and the characters * - _ = : + | @ .) up to the 48 characters
+// the spec gives a charging station identity. Pass it to WithCPIDPattern for a
+// 2.x-only deployment; OCPP 1.6 puts no such limit on the identity.
+var IdentifierStringPattern = regexp.MustCompile(`^[a-zA-Z0-9*\-_=:+|@.]{1,48}$`)
+
+// WithMaxCPIDLength refuses an upgrade whose charge point id is longer than n
+// characters with HTTP 400, before authentication or any registry lookup. n <= 0,
+// the default, sets no limit.
+func WithMaxCPIDLength(n int) Option {
+	return optionFunc(func(c *serverConfig) { c.cpIDMaxLen = n })
+}
+
+// WithCPIDPattern refuses an upgrade whose charge point id does not match re
+// with HTTP 400 (see IdentifierStringPattern). nil, the default, accepts any id
+// except an empty one or one containing "/".
+func WithCPIDPattern(re *regexp.Regexp) Option {
+	return optionFunc(func(c *serverConfig) { c.cpIDPattern = re })
 }
 
 // WithOriginPatterns lists host patterns for authorized WebSocket origins
