@@ -1,4 +1,4 @@
-.PHONY: schemas-fetch codegen changelog-21 test test-race fuzz lint tidy
+.PHONY: schemas-fetch codegen changelog-21 test test-race fuzz lint tidy interop
 
 schemas-fetch:
 	./scripts/fetch-schemas.sh
@@ -34,3 +34,9 @@ lint:
 
 tidy:
 	go mod tidy
+
+# Interoperability matrix against third-party OCPP implementations (docs/interop.md).
+# Needs docker; pulls several GB. INTEROP_PEERS / INTEROP_VERSIONS narrow it.
+interop:
+	go test -tags interop -count=1 -timeout 60m -json -run 'TestInterop_Gocpp' ./interop/ > interop-results.json || true
+	python3 scripts/interop-matrix.py interop-results.json --failures
