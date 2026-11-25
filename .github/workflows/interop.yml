@@ -1,0 +1,62 @@
+name: Interop
+# Interoperability matrix against independent OCPP implementations, packaged as
+# containers by otfabric/ocpp-interop (MIT). Not part of per-PR CI: it pulls
+# several GB of third-party images. See docs/interop.md.
+on:
+  workflow_dispatch:
+    inputs:
+      peers:
+        description: "Comma separated peers (default: all of the matrix)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 5 * * 1" # weekly Monday
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        peer: [mobilityhouse, chargetime, lorenzodonini, everest, cbsigma, ocppkit, seanlee, citrineos]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - name: Run the matrix for ${{ matrix.peer }}
+        env:
+          INTEROP_PEERS: ${{ matrix.peer }}
+          WANT_PEERS: ${{ inputs.peers }}
+        run: |
+          if [ -n "$WANT_PEERS" ] && ! echo ",$WANT_PEERS," | grep -q ",$INTEROP_PEERS,"; then
+            echo "peer not selected"; echo '{}' > interop-${INTEROP_PEERS}.json; exit 0
+          fi
+          go test -tags interop -count=1 -timeout 50m -json -run 'TestInterop_Gocpp' ./interop/ > interop-${INTEROP_PEERS}.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interop-${{ matrix.peer }}
+          path: interop-${{ matrix.peer }}.json
+
+  summary:
+    needs: matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: interop-*
+          merge-multiple: true
+      - name: Matrix
+        run: |
+          {
+            echo "## gocpp interop matrix"
+            python3 scripts/interop-matrix.py interop-*.json --failures
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          # A failure that is not a recorded issue fails the run.
+          ! python3 scripts/interop-matrix.py interop-*.json | awk -F'|' 'NR>2 && $6+0>0 {bad=1} END{exit !bad}'
