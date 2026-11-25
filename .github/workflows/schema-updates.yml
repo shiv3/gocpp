@@ -1,0 +1,55 @@
+name: schema updates
+# Weekly: compare the vendored OCA schemas (schemas/v16, v201, v21) with the
+# published ones. Differences fail the run and are written to a tracking issue;
+# nothing is committed. Updating is a reviewed `make schemas-fetch && make codegen`.
+#
+# The download locations are not committed (OCA distribution terms vary); set the
+# repository variables V16_SCHEMA_URL, V201_SCHEMA_URL and V21_SCHEMA_URL (zip
+# files with the *.json schemas, as scripts/fetch-schemas.sh expects). Without
+# them the run reports that nothing was compared.
+on:
+  schedule:
+    - cron: "23 6 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: compare with the published schemas
+        id: cmp
+        env:
+          V16_SCHEMA_URL: ${{ vars.V16_SCHEMA_URL }}
+          V201_SCHEMA_URL: ${{ vars.V201_SCHEMA_URL }}
+          V21_SCHEMA_URL: ${{ vars.V21_SCHEMA_URL }}
+          REPORT: ${{ runner.temp }}/schema-report.md
+        run: |
+          set +e
+          scripts/check-schema-updates.sh
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          { echo "## Schema comparison"; echo; cat "$REPORT"; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" = 3 ]; then
+            echo "::warning title=No schema source configured::Set the repository variables V16_SCHEMA_URL, V201_SCHEMA_URL, V21_SCHEMA_URL; nothing was compared."
+            exit 0
+          fi
+          exit "$rc"
+      - name: open or update the tracking issue
+        if: failure() && steps.cmp.outputs.rc == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ runner.temp }}/schema-report.md
+        run: |
+          title="OCPP schemas differ from the published ones"
+          body="$(printf 'The weekly schema check found differences between the vendored schemas and the published ones (run %s/%s/actions/runs/%s).\n\nNothing was changed. To adopt: `make schemas-fetch && make codegen`, review the diff, and update `schemas/overrides` if needed.\n\n%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$(head -c 55000 "$REPORT")")"
+          n="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
