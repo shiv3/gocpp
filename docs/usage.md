@@ -150,7 +150,7 @@ Defaults that are easy to get wrong (library defaults, both CSMS and CP unless n
 
 | Option | Default |
 |--------|---------|
-| Schema mode (`WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`) | **off** (no validation, even with a registry); lenient is opt-in |
+| Schema mode (`WithStrictSchema` / `WithTolerantSchema` / `WithLenientSchema`) | **lenient** when a registry is set (`WithStrictSchema(false)` turns it off); no registry, no validation |
 | `WithWebSocketPingInterval` / `WithWebSocketPongWait` / `WithWebSocketReadTimeout` | 54s / 60s / 60s (0 disables) |
 | `WithCallTimeout` | 30s |
 | `WithMaxMessageSize` | 1 MiB (larger closes with 1009) |
@@ -301,13 +301,11 @@ Two layers (spec §4.4):
 1. **JSON Schema** (source of truth) — embedded official schemas, validated on the wire
    when a registry is set. Mode is three-state: `WithStrictSchema(true)` rejects invalid
    messages, `WithTolerantSchema()` logs a warning and passes (vendor quirks), and
-   `WithStrictSchema(false)` turns validation off. **Off is the library default**: with no
-   schema option, nothing is validated even when a registry is set (lenient is opt-in). `WithLenientSchema()` is
-   described below. **Recommendation:** use `WithLenientSchema()` for a production CSMS facing real
-   chargers (it protects handlers from malformed payloads and repairs common firmware mistakes at about
-   +0.35 core per 30k msg/s, see [performance.md](performance.md#schema-validation-cost)); use
-   `WithTolerantSchema()` first if you want to see what your fleet sends without rejecting anything; leave
-   it off only for trusted fleets or behind a validating proxy.
+   `WithStrictSchema(false)` turns validation off. **With a registry and no schema option the mode is
+   lenient** (see below); with no registry nothing is validated. Lenient costs about +0.35 core per 30k msg/s
+   ([performance.md](performance.md#schema-validation-cost)); use `WithTolerantSchema()` to see what your fleet
+   sends without rejecting anything, and `WithStrictSchema(false)` only for trusted fleets or behind a
+   validating proxy.
    **Lenient mode** (`csms.WithLenientSchema()` / `cp.WithLenientSchema()`) rejects
    structurally broken messages (missing required fields, wrong shapes) but repairs
    benign drift in inbound requests *and* responses before the typed decode, guided by

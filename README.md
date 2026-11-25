@@ -18,10 +18,10 @@ A from-scratch alternative to `lorenzodonini/ocpp-go` (and a
   goroutine (about 13 KB RSS idle) bound to a `context`; handlers run on short-lived
   goroutines or an optional warm worker pool; teardown flows from one `cancel(cause)`. Race- and
   goroutine-leak-tested (`-race` + `goleak`).
-- **Two-layer validation, opt-in** — JSON-Schema validation against the embedded official
-  schemas (source of truth), plus generated `validate` struct tags. **Wire validation is off
-  by default**: nothing is checked until you set a schema mode (see [Validation](#validation);
-  `WithLenientSchema()` is the recommended production setting).
+- **Two-layer validation** — JSON-Schema validation against the embedded official
+  schemas (source of truth), plus generated `validate` struct tags. Wire validation
+  needs a schema registry (`WithSchemaRegistry`) and is lenient by default once one is set (see
+  [Validation](#validation)).
 - **Pluggable** Storage / Auth / Observability with in-memory / NoOp defaults and
   Prometheus + OpenTelemetry adapters.
 
@@ -179,13 +179,13 @@ see "Stability" in docs/gateway.md for the full list.
 
 ## Validation
 
-**Default: off.** A server or client built without a schema option validates nothing on the
-wire, even if you pass `WithSchemaRegistry`: the registry only supplies the schemas that a mode
-uses. Set a mode explicitly. For production, use `WithLenientSchema()` (rejects structurally
-broken messages and repairs the usual charger mistakes; about +0.35 core at 30k msg/s, see
-[docs/performance.md](docs/performance.md#schema-validation-cost)), or `WithTolerantSchema()` to
-only log violations while you assess a fleet. `WithStrictSchema(true)` suits test chargers and
-simulators that must be exact.
+**Default: lenient once a registry is set.** A server or client given `WithSchemaRegistry` and no
+schema option validates inbound messages leniently (`WithLenientSchema()`): structurally broken
+messages are rejected and the usual charger mistakes are repaired, at about +0.35 core per 30k msg/s
+(see [docs/performance.md](docs/performance.md#schema-validation-cost)). Without a registry nothing is
+validated, as the registry holds the schemas. Choose another mode explicitly: `WithTolerantSchema()` to only
+log violations while you assess a fleet, `WithStrictSchema(true)` for test chargers and simulators that
+must be exact, `WithStrictSchema(false)` to turn validation off.
 
 Layer 1 (wire): enable schema validation on the connection so malformed inbound messages are
 rejected with a `CallError` before reaching your handler (strict shown):
@@ -210,9 +210,8 @@ Schema handling is three-state. With a registry set:
   case, near-RFC3339 timestamps (zone-less, space separator, `+0900`, lowercase `t`/`z`;
   zone-less values use UTC or `WithLenientTimeLocation`), and quoted numbers/booleans or
   numbers where a string is expected (only when the conversion is lossless).
-- `WithStrictSchema(false)` — validation off. **This is the library default**: with no
-  schema option set, nothing is validated, even if a registry is configured. Lenient is
-  opt-in (only the bundled load-test harness enables it by default).
+- `WithStrictSchema(false)` — validation off. Explicit only: with a registry and no schema
+  option the mode is lenient; with no registry nothing is validated.
 
 Layer 2 (the generated `validate` struct tags) is available to application code that calls the
 validator on a decoded message; the dispatcher's own inbound check is layer 1 and only runs when a
