@@ -178,9 +178,22 @@ func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(s.serveWS)
 }
 
-// ListenAndServe starts an HTTP server on addr.
+// listenReadHeaderTimeout bounds how long ListenAndServe waits for the request
+// headers of one connection, so that a peer that opens sockets and dribbles
+// (or never finishes) a request cannot hold them indefinitely. A variable so
+// that tests can shorten it.
+var listenReadHeaderTimeout = 10 * time.Second
+
+// newHTTPServer is the HTTP server ListenAndServe runs.
+func (s *Server) newHTTPServer(addr string) *http.Server {
+	return &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: listenReadHeaderTimeout}
+}
+
+// ListenAndServe starts an HTTP server on addr. It reads request headers for at
+// most 10 seconds per connection. To set other timeouts, TLS or graceful HTTP
+// shutdown, run your own http.Server with Handler instead.
 func (s *Server) ListenAndServe(addr string) error {
-	return http.ListenAndServe(addr, s.Handler())
+	return s.newHTTPServer(addr).ListenAndServe()
 }
 
 func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
