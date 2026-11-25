@@ -87,6 +87,10 @@ All notable changes to this project are documented here. The format is based on
 - `gocpp-csms serve` answers Get15118EVCertificate with `Failed` instead of `Accepted`
   with an empty `exiResponse`.
 
+### Fixed
+
+- Typed request/response decoding accepts integral numbers written with a fraction or exponent (`20000.0`, `2e4`) for integer fields, as JSON Schema's `integer` allows. EVerest's libocpp sends such values, and gocpp used to answer them with a TypeConstraintViolation.
+
 ## [0.4.0] - 2026-11-25
 
 Compat module: the next drop-in tag is `compat/ocppgo/v0.19.0-gocpp.3`. It contains
