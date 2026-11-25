@@ -24,6 +24,24 @@ jobs:
       # and 2 ms p99 per message (docs/gateway.md, performance).
       - run: go test -count=1 -run TestGateHopOverhead ./benchmarks/
 
+  test-32bit:
+    # 32-bit targets: int is 32 bits wide and 64-bit atomics need alignment, which
+    # shows up as overflows and panics that amd64 hides. GOARCH=386 binaries run
+    # on the amd64 runner; arm is only built.
+    runs-on: ubuntu-latest
+    env:
+      GOARCH: "386"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: go vet ./...
+      - run: go test -count=1 -timeout 8m ./...
+      - run: go build ./...
+        env:
+          GOARCH: arm
+
   ocppgo-compat:
     # compat/ocppgo is a separate module: the ocpp-go drop-in on the gocpp runtime.
     runs-on: ubuntu-latest
