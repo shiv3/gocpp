@@ -1,6 +1,7 @@
 package csms
 
 import (
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -32,12 +33,13 @@ func TestListenAndServe_ReadHeaderTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer nc.Close()
+	defer func() { _ = nc.Close() }()
 	_, _ = nc.Write([]byte("GET /ocpp/x HTTP/1.1\r\nHost: x\r\n")) // headers never end
 	_ = nc.SetReadDeadline(time.Now().Add(5 * time.Second))
 	start := time.Now()
 	_, err = io.ReadAll(nc) // the server answers 408 and closes
-	if ne, ok := err.(net.Error); ok && ne.Timeout() {
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
 		t.Fatal("the connection with unfinished headers was still open after 5 s")
 	}
 	if d := time.Since(start); d > 3*time.Second {

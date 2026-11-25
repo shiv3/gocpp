@@ -36,7 +36,7 @@ type fixture struct {
 
 // newFixture starts a CSMS with a small message limit and a short read idle
 // timeout, so that the attacks that rely on them finish quickly.
-func newFixture(t *testing.T, extra ...csms.Option) *fixture {
+func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	fx := &fixture{t: t}
 	opts := []csms.Option{
@@ -44,7 +44,7 @@ func newFixture(t *testing.T, extra ...csms.Option) *fixture {
 		csms.WithMaxMessageSize(maxMsg),
 		csms.WithWebSocketReadTimeout(2 * time.Second),
 	}
-	fx.srv = splitmode.NewServer(append(opts, extra...)...)
+	fx.srv = splitmode.NewServer(opts...)
 	require.NoError(t, csms.On(fx.srv, v16p.Heartbeat, func(ctx context.Context, c *csms.Conn, req v16msg.HeartbeatRequest) (v16msg.HeartbeatResponse, error) {
 		fx.heartbeat.Add(1)
 		return v16msg.HeartbeatResponse{CurrentTime: time.Now()}, nil

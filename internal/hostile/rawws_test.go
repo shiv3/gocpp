@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -153,7 +154,8 @@ func (p *rawPeer) awaitClosed(timeout time.Duration) (code int, ok bool) {
 	for time.Until(deadline) > 0 {
 		op, payload, err := p.readFrame(time.Until(deadline))
 		if err != nil {
-			if ne, isNet := err.(net.Error); isNet && ne.Timeout() {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
 				return 0, false
 			}
 			return 0, true
