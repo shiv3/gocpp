@@ -141,6 +141,12 @@ func (s *testServer) mustDial(cpID, subprotocol string, register func(*cp.Client
 	if got := c.NegotiatedProtocol(); got != subprotocol {
 		s.t.Fatalf("negotiated %q, want %q", got, subprotocol)
 	}
+	// Connect returns when the client has the 101; the server registers the
+	// charge point a moment later, so wait until the control API lists it.
+	waitFor(s.t, cpID+" registered", func() bool {
+		_, body := s.control(http.MethodGet, "/connections", "")
+		return strings.Contains(body, `"cpId":"`+cpID+`"`)
+	})
 	return c
 }
 
